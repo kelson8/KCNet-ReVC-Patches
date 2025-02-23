@@ -1,0 +1,149 @@
+From 1e4e52f8082c46444f0ee62c8634596c2d05d80f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Feb 2025 03:39:05 -0500
+Subject: [PATCH 17/42] Add ini option for FastLoader under General in re3.ini.
+
+Add gbFastLoader check for ini in the game loading function, under FrontEnd.cpp.
+Change debug menu font.
+Add the options to toggle features into config.h.
+Exclude debug folder under extras in gitignore.
+---
+ .gitignore                             |  4 ++++
+ src/core/Frontend.cpp                  | 11 ++++++++++-
+ src/core/config.h                      | 16 ++++++++++++++++
+ src/core/main.cpp                      |  4 ++++
+ src/core/main.h                        |  4 ++++
+ src/extras/functions/ini_functions.cpp |  9 +++++++++
+ 6 files changed, 47 insertions(+), 1 deletion(-)
+
+diff --git a/.gitignore b/.gitignore
+index c55a27ce..7343ee39 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -31,6 +31,10 @@ bld/
+ [Ll]og/
+ [Bb]uild/
+ 
++
++# Exclude my debug test from gitignore, the above was ignoring it
++!src/extras/debug
++
+ # Visual Studio 2015/2017 cache/options directory
+ .vs/
+ # Uncomment if you have tasks that create the project's static files in wwwroot
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index ec44c513..62c0bcea 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -2284,10 +2284,19 @@ CMenuManager::DrawFrontEnd()
+ 	// I found the spot where I can jump out the main menu at least.
+ 	// I finally made a partial fast loader for ReVC
+ 	// 	2-13-2025 @ 3:33PM
++
++	// 2-14-2025 @ 1:16AM
++	// I added an ini toggle for this under the "General" tab.
++	// If FastLoader is set to 1, this will run the fast loader.
+ 	if (m_nCurrScreen == MENUPAGE_NONE) {
+ 		if (m_bGameNotLoaded) {
+ #ifdef _CUSTOM_CODE
+-			m_nCurrScreen = MENUPAGE_CHOOSE_LOAD_SLOT;
++			if(gbFastLoader) {
++				m_nCurrScreen = MENUPAGE_CHOOSE_LOAD_SLOT;
++			} else {
++				m_nCurrScreen = MENUPAGE_START_MENU;
++			}
++
+ 			#else
+ 			m_nCurrScreen = MENUPAGE_START_MENU;
+ 		#endif //_CUSTOM_CODE
+diff --git a/src/core/config.h b/src/core/config.h
+index 71c53f5f..109848ad 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -214,6 +214,20 @@ enum Config {
+ // Custom code
+ #define CUSTOM_CODE
+ 
++#ifdef CUSTOM_CODE
++// Move most debug functions into src/extras/debug/debug_functions.cpp
++#define _MOVE_DEBUG_FILE
++
++// This moves most ini functions into src/extra/functions/ini_functions.cpp
++// This seems to work.
++#define _MOVE_INI_FILE
++
++// Add my fast loader, and a config option for it.
++#define _FAST_LOADER
++
++#endif //CUSTOM_CODE
++
++
+ // these are placed here to work with VANILLA_DEFINES for compatibility
+ #define NO_CDCHECK // skip audio CD check
+ #define DEFAULT_NATIVE_RESOLUTION // Set default video mode to your native resolution (fixes Windows 10 launch)
+@@ -400,6 +414,8 @@ static_assert(false, "SUPPORT_XBOX_SCRIPT and SUPPORT_MOBILE_SCRIPT are mutually
+ //#define SIMPLER_MISSIONS // apply simplifications from mobile
+ #define USE_MISSION_REPLAY_OVERRIDE_FOR_NON_MOBILE_SCRIPT
+ #endif
++
++// TODO Change this later to test it.
+ #define USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 
+ #undef CUSTOM_CODE
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 276f3211..80983f93 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -101,6 +101,10 @@ bool gbDrawVersionText; // Our addition, we think it was always enabled on !MAST
+ bool gbNoMovies;
+ #endif
+ 
++#ifdef _FAST_LOADER
++bool gbFastLoader;
++#endif
++
+ volatile int32 frameCount;
+ 
+ RwRGBA gColourTop;
+diff --git a/src/core/main.h b/src/core/main.h
+index 803afb14..478794a5 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -74,3 +74,7 @@ extern bool gbDrawVersionText;
+ #ifdef NO_MOVIES
+ extern bool gbNoMovies;
+ #endif
++
++#ifdef _FAST_LOADER
++extern bool gbFastLoader;
++#endif //_FAST_LOADER
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 5debd64a..31b38b8c 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -493,6 +493,10 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "NoMovies", &gbNoMovies);
+ #endif
+ 
++#ifdef _FAST_LOADER
++	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
++#endif //_FAST_LOADER
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	bool migrate = cfg.get("FrontendOptions").size() != 0;
+ 	for(int i = 0; i < MENUPAGES; i++) {
+@@ -601,6 +605,11 @@ SaveINISettings()
+ #ifdef NO_MOVIES
+ 	StoreIni("General", "NoMovies", gbNoMovies);
+ #endif
++
++#ifdef _FAST_LOADER
++	StoreIni("General", "FastLoader", gbFastLoader);
++#endif //_FAST_LOADER
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	for(int i = 0; i < MENUPAGES; i++) {
+ 		for(int j = 0; j < NUM_MENUROWS; j++) {
+-- 
+2.45.1.windows.1
+

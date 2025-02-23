@@ -1,0 +1,29 @@
+From 3850c86a20f95155dbb4aa5d09ccd10212933e63 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Feb 2025 23:42:25 -0500
+Subject: [PATCH 35/42] Revert change for moving text folder, it broke the new
+ game option.
+
+---
+ src/text/Text.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/text/Text.cpp b/src/text/Text.cpp
+index 056b199e..2bb6b507 100644
+--- a/src/text/Text.cpp
++++ b/src/text/Text.cpp
+@@ -38,7 +38,10 @@ CText::Load(void)
+ 
+ 	// This should move the gxt files into ViceExtended\\TEXT
+ #ifdef CUSTOM_CODE
+-	CFileMgr::SetDir("ViceExtended\\TEXT");
++	// Oops, this seems to break the new game loading.
++	// I wonder why, I have disabled it for now.
++	// CFileMgr::SetDir("ViceExtended\\TEXT");
++	CFileMgr::SetDir("TEXT");
+ #else
+ 	CFileMgr::SetDir("TEXT");
+ #endif
+-- 
+2.45.1.windows.1
+

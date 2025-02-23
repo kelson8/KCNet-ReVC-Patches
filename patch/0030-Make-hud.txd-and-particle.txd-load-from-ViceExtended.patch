@@ -1,0 +1,163 @@
+From 6f18ef7e3e1edfc1676ad16e028658fff27318e1 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Feb 2025 15:15:36 -0500
+Subject: [PATCH 30/42] Make hud.txd and particle.txd load from
+ ViceExtended\models folder.
+
+---
+ src/core/AnimViewer.cpp | 30 ++++++++++++++++++++++++++++--
+ src/core/Game.cpp       | 12 +++++++++++-
+ src/renderer/Hud.cpp    | 31 +++++++++++++++++++++++++++++--
+ 3 files changed, 68 insertions(+), 5 deletions(-)
+
+diff --git a/src/core/AnimViewer.cpp b/src/core/AnimViewer.cpp
+index 562b9c15..bc463a02 100644
+--- a/src/core/AnimViewer.cpp
++++ b/src/core/AnimViewer.cpp
+@@ -41,6 +41,10 @@
+ #include "Hud.h"
+ #include "debugmenu.h"
+ 
++#ifdef MODLOADER // hud.txd, particle.txd
++#include "modloader.h"
++#endif
++
+ int CAnimViewer::animTxdSlot = 0;
+ CEntity *CAnimViewer::pTarget = nil;
+ 
+@@ -63,13 +67,35 @@ CAnimViewer::Initialise(void) {
+ 
+ 	// we need messages, messages needs hud, hud needs those
+ 	int hudSlot = CTxdStore::AddTxdSlot("hud");
+-	CTxdStore::LoadTxd(hudSlot, "MODELS/HUD.TXD");
++
++#ifdef VICE_EXTENDED // ViceExtended folder - hud.txd
++#ifdef MODLOADER // hud.txd
++		ModLoader_HudTxd(hudSlot, "ViceExtended/MODELS/HUD.TXD");
++#else
++		CTxdStore::LoadTxd(hudSlot, "ViceExtended/MODELS/HUD.TXD");
++		// CTxdStore::LoadTxd(hudSlot, "ViceExtended/models/hud.txd");
++#endif // MODLOADER
++#else
++		CTxdStore::LoadTxd(hudSlot, "MODELS/HUD.TXD");
++#endif // VICE_EXTENDED
++
++
+ 	CHud::m_Wants_To_Draw_Hud = false;
+ 
+ 	animTxdSlot = CTxdStore::AddTxdSlot("generic");
+ 	CTxdStore::Create(animTxdSlot);
+ 	int particleSlot = CTxdStore::AddTxdSlot("particle");
+-	CTxdStore::LoadTxd(particleSlot, "MODELS/PARTICLE.TXD");
++
++#ifdef VICE_EXTENDED // ViceExtended folder - particle.txd
++#ifdef MODLOADER // particle.txd
++		ModLoader_ParticleTxd(particleSlot, "ViceExtended/MODELS/PARTICLE.TXD");
++#else
++		CTxdStore::LoadTxd(particleSlot, "ViceExtended/MODELS/PARTICLE.TXD");
++#endif // MODLOADER
++#else
++		CTxdStore::LoadTxd(particleSlot, "MODELS/PARTICLE.TXD");
++#endif // VICE_EXTENDED
++
+ 	CTxdStore::SetCurrentTxd(animTxdSlot);
+ 	CPools::Initialise();
+ 	CReferences::Init();
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 2307c850..658d0f38 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -414,7 +414,17 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	LoadingScreen("Loading the Game", "Loading particles", nil);
+ 	int particleTxdSlot = CTxdStore::AddTxdSlot("particle");
+-	CTxdStore::LoadTxd(particleTxdSlot, "MODELS/PARTICLE.TXD");
++
++#ifdef VICE_EXTENDED // ViceExtended folder - particle.txd
++#ifdef MODLOADER // particle.txd
++		ModLoader_ParticleTxd(particleTxdSlot, "ViceExtended/MODELS/PARTICLE.TXD");
++#else
++		CTxdStore::LoadTxd(particleTxdSlot, "ViceExtended/MODELS/PARTICLE.TXD");
++#endif
++#else
++		CTxdStore::LoadTxd(particleTxdSlot, "MODELS/PARTICLE.TXD");
++#endif
++
+ 	CTxdStore::AddRef(particleTxdSlot);
+ 	CTxdStore::SetCurrentTxd(gameTxdSlot);
+ 	LoadingScreen("Loading the Game", "Setup game variables", nil);
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index 79e24fc7..38afc86a 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -26,6 +26,10 @@
+ #include "General.h"
+ #include "VarConsole.h"
+ 
++#ifdef MODLOADER // hud.txd
++#include "modloader.h"
++#endif
++
+ #if defined(FIX_BUGS)
+ 	#define SCREEN_SCALE_X_FIX(a) SCREEN_SCALE_X(a)
+ 	#define SCREEN_SCALE_Y_FIX(a) SCREEN_SCALE_Y(a)
+@@ -1688,6 +1692,10 @@ void CHud::GetRidOfAllHudMessages()
+ }
+ 
+ #ifdef RELOADABLES
++/// <summary>
++/// Reload the hud.txd from the debug menu, this could also
++/// have other items to be reloaded added here I'm quite sure.
++/// </summary>
+ void CHud::ReloadTXD()
+ {
+ 	for (int i = 0; i < NUM_HUD_SPRITES; ++i) {
+@@ -1700,7 +1708,17 @@ void CHud::ReloadTXD()
+ 	debug("Reloading HUD.TXD...\n");
+ 
+ 	HudTXD = CTxdStore::AddTxdSlot("hud");
++
++#ifdef VICE_EXTENDED // ViceExtended folder - hud.txd
++#ifdef MODLOADER // hud.txd
++	ModLoader_HudTxd(HudTXD, "ViceExtended/MODELS/HUD.TXD");
++#else
++	CTxdStore::LoadTxd(HudTXD, "ViceExtended/MODELS/HUD.TXD");
++#endif
++#else
+ 	CTxdStore::LoadTxd(HudTXD, "MODELS/HUD.TXD");
++#endif
++
+ 	CTxdStore::AddRef(HudTXD);
+ 	CTxdStore::PopCurrentTxd();
+ 	CTxdStore::SetCurrentTxd(HudTXD);
+@@ -1712,7 +1730,7 @@ void CHud::ReloadTXD()
+ #endif
+ 
+ /// <summary>
+-/// Initialise hud from MODELS/HUD.TXD
++/// Initialise hud
+ /// </summary>
+ void CHud::Initialise()
+ {
+@@ -1720,8 +1738,17 @@ void CHud::Initialise()
+ 	m_Wants_To_Draw_3dMarkers = true;
+ 
+ 	int HudTXD = CTxdStore::AddTxdSlot("hud");
+-	CTxdStore::LoadTxd(HudTXD, "MODELS/HUD.TXD");
++
+ 	CTxdStore::AddRef(HudTXD);
++#ifdef VICE_EXTENDED // ViceExtended folder - hud.txd
++#ifdef MODLOADER // hud.txd
++		ModLoader_HudTxd(HudTXD, "ViceExtended/MODELS/HUD.TXD");
++#else
++		CTxdStore::LoadTxd(HudTXD, "ViceExtended/MODELS/HUD.TXD");
++#endif
++#else
++		CTxdStore::LoadTxd(HudTXD, "MODELS/HUD.TXD");
++#endif	
+ 	CTxdStore::PopCurrentTxd();
+ 	CTxdStore::SetCurrentTxd(HudTXD);
+ 
+-- 
+2.45.1.windows.1
+

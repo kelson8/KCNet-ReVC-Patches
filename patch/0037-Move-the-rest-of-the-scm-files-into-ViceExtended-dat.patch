@@ -1,0 +1,50 @@
+From 8c233d6210b84ec4c37f67b07596c50d9b1342a0 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Feb 2025 01:25:18 -0500
+Subject: [PATCH 37/42] Move the rest of the scm files into ViceExtended/data
+
+---
+ src/control/Script.cpp | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index edf6b47f..4aa11281 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -739,16 +739,30 @@ int CTheScripts::OpenScript()
+ #ifdef MODLOADER // main.scm
+ 	case 0: return ModLoader_MainScm("test\\data\\main.scm", "rb");
+ #else
+-	case 0: return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++	
++#ifdef VICE_EXTENDED
++		case 0: return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++		case 1: return CFileMgr::OpenFile("ViceExtended\\data\\freeroam_miami.scm", "rb");
++		case 2: return CFileMgr::OpenFile("ViceExtended\\data\\main_d.scm", "rb");
++#else
++		case 0: return CFileMgr::OpenFile("data\\main.scm", "rb");
++		case 1: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
++		case 2: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
++#endif //VICE_EXTENDED
++
+ #endif // MODLOADER
+-	case 1: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
+-	case 2: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
+ 	}
+ 
+ #ifdef MODLOADER
+ 	return ModLoader_MainScm("test\\data\\main.scm", "rb");
+ #else
++
++#ifdef VICE_EXTENDED
++	return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++#else
+ 	return CFileMgr::OpenFile("data\\main.scm", "rb");
++
++#endif //VICE_EXTENDED
+ #endif // MODLOADER
+ }
+ #endif
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,549 @@
+From 2f2de8ed0111598b454fb2375c14e0c0e221645f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Feb 2025 19:19:49 -0500
+Subject: [PATCH 41/42] Add enable infinite health and disable infinite health
+ toggles. Add enable and disable never wanted toggles. Fix broken wanted level
+ up cheat in debug menu. Add enable and disable invincibility for the vehicles
+ as a separate function. Add test for setting bikes invincible also using a
+ switch statement. Fix ped spawner to work, fix tank cheat, and fix raise
+ wanted level cheat Add DEBUGMENU preprocessor to stop crashing if it isn't
+ defined in main.cpp. Add test functions into vehicle_functions.
+
+---
+ src/core/Pad.cpp                           |   2 +-
+ src/core/config.h                          |   5 +-
+ src/core/main.cpp                          |   4 +-
+ src/extras/debug/debug_functions.cpp       |   8 +-
+ src/extras/functions/vehicle_functions.cpp |  73 +++++++-
+ src/extras/functions/vehicle_functions.h   |   6 +
+ src/extras/test/cheats/custom_cheats.cpp   | 195 +++++++++++++++++----
+ src/extras/test/cheats/custom_cheats.h     |  15 ++
+ 8 files changed, 267 insertions(+), 41 deletions(-)
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 930a7e95..c8943ff5 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -531,7 +531,7 @@ void WantedLevelUpCheat()
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
+ 
+ #ifdef CUSTOM_CODE
+-	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(1, 6));
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 1, 6));
+ #else
+ 	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 2, 6));
+ #endif // CUSTOM_CODE
+diff --git a/src/core/config.h b/src/core/config.h
+index c57bf97c..7992618d 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -486,7 +486,10 @@ enum Config {
+ #else
+ 	// not in master builds
+ 	#define VALIDATE_SAVE_SIZE
+-
++	
++	// I figured out how to toggle the debug menu, I can disable this.
++	// This would be useful if I wanted to give custom builds of ReVC to friends or something.
++	// Just include my KCNet Javascript trainer which can be opened with F7.
+ 	#define DEBUGMENU
+ #endif
+ 
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 558f3d5a..497fca8e 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -1115,6 +1115,7 @@ DisplayGameDebugText()
+ {
+ 	static bool bDisplayCheatStr = false; // custom
+ 
++#ifdef DEBUGMENU
+ #ifndef FINAL
+ 	{
+ 		SETTWEAKPATH("Debug");
+@@ -1124,7 +1125,8 @@ DisplayGameDebugText()
+ 
+ 	if(gbPrintMemoryUsage)
+ 		PrintMemoryUsage();
+-#endif
++#endif //!FINAL
++#endif //DEBUGMENU
+ 
+ 	char str[200];
+ 	wchar ustr[200];
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 2e461f64..0ca04ff4 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -64,7 +64,6 @@
+ #include "extras/test/cheats/custom_cheats.h"
+ 
+ #include "extras/functions/vehicle_functions.h"
+-
+ //
+ 
+ /////////////////////
+@@ -470,6 +469,8 @@ DebugMenuPopulate(void)
+ 
+ 
+ 		DebugMenuAddCmd("Cheats", "Drop a bomb", CustomCheats::ExplosionCheat);
++
++		DebugMenuAddCmd("Cheats", "Spawn Ped", CustomCheats::SpawnPedCheat);
+ #else
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
+ 		DebugMenuAddCmd("Cheats", "Never wanted", NeverWantedCheat);
+@@ -511,7 +512,12 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Cheats", "Health", HealthCheat);
+ 		DebugMenuAddCmd("Cheats", "Wanted level up", WantedLevelUpCheat);
+ 		DebugMenuAddCmd("Cheats", "Wanted level down", WantedLevelDownCheat);
++#ifdef CUSTOM_CODE
++		// Fix this to use the Rhino instead of the taxi.
++		DebugMenuAddCmd("Cheats", "Tank", []() { VehicleCheat(MI_RHINO); });
++#else
+ 		DebugMenuAddCmd("Cheats", "Tank", []() { VehicleCheat(MI_TAXI); });
++#endif //CUSTOM_CODE
+ 		DebugMenuAddCmd("Cheats", "Blow up cars", BlowUpCarsCheat);
+ 		DebugMenuAddCmd("Cheats", "Change player", ChangePlayerCheat);
+ 		DebugMenuAddCmd("Cheats", "Mayhem", MayhemCheat);
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 6d9b1736..40eb407d 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -73,6 +73,62 @@
+ #include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+ 
++#ifdef VEHICLE_SPAWN_TEST
++/// <summary>
++/// This should spawn a vehicle and put a ped in it.
++/// </summary>
++/// <param name="id">The vehicle model to spawn.</param>
++/// <param name="pPed">The ped to put in the vehicle.</param>
++/// <returns>The vehicle that was spawned.</returns>
++/// TODO Figure out the return value for the end, I think I got close with this.
++CVehicle
++//VehicleFunctions::SpawnVehicle(int id, CPed *pPed)
++VehicleFunctions::SpawnVehicle(int id)
++{
++	VehicleFunctions::RequestVehicleModel(id);
++
++	if(CStreaming::HasModelLoaded(id)) {
++		CVector pPedCoords = FindPlayerCoors();
++
++		int node;
++		if(!CModelInfo::IsBoatModel(id)) {
++			node = ThePaths.FindNodeClosestToCoors(pPedCoords, 0, 100.0f, false, false);
++			if(node < 0) return;
++		}
++
++		CVehicle *v;
++		if(CModelInfo::IsBoatModel(id))
++			v = new CBoat(id, RANDOM_VEHICLE);
++
++		else if(CModelInfo::IsBikeModel(id))
++
++			v = new CBike(id, RANDOM_VEHICLE);
++		else
++
++			v = new CAutomobile(id, RANDOM_VEHICLE);
++
++		// Set the vehicle to be owned by the player.
++		v->bHasBeenOwnedByPlayer = true;
++
++		if(CModelInfo::IsBoatModel(id))
++			v->SetPosition(TheCamera.GetPosition() + TheCamera.GetForward() * 15.0f);
++		else
++			v->SetPosition(ThePaths.m_pathNodes[node].GetPosition());
++
++		// v->GetMatrix().GetPosition().z += 4.0f;
++		v->GetMatrix().GetPosition().z += 1.0f;
++		v->SetOrientation(0.0f, 0.0f, 3.49f);
++		v->SetStatus(STATUS_ABANDONED);
++		v->m_nDoorLock = CARLOCK_UNLOCKED;
++
++		// Possible fix for the engine not being on
++		v->bEngineOn = true;
++		CWorld::Add(v);
++
++		return *v;
++	}
++}
++#endif //VEHICLE_SPAWN_TEST
+ 
+ /// <summary>
+ /// Taken idea from debug_functions.cpp
+@@ -80,18 +136,26 @@
+ /// This will delete the current vehicle, and warp the player into the vehicle if set
+ /// </summary>
+ /// <param name="id">The vehicle to spawn</param>
++/// //
++/// These two are not implemented.
++/// <param name="pPed> The ped to put into the vehicle.</param>
++/// <param name="clearFromArea">Clear items from the area with a radius of 10</param>
++/// //
+ /// <param name="deleteCurrentVehicle">Whether the current vehicle gets deleted or not.</param>
+ /// <param name="warpIntoVehicle">Warp the player into the vehicle.</param>
+ void
++// TODO Setup this later
++//VehicleFunctions::SpawnVehicle(int id, CPlayerPed *pPed, bool clearFromArea, bool deleteCurrentVehicle, bool warpIntoVehicle)
+ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle)
+ {
++	// TODO Move this into the function body, so if I want this function to work on the player and other peds it would.
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
+ 	bool chaosMode = false;
+ 
+ 	CustomCheats *customCheats = new CustomCheats();
+ 
+-	customCheats->ClearItemsFromArea(10);
++	//customCheats->ClearItemsFromArea(10);
+ 	// Original code:
+ 	// CWorld::ClearExcitingStuffFromArea(pPedCoords, 10, true);
+ 
+@@ -107,6 +171,7 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 			if(node < 0) return;
+ 		}
+ 
++		// Check if the vehicle is a boat, bike or car.
+ 		CVehicle *v;
+ 		if(CModelInfo::IsBoatModel(id))
+ 			v = new CBoat(id, RANDOM_VEHICLE);
+@@ -121,19 +186,22 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		// Set the vehicle to be owned by the player.
+ 		v->bHasBeenOwnedByPlayer = true;
+ 
++		// Set the position of the vehicle
+ 		if(CModelInfo::IsBoatModel(id))
+ 			v->SetPosition(TheCamera.GetPosition() + TheCamera.GetForward() * 15.0f);
+ 		else
+ 			v->SetPosition(ThePaths.m_pathNodes[node].GetPosition());
+ 
++		// Set the vehicle position, orientation, status, and the door lock status
+ 		//v->GetMatrix().GetPosition().z += 4.0f;
+ 		v->GetMatrix().GetPosition().z += 1.0f;
+ 		v->SetOrientation(0.0f, 0.0f, 3.49f);
+ 		v->SetStatus(STATUS_ABANDONED);
+ 		v->m_nDoorLock = CARLOCK_UNLOCKED;
+ 
+-		// Possible fix for the engine not being on
++		// Fix for the engine not being on when warping into the vehicle.
+ 		v->bEngineOn = true;
++		// Add the vehicle to the world.
+ 		CWorld::Add(v);
+ 
+ 		// Remove the players current vehicle if enabled, and make the player exit the vehicle.
+@@ -153,6 +221,7 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 			// Some extra chaos features
+ 			if (chaosMode) {
+ 				playerVeh->m_fHealth = 0;
++				playerVeh->ActivateBomb();
+ 				// pPed->m_fHealth = 0;
+ 			}
+ 			
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index a1ea637f..7df9684a 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -24,4 +24,10 @@ public:
+ 	static void RequestVehicleModel(int vehicleModel);
+ 	// static void SpawnVehicle(int id);
+ 	static void SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle);
++
++	#ifdef VEHICLE_SPAWN_TEST
++	static CVehicle SpawnVehicle(int id);
++	#endif //VEHICLE_SPAWN_TEST
++	// TODO Setup this later
++	//static void SpawnVehicle(int id, CPlayerPed *pPed, bool clearFromArea, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ };
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+index 39703dca..6bbfec2d 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -417,6 +417,7 @@ CustomCheats::SpawnCarTestCheat()
+ 	// TODO Test this
+ 	// Well this seems to work, but the vehicle gets spawned into the air.
+ 	// If I can fix this, I'll remove the function from this file.
++	//VehicleFunctions::SpawnVehicle(vehicleModel, true, true);
+ 	VehicleFunctions::SpawnVehicle(vehicleModel, true, true);
+ }
+ 
+@@ -455,6 +456,31 @@ TankRapidFireToggle()
+ {
+ }
+ 
++////////////////////
++// I made these two functions to use in my cleo redux menu.
++//
++/// <summary>
++/// This should turn infinite health on, and show the cheat activated message.
++/// </summary>
++void CustomCheats::EnableInfiniteHealth()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->bInvincibleCheat = true;
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
++}
++
++/// <summary>
++/// This should turn infinite health off, and display the cheat toggled off message
++/// </summary>
++void CustomCheats::DisableInfiniteHealth() 
++{ 
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->bInvincibleCheat = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
++}
++
++
++
+ // Infinite health
+ // This works with a toggle.
+ void
+@@ -505,71 +531,155 @@ CustomCheats::InfiniteHealthCheat()
+ #endif //_TEST2
+ }
+ 
++/// <summary>
++/// Enable the custom never wanted cheat
++/// </summary>
+ void
+-CustomCheats::ToggleNeverWanted()
+-{
+-	// Idk how I would use the toggle below.
+-}
+-
+-// Never wanted test
+-// I finally got this working!
+-// 8-22-2024 @ 12:43AM
+-void
+-CustomCheats::NeverWantedCheat()
++CustomCheats::EnableNeverWanted()
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	CWanted *cWanted = new CWanted();
+ 
+-	if(!pPed->m_pWanted->m_bIgnoredByCops) {
++	//if(!pPed->m_pWanted->m_bIgnoredByCops) {
+ 		// Clear wanted level
+ 		pPed->SetWantedLevel(0);
+ 
+ 		// Set ignored by cops
+ 		pPed->m_pWanted->m_bIgnoredByCops = true;
++		// Reset chaos level to 0
+ 		cWanted->m_nChaos = 0;
+ 
++		// Turn on the never wanted cheat.
+ 		cWanted->m_bNeverWanted = true;
+-		// Disable wanted level
+-		cWanted->SetMaximumWantedLevel(0);
++		// Set max wanted level to 0.
++		//cWanted->SetMaximumWantedLevel(0);
++	    CWanted::SetMaximumWantedLevel(0);
+ 
+ 		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++	//}
++}
+ 
+-	} else {
+-		pPed->m_pWanted->m_bIgnoredByCops = false;
+-
+-		bool cheatActive = false;
+-		cWanted->m_bNeverWanted = false;
+-		cWanted->SetMaximumWantedLevel(6);
++/// <summary>
++/// Disable the custom never wanted cheat
++/// </summary>
++void
++CustomCheats::DisableNeverWanted()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CWanted *cWanted = new CWanted();
++	// Disable ignored by cops
++	pPed->m_pWanted->m_bIgnoredByCops = false;
++
++	// TODO Is this needed
++	bool cheatActive = false;
++	// Set never wanted to false
++	cWanted->m_bNeverWanted = false;
++	// Reset the maximum wanted level.
++	//cWanted->SetMaximumWantedLevel(6);
++	CWanted::SetMaximumWantedLevel(6);
++
++	// Show the hud message
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++}
+ 
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++// Never wanted test
++// I finally got this working!
++// 8-22-2024 @ 12:43AM
++// I refactored this a bit 2-19-2025 @ 6:55PM
++void
++CustomCheats::NeverWantedCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CWanted *cWanted = new CWanted();
++	if(!pPed->m_pWanted->m_bIgnoredByCops) {
++		CustomCheats::EnableNeverWanted();
++	} else {
++		CustomCheats::DisableNeverWanted();
+ 	}
+ }
+ 
+ // Test
+ // TODO Figure out how to move this into vehicle_functions.cpp without errors
+ 
++/// <summary>
++/// Enable invincibility for the vehicle
++/// 
++/// </summary>
++/// <param name="veh"></param>
++void
++CustomCheats::EnableVehicleInvincibility(CVehicle *veh)
++{
++	veh->m_fHealth = 1000.0f;
++	veh->bBulletProof = true;
++	veh->bCollisionProof = true;
++	veh->bExplosionProof = true;
++	veh->bFireProof = true;
++	veh->bMeleeProof = true;
++
++	veh->bTyresDontBurst = true;
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++}
++
++void
++CustomCheats::DisableVehicleInvincibility(CVehicle *veh)
++{
++	veh->bBulletProof = false;
++	veh->bCollisionProof = false;
++	veh->bExplosionProof = false;
++	veh->bFireProof = false;
++	veh->bMeleeProof = false;
++
++	veh->bTyresDontBurst = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
++}
++
+ static void
+ ToggleVehicleInvincible(CVehicle *veh)
+ {
+ 
++	// TODO Implement this later
++
++	// This is from the below function
++	// This looks to be complete but I'll test it later.
++	#ifdef _TEST3
++	switch(veh->m_vehType) {
++	case VEHICLE_TYPE_CAR:
++		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
++
++			((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++			((CAutomobile *)veh)->Fix();
++
++			CustomCheats::EnableVehicleInvincibility(veh);
++		} else {
++			CustomCheats::DisableVehicleInvincibility(veh);
++		}
++		break;
++	case VEHICLE_TYPE_BIKE:
++		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) { 
++			((CBike *)veh)->Fix();
++
++			CustomCheats::EnableVehicleInvincibility(veh);
++		} else {
++			CustomCheats::DisableVehicleInvincibility(veh);
++		}
++		break;
++		// TODO Figure out how to implement for the boat, there isn't a fix function for it.
++	//case VEHICLE_TYPE_BOAT: 
++	//	if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
++	//	}
++		break;
++	//case VEHICLE_TYPE_HELI: break;
++	}
++	#endif //_TEST3
++
+ 	if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
+ 		((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
+ 		((CAutomobile *)veh)->Fix();
+ 
+-		veh->m_fHealth = 1000.0f;
+-		veh->bBulletProof = true;
+-		veh->bCollisionProof = true;
+-		veh->bExplosionProof = true;
+-		veh->bFireProof = true;
+-		veh->bMeleeProof = true;
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++		CustomCheats::EnableVehicleInvincibility(veh);
+ 	} else {
+-		veh->bBulletProof = false;
+-		veh->bCollisionProof = false;
+-		veh->bExplosionProof = false;
+-		veh->bFireProof = false;
+-		veh->bMeleeProof = false;
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++		CustomCheats::DisableVehicleInvincibility(veh);
++
+ 	}
+ }
+ //
+@@ -688,8 +798,23 @@ CustomCheats::ExplosionCheat()
+ 	CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, *playerPosNew, 0);
+ }
+ 
+-// Mess with this later.
+-// FindPlayerPed()->SetMoveSpeed(CVector 2);
++void PlayerTest2()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	// TODO What does this do?
++	// pPed->SetMoveSpeed();
++	
++	// pPed->
++}
++
++// This should spawn a weapon pickup near the player
++// TODO Set this up, I never did get this working in the scm scripts either.
++void SpawnWeaponPickup()
++{
++
++}
++
++
+ 
+ // End custom added by kelson8
+ // //////
+diff --git a/src/extras/test/cheats/custom_cheats.h b/src/extras/test/cheats/custom_cheats.h
+index 38933ea0..11ee57fe 100644
+--- a/src/extras/test/cheats/custom_cheats.h
++++ b/src/extras/test/cheats/custom_cheats.h
+@@ -1,4 +1,9 @@
+ #pragma once
++
++// Test
++// It just compiled with this? This is from CarAI.h, what is this doing?
++class CVehicle;
++
+ class CustomCheats
+ {
+ public:
+@@ -44,5 +49,15 @@ public:
+ 	static void PedTest1();
+ 
+ 	static void ExplodePed();
++
++	// Toggles
++	void EnableInfiniteHealth();
++	void DisableInfiniteHealth();
++
++	static void EnableNeverWanted();
++	static void DisableNeverWanted();
++
++	static void EnableVehicleInvincibility(CVehicle *veh);
++	static void DisableVehicleInvincibility(CVehicle *veh);
+ 	#endif //_TEST
+ };
+-- 
+2.45.1.windows.1
+

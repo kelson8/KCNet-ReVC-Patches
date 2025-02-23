@@ -1,0 +1,801 @@
+From e4dfe56c9b04c7f3687a2d53aa9e20c8f9557065 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 21 Feb 2025 11:08:53 -0500
+Subject: [PATCH 42/42] Add documentation to more files, add some spacing and
+ more comments. Add toggle for vehicle upside down explosions, this doesn't
+ seem to work right. Update gitignore.
+
+---
+ .gitignore                                 |  3 +
+ src/control/RoadBlocks.cpp                 |  7 ++
+ src/core/Frontend.h                        | 10 +++
+ src/core/Game.cpp                          | 18 ++++-
+ src/core/config.h                          |  3 +
+ src/extras/debug/debug_functions.cpp       |  4 +
+ src/extras/functions/vehicle_functions.cpp | 47 ++++++++++-
+ src/peds/CopPed.cpp                        | 31 ++++++-
+ src/peds/Ped.cpp                           | 94 +++++++++++++++++++++-
+ src/renderer/Fluff.cpp                     |  7 ++
+ src/renderer/Weather.cpp                   | 19 +++++
+ src/vehicles/Automobile.cpp                | 21 ++++-
+ src/vehicles/Automobile.h                  |  7 ++
+ src/vehicles/Vehicle.h                     |  2 +
+ 14 files changed, 265 insertions(+), 8 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index 7343ee39..26670b0d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -35,6 +35,9 @@ bld/
+ # Exclude my debug test from gitignore, the above was ignoring it
+ !src/extras/debug
+ 
++# Temporary files
++tmp/
++
+ # Visual Studio 2015/2017 cache/options directory
+ .vs/
+ # Uncomment if you have tasks that create the project's static files in wwwroot
+diff --git a/src/control/RoadBlocks.cpp b/src/control/RoadBlocks.cpp
+index e30313bf..473eb42e 100644
+--- a/src/control/RoadBlocks.cpp
++++ b/src/control/RoadBlocks.cpp
+@@ -82,12 +82,17 @@ CRoadBlocks::GenerateRoadBlockCopsForCar(CVehicle* pVehicle, int32 roadBlockType
+ 			copType = COP_ARMY;
+ 			break;
+ 		}
++
+ 		if (!CStreaming::HasModelLoaded(modelInfoId))
+ 			copType = COP_STREET;
++
+ 		CCopPed* pCopPed = new CCopPed(copType);
++
+ 		if (copType == COP_STREET)
+ 			pCopPed->SetCurrentWeapon(WEAPONTYPE_COLT45);
+ 		CPedPlacement::FindZCoorForPed(&posForZ);
++
++		// Set the status of everything for the cop road block peds here.
+ 		pCopPed->SetPosition(posForZ);
+ 		pCopPed->SetOrientation(0.0f, 0.0f, -HALFPI);
+ 		pCopPed->m_bIsDisabledCop = true;
+@@ -98,10 +103,12 @@ CRoadBlocks::GenerateRoadBlockCopsForCar(CVehicle* pVehicle, int32 roadBlockType
+ 		pCopPed->m_nRoadblockVeh = pVehicle;
+ 		pCopPed->m_nRoadblockVeh->RegisterReference((CEntity**)&pCopPed->m_nRoadblockVeh);
+ 		pCopPed->bCrouchWhenShooting = roadBlockType == 2 ? false : true;
++
+ 		if (pEntityToAttack) {
+ 			pCopPed->SetWeaponLockOnTarget(pEntityToAttack);
+ 			pCopPed->SetAttack(pEntityToAttack);
+ 		}
++
+ 		pCopPed->m_pMyVehicle = pVehicle;
+ 		pVehicle->RegisterReference((CEntity**)&pCopPed->m_pMyVehicle);
+ 		pCopPed->bCullExtraFarAway = true;
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 73bd9b2e..fb936483 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -129,6 +129,7 @@ enum
+ 	MENUALIGN_CENTER,
+ };
+ 
++// All sprites for the menus
+ enum eMenuSprites
+ {
+ 	MENUSPRITE_BACKGROUND,
+@@ -167,6 +168,7 @@ enum eMenuSprites
+ 	NUM_MENU_SPRITES
+ };
+ 
++// All saves slots, some of these seem unused.
+ enum eSaveSlot
+ {
+ 	SAVESLOT_NONE,
+@@ -182,6 +184,7 @@ enum eSaveSlot
+ 	SAVESLOT_LABEL = 36
+ };
+ 
++// All menu screens, custom ones can also be added here under the MENU_TEST preprocessor
+ enum eMenuScreen
+ {
+ 	MENUPAGE_DISABLED = -1,
+@@ -252,6 +255,9 @@ enum eMenuScreen
+ 	MENUPAGES
+ };
+ 
++// Menu actions, yes, no, cancel, and other stuff.
++// I have my general menu action, test action, and a fast loader action setup in here under MENU_TEST.
++// TODO Fix MENUACTION_FASTLOADER_SLOT to work right, it doesn't do anything yet.
+ enum eMenuAction
+ {
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+@@ -338,6 +344,7 @@ enum eMenuAction
+ 
+ };
+ 
++/// Check if anything is being hovered over
+ enum eCheckHover
+ {
+ 	HOVEROPTION_0,
+@@ -392,6 +399,7 @@ enum
+ #endif
+ };
+ 
++// Control methods, standard or classic.
+ enum eControlMethod
+ {
+ 	CONTROL_STANDARD = 0,
+@@ -405,6 +413,7 @@ enum ControllerSetupColumn
+ 	CONTSETUP_VEHICLE_COLUMN = 16,
+ };
+ 
++// Something to do with rendering the player skin screen on the menu.
+ struct tSkinInfo
+ {
+ 	int32 skinId;
+@@ -414,6 +423,7 @@ struct tSkinInfo
+ 	tSkinInfo *nextSkin;
+ };
+ 
++// Is this even in use?
+ struct BottomBarOption
+ {
+ 	char name[8];
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 642182c1..4ca88678 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -285,6 +285,9 @@ CGame::InitialiseRenderWare(void)
+ 	ScreenDroplets::InitDraw();
+ #endif
+ 
++	// TODO Possibly add ImGui init to this part, use librw imguitest.
++	// ImGui_ImplRW_Init();
++
+ 	return (true);
+ }
+ 
+@@ -880,7 +883,8 @@ void CGame::InitialiseWhenRestarting(void)
+ }
+ 
+ /// <summary>
+-/// Process everything for the game such as events, main game logic
++/// Process everything for the game such as events, main game logic.
++/// TODO Possibly add something to this to stop game processing if ImGui is open.
+ /// </summary>
+ void CGame::Process(void) 
+ {
+@@ -922,7 +926,9 @@ void CGame::Process(void)
+ 		CFont::InitPerFrame();
+ 		CRecordDataForGame::SaveOrRetrieveDataForThisFrame();
+ 		CRecordDataForChase::SaveOrRetrieveDataForThisFrame();
++		// Run the cheats
+ 		CPad::DoCheats();
++		// Update the clock
+ 		CClock::Update();
+ 		CWeather::Update();
+ 
+@@ -947,6 +953,11 @@ void CGame::Process(void)
+ 		CParticle::Update();
+ 		gFireManager.Update();
+ 
++		///////////////////////////
++		// Hmm, I could possibly add my own events into here.
++		// TODO Look into adding events or something that I can update in my menus.
++		///////////////////////////
++
+ 		// Otherwise even on 30 fps most probably you won't see any peds around Ocean View Hospital
+ #if defined FIX_BUGS && !defined SQUEEZE_PERFORMANCE
+ 		if (processTime > 2) {
+@@ -959,11 +970,15 @@ void CGame::Process(void)
+ 			CPopulation::Update(true);
+ 			processTime = CTimer::GetCurrentTimeInCycles() / CTimer::GetCyclesPerMillisecond() - startTime;
+ 		}
++
+ 		CWeapon::UpdateWeapons();
++
++		// Only if CCutsceneMgr or CReplay not running, process the car generators and cranes.
+ 		if (!CCutsceneMgr::IsRunning())
+ 			CTheCarGenerators::Process();
+ 		if (!CReplay::IsPlayingBack())
+ 			CCranes::UpdateCranes();
++
+ 		CClouds::Update();
+ 		CMovingThings::Update();
+ 		CWaterCannons::Update();
+@@ -993,6 +1008,7 @@ void CGame::Process(void)
+ 		CShadows::UpdateStaticShadows();
+ 		CShadows::UpdatePermanentShadows();
+ 		gPhoneInfo.Update();
++
+ 		if (!CReplay::IsPlayingBack())
+ 		{
+ 			PUSH_MEMID(MEMID_CARS);
+diff --git a/src/core/config.h b/src/core/config.h
+index 7992618d..fe76e9fe 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -37,6 +37,9 @@
+ // Enable better crouching support
+ // #define CROUCH
+ 
++// Toggle vehicle upside down explosion option in debug menu.
++//#define TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ // TODO Add these for crouch features and other stuff from Extended Vice.
+ // This will take a little bit.
+ // #define FIRING_AND_AIMING 
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 0ca04ff4..0a6d6490 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -863,6 +863,10 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Vehicle", "Unlock Doors", CustomCheats::UnlockDoors);
+ 		DebugMenuAddCmd("Vehicle", "Remove vehicle", VehicleFunctions::RemoveCurrentVehicleFromWorld);
+ 
++		#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++		DebugMenuAddCmd("Vehicle", "Upside down explosions", VehicleFunctions::ToggleUpsideDownExplosions);
++		#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ #endif //CUSTOM_CODE
+ 
+ 		CTweakVars::AddDBG("Debug");
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 40eb407d..261fcbaa 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -58,7 +58,8 @@
+ #include "Explosion.h"
+ #include "Radar.h"
+ #include "Vehicle.h"
+-#include "vehicles/Automobile.h"
++//#include "vehicles/Automobile.h"
++#include "Automobile.h"
+ 
+ #include "ScriptCommands.h"
+ 
+@@ -73,6 +74,50 @@
+ #include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+ 
++//
++
++
++
++/// <summary>
++/// Enable the vehicles blowing up when upside down.
++/// </summary>
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++void
++VehicleFunctions::EnableUpsideDownExplosions()
++{
++	CAutomobile::vehUpsidedownExplode = true;
++	CHud::SetHelpMessage(TheText.Get("EXPLEN"), false);
++}
++
++/// <summary>
++/// Disable the vehicles blowing up when upside down.
++/// </summary>
++void
++VehicleFunctions::DisableUpsideDownExplosions()
++{
++	CAutomobile::vehUpsidedownExplode = false;
++	CHud::SetHelpMessage(TheText.Get("EXPLDIS"), false);
++
++}
++
++/// <summary>
++/// Toggle the vehicles blowing up when upside down.
++/// </summary>
++void
++VehicleFunctions::ToggleUpsideDownExplosions()
++{
++	if(CAutomobile::vehUpsidedownExplode) { 
++		VehicleFunctions::DisableUpsideDownExplosions();
++	} else {
++		VehicleFunctions::EnableUpsideDownExplosions();
++	}
++}
++
++#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
++// 
++//
++
+ #ifdef VEHICLE_SPAWN_TEST
+ /// <summary>
+ /// This should spawn a vehicle and put a ped in it.
+diff --git a/src/peds/CopPed.cpp b/src/peds/CopPed.cpp
+index 00848923..611bd9db 100644
+--- a/src/peds/CopPed.cpp
++++ b/src/peds/CopPed.cpp
+@@ -93,6 +93,7 @@ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ 	m_pRopeEntity = nil;
+ 	m_fAbseilPos = 0.0f;
+ 	m_nHassleTimer = 0;
++	// I think this is some type of timer variable? Not sure though
+ 	field_61C = 0;
+ 	field_624 = 0;
+ 	m_pStinger = new CStinger();
+@@ -106,7 +107,13 @@ CCopPed::~CCopPed()
+ 	delete m_pStinger;
+ }
+ 
+-// Parameter should always be CPlayerPed, but it seems they considered making civilians arrestable at some point
++
++
++/// <summary>
++/// This could be useful.
++/// Parameter should always be CPlayerPed, but it seems they considered making civilians arrestable at some point
++/// </summary>
++/// <param name="player"></param>
+ void
+ CCopPed::SetArrestPlayer(CPed *player)
+ {
+@@ -154,6 +161,10 @@ CCopPed::SetArrestPlayer(CPed *player)
+ 		SetCurrentWeapon(WEAPONTYPE_COLT45);
+ }
+ 
++/// <summary>
++/// Clear the police pursuit
++/// </summary>
++/// <param name=""></param>
+ void
+ CCopPed::ClearPursuit(void)
+ {
+@@ -307,6 +318,10 @@ CCopPed::ScanForCrimes(void)
+ 	}
+ }
+ 
++/// <summary>
++/// The main AI for the cop peds.
++/// </summary>
++/// <param name=""></param>
+ void
+ CCopPed::CopAI(void)
+ {
+@@ -501,6 +516,7 @@ CCopPed::CopAI(void)
+ 			}
+ 		}
+ 	} else {
++		// Holy hell thats a lot of if statements...
+ 		if (!m_bIsDisabledCop || m_bZoneDisabled) {
+ 			if (m_nPedState != PED_AIM_GUN) {
+ 				if (m_bIsInPursuit)
+@@ -589,6 +605,10 @@ CCopPed::CopAI(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Process control for the cop ped
++/// </summary>
++/// <param name=""></param>
+ void
+ CCopPed::ProcessControl(void)
+ {
+@@ -809,6 +829,10 @@ CCopPed::ProcessControl(void)
+ 		field_624 = 0;
+ }
+ 
++/// <summary>
++/// Process the swat team for the police helicopter.
++/// </summary>
++/// <param name=""></param>
+ void
+ CCopPed::ProcessHeliSwat(void)
+ {
+@@ -844,6 +868,11 @@ CCopPed::ProcessHeliSwat(void)
+ 	}
+ }
+ 
++/// <summary>
++/// This is where they throw down those damn spike strips.
++/// TODO Make a toggle in the debug menu for this.
++/// </summary>
++/// <param name=""></param>
+ void
+ CCopPed::ProcessStingerCop(void)
+ {
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 3833ebb8..ca9c119f 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -471,6 +471,10 @@ CPed::SetModelIndex(uint32 mi)
+ #endif
+ }
+ 
++/// <summary>
++/// Set the stats for the ped.
++/// </summary>
++/// <param name="pedStat"></param>
+ void
+ CPed::SetPedStats(ePedStats pedStat)
+ {
+@@ -832,6 +836,10 @@ CPed::SetStoredState(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Restore the peds back to their previous state.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::RestorePreviousState(void)
+ {
+@@ -882,6 +890,12 @@ CPed::RestorePreviousState(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Scan for threats for the peds.
++/// This will check for gunshots, explosions, dead peds, and other stuff.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ uint32
+ CPed::ScanForThreats(void)
+ {
+@@ -1330,12 +1344,21 @@ CPed::RestoreGunPosition(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Determines if we can run and fire with this weapon.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CPed::CanWeRunAndFireWithWeapon(void)
+ {
+ 	return CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM);
+ }
+ 
++/// <summary>
++/// Scan for stuff such as sexy peds, sexy cars, and other events.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::ScanForInterestingStuff(void)
+ {
+@@ -1429,6 +1452,11 @@ CPed::ScanForInterestingStuff(void)
+ 	}
+ }
+ 
++/// <summary>
++/// This is interesting, this determines if the ped will speak.
++/// </summary>
++/// <param name="stranger"></param>
++/// <returns></returns>
+ bool
+ CPed::WillChat(CPed *stranger)
+ {
+@@ -1644,6 +1672,10 @@ CPed::CalculateNewOrientation(void)
+ 	SetHeading(m_fRotationCur);
+ }
+ 
++/// <summary>
++/// Clear all flags from the ped.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::ClearAll(void)
+ {
+@@ -1667,6 +1699,10 @@ CPed::ClearAll(void)
+ 	m_pCollidingEntity = nil;
+ }
+ 
++/// <summary>
++/// Process the buoyancy in the water
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::ProcessBuoyancy(void)
+ {
+@@ -1788,7 +1824,7 @@ CPed::ProcessBuoyancy(void)
+ }
+ 
+ /// <summary>
+-/// Process control for the player.
++/// Process control for the player, and possibly for the other peds.
+ /// I have added crouching to this from the Extended Vice project.
+ /// </summary>
+ /// <param name=""></param>
+@@ -2952,6 +2988,12 @@ CPed::ProcessControl(void)
+ 		ServiceTalking();
+ }
+ 
++/// <summary>
++/// Process the entity collision.
++/// </summary>
++/// <param name="collidingEnt"></param>
++/// <param name="collidingPoints"></param>
++/// <returns></returns>
+ int32
+ CPed::ProcessEntityCollision(CEntity *collidingEnt, CColPoint *collidingPoints)
+ {
+@@ -3170,6 +3212,13 @@ particleProduceFootSplash(CPed *ped, CVector const &pos, float size, int times)
+ 	}
+ }
+ 
++/// <summary>
++/// Make the dust appear for sand and other surfaces.
++/// </summary>
++/// <param name="ped"></param>
++/// <param name="pos"></param>
++/// <param name="size"></param>
++/// <param name="times"></param>
+ static void
+ particleProduceFootDust(CPed *ped, CVector const &pos, float size, int times)
+ {
+@@ -3475,6 +3524,10 @@ CPed::SetDirectionToWalkAroundVehicle(CVehicle* veh)
+ 	return SetFollowPath(m_vecSeekPos, 0.0f, m_nMoveState, veh, m_pedInObjective, m_nMoveState == PEDMOVE_WALK ? 2000 : 250);
+ }
+ 
++/// <summary>
++/// Set the peds direction to walk around an object.
++/// </summary>
++/// <param name="obj"></param>
+ void
+ CPed::SetDirectionToWalkAroundObject(CEntity *obj)
+ {
+@@ -4295,6 +4348,9 @@ CPed::PedSetDraggedOutCarCB(CAnimBlendAssociation *dragAssoc, void *arg)
+ 	ped->bVehExitWillBeInstant = false;
+ }
+ 
++/// <summary>
++/// Possibly set the peds in the car? Not sure how this works
++/// </summary>
+ void
+ CPed::PedSetInCarCB(CAnimBlendAssociation *animAssoc, void *arg)
+ {
+@@ -4659,6 +4715,12 @@ CPed::RequestDelayedWeapon()
+ 	}
+ }
+ 
++/// <summary>
++/// Give ped delayed weapon.
++/// TODO What's this do
++/// </summary>
++/// <param name="weapon"></param>
++/// <param name="ammo"></param>
+ void
+ CPed::GiveDelayedWeapon(eWeaponType weapon, uint32 ammo)
+ {
+@@ -4680,6 +4742,13 @@ CPed::GiveDelayedWeapon(eWeaponType weapon, uint32 ammo)
+ 	}
+ }
+ 
++/// <summary>
++/// Give the ped a weapon
++/// </summary>
++/// <param name="weaponType"></param>
++/// <param name="ammo"></param>
++/// <param name="unused"></param>
++/// <returns></returns>
+ int32
+ CPed::GiveWeapon(eWeaponType weaponType, uint32 ammo, bool unused)
+ {
+@@ -4722,6 +4791,10 @@ CPed::GetWeaponSlot(eWeaponType weaponType)
+ 	return CWeaponInfo::GetWeaponInfo(weaponType)->m_nWeaponSlot;
+ }
+ 
++/// <summary>
++/// Set the peds current weapon slot
++/// </summary>
++/// <param name="slot"></param>
+ void
+ CPed::SetCurrentWeapon(int slot)
+ {
+@@ -4744,6 +4817,10 @@ CPed::SetCurrentWeapon(int slot)
+ 	}
+ }
+ 
++/// <summary>
++/// Set the peds current weapon type
++/// </summary>
++/// <param name="weaponType"></param>
+ void
+ CPed::SetCurrentWeapon(eWeaponType weaponType)
+ {
+@@ -4770,6 +4847,11 @@ CPed::GrantAmmo(eWeaponType weaponType, uint32 ammo)
+ 		GetWeapon(slot).m_eWeaponState = WEAPONSTATE_READY;
+ }
+ 
++/// <summary>
++/// Set the players ammo
++/// </summary>
++/// <param name="weaponType"></param>
++/// <param name="ammo"></param>
+ void
+ CPed::SetAmmo(eWeaponType weaponType, uint32 ammo)
+ {
+@@ -5204,6 +5286,12 @@ CPed::Pause(void)
+ 		ClearPause();
+ }
+ 
++/// <summary>
++/// Set falling
++/// </summary>
++/// <param name="extraTime"></param>
++/// <param name="animId"></param>
++/// <param name="evenIfNotInControl"></param>
+ void
+ CPed::SetFall(int extraTime, AnimationId animId, uint8 evenIfNotInControl)
+ {
+@@ -5275,6 +5363,10 @@ CPed::ClearFall(void)
+ 	SetGetUp();
+ }
+ 
++/// <summary>
++/// If the player is falling
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::Fall(void)
+ {
+diff --git a/src/renderer/Fluff.cpp b/src/renderer/Fluff.cpp
+index 9c8f5ec7..938119ff 100644
+--- a/src/renderer/Fluff.cpp
++++ b/src/renderer/Fluff.cpp
+@@ -1160,6 +1160,9 @@ CEscalators::Shutdown(void) {
+ // End Escalator functions
+ //********************
+ 
++//********************
++// Begin CScriptPath functions
++//********************
+ 
+ CScriptPath CScriptPaths::aArray[3];
+ 
+@@ -1386,3 +1389,7 @@ void CScriptPaths::Save_ForReplay(void) {
+ 		}
+ 	}
+ }
++
++//********************
++// End CScriptPath functions
++//********************
+diff --git a/src/renderer/Weather.cpp b/src/renderer/Weather.cpp
+index 9f925a8c..f075bea2 100644
+--- a/src/renderer/Weather.cpp
++++ b/src/renderer/Weather.cpp
+@@ -351,11 +351,19 @@ void CWeather::AddBeastie()
+ 	CParticle::AddParticle(PARTICLE_BEASTIE, pos, CVector(0.0f, 0.0f, 0.0f));
+ }
+ 
++/// <summary>
++/// Change the current weather type
++/// </summary>
++/// <param name="weather"></param>
+ void CWeather::ForceWeather(int16 weather)
+ {
+ 	ForcedWeatherType = weather;
+ }
+ 
++/// <summary>
++/// Change the current weather type now.
++/// </summary>
++/// <param name="weather"></param>
+ void CWeather::ForceWeatherNow(int16 weather)
+ {
+ 	OldWeatherType = weather;
+@@ -363,11 +371,18 @@ void CWeather::ForceWeatherNow(int16 weather)
+ 	ForcedWeatherType = weather;
+ }
+ 
++/// <summary>
++/// Unknown purpose
++/// TODO Figure this one out.
++/// </summary>
+ void CWeather::ReleaseWeather()
+ {
+ 	ForcedWeatherType = -1;
+ }
+ 
++/// <summary>
++/// Add the screen splashes during a hurricane I'm quite sure.
++/// </summary>
+ void CWeather::AddSplashesDuringHurricane()
+ {
+ 	RwRGBA colour = { 255, 255, 255, 32 };
+@@ -424,6 +439,10 @@ void CWeather::AddStreamAfterRain()
+ 	}
+ }
+ 
++/// <summary>
++/// Looks like this one is the setup and stuff for the rain?
++/// TODO Comment this all out and make it return, see what happens.
++/// </summary>
+ void CWeather::AddRain()
+ {
+ 	if (CCullZones::CamNoRain() || CCullZones::PlayerNoRain())
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index 821daa34..a6e7e768 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -52,6 +52,12 @@
+ #include "Wanted.h"
+ #include "SaveBuf.h"
+ 
++
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	// Set this to true by default
++	bool CAutomobile::vehUpsidedownExplode = true;
++#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ bool bAllCarCheat;
+ 
+ RwObject *GetCurrentAtomicObjectCB(RwObject *object, void *data);
+@@ -4156,12 +4162,13 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 	// This also needs to be disabled in Playerinfo by commenting out lines 428-453.
+ 	// TODO Add check for this to be toggled in the debug menu, if the option is enabled then disable the below.
+ 	// damage flipped over car
+-	#ifdef CUSTOM_CODE
+-	bool vehUpsidedownExplode = false;
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	//bool vehUpsidedownExplode = false;
+ 
+ 	// This seems like it'll work once I figure out how to add it to the debug menu.
+ 	// if(cPlayerInfo->vehUpsidedownExplode) {
+-	if(!vehUpsidedownExplode) {
++	//if(!vehUpsidedownExplode) {
++	if(CAutomobile::vehUpsidedownExplode) {
+ 		if(GetUp().z < 0.0f && this != FindPlayerVehicle()) {
+ 
+ 			if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater) return;
+@@ -4178,7 +4185,7 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 	if(GetStatus() != STATUS_WRECKED)
+ 		m_fHealth = Max(m_fHealth - 4.0f*CTimer::GetTimeStep(), 0.0f);
+ }
+-	#endif //CUSTOM_CODE
++#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 	// if(DisableCarBurnFlip) {
+ 
+ 	// Original code
+@@ -4639,6 +4646,12 @@ CAutomobile::SetComponentRotation(int32 component, CVector rotation)
+ 	mat.UpdateRW();
+ }
+ 
++/// <summary>
++/// This runs when the vehicle door is opened
++/// </summary>
++/// <param name="component"></param>
++/// <param name="door"></param>
++/// <param name="openRatio"></param>
+ void
+ CAutomobile::OpenDoor(int32 component, eDoors door, float openRatio)
+ {
+diff --git a/src/vehicles/Automobile.h b/src/vehicles/Automobile.h
+index d48c58d8..e096c3ce 100644
+--- a/src/vehicles/Automobile.h
++++ b/src/vehicles/Automobile.h
+@@ -170,6 +170,13 @@ public:
+ 	static const uint32 nSaveStructSize;
+ 
+ 	static void SetAllTaxiLights(bool set);
++
++// TODO Move into config
++
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	// Toggle the vehicles blowing up when flipping over
++	static bool vehUpsidedownExplode;
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ };
+ 
+ extern CVector vecHunterGunPos;
+diff --git a/src/vehicles/Vehicle.h b/src/vehicles/Vehicle.h
+index f83e1bb0..46cd0ff1 100644
+--- a/src/vehicles/Vehicle.h
++++ b/src/vehicles/Vehicle.h
+@@ -243,6 +243,8 @@ public:
+ #if (!defined GTA_PS2 || defined FIX_BUGS)
+ 	uint8 m_bombType : 3;
+ #endif
++	// TODO Look into this, this might mean the driver that was last in the vehicle and I could fix my car 
++	// unlock to work when the player leaves the vehicle.
+ 	uint8 bDriverLastFrame : 1;
+ 
+ 	int8 m_numPedsUseItAsCover;
+-- 
+2.45.1.windows.1
+

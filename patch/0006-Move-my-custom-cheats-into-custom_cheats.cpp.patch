@@ -1,0 +1,1551 @@
+From 66849b99015241dae519109aa598da9036a62b77 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Jun 2024 02:20:56 -0400
+Subject: [PATCH 06/42] Move my custom cheats into custom_cheats.cpp. Add test
+ code to coords debug string. Add todo and misc extras.
+
+---
+ src/control/Garages.cpp                  |   9 +
+ src/control/Garages.h                    |  10 +-
+ src/control/Pickups.cpp                  |   3 +
+ src/core/Pad.cpp                         | 367 +--------------
+ src/core/config.h                        |   8 +
+ src/core/main.cpp                        |   8 +
+ src/core/re3.cpp                         |  57 ++-
+ src/extras/test/cheats/custom_cheats.cpp | 541 +++++++++++++++++++++++
+ src/extras/test/cheats/custom_cheats.h   |  35 ++
+ src/peds/PlayerPed.cpp                   |   1 +
+ src/peds/Population.cpp                  | 203 +++++++--
+ src/vehicles/Automobile.cpp              |  37 +-
+ 12 files changed, 865 insertions(+), 414 deletions(-)
+ create mode 100644 src/extras/test/cheats/custom_cheats.cpp
+ create mode 100644 src/extras/test/cheats/custom_cheats.h
+
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index faf07855..bdd65501 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -54,7 +54,15 @@
+ #define DISTANCE_TO_CONSIDER_DOOR_FOR_GARAGE (20.0f)
+ 
+ // Time
++
++// Test
++// Modifying this value seems to work.
++#ifdef CUSTOM_CODE
++#define TIME_TO_RESPRAY (2000)
++#else
+ #define TIME_TO_RESPRAY (2000)
++#endif //CUSTOM_CODE
++
+ #define TIME_TO_SETUP_BOMB (2000)
+ #define TIME_TO_CRUSH_CAR (3000)
+ #define TIME_TO_PROCESS_KEEPCAR_GARAGE (2000)
+@@ -1907,6 +1915,7 @@ void CStoredCar::StoreCar(CVehicle* pVehicle)
+ 		m_nCarBombType = ((CAutomobile*)pVehicle)->m_bombType; // NB: cast to CAutomobile is original behaviour
+ }
+ 
++// This looks like it could be fun to mess with.
+ CVehicle* CStoredCar::RestoreCar()
+ {
+ 	CStreaming::RequestModel(m_nModelIndex, STREAMFLAGS_DEPENDENCY);
+diff --git a/src/control/Garages.h b/src/control/Garages.h
+index 0a1b66cb..71081deb 100644
+--- a/src/control/Garages.h
++++ b/src/control/Garages.h
+@@ -137,10 +137,9 @@ public:
+ 	CVehicle *m_pTarget;
+ 	CStoredCar m_sStoredCar; // not needed
+ 
+-	// Custom code
++	#ifdef CUSTOM_CODE
+ 	static bool m_allowAllVehiclesRespray;
+-
+-	//
++	#endif //CUSTOM_CODE
+ 
+ 	void OpenThisGarage();
+ 	void CloseThisGarage();
+@@ -209,9 +208,10 @@ class CGarages
+ 		MESSAGE_LENGTH = 8,
+ 	};
+ public:
+-	// Custom code
++#ifdef CUSTOM_CODE
+ 	static void ToggleRespray();
+-	//
++#endif // CUSTOM_CODE
++
+ 	static int32 BankVansCollected;
+ 	static bool BombsAreFree;
+ 	static bool RespraysAreFree;
+diff --git a/src/control/Pickups.cpp b/src/control/Pickups.cpp
+index f6b1a9b9..098fc42e 100644
+--- a/src/control/Pickups.cpp
++++ b/src/control/Pickups.cpp
+@@ -42,6 +42,8 @@
+ #define PICKUPS_SAVE_SIZE sizeof(aPickUps)
+ #endif
+ 
++// This might be a fun class to mess with.
++
+ CPickup CPickups::aPickUps[NUMPICKUPS];
+ int16 CPickups::NumMessages;
+ int32 CPickups::aPickUpsCollected[NUMCOLLECTEDPICKUPS];
+@@ -1645,6 +1647,7 @@ CPacManPickups::ResetPowerPillsCarriedByPlayer()
+ {
+ }
+ 
++// This might be fun to mess around with
+ void
+ CPed::CreateDeadPedMoney(void)
+ {
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 43d2598d..106ef359 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -57,6 +57,8 @@
+ #include "Radar.h"
+ #include "Bike.h"
+ 
++#include "ScriptCommands.h"
++
+ // My code
+ #include "..\extras\test\enums\model_ids.h"
+ #endif //CUSTOM_CODE
+@@ -102,371 +104,6 @@ extern bool gbFastTime;
+ extern bool gGravityCheat;
+ #endif
+ 
+-// Custom added by kelson8
+-// //////
+-//
+-// 
+-// 
+-
+-// TODO Move this one into a different class.
+-void
+-ClearItemsFromArea(float radius)
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-	CWorld::ClearExcitingStuffFromArea(pPedCoords, radius, true);
+-}
+-
+-// Blank cheat, does nothing and is just here to play around with.
+-void
+-//TestCheat1(int input)
+-TestCheat1()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-	CVector targetMarkerPos = CRadar::TargetMarkerPos;
+-
+-	//pPed->SetWantedLevel(input);
+-
+-	// Will this work?
+-	if(CRadar::TargetMarkerId != -1) 
+-	{ 
+-		pPed->SetPosition(targetMarkerPos); 
+-	}
+-
+-	
+-}
+-
+-// Test spawning a random ped
+-void
+-SpawnPedCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-	//CPed *customPed = PED
+-}
+-
+-// Give the player a shotgun as a test
+-void 
+-GivePlayerWeapon()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 9999, true);
+-}
+-
+-void
+-SpawnPedTest()
+-{
+-	
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPed* randomPed1 = new CPed(ePedType::PEDTYPE_CIVMALE);
+-}
+-
+-
+-
+-// Spawn a Car.
+-// Adapted from Pad.cpp, VehicleCheat
+-// This works but spawning the player on it seems to break it, they can't drive unless they get off and back on.
+-// TODO Fix this to spawn the player in the vehicle
+-void
+-SpawnCarTestCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-	// PCJ 600 bike https://gtamods.com/wiki/List_of_vehicles_(VC)
+-	// Get the vehicle model from my enum
+-	int vehicleModel = VehicleModels::PCJ_600;
+-	// Adapted from my cleo test in javascript
+-	// 
+-	// This should remove everything around the area.
+-	ClearItemsFromArea(10);
+-	// Original code:
+-	//CWorld::ClearExcitingStuffFromArea(pPedCoords, 10, true);
+-	
+-	// Spawn the vehicle
+-	
+-	//CVehicle newCar = CVehicle;
+-	
+-	CStreaming::RequestModel(vehicleModel, STREAMFLAGS_DONT_REMOVE);
+-	CStreaming::LoadAllRequestedModels(false);
+-	
+-	if(CStreaming::ms_aInfoForModel[vehicleModel].m_loadState & STREAMFLAGS_DONT_REMOVE) 
+-	{ 
+-		CStreaming::SetModelIsDeletable(vehicleModel);
+-		CStreaming::SetModelTxdIsDeletable(vehicleModel);
+-	}
+-
+-	// Don't attempt to use CAutoMobile for a Bike, it crashes it.
+-	//CAutomobile *vehicle = new CAutomobile(vehicleModel, RANDOM_VEHICLE);
+-	CBike *vehicle = new CBike(vehicleModel, RANDOM_VEHICLE);
+-	if(vehicle != nil) 
+-	{
+-		// Add 2 to the z and y, so the vehicle doesn't crush the player.
+-		//pPedCoords.z + 2;
+-		//pPedCoords.y + 2;
+-		vehicle->SetPosition(pPedCoords);
+-
+-		// Set the car to be able to be entered
+-		vehicle->SetStatus(STATUS_ABANDONED);
+-		vehicle->m_nDoorLock = CARLOCK_UNLOCKED;
+-		// Possible fix for the engine not being on
+-		vehicle->bEngineOn = true;
+-
+-		CWorld::Add(vehicle);
+-
+-		// Warp the player into the vehicle
+-		// Taken from Script4.cpp
+-		// Well this was needed, there must be a ton of these objectives.
+-		pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, vehicle);
+-		// Put the player in the vehicle
+-		pPed->WarpPedIntoCar(vehicle);
+-	}
+-
+-
+-	// Check if the model has loaded
+-	// if(!CStreaming::HasModelLoaded())
+-	//{
+-	//	CStreaming::RequestModel();
+-	//	CStreaming::LoadAllRequestedModels(false);
+-	//}
+-}
+-
+-// Infinite health
+-// This works with a toggle.
+-void
+-InfiniteHealthCheat()
+-{
+-	// I have no idea what the option below is for but it didn't work.
+-	//CPed *pPed = FindPlayerPed();
+-
+-	CPlayerPed *pPed = FindPlayerPed();
+-
+-	if(!pPed->bBulletProof && !pPed->bFireProof && !pPed->bCollisionProof && !pPed->bMeleeProof && 
+-		!pPed->bOnlyDamagedByPlayer && !pPed->bExplosionProof && pPed->m_bCanBeDamaged) 
+-	{
+-		pPed->bBulletProof = true;
+-		pPed->bFireProof = true;
+-		pPed->bCollisionProof = true;
+-		pPed->bMeleeProof = true;
+-		pPed->bOnlyDamagedByPlayer = true;
+-		pPed->bExplosionProof = true;
+-		pPed->m_bCanBeDamaged = false;
+-		CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+-
+-	} else {
+-		pPed->bBulletProof = false;
+-		pPed->bFireProof = false;
+-		pPed->bCollisionProof = false;
+-		pPed->bMeleeProof = false;
+-		pPed->bOnlyDamagedByPlayer = false;
+-		pPed->bExplosionProof = false;
+-		pPed->m_bCanBeDamaged = true;
+-		
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-	}
+-}
+-
+-
+-void
+-ToggleNeverWanted()
+-{
+-	// Idk how I would use the toggle below.
+-}
+-
+-// Never wanted test
+-// This works but I still get the wanted stars and police radio talk.
+-// There doesn't seem to be an option to disable the cops easily like in San Andreas with the never wanted cheat, hmm
+-// I wonder if I could add that in to this and gta 3.
+-void
+-NeverWantedCheat()
+-{
+-	// bool m_btoggle
+-
+-	//bool toggle = false;
+-	CPlayerPed *pPed = FindPlayerPed();
+-	
+-
+-	//if(!m_btoggle) 
+-
+-	//{
+-	//	if(pPed->m_pWanted->m_bIgnoredByCops) 
+-	//	{
+-	//		pPed->m_pWanted->m_bIgnoredByCops = false;
+-	//	}
+-	//}
+-
+-	//else if(!pPed->m_pWanted->m_bIgnoredByCops)
+-	//{
+-	//	// Clear wanted level
+-	//	pPed->SetWantedLevel(0);
+-
+-	//	// Set ignored by cops
+-	//	pPed->m_pWanted->m_bIgnoredByCops = true;
+-
+-	//}
+-
+-	// pPed->m_pWanted->
+-	// Possibly make a while loop that will keep going as long as the cheat is active once a second.
+-	 bool cheatActive = false;
+-	// Fix value
+-
+-	if(!pPed->m_pWanted->m_bIgnoredByCops) 
+-	{
+-		// Clear wanted level
+-		pPed->SetWantedLevel(0);
+-
+-		// Set ignored by cops
+-		pPed->m_pWanted->m_bIgnoredByCops = true;
+-
+-		//////////
+-		// 3-25-2024 @ 5:01AM
+-		// Begin loop test for never wanted.
+-		/////////
+-		bool cheatActive = true;
+-
+-		// Will this work? I honestly have no idea. 
+-		// No this just kills the game.
+-		//while(cheatActive) 
+-		//{ 
+-		//	pPed->SetWantedLevel(0);
+-		//}
+-		//////////
+-		// End loop test
+-		/////////
+-
+-
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-
+-	} else {
+-		pPed->m_pWanted->m_bIgnoredByCops = false;
+-
+-		bool cheatActive = false;
+-
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-	}
+-}
+-
+-// Invincible car
+-// I got this working with a toggle.
+-void
+-InvincibleVehicleCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-
+-	if(!pPed->EnteringCar() && pPed->bInVehicle) 
+-	{ 
+-		CVehicle *veh = pPed->m_pMyVehicle;
+-
+-		// This could be useful for getting a vehicles coords.
+-		//CVector vehPos = veh->GetPosition();
+-
+-		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) 
+-		{
+-			((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
+-			((CAutomobile *)veh)->Fix();
+-
+-			veh->m_fHealth = 1000.0f;
+-			veh->bBulletProof = true;
+-			veh->bCollisionProof = true;
+-			veh->bExplosionProof = true;
+-			veh->bFireProof = true;
+-			veh->bMeleeProof = true;
+-			CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-		} else {
+-			veh->bBulletProof = false;
+-			veh->bCollisionProof = false;
+-			veh->bExplosionProof = false;
+-			veh->bFireProof = false;
+-			veh->bMeleeProof = false;
+-			CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-		}
+-	}
+-}
+-
+-// Will this work?
+-// I never did get this working.
+-//void 
+-////ToggleVehicleUpsideDownBlowUp()
+-//{
+-//	//CPlayerInfo::vehUpsidedownExplode != CPlayerInfo::vehUpsidedownExplode;
+-//	//if(CPlayerInfo::vehUpsidedownExplode) 
+-//	//{ 
+-//	//	wchar w = *"Test";
+-//	//	//CHud::SetBigMessage("S", "");
+-//	//	CHud::SetMessage(&w);
+-//	//}
+-//}
+-
+-
+-// I got this started on 3-26-2024 @ 2:50AM, it isn't confirmed to work yet.
+-void
+-NoUpsideDownBlowUpCheat(bool toggle)
+-{
+-	// Base for cheat that toggles cars blowing up when they are flipped over on/off.
+-	// I'm not exactly sure how or if this would be possible.
+-	//bool toggle = true;
+-
+-	// https://stackoverflow.com/questions/9818515/what-does-error-a-nonstatic-member-reference-must-be-relative-to-a-specific-o
+-	CPlayerInfo playerInfo;
+-
+-
+-
+-	// Normal
+-	if(!toggle) 
+-	{
+-		// Do nothing
+-		return;
+-		//playerInfo.m_nUpsideDownCounter += 2;
+-
+-		// This doesn't work, this is the code from PlayerInfo.cpp on lines 436-440
+-		//if(FindPlayerVehicle()) { 
+-		//	CVehicle *veh = FindPlayerVehicle();
+-
+-		//	if(veh->GetUp().z < -0.5f) {
+-				//m_nUpsideDownCounter += 2;
+-		//	} else {
+-		//		CPlayerInfo::m_nUpsideDownCounter++;
+-			//}
+-			
+-		//}
+-	// No blow up test, will this work?
+-	} else {
+-		if(FindPlayerVehicle()) {
+-			while(toggle) 
+-			{ 
+-				playerInfo.m_nUpsideDownCounter = 0; 
+-			}
+-		}
+-
+-	}
+-
+-
+-}
+-
+-// Test adding a bomb around the player.
+-// This works, inspired by some of the code in Pickups.cpp
+-void
+-ExplosionCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector playerPos = FindPlayerCoors();
+-
+-	// How would I convert these floats to a vector3?
+-	float playerPosX = playerPos.x + 2;
+-	float playerPosY = playerPos.y + 2;
+-	float playerPosZ = playerPos.z;
+-
+-	//CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
+-	CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
+-}
+-
+-// Mess with this later.
+-// FindPlayerPed()->SetMoveSpeed(CVector 2);
+-
+-// End custom added by kelson8
+-// //////
+-
+-
+ void SpecialCarCheats()
+ {
+ 	if ( !CVehicle::bCheat9 )
+diff --git a/src/core/config.h b/src/core/config.h
+index 85a83a92..71c53f5f 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -401,7 +401,15 @@ static_assert(false, "SUPPORT_XBOX_SCRIPT and SUPPORT_MOBILE_SCRIPT are mutually
+ #define USE_MISSION_REPLAY_OVERRIDE_FOR_NON_MOBILE_SCRIPT
+ #endif
+ #define USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
++
++#undef CUSTOM_CODE
++#ifdef CUSTOM_CODE
++#define SCRIPT_LOG_FILE_LEVEL 2 // 0 == no log, 1 == overwrite every frame, 2 == full log
++#else
+ #define SCRIPT_LOG_FILE_LEVEL 0 // 0 == no log, 1 == overwrite every frame, 2 == full log
++#endif //CUSTOM_CODE
++
++#define CUSTOM_CODE
+ 
+ #if SCRIPT_LOG_FILE_LEVEL == 0
+ #undef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e84c6eeb..3d73336d 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -1165,9 +1165,17 @@ DisplayGameDebugText()
+ 		}
+ 
+ 		//NOTE: fps should be 30, but its 29 due to different fp2int conversion 
++		//#ifdef CUSTOM_CODE
++		//// This works but doesn't print on a new line.
++		//sprintf(str, "KCNet-ReVC \nX:%4.0f Y:%4.0f Z:%4.0f F-%d %s-%s", pos.x, pos.y, pos.z, (int32)FramesPerSecond, 
++		//	ZonePrint[ZoneId].name, ZonePrint[ZoneId].area);
++		//#else
++
+ 		sprintf(str, "X:%4.0f Y:%4.0f Z:%4.0f F-%d %s-%s", pos.x, pos.y, pos.z, (int32)FramesPerSecond,
+ 			ZonePrint[ZoneId].name, ZonePrint[ZoneId].area);
+ 
++		//#endif //CUSTOM_CODE
++
+ 		AsciiToUnicode(str, ustr);
+ 		
+ 		CFont::SetPropOn();
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 62b47b7a..67116018 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -61,6 +61,7 @@
+ // Extra
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
++#include "extras/test/cheats/custom_cheats.h"
+ 
+ #ifdef RWLIBS
+ extern "C" int vsprintf(char* const _Buffer, char const* const _Format, va_list  _ArgList);
+@@ -688,6 +689,7 @@ void SaveINISettings()
+ 
+ #endif
+ 
++// TODO Move these into another file, and all debug functions.
+ #ifdef DEBUGMENU
+ void WeaponCheat1();
+ void WeaponCheat2();
+@@ -715,17 +717,30 @@ void ChittyChittyBangBangCheat();
+ void StrongGripCheat();
+ void SpecialCarCheats();
+ void PickUpChicksCheat();
++
+ // Custom added by kelson8
++#define _TEST
++#ifdef _TEST
++void SuicideCheat();
++
++// Moved the rest of these into DebugMenuPopulate
++#endif //_TEST
++
++#ifndef _TEST
+ void InfiniteHealthCheat();
+ void NeverWantedCheat();
+ void InvincibleVehicleCheat();
+ // 6-26-2024 @ 3:55PM
+ void SpawnCarTestCheat();
+-
+-// 6-6-2024 @ 5:03PM
++// 7:34PM:
++void SpawnPedTest();
++    // 6-6-2024 @ 5:03PM
+ void SuicideCheat();
+ void ExplosionCheat();
+-    // This one is accessing it from CGarages::ToggleRespray
++#endif//!_TEST
++#undef _TEST
++
++// This one is accessing it from CGarages::ToggleRespray
+ //void ToggleRespray();
+     // Oops, this killed it by being defined again :\
+ //bool m_allowAllVehiclesRespray;
+@@ -931,6 +946,11 @@ switchWeather(void)
+ void
+ DebugMenuPopulate(void)
+ {
++	 CustomCheats* customCheats = new CustomCheats();
++	//customCheats->InfiniteHealthCheat();
++	//customCheats->
++	 //CustomCheats::InfiniteHealthCheat();
++
+ 	if(1){
+ 		static const char *weathers[] = {
+ 			"Sunny", "Cloudy", "Rainy", "Foggy", "Extrasunny", "Stormy"
+@@ -970,21 +990,50 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddVar("Time & Weather", "Time scale", (float*)&CTimer::GetTimeScale(), nil, 0.1f, 0.0f, 10.0f);
+ 
+ 		#ifdef CUSTOM_CODE
++		#define _TEST1
+ 		// Custom added by kelson8, these can be disabled by commenting out CUSTOM_CODE in config.h
++		#ifdef _TEST1
++		DebugMenuAddCmd("Cheats", "Infinite Health", CustomCheats::InfiniteHealthCheat);
++		DebugMenuAddCmd("Cheats", "Never wanted", CustomCheats::NeverWantedCheat);
++		DebugMenuAddCmd("Cheats", "Invincible Vehicle", customCheats->InvincibleVehicleCheat);
++		DebugMenuAddCmd("Cheats", "Suicide", SuicideCheat);
++
++		// New menu test
++		DebugMenuAddCmd("Vehicle", "Lock Doors", CustomCheats::LockDoors);
++		DebugMenuAddCmd("Vehicle", "Unlock Doors", CustomCheats::UnlockDoors);
++		// This adds another menu to it, i didn't know it was that simple.
++		//DebugMenuAddCmd("Test", "Suicide", SuicideCheat);
++
++		// Allow all cars to be repaired in the garages, incomplete.
++		// DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", ToggleRespray);
++		DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", CGarages::ToggleRespray);
++
++		// Spawn a PCJ 600, test with my own code.
++		DebugMenuAddCmd("Cheats", "Spawn PCJ 600", CustomCheats::SpawnCarTestCheat);
++		// Test spawning a ped
++		DebugMenuAddCmd("Cheats", "Spawn Ped", CustomCheats::SpawnPedTest);
++
++		//
++		DebugMenuAddCmd("Cheats", "Drop a bomb", CustomCheats::ExplosionCheat);
++		#else
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
+ 		DebugMenuAddCmd("Cheats", "Never wanted", NeverWantedCheat);
+ 		DebugMenuAddCmd("Cheats", "Invincible Vehicle", InvincibleVehicleCheat);
+ 		DebugMenuAddCmd("Cheats", "Suicide", SuicideCheat);
+ 
+ 		// Allow all cars to be repaired in the garages, incomplete.
+-		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", ToggleRespray);
++		// DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", ToggleRespray);
+ 		DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", CGarages::ToggleRespray);
+ 
+ 		// Spawn a PCJ 600, test with my own code.
+ 		DebugMenuAddCmd("Cheats", "Spawn PCJ 600", SpawnCarTestCheat);
++		// Test spawning a ped
++		DebugMenuAddCmd("Cheats", "Spawn Ped", SpawnPedTest);
+ 
+ 		//
+ 		DebugMenuAddCmd("Cheats", "Drop a bomb", ExplosionCheat);
++		#endif
++
+ 
+ 		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", m_allowAllVehiclesRespray);
+ 		//DebugMenuAddCmd("Cheats", "Toggle Vehicle upside down explode", ToggleVehicleUpsideDownBlowUp);
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+new file mode 100644
+index 00000000..c2dd2935
+--- /dev/null
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -0,0 +1,541 @@
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++#ifdef XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++
++#include "custom_cheats.h"
++
++//#include "Pad.h"
++//#include "ControllerConfig.h"
++//#include "Timer.h"
++//#include "Frontend.h"
++#include "Camera.h"
++#include "Game.h"
++#include "CutsceneMgr.h"
++#include "Font.h"
++#include "Hud.h"
++#include "Text.h"
++#include "Timer.h"
++#include "Record.h"
++#include "World.h"
++#include "Vehicle.h"
++#include "Ped.h"
++#include "Population.h"
++#include "Record.h"
++#include "Replay.h"
++#include "Weather.h"
++#include "Streaming.h"
++#include "PathFind.h"
++#include "Wanted.h"
++#include "WaterLevel.h"
++#include "General.h"
++#include "Fluff.h"
++#include "Gangs.h"
++#include "platform.h"
++#include "Stats.h"
++#include "CarCtrl.h"
++#include "TrafficLights.h"
++
++#include "PlayerInfo.h"
++#include "Placeable.h"
++#include "Entity.h"
++
++#define CUSTOM_CODE1
++
++// Extra
++// This code works now in here! I can move my code out of Pad.cpp
++#ifdef CUSTOM_CODE1
++#include "Bike.h"
++#include "Explosion.h"
++#include "Radar.h"
++#include "Vehicle.h"
++#include "vehicles/Automobile.h"
++
++#include "ScriptCommands.h"
++
++// My code
++#include "..\extras\test\enums\model_ids.h"
++#include "..\extras\test\scriptcommands_test.h"
++#include "Script.h"
++#endif // CUSTOM_CODE
++
++
++#ifdef CUSTOM_CODE1
++
++// Custom added by kelson8
++// //////
++//
++// I could add a chaos mod directly into Vice City and 3 without the plugin sdk once I get smart enough with this.
++// I wonder how I could incremement the stats and spawn a ped?
++
++// How would I call these commands? Like in cleo or in the scripts but within the code.
++// COMMAND_LOCATE_STOPPED_PLAYER_ON_FOOT_3D;
++
++// I wonder how the game is loading the files in Streaming.cpp, using something like this:
++// int txdHandle = CFileMgr::OpenFile("MODELS\\TXD.IMG", "r");
++// I could probably modify that somehow.
++
++//
++
++CustomCheats::CustomCheats() 
++{
++
++}
++
++// This works for having the doors lock, I can't unlock them outside of the vehicle though
++void
++CustomCheats::LockDoors()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	if(pPed->bInVehicle) 
++	{
++		CVehicle *playerVeh = pPed->m_pMyVehicle;
++		playerVeh->m_nDoorLock = eCarLock::CARLOCK_LOCKED; 
++	}
++}
++
++
++// How to set this to unlock the car if the player isn't in it?
++// TODO Figure out how to store the players last vehicle
++void 
++CustomCheats::UnlockDoors()
++{
++	CRunningScript* cRunningScript = new CRunningScript();
++	// How would I use these?
++	//COMMAND_ADD_EXPLOSION;
++	// This might work if I can figure out how to give it variables.
++	//cRunningScript->ProcessCommands0To99(COMMAND_GET_PLAYER_COORDINATES);
++	cRunningScript->ProcessCommands0To99(COMMAND_SET_PLAYER_COORDINATES);
++	
++	// Test from plugin sdk, I doubt this'll work.
++	//plugin::Commands::ADD_BLIP_FOR_COORD_OLD<2>;
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	if(pPed->bInVehicle) 
++	{ 
++		CVehicle *playerVeh = pPed->m_pMyVehicle;
++		playerVeh->m_nDoorLock = eCarLock::CARLOCK_UNLOCKED; 
++	} 
++	else 
++	{
++
++		// Unlock all cars in area
++		//uint32 i = CPools::GetVehiclePool()->GetSize();
++	
++		//while(i--)
++		//	{ 
++		//	CVehicle *pVehicle = CPools::GetVehiclePool()->GetSlot(i);
++		//	if(!pVehicle) 
++		//		continue;
++			// Not sure how to do this.
++			//if(pVehicle->IsWithinArea())
++			//}
++		/*
++		Script8.cpp
++		case COMMAND_UNLOCK_ALL_CAR_DOORS_IN_AREA:
++		{
++	CollectParameters(&m_nIp, 4);
++	uint32 i = CPools::GetVehiclePool()->GetSize();
++	float infX = *(float*)&ScriptParams[0];
++	float infY = *(float*)&ScriptParams[1];
++	float supX = *(float*)&ScriptParams[2];
++	float supY = *(float*)&ScriptParams[3];
++	while (i--) {
++		CVehicle* pVehicle = CPools::GetVehiclePool()->GetSlot(i);
++		if (!pVehicle)
++		        continue;
++		if (pVehicle->IsWithinArea(infX, infY, supX, supY))
++		        pVehicle->m_nDoorLock = CARLOCK_UNLOCKED;
++	}
++	return 0;
++}
++		*/
++		/*m_nModelIndex = pVehicle->GetModelIndex();*/
++	}
++}
++
++
++    //playerVeh->m_nDoorLock = false;
++
++void
++CustomCheats::ClearItemsFromArea(float radius)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	CWorld::ClearExcitingStuffFromArea(pPedCoords, radius, true);
++}
++
++// Blank cheat, does nothing and is just here to play around with.
++void
++// TestCheat1(int input)
++CustomCheats::TestCheat1()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	CVector targetMarkerPos = CRadar::TargetMarkerPos;
++
++	// pPed->SetWantedLevel(input);
++
++	// Will this work?
++	if(CRadar::TargetMarkerId != -1) { pPed->SetPosition(targetMarkerPos); }
++}
++
++// Test spawning a random ped, untested
++void CustomCheats::SpawnPedCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	// CPed *customPed = PED
++}
++
++// Give the player a shotgun as a test, untested
++void
++CustomCheats::GivePlayerWeapon()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 9999, true);
++}
++
++void
++CustomCheats::SpawnPedTest()
++{
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	// This crashes it.
++	CPed *randomPed1 = new CPed(ePedType::PEDTYPE_CIVMALE);
++	// Will this work?
++
++	// randomPed1->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER);
++
++	CWorld::Add(randomPed1);
++	// I don't think I have spawning them in properly though.
++	randomPed1->SetObjective(OBJECTIVE_AIM_GUN_AT, pPed);
++}
++
++// Spawn a Car.
++// Adapted from Pad.cpp, VehicleCheat
++void
++CustomCheats::SpawnCarTestCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	CustomCheats* customCheats = new CustomCheats();
++	// PCJ 600 bike https://gtamods.com/wiki/List_of_vehicles_(VC)
++	// Get the vehicle model from my enum
++	int vehicleModel = VehicleModels::PCJ_600;
++	// Adapted from my cleo test in javascript
++	//
++	// This should remove everything around the area.
++	//CustomCheats::ClearItemsFromArea(10);
++	customCheats->ClearItemsFromArea(10);
++	// Original code:
++	// CWorld::ClearExcitingStuffFromArea(pPedCoords, 10, true);
++
++	// Request the model
++	CStreaming::RequestModel(vehicleModel, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(false);
++
++	if(CStreaming::ms_aInfoForModel[vehicleModel].m_loadState & STREAMFLAGS_DONT_REMOVE) {
++		CStreaming::SetModelIsDeletable(vehicleModel);
++		CStreaming::SetModelTxdIsDeletable(vehicleModel);
++	}
++
++	// Don't attempt to use CAutoMobile for a Bike, it crashes it.
++	// CAutomobile *vehicle = new CAutomobile(vehicleModel, RANDOM_VEHICLE);
++	CBike *vehicle = new CBike(vehicleModel, RANDOM_VEHICLE);
++	if(vehicle != nil) {
++		// Add 2 to the z and y, so the vehicle doesn't crush the player.
++		// pPedCoords.z + 2;
++		// pPedCoords.y + 2;
++		vehicle->SetPosition(pPedCoords);
++
++		// Set the car to be able to be entered
++		vehicle->SetStatus(STATUS_ABANDONED);
++		vehicle->m_nDoorLock = CARLOCK_UNLOCKED;
++		// Possible fix for the engine not being on
++		vehicle->bEngineOn = true;
++
++		// Set the vehicle as owned by the player.
++		vehicle->bHasBeenOwnedByPlayer = true;
++
++		// Add vehicle to the world
++		CWorld::Add(vehicle);
++
++		// TODO Remove current vehicle
++
++		if(pPed->bInVehicle) 
++		{ 
++			CVehicle* playerVeh = pPed->m_pMyVehicle;
++			//playerVeh->
++			// This just crashes it
++			//playerVeh->Remove();
++			//playerVeh->bRemoveFromWorld = true;
++			//playerVeh->DeleteRwObject();
++			//
++
++			// Custom code for each method, could be useful for other stuff.
++			//switch(playerVeh->m_vehType) {
++			//case VEHICLE_TYPE_CAR: 
++			//	break;
++			//case VEHICLE_TYPE_BIKE: 
++			//	break;
++			//case VEHICLE_TYPE_BOAT: 
++			//	break; 
++			//case VEHICLE_TYPE_HELI: 
++			//	break;
++			//// Were planes useable in VC or 3?
++			//case VEHICLE_TYPE_PLANE: 
++			//	break;
++			//default: 
++			//	break;
++			//}
++			//if (playerVeh->IsBike()) {
++
++			}
++		}
++
++		// Warp the player into the vehicle
++		// Taken from Script4.cpp
++		// Well this was needed, there must be a ton of these objectives.
++		pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, vehicle);
++		// Put the player in the vehicle
++		pPed->WarpPedIntoCar(vehicle);
++	}
++
++	// Check if the model has loaded
++	// if(!CStreaming::HasModelLoaded())
++	//{
++	//	CStreaming::RequestModel();
++	//	CStreaming::LoadAllRequestedModels(false);
++	//}
++//}
++
++// Infinite health
++// This works with a toggle.
++void
++CustomCheats::InfiniteHealthCheat()
++{
++	// I have no idea what the option below is for but it didn't work.
++	// CPed *pPed = FindPlayerPed();
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	if(!pPed->bBulletProof && !pPed->bFireProof && !pPed->bCollisionProof && !pPed->bMeleeProof && !pPed->bOnlyDamagedByPlayer && !pPed->bExplosionProof &&
++	   pPed->m_bCanBeDamaged) {
++		pPed->bBulletProof = true;
++		pPed->bFireProof = true;
++		pPed->bCollisionProof = true;
++		pPed->bMeleeProof = true;
++		pPed->bOnlyDamagedByPlayer = true;
++		pPed->bExplosionProof = true;
++		pPed->m_bCanBeDamaged = false;
++		CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++
++	} else {
++		pPed->bBulletProof = false;
++		pPed->bFireProof = false;
++		pPed->bCollisionProof = false;
++		pPed->bMeleeProof = false;
++		pPed->bOnlyDamagedByPlayer = false;
++		pPed->bExplosionProof = false;
++		pPed->m_bCanBeDamaged = true;
++
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++	}
++}
++
++void
++CustomCheats::ToggleNeverWanted()
++{
++	// Idk how I would use the toggle below.
++}
++
++// Never wanted test
++// This works but I still get the wanted stars and police radio talk.
++// There doesn't seem to be an option to disable the cops easily like in San Andreas with the never wanted cheat, hmm
++// I wonder if I could add that in to this and gta 3.
++void
++CustomCheats::NeverWantedCheat()
++{
++	// bool m_btoggle
++
++	// bool toggle = false;
++	CPlayerPed *pPed = FindPlayerPed();
++
++	// if(!m_btoggle)
++
++	//{
++	//	if(pPed->m_pWanted->m_bIgnoredByCops)
++	//	{
++	//		pPed->m_pWanted->m_bIgnoredByCops = false;
++	//	}
++	//}
++
++	// else if(!pPed->m_pWanted->m_bIgnoredByCops)
++	//{
++	//	// Clear wanted level
++	//	pPed->SetWantedLevel(0);
++
++	//	// Set ignored by cops
++	//	pPed->m_pWanted->m_bIgnoredByCops = true;
++
++	//}
++
++	// pPed->m_pWanted->
++	// Possibly make a while loop that will keep going as long as the cheat is active once a second.
++	bool cheatActive = false;
++	// Fix value
++
++	if(!pPed->m_pWanted->m_bIgnoredByCops) {
++		// Clear wanted level
++		pPed->SetWantedLevel(0);
++
++		// Set ignored by cops
++		pPed->m_pWanted->m_bIgnoredByCops = true;
++
++		//////////
++		// 3-25-2024 @ 5:01AM
++		// Begin loop test for never wanted.
++		/////////
++		bool cheatActive = true;
++
++		// Will this work? I honestly have no idea.
++		// No this just kills the game.
++		// while(cheatActive)
++		//{
++		//	pPed->SetWantedLevel(0);
++		//}
++		//////////
++		// End loop test
++		/////////
++
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++	} else {
++		pPed->m_pWanted->m_bIgnoredByCops = false;
++
++		bool cheatActive = false;
++
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++	}
++}
++
++// Invincible car
++// I got this working with a toggle.
++void
++CustomCheats::InvincibleVehicleCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	if(!pPed->EnteringCar() && pPed->bInVehicle) {
++		CVehicle *veh = pPed->m_pMyVehicle;
++
++		// This could be useful for getting a vehicles coords.
++		// CVector vehPos = veh->GetPosition();
++
++		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
++			((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++			((CAutomobile *)veh)->Fix();
++
++			veh->m_fHealth = 1000.0f;
++			veh->bBulletProof = true;
++			veh->bCollisionProof = true;
++			veh->bExplosionProof = true;
++			veh->bFireProof = true;
++			veh->bMeleeProof = true;
++			CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++		} else {
++			veh->bBulletProof = false;
++			veh->bCollisionProof = false;
++			veh->bExplosionProof = false;
++			veh->bFireProof = false;
++			veh->bMeleeProof = false;
++			CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++		}
++	}
++}
++
++// Will this work?
++// I never did get this working.
++// void
++////ToggleVehicleUpsideDownBlowUp()
++//{
++//	//CPlayerInfo::vehUpsidedownExplode != CPlayerInfo::vehUpsidedownExplode;
++//	//if(CPlayerInfo::vehUpsidedownExplode)
++//	//{
++//	//	wchar w = *"Test";
++//	//	//CHud::SetBigMessage("S", "");
++//	//	CHud::SetMessage(&w);
++//	//}
++//}
++
++// I got this started on 3-26-2024 @ 2:50AM, it isn't confirmed to work yet.
++void
++CustomCheats::NoUpsideDownBlowUpCheat(bool toggle)
++{
++	// Base for cheat that toggles cars blowing up when they are flipped over on/off.
++	// I'm not exactly sure how or if this would be possible.
++	// bool toggle = true;
++
++	// https://stackoverflow.com/questions/9818515/what-does-error-a-nonstatic-member-reference-must-be-relative-to-a-specific-o
++	CPlayerInfo playerInfo;
++
++	// Normal
++	if(!toggle) {
++		// Do nothing
++		return;
++		// playerInfo.m_nUpsideDownCounter += 2;
++
++		// This doesn't work, this is the code from PlayerInfo.cpp on lines 436-440
++		// if(FindPlayerVehicle()) {
++		//	CVehicle *veh = FindPlayerVehicle();
++
++		//	if(veh->GetUp().z < -0.5f) {
++		// m_nUpsideDownCounter += 2;
++		//	} else {
++		//		CPlayerInfo::m_nUpsideDownCounter++;
++		//}
++
++		//}
++		// No blow up test, will this work?
++	} else {
++		if(FindPlayerVehicle()) {
++			while(toggle) { playerInfo.m_nUpsideDownCounter = 0; }
++		}
++	}
++}
++
++// Test adding a bomb around the player.
++// This works, inspired by some of the code in Pickups.cpp
++void
++CustomCheats::ExplosionCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector playerPos = FindPlayerCoors();
++
++	// How would I convert these floats to a vector3?
++	float playerPosX = playerPos.x + 2;
++	float playerPosY = playerPos.y + 2;
++	float playerPosZ = playerPos.z;
++
++	// CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
++	CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
++}
++
++// Mess with this later.
++// FindPlayerPed()->SetMoveSpeed(CVector 2);
++
++// End custom added by kelson8
++// //////
++
++#endif //CUSTOM_CODE1
+\ No newline at end of file
+diff --git a/src/extras/test/cheats/custom_cheats.h b/src/extras/test/cheats/custom_cheats.h
+new file mode 100644
+index 00000000..fd10e070
+--- /dev/null
++++ b/src/extras/test/cheats/custom_cheats.h
+@@ -0,0 +1,35 @@
++#pragma once
++class CustomCheats
++{
++public:
++	CustomCheats();
++	void ClearItemsFromArea(float radius);
++	// TODO Fix these to not be static.
++	#ifdef _TEST
++	void TestCheat1();
++	void SpawnPedCheat();
++	void GivePlayerWeapon();
++	void SpawnPedTest();
++	void SpawnCarTestCheat();
++	void InfiniteHealthCheat();
++	void ToggleNeverWanted();
++	void NeverWantedCheat();
++	void InvincibleVehicleCheat();
++	void NoUpsideDownBlowUpCheat(bool toggle);
++	void ExplosionCheat();
++	#else
++	static void TestCheat1();
++	static void SpawnPedCheat();
++	static void GivePlayerWeapon();
++	static void SpawnPedTest();
++	static void SpawnCarTestCheat();
++	static void InfiniteHealthCheat();
++	static void ToggleNeverWanted();
++	static void NeverWantedCheat();
++	static void InvincibleVehicleCheat();
++	static void NoUpsideDownBlowUpCheat(bool toggle);
++	static void ExplosionCheat();
++	static void LockDoors();
++	static void UnlockDoors();
++	#endif //_TEST
++};
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index b3fe0ff0..87cd107a 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -958,6 +958,7 @@ CPlayerPed::KeepAreaAroundPlayerClear(void)
+ 	CVector pos = GetPosition();
+ 	int16 lastVehicle;
+ 	CEntity *vehicles[8];
++	// This might be useful for later.
+ 	CWorld::FindObjectsInRange(pos, CHECK_NEARBY_THINGS_MAX_DIST, true, &lastVehicle, 6, vehicles, false, true, false, false, false);
+ 
+ 	for (int i = 0; i < lastVehicle; i++) {
+diff --git a/src/peds/Population.cpp b/src/peds/Population.cpp
+index 495cad16..473b922d 100644
+--- a/src/peds/Population.cpp
++++ b/src/peds/Population.cpp
+@@ -809,34 +809,67 @@ CPopulation::AddPedInCar(CVehicle* car, bool isDriver)
+ 	// May be eCopType, model index or non-sense(for medic), AddPed knows that by looking to ped type.
+ 	int preferredModel;
+ 
++
+ 	CTheZones::GetZoneInfoForTimeOfDay(&coors, &zoneInfo);
+ 	switch (car->GetModelIndex()) {
+-		case MI_FIRETRUCK:
+-			preferredModel = 0;
+-			pedType = PEDTYPE_FIREMAN;
+-			break;
+-		case MI_AMBULAN:
+-			preferredModel = 0;
+-			pedType = PEDTYPE_EMERGENCY;
+-			break;
+-		case MI_POLICE:
+-		case MI_PREDATOR:
+-			preferredModel = COP_STREET;
+-			pedType = PEDTYPE_COP;
+-			break;
+-		case MI_ENFORCER:
+-			preferredModel = COP_SWAT;
+-			pedType = PEDTYPE_COP;
+-			break;
+-		case MI_RHINO:
+-		case MI_BARRACKS:
+-			preferredModel = COP_ARMY;
+-			pedType = PEDTYPE_COP;
+-			break;
+-		case MI_FBIRANCH:
+-			preferredModel = COP_FBI;
+-			pedType = PEDTYPE_COP;
+-			break;
++		// Well this works but if its not a fireman ped they won't put out fires and just drive off lol.
++#ifdef CUSTOM_CODE
++	case MI_FIRETRUCK:
++		preferredModel = 0;
++		pedType = PEDTYPE_FIREMAN;
++		//pedType = PEDTYPE_CIVMALE;
++		break;
++	case MI_AMBULAN:
++		preferredModel = 0;
++		pedType = PEDTYPE_EMERGENCY;
++		break;
++	case MI_POLICE:
++	case MI_PREDATOR:
++		preferredModel = COP_STREET;
++		pedType = PEDTYPE_COP;
++		break;
++	case MI_ENFORCER:
++		preferredModel = COP_SWAT;
++		pedType = PEDTYPE_COP;
++		break;
++	case MI_RHINO:
++	case MI_BARRACKS:
++		preferredModel = COP_ARMY;
++		pedType = PEDTYPE_COP;
++		break;
++	case MI_FBIRANCH:
++		preferredModel = COP_FBI;
++		pedType = PEDTYPE_COP;
++		break;
++#else
++	case MI_FIRETRUCK:
++		preferredModel = 0;
++		pedType = PEDTYPE_FIREMAN;
++		break;
++	case MI_AMBULAN:
++		preferredModel = 0;
++		pedType = PEDTYPE_EMERGENCY;
++		break;
++	case MI_POLICE:
++	case MI_PREDATOR:
++		preferredModel = COP_STREET;
++		pedType = PEDTYPE_COP;
++		break;
++	case MI_ENFORCER:
++		preferredModel = COP_SWAT;
++		pedType = PEDTYPE_COP;
++		break;
++	case MI_RHINO:
++	case MI_BARRACKS:
++		preferredModel = COP_ARMY;
++		pedType = PEDTYPE_COP;
++		break;
++	case MI_FBIRANCH:
++		preferredModel = COP_FBI;
++		pedType = PEDTYPE_COP;
++		break;
++#endif // CUSTOM_CODE
++		
+ 		default:
+ 			if (car->IsTaxi()) {
+ 				if (isDriver) {
+@@ -903,6 +936,124 @@ CPopulation::AddPedInCar(CVehicle* car, bool isDriver)
+ 	return newPed;
+ }
+ 
++
++/// Copied code
++//////////////
++///////
++
++//CPed *
++//CPopulation::AddPedInCar(CVehicle *car, bool isDriver)
++//{
++//	const int defaultModel = MI_MALE01;
++//	int miamiViceIndex = 0;
++//	bool imSureThatModelIsLoaded = true;
++//	CVector coors = FindPlayerCoors();
++//	CZoneInfo zoneInfo;
++//	int pedType;
++//
++//	// May be eCopType, model index or non-sense(for medic), AddPed knows that by looking to ped type.
++//	int preferredModel;
++//
++//	CTheZones::GetZoneInfoForTimeOfDay(&coors, &zoneInfo);
++//	switch(car->GetModelIndex()) {
++//
++//	case MI_FIRETRUCK:
++//		preferredModel = 0;
++//		pedType = PEDTYPE_FIREMAN;
++//		break;
++//	case MI_AMBULAN:
++//		preferredModel = 0;
++//		pedType = PEDTYPE_EMERGENCY;
++//		break;
++//	case MI_POLICE:
++//	case MI_PREDATOR:
++//		preferredModel = COP_STREET;
++//		pedType = PEDTYPE_COP;
++//		break;
++//	case MI_ENFORCER:
++//		preferredModel = COP_SWAT;
++//		pedType = PEDTYPE_COP;
++//		break;
++//	case MI_RHINO:
++//	case MI_BARRACKS:
++//		preferredModel = COP_ARMY;
++//		pedType = PEDTYPE_COP;
++//		break;
++//	case MI_FBIRANCH:
++//		preferredModel = COP_FBI;
++//		pedType = PEDTYPE_COP;
++//		break;
++//	default:
++//		if(car->IsTaxi()) {
++//			if(isDriver) {
++//				pedType = PEDTYPE_CIVMALE;
++//				preferredModel = MI_TAXI_D;
++//				break;
++//			}
++//			// fall through if not
++//		} else if(car->GetModelIndex() == MI_VICECHEE) {
++//			if(car->bIsLawEnforcer) {
++//				preferredModel = COP_MIAMIVICE;
++//				pedType = PEDTYPE_COP;
++//				miamiViceIndex = (isDriver ? 2 * CCarCtrl::MiamiViceCycle : 2 * CCarCtrl::MiamiViceCycle + 1);
++//				break;
++//			}
++//			// fall through if not
++//		}
++//
++//		int gangOfPed = 0;
++//		imSureThatModelIsLoaded = false;
++//
++//		while(gangOfPed < NUM_GANGS && CGangs::GetGangInfo(gangOfPed)->m_nVehicleMI != car->GetModelIndex()) gangOfPed++;
++//
++//		if(gangOfPed < NUM_GANGS) {
++//			pedType = gangOfPed + PEDTYPE_GANG1;
++//			preferredModel = ChooseGangOccupation(gangOfPed);
++//		} else if(gangOfPed == NUM_GANGS) {
++//			CVehicleModelInfo *carModel = ((CVehicleModelInfo *)CModelInfo::GetModelInfo(car->GetModelIndex()));
++//			preferredModel = ChooseCivilianOccupation(zoneInfo.pedGroup);
++//			int i = 15;
++//			for(; i >= 0; i--) {
++//				CPedModelInfo *pedModel = (CPedModelInfo *)CModelInfo::GetModelInfo(preferredModel);
++//
++//				if(pedModel->GetRwObject()) {
++//					if(!car->IsPassenger(preferredModel) && !car->IsDriver(preferredModel)) {
++//						if(((CPedModelInfo *)CModelInfo::GetModelInfo(preferredModel))->m_carsCanDrive &
++//						   (1 << carModel->m_vehicleClass))
++//							break;
++//					}
++//				}
++//
++//				preferredModel = ChooseNextCivilianOccupation(zoneInfo.pedGroup);
++//			}
++//			if(i == -1) preferredModel = defaultModel;
++//
++//			pedType = ((CPedModelInfo *)CModelInfo::GetModelInfo(preferredModel))->m_pedType;
++//		}
++//		break;
++//	}
++//	if(!imSureThatModelIsLoaded && !((CPedModelInfo *)CModelInfo::GetModelInfo(preferredModel))->GetRwObject()) {
++//		preferredModel = defaultModel;
++//		pedType = ((CPedModelInfo *)CModelInfo::GetModelInfo(defaultModel))->m_pedType;
++//	}
++//
++//	CPed *newPed = CPopulation::AddPed((ePedType)pedType, preferredModel, car->GetPosition(), miamiViceIndex);
++//	newPed->bUsesCollision = false;
++//
++//	if(newPed->GetWeapon()->m_eWeaponType != WEAPONTYPE_UNARMED) {
++//		newPed->RemoveWeaponModel(CWeaponInfo::GetWeaponInfo(newPed->GetWeapon()->m_eWeaponType)->m_nModelId);
++//	}
++//
++//	newPed->AddInCarAnims(car, isDriver);
++//	return newPed;
++//}
++
++////////////////
++//////////
++////////////
++
++
++
+ void
+ CPopulation::MoveCarsAndPedsOutOfAbandonedZones()
+ {
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index 8856db4b..9caeccf2 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -275,13 +275,11 @@ CAutomobile::ProcessControl(void)
+ 
+ 	bool carHasNitro = bAllTaxisHaveNitro && GetStatus() == STATUS_PLAYER && IsTaxi();
+ 
+-	if(CReplay::IsPlayingBack())
+-		return;
++	if(CReplay::IsPlayingBack()) return;
+ 
+ 	// Heli wind
+ 	if(IsRealHeli())
+-		if((GetStatus() == STATUS_PLAYER || GetStatus() == STATUS_PHYSICS) && m_aWheelSpeed[1] > 0.075f ||
+-		   GetStatus() == STATUS_SIMPLE)
++		if((GetStatus() == STATUS_PLAYER || GetStatus() == STATUS_PHYSICS) && m_aWheelSpeed[1] > 0.075f || GetStatus() == STATUS_SIMPLE)
+ 			CWindModifiers::RegisterOne(GetPosition(), 1);
+ 
+ 	UpdatePassengerList();
+@@ -292,35 +290,46 @@ CAutomobile::ProcessControl(void)
+ 	if(FindPlayerVehicle() && this != FindPlayerVehicle() && FindPlayerPed()->m_pWanted->GetWantedLevel() > 3 &&
+ 	   (AutoPilot.m_nCarMission == MISSION_RAMPLAYER_FARAWAY || AutoPilot.m_nCarMission == MISSION_RAMPLAYER_CLOSE ||
+ 	    AutoPilot.m_nCarMission == MISSION_BLOCKPLAYER_FARAWAY || AutoPilot.m_nCarMission == MISSION_BLOCKPLAYER_CLOSE) &&
+-		FindPlayerSpeed().Magnitude() > 0.3f){
++	   FindPlayerSpeed().Magnitude() > 0.3f) {
+ 
+ 		strongGrip1 = true;
+-		if(FindPlayerSpeed().Magnitude() > 0.4f &&
+-			m_vecMoveSpeed.Magnitude() < 0.3f)
++		if(FindPlayerSpeed().Magnitude() > 0.4f && m_vecMoveSpeed.Magnitude() < 0.3f)
+ 			strongGrip2 = true;
+ 		else if((GetPosition() - FindPlayerCoors()).Magnitude() > 50.0f)
+ 			strongGrip2 = true;
+-	}else if(GetModelIndex() == MI_RCBANDIT && GetStatus() != STATUS_PLAYER_REMOTE)
++	} else if(GetModelIndex() == MI_RCBANDIT && GetStatus() != STATUS_PLAYER_REMOTE)
+ 		strongGrip1 = true;
+ 
+-	if(bIsBus)
+-		ProcessAutoBusDoors();
++	if(bIsBus) ProcessAutoBusDoors();
+ 
+ 	ProcessCarAlarm();
+ 
+ 	// Scan if this car sees the player committing any crimes
+-	if(GetStatus() != STATUS_ABANDONED && GetStatus() != STATUS_WRECKED &&
+-	   GetStatus() != STATUS_PLAYER && GetStatus() != STATUS_PLAYER_REMOTE && GetStatus() != STATUS_PLAYER_DISABLED){
++
++	// TODO Fix this to work without breaking the game.
++
++#ifdef CUSTOM_CODE
++	// TODO Add a toggle for this
++	// Make this do nothing, could I just remove this? Seems pointless keeping it in here.
++	// This seems to make the cars spawn in weirdly like ghost cars, I'll leave it commented out.
++	//if(GetStatus() != STATUS_ABANDONED && GetStatus() != STATUS_WRECKED && GetStatus() != STATUS_PLAYER && GetStatus() != STATUS_PLAYER_REMOTE &&
++	//   GetStatus() != STATUS_PLAYER_DISABLED) return;
++
++	
++#endif // CUSTOM_CODE
++
++	if(GetStatus() != STATUS_ABANDONED && GetStatus() != STATUS_WRECKED && GetStatus() != STATUS_PLAYER && GetStatus() != STATUS_PLAYER_REMOTE &&
++	   GetStatus() != STATUS_PLAYER_DISABLED) {
+ 		switch(GetModelIndex())
+ 		case MI_FBIRANCH:
+ 		case MI_POLICE:
+ 		case MI_ENFORCER:
+ 		case MI_SECURICA:
+ 		case MI_RHINO:
+-		case MI_BARRACKS:
+-			ScanForCrimes();
++		case MI_BARRACKS: ScanForCrimes();
+ 	}
+ 
++
+ 	// Process driver
+ 	if(pDriver)
+ 		if(IsUpsideDown() && CanPedEnterCar()){
+-- 
+2.45.1.windows.1
+

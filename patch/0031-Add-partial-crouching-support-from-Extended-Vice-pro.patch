@@ -1,0 +1,1033 @@
+From adfc04a5c50bae42a52e30ceb748f58f00169596 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Feb 2025 01:48:37 -0500
+Subject: [PATCH 31/42] Add partial crouching support from Extended Vice
+ project, its disabled in config.h because its incomplete. Add some utils and
+ option to toggle in config.h. Document a couple of functions.
+
+---
+ src/animation/AnimManager.cpp |  18 ++++
+ src/animation/AnimationId.h   |   9 ++
+ src/core/Cam.cpp              |   8 ++
+ src/core/Camera.h             |   5 +
+ src/core/common.h             |  10 ++
+ src/core/config.h             |  25 +++++
+ src/core/re3.cpp              |  60 ++++++++++++
+ src/peds/EmergencyPed.cpp     |   6 ++
+ src/peds/Ped.cpp              |  59 ++++++++++++
+ src/peds/Ped.h                |   5 +
+ src/peds/PedAI.cpp            |  86 ++++++++++++++++-
+ src/peds/PedFight.cpp         |  25 +++++
+ src/peds/PlayerPed.cpp        | 168 ++++++++++++++++++++++++++++++++++
+ src/peds/PlayerPed.h          |   6 ++
+ src/renderer/Hud.cpp          |  37 +++++++-
+ 15 files changed, 524 insertions(+), 3 deletions(-)
+
+diff --git a/src/animation/AnimManager.cpp b/src/animation/AnimManager.cpp
+index 39b429c8..46136bde 100644
+--- a/src/animation/AnimManager.cpp
++++ b/src/animation/AnimManager.cpp
+@@ -193,6 +193,15 @@ AnimAssocDesc aStdAnimDescs[] = {
+ 	{ ANIM_STD_SEAT_RVRS, ASSOC_DELETEFADEDOUT | ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
+ 	{ ANIM_STD_ATM, ASSOC_DELETEFADEDOUT | ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
+ 	{ ANIM_STD_ABSEIL, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL },
++
++	// Extended Vice
++#ifdef CROUCH // add anims
++	{ ANIM_STD_CROUCH_IDLE, ASSOC_REPEAT | ASSOC_DELETEFADEDOUT },
++	{ ANIM_STD_CROUCH_FORWARD, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_WALK },
++	{ ANIM_STD_CROUCH_BACKWARD, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_WALK },
++	{ ANIM_STD_CROUCH_ROLL_L, ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_FRONTAL },
++	{ ANIM_STD_CROUCH_ROLL_R, ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_FRONTAL },
++#endif
+ };
+ AnimAssocDesc aVanAnimDescs[] = {
+ 	{ ANIM_STD_VAN_OPEN_DOOR_REAR_LHS, ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
+@@ -468,6 +477,15 @@ char const* aStdAnimations[] = {
+ 	"SEAT_down",
+ 	"ATM",
+ 	"abseil",
++
++	// Extended Vice
++#ifdef CROUCH // add anims
++	"Crouch_Idle",
++	"Crouch_Forward",
++	"Crouch_Backward",
++	"Crouch_Roll_L",
++	"Crouch_Roll_R",
++#endif
+ };
+ char const* aVanAnimations[] = {
+ 	"VAN_openL",
+diff --git a/src/animation/AnimationId.h b/src/animation/AnimationId.h
+index 0b5d8d8e..c4ef8651 100644
+--- a/src/animation/AnimationId.h
++++ b/src/animation/AnimationId.h
+@@ -199,6 +199,15 @@ enum AnimationId
+ 	ANIM_STD_ATM,
+ 	ANIM_STD_ABSEIL,
+ 
++	// Extended Vice
++#ifdef CROUCH // add anims
++	ANIM_STD_CROUCH_IDLE,
++	ANIM_STD_CROUCH_FORWARD,
++	ANIM_STD_CROUCH_BACKWARD,
++	ANIM_STD_CROUCH_ROLL_L,
++	ANIM_STD_CROUCH_ROLL_R,
++#endif
++
+ 	ANIM_STD_NUM,
+ 
+ 	ANIM_STD_VAN_OPEN_DOOR_REAR_LHS,
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index b25585a4..8487a0e9 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -1388,6 +1388,14 @@ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrient
+ 	TargetCoors = CameraTarget;
+ 	TargetCoors.z += fTranslateCamUp;
+ 
++	// Extended Vice
++#ifdef CROUCH
++	float newZ = InterpFloat(m_fCurrentCameraOffsetZ, m_fTargetCameraPosZ, 8.0f);
++	m_fCurrentCameraOffsetZ = newZ;
++	TargetCoors.z -= m_fCurrentCameraOffsetZ;
++#endif
++
++
+ 	float AlphaOffset, BetaOffset;
+ 	if(CPad::GetPad(0)->IsPlayerControlsDisabledBy(PLAYERCONTROL_PLAYERINFO)){
+ 		CVector ToCam = Source - TargetCoors;
+diff --git a/src/core/Camera.h b/src/core/Camera.h
+index 39ecb760..84afdd23 100644
+--- a/src/core/Camera.h
++++ b/src/core/Camera.h
+@@ -150,6 +150,11 @@ public:
+ 	float   CA_MAX_DISTANCE;
+ 	float   SpeedVar;
+ 
++#ifdef CROUCH
++	float m_fCurrentCameraOffsetZ;
++	float m_fTargetCameraPosZ;
++#endif
++
+ 	float m_fTargetZoomGroundOne;
+ 	float m_fTargetZoomGroundTwo;
+ 	float m_fTargetZoomGroundThree;
+diff --git a/src/core/common.h b/src/core/common.h
+index 4d0b95d2..8aba6b86 100644
+--- a/src/core/common.h
++++ b/src/core/common.h
+@@ -337,10 +337,20 @@ void re3_trace(const char *filename, unsigned int lineno, const char *func, cons
+ void re3_assert(const char *expr, const char *filename, unsigned int lineno, const char *func);
+ void re3_usererror(const char *format, ...);
+ 
++#ifdef UTILS
++float InterpFloat(float currentValue, float newValue, float interpSpeed);
++CVector InterpVector(CVector currentValue, CVector newValue, float interpSpeed);
++#endif
++
+ #ifdef EX_GPS
+ extern CRGBA WaypointColor;
+ #endif
+ 
++// TODO Set this up later
++#ifdef EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++extern bool bRocketLauncherThirdPersonAiming;
++#endif
++
+ #define DEBUGBREAK() __debugbreak();
+ 
+ // Switch to enable development messages.
+diff --git a/src/core/config.h b/src/core/config.h
+index e38a769b..14d4a25e 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -14,6 +14,7 @@
+ // Enable mod loader test
+ // TODO Copy in more from the Extended Vice project until I get this modloader working.
+ // It should allow me to edit files without replacing them like in GTA SA
++// Gives nullptr error in a few spots, InitaliseGame, and a few others.
+ //#define MODLOADER
+ 
+ // Copied from Extended Vice project.
+@@ -30,6 +31,30 @@
+ // Adds radio icons from radio.txd for the radio wheel and in the sound settings.
+ #define EX_RADIO_ICONS
+ 
++// Enable better crouching support
++// #define CROUCH
++
++// TODO Add these for crouch features and other stuff from Extended Vice.
++// This will take a little bit.
++// #define FIRING_AND_AIMING 
++// #define FIRST_PERSON
++// #define SWIMMING
++//
++
++// Enable util functions
++#define UTILS
++
++// Test for third person aim using the rocket launcher, from Extended Vice project
++// I will still need to add these defines to make this work.
++// #define FIRST_PERSON
++// #define FIRING_AND_AIMING
++
++// I will need to add this to PlayerPed.cpp and Hud.cpp
++// #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++
++// Enable the features.ini
++// #define FEATURES_INI
++
+ #endif //VICE_EXTENDED
+ 
+ /* TODO Get these working from the Vice Extended source code
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index b10fe4ad..76b6f0fb 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -59,6 +59,7 @@
+ #include <list>
+ 
+ // Extra
++// TODO Are these needed anymore?
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+ #include "extras/test/cheats/custom_cheats.h"
+@@ -74,6 +75,13 @@ unsigned long long myrand_seed = 1;
+ unsigned long int myrand_seed = 1;
+ #endif
+ 
++/// <summary>
++/// TODO Figure out what this is in use for.
++/// Looks like this is creating a random seed for something.
++/// Actually, this looks like its some kind of random number generator, its not used in many places in the codebase.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ int
+ myrand(void)
+ {
+@@ -88,6 +96,11 @@ myrand(void)
+ #endif
+ }
+ 
++/// <summary>
++/// TODO Figure out what this does
++/// Seems to be in use in common.h, General.h, and disabled in main.cpp with the GTA_PS2 preprocessor.
++/// </summary>
++/// <param name="seed"></param>
+ void
+ mysrand(unsigned int seed)
+ {
+@@ -100,6 +113,10 @@ mysrand(unsigned int seed)
+ 
+ 
+ #ifdef MORE_LANGUAGES
++/// <summary>
++/// Select Polish language
++/// </summary>
++/// <param name="action"></param>
+ void LangPolSelect(int8 action)
+ {
+ 	if (action == FEOPTION_ACTION_SELECT) {
+@@ -110,6 +127,10 @@ void LangPolSelect(int8 action)
+ 	}
+ }
+ 
++/// <summary>
++/// Select Russian language
++/// </summary>
++/// <param name="action"></param>
+ void LangRusSelect(int8 action)
+ {
+ 	if (action == FEOPTION_ACTION_SELECT) {
+@@ -120,6 +141,10 @@ void LangRusSelect(int8 action)
+ 	}
+ }
+ 
++/// <summary>
++/// Select Japanese language
++/// </summary>
++/// <param name="action"></param>
+ void LangJapSelect(int8 action)
+ {
+ 	if (action == FEOPTION_ACTION_SELECT) {
+@@ -131,6 +156,10 @@ void LangJapSelect(int8 action)
+ }
+ #endif
+ 
++/// <summary>
++/// Setup the Custom Frontend Options, this has the NEO pipelines, and the language settings.
++/// </summary>
++/// <param name=""></param>
+ void
+ CustomFrontendOptionsPopulate(void)
+ {
+@@ -327,6 +356,37 @@ void re3_usererror(const char *format, ...)
+ #endif
+ #endif
+ 
++#ifdef UTILS
++float InterpFloat(float currentValue, float newValue, float interpSpeed)
++{
++	if (currentValue == newValue)
++		return currentValue;
++
++	float distance = newValue - currentValue;
++
++	float deltaSeconds = CTimer::GetTimeStepInSeconds();
++	float deltaSpeed = deltaSeconds * interpSpeed;
++
++	return currentValue + distance * deltaSpeed;
++}
++
++CVector InterpVector(CVector currentValue, CVector newValue, float interpSpeed)
++{
++	if (currentValue == newValue)
++		return currentValue;
++
++	CVector distance = newValue - currentValue;
++
++	float distanceMagnitude = distance.Magnitude();
++
++	float deltaSeconds = CTimer::GetTimeStepInSeconds();
++	float deltaSpeed = deltaSeconds * interpSpeed;
++
++	CVector deltaNormal = distance / distanceMagnitude;
++	return currentValue + deltaNormal * deltaSpeed;
++}
++#endif
++
+ #ifdef VALIDATE_SAVE_SIZE
+ int32 _saveBufCount;
+ #endif
+diff --git a/src/peds/EmergencyPed.cpp b/src/peds/EmergencyPed.cpp
+index 0257d291..1fb5b781 100644
+--- a/src/peds/EmergencyPed.cpp
++++ b/src/peds/EmergencyPed.cpp
+@@ -379,7 +379,13 @@ CEmergencyPed::MedicAI(void)
+ 				break;
+ 			case EMERGENCY_PED_STOP_CPR:
+ 				m_nEmergencyPedState = EMERGENCY_PED_STOP;
++
++			  // Extended Vice
++#ifdef CROUCH // Medics stand up after doing CPR
++				bIsDucking = false;
++#else
+ 				bIsDucking = true;
++#endif
+ 				break;
+ 			case EMERGENCY_PED_STAND_STILL:
+ 				if (!m_pRevivedPed || m_pRevivedPed->m_fHealth > 0.0f)
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 19e481ea..fa1dff46 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -630,17 +630,60 @@ CPed::SortPeds(CPed **list, int min, int max)
+ 	SortPeds(list, right, max);
+ }
+ 
++/// <summary>
++/// Set the peds move state,
++/// 	PEDMOVE_NONE, PEDMOVE_STILL, PEDMOVE_WALK, PEDMOVE_JOG, PEDMOVE_RUN, PEDMOVE_SPRINT,
++///    PEDMOVE_THROWN
++    /// </summary>
++/// <param name="state"></param>
+ void
+ CPed::SetMoveState(eMoveState state)
+ {
+ 	m_nMoveState = state;
+ }
+ 
++/// <summary>
++/// Set the peds move animation, depending on the task they are doing.
++/// I have added crouching to this from the Extended Vice project.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::SetMoveAnim(void)
+ {
++	// Extended Vice
++#ifdef CROUCH // AI crouch
++	if (bIsDucking && !IsPlayer()) {
++		CAnimBlendAssociation* curCrouchIdleAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE);
++		CAnimBlendAssociation* curCrouchForwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_FORWARD);
++		CAnimBlendAssociation* curCrouchBackwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_BACKWARD);
++		bool bIsCurMoveAnim = curCrouchForwardAssoc || curCrouchBackwardAssoc;
++
++		CAnimBlendAssociation* curCrouchFireAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_WEAPON_CROUCHFIRE);
++
++		//if (bIsPointingGunAt && GetWeapon()->GetInfo()->m_nWeaponSlot == WEAPONSLOT_SNIPER)
++			//return;
++
++		if (m_nMoveState == PEDMOVE_STILL) {
++			if (!curCrouchIdleAssoc)
++				curCrouchIdleAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++		}
++
++		if (m_nMoveState >= PEDMOVE_WALK && m_nMoveState != PEDMOVE_THROWN) {
++			if (curCrouchIdleAssoc && !curCrouchForwardAssoc || curCrouchBackwardAssoc)
++				curCrouchForwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_FORWARD, 4.0f);
++		}
++
++		return;
++	}
++
++	if ((m_nStoredMoveState == m_nMoveState || !IsPedInControl() || m_attachedTo) && !RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE))
++		return;
++#else
+ 	if (m_nStoredMoveState == m_nMoveState || !IsPedInControl() || m_attachedTo)
+ 		return;
++#endif
++
++
+ 
+ 	if (m_nMoveState == PEDMOVE_NONE) {
+ 		m_nStoredMoveState = PEDMOVE_NONE;
+@@ -1744,6 +1787,11 @@ CPed::ProcessBuoyancy(void)
+ 		bTouchingWater = false;
+ }
+ 
++/// <summary>
++/// Process control for the player.
++/// I have added crouching to this from the Extended Vice project.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::ProcessControl(void)
+ {
+@@ -1774,6 +1822,17 @@ CPed::ProcessControl(void)
+ 	bIsDrowning = false;
+ 	ProcessBuoyancy();
+ 
++	// Extended Vice
++#ifdef CROUCH
++	if (IsPlayer() && bIsDucking && (
++		((!IsPedInControl() && m_nPedState != PED_ROLL)) ||
++		GetWeapon()->GetInfo()->m_nWeaponSlot == WEAPONSLOT_HEAVY || GetWeapon()->m_eWeaponType == WEAPONTYPE_CHAINSAW)) {
++
++		ClearDuck();
++		bCrouchWhenShooting = false;
++	}
++#endif
++
+ 	if (m_nPedState != PED_ARRESTED) {
+ 		if (m_nPedState == PED_DEAD) {
+ 			DeadPedMakesTyresBloody();
+diff --git a/src/peds/Ped.h b/src/peds/Ped.h
+index 26cdf03f..09992527 100644
+--- a/src/peds/Ped.h
++++ b/src/peds/Ped.h
+@@ -329,6 +329,11 @@ enum PedState
+ 	PED_STAGGER,
+ 	PED_DIVE_AWAY,
+ 
++	// Extended Vice
++#ifdef CROUCH
++	PED_ROLL,
++#endif
++
+ 	PED_STATES_NO_ST,
+ 	PED_ENTER_TRAIN,
+ 	PED_EXIT_TRAIN,
+diff --git a/src/peds/PedAI.cpp b/src/peds/PedAI.cpp
+index e204dad9..fa67cb6b 100644
+--- a/src/peds/PedAI.cpp
++++ b/src/peds/PedAI.cpp
+@@ -5702,6 +5702,14 @@ CPed::DuckAndCover(void)
+ 				duckPos = duckAtRightSide;
+ 
+ 			if (CWorld::TestSphereAgainstWorld(duckPos, 0.5f, nil, true, true, true, false, false, false)) {
++
++#ifdef CROUCH // AI crouch
++				if (!bIsDucking) {
++					bCrouchWhenShooting = true;
++					SetDuck(10000, true);
++				}
++#endif
++
+ 				SetSeek(duckPos, 1.0f);
+ 				m_headingRate = 15.0f;
+ 				bIsRunning = true;
+@@ -5896,6 +5904,11 @@ CPed::GetLocalPositionToOpenCarDoor(CVehicle *veh, uint32 component, float seatP
+ void
+ CPed::SetDuck(uint32 time, bool sth)
+ {
++#ifdef CROUCH
++	if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE))
++		return;
++#endif
++
+ 	if (bIsDucking || CTimer::GetTimeInMilliseconds() <= m_duckTimer && !sth) {
+ 		if (sth && CTimer::GetTimeInMilliseconds() + time > m_duckTimer)
+ 			m_duckTimer = CTimer::GetTimeInMilliseconds() + time;
+@@ -5904,7 +5917,14 @@ CPed::SetDuck(uint32 time, bool sth)
+ 
+ 	CAnimBlendAssociation *duckAssoc;
+ 	if (bCrouchWhenShooting) {
++#ifdef CROUCH
++		duckAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++#else
+ 		duckAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_DUCK_WEAPON, 4.0f);
++#endif
++
++
++
+ 		duckAssoc->flags &= ~ASSOC_FADEOUTWHENDONE;
+ 		bIsDucking = true;
+ 		m_duckTimer = CTimer::GetTimeInMilliseconds() + time;
+@@ -5916,6 +5936,11 @@ CPed::SetDuck(uint32 time, bool sth)
+ 			m_duckTimer = CTimer::GetTimeInMilliseconds() + time;
+ 		}
+ 	}
++
++#ifdef CROUCH
++	if (IsPlayer())
++		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.6f;
++#endif
+ }
+ 
+ void
+@@ -5925,7 +5950,17 @@ CPed::Duck(void)
+ 		ClearDuck();
+ 	else if (bIsDucking && bCrouchWhenShooting) {
+ 		CWeaponInfo *weapon = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
+-		CAnimBlendAssociation *crouchAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_WEAPON);
++#ifdef CROUCH
++		CAnimBlendAssociation* crouchAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE);
++		CAnimBlendAssociation* crouchForwardAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_FORWARD);
++		CAnimBlendAssociation* curCrouchBackwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_BACKWARD);
++		CAnimBlendAssociation* curCrouchRollLeftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_ROLL_L);
++		CAnimBlendAssociation* curCrouchRollRightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_ROLL_R);
++		bool bIsCrouchAnims = crouchAnim || crouchForwardAnim || curCrouchBackwardAssoc || curCrouchRollLeftAssoc || curCrouchRollRightAssoc;
++#else
++		CAnimBlendAssociation* crouchAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_WEAPON);
++#endif
++
+ 		if (!crouchAnim) {
+ 			if(GetCrouchFireAnim(weapon))
+ 				crouchAnim = RpAnimBlendClumpGetAssociation(GetClump(), GetCrouchFireAnim(weapon));
+@@ -5934,7 +5969,13 @@ CPed::Duck(void)
+ 			if(GetCrouchReloadAnim(weapon))
+ 				crouchAnim = RpAnimBlendClumpGetAssociation(GetClump(), GetCrouchReloadAnim(weapon));
+ 		}
++
++#ifdef CROUCH
++		if (!bIsCrouchAnims && m_nPedState != PED_ROLL) {
++#else
+ 		if (!crouchAnim) {
++#endif
++		
+ 			bIsDucking = false;
+ #if defined FIX_BUGS || defined FREE_CAM
+ 			if (IsPlayer())
+@@ -5947,23 +5988,52 @@ CPed::Duck(void)
+ void
+ CPed::ClearDuck(bool clearTimer)
+ {
++#ifdef CROUCH
++	if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_IDLE))
++		return;
++
++	CAnimBlendAssociation* crouchForwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_FORWARD);
++	CAnimBlendAssociation* curCrouchBackwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_BACKWARD);
++#endif
++
+ 	CAnimBlendAssociation *animAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_DOWN);
+ 	if (!animAssoc) {
+ 		animAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_LOW);
+ 	}
++
+ 	if (!animAssoc) {
++#ifdef CROUCH
++		animAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE);
++#else
+ 		animAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_WEAPON);
++#endif
+ 	}
+ 
+ 	if (animAssoc) {
+ 		animAssoc->flags |= ASSOC_DELETEFADEDOUT;
+ 		animAssoc->blendDelta = -4.0f;
+ 	}
++#ifdef CROUCH
++	if (crouchForwardAssoc) {
++		crouchForwardAssoc->flags |= ASSOC_DELETEFADEDOUT;
++		crouchForwardAssoc->blendDelta = -5.0f;
++	}
++
++	if (curCrouchBackwardAssoc) {
++		curCrouchBackwardAssoc->flags |= ASSOC_DELETEFADEDOUT;
++		curCrouchBackwardAssoc->blendDelta = -5.0f;
++	}
++#endif
+ 	bIsDucking = false;
+ 
+ 	if (clearTimer) {
+ 		m_duckTimer = 0;
+ 	}
++
++#ifdef CROUCH
++	if (IsPlayer())
++		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.0f;
++#endif
+ }
+ 
+ void
+@@ -6610,8 +6680,14 @@ CPed::KillCharOnFootArmed(CVector &ourPos, CVector &targetPos, CVector &distWith
+ 			CAnimBlendAssociation* duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_DOWN);
+ 			if (!duckAnim)
+ 				duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_LOW);
++
+ 			if (!duckAnim)
+-				duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_WEAPON);
++#ifdef CROUCH
++			duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE);
++#else
++			duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_WEAPON);
++#endif
++
+ 
+ 			if (duckAnim) {
+ 				duckAnim->flags |= ASSOC_DELETEFADEDOUT;
+@@ -6897,8 +6973,14 @@ CPed::KillCharOnFootMelee(CVector &ourPos, CVector &targetPos, CVector &distWith
+ 			CAnimBlendAssociation* duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_DOWN);
+ 			if (!duckAnim)
+ 				duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_LOW);
++
++
+ 			if (!duckAnim)
++#ifdef CROUCH
++				duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE);
++#else
+ 				duckAnim = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DUCK_WEAPON);
++#endif
+ 
+ 			if (duckAnim) {
+ 				duckAnim->flags |= ASSOC_DELETEFADEDOUT;
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index 43ded57a..9ea7cd4f 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -262,6 +262,12 @@ CPed::SetAttack(CEntity *victim)
+ 	if (victim && victim->IsPed())
+ 		victimPed = (CPed*)victim;
+ 
++
++#ifdef CROUCH
++		if (bIsDucking && (GetWeapon()->GetInfo()->m_nWeaponSlot == WEAPONSLOT_PROJECTILE || GetWeapon()->m_eWeaponType == WEAPONTYPE_DETONATOR))
++			ClearDuck();
++	#endif
++
+ 	if (m_attackTimer > CTimer::GetTimeInMilliseconds() || m_nWaitState == WAITSTATE_SURPRISE || (bIsDucking && !bCrouchWhenShooting))
+ 		return;
+ 
+@@ -517,7 +523,13 @@ CPed::FinishedAttackCB(CAnimBlendAssociation *attackAssoc, void *arg)
+ 			}
+ 			if (GetCrouchFireAnim(currentWeapon) && attackAssoc) {
+ 				if (attackAssoc->animId == GetCrouchFireAnim(currentWeapon) && !reloadAnimAssoc) {
++
++#ifdef CROUCH
++					newAnim = CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++#else
+ 					newAnim = CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_DUCK_WEAPON, 8.0f);
++#endif
++					
+ 					newAnim->SetCurrentTime(newAnim->hierarchy->totalLength);
+ 					newAnim->flags &= ~ASSOC_RUNNING;
+ 				}
+@@ -539,7 +551,11 @@ CPed::FinishedAttackCB(CAnimBlendAssociation *attackAssoc, void *arg)
+ 		}
+ 		if (GetCrouchFireAnim(currentWeapon) && attackAssoc) {
+ 			if (attackAssoc->animId == GetCrouchFireAnim(currentWeapon) && !reloadAnimAssoc) {
++#ifdef CROUCH
++				newAnim = CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++#else
+ 				newAnim = CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_DUCK_WEAPON, 8.0f);
++#endif
+ 				newAnim->SetCurrentTime(newAnim->hierarchy->totalLength);
+ 				newAnim->flags &= ~ASSOC_RUNNING;
+ 			}
+@@ -598,7 +614,11 @@ CPed::FinishedReloadCB(CAnimBlendAssociation *reloadAssoc, void *arg)
+ 		}
+ 		if (weapon->IsFlagSet(WEAPONFLAG_RELOAD) && reloadAssoc) {
+ 			if (reloadAssoc->animId == GetCrouchReloadAnim(weapon) && !crouchFireAssoc) {
++#ifdef CROUCH
++				CAnimBlendAssociation* crouchAssoc = CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++#else
+ 				CAnimBlendAssociation *crouchAssoc = CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_DUCK_WEAPON, 8.0f);
++#endif
+ 				crouchAssoc->SetCurrentTime(crouchAssoc->hierarchy->totalLength);
+ 				crouchAssoc->flags &= ~ASSOC_RUNNING;
+ 			}
+@@ -1068,6 +1088,11 @@ CPed::StartFightAttack(uint8 buttonPressure)
+ 		return;
+ 	}
+ 
++#ifdef CROUCH
++if (IsPlayer() && bIsDucking)
++	ClearDuck();
++#endif
++
+ 	if (m_nPedState != PED_AIM_GUN)
+ 		SetStoredState();
+ 
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index 87cd107a..f7e317f2 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -200,6 +200,131 @@ CPlayerPed::ReactivatePlayerPed(int32 index)
+ 	CWorld::Add(CWorld::Players[index].m_pPed);
+ }
+ 
++#ifdef CROUCH
++void CPlayerPed::ProcessCrouch(void)
++{
++	if (!bIsDucking)
++		return;
++
++	CAnimBlendAssociation* curCrouchIdleAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_IDLE);
++	CAnimBlendAssociation* curCrouchForwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_FORWARD);
++	CAnimBlendAssociation* curCrouchBackwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_BACKWARD);
++	CAnimBlendAssociation* curCrouchRollLeftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_ROLL_L);
++	CAnimBlendAssociation* curCrouchRollRightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_ROLL_R);
++	bool bIsCurRollAnim = curCrouchRollLeftAssoc || curCrouchRollRightAssoc;
++	bool bIsCurMoveAnim = curCrouchForwardAssoc || curCrouchBackwardAssoc;
++
++	CAnimBlendAssociation* curCrouchFireAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_WEAPON_CROUCHFIRE);
++
++	CPad* pad = GetPadFromPlayer(this);
++	int16 padUpDown = pad->GetPedWalkUpDown();
++	int16 padLeftRight = pad->GetPedWalkLeftRight();
++
++	if (curCrouchForwardAssoc)
++		curCrouchForwardAssoc->speed = Clamp(m_fMoveSpeed - 0.5f, 0.5f, 1.0f);
++
++	if (curCrouchBackwardAssoc)
++		curCrouchBackwardAssoc->speed = Clamp(m_fMoveSpeed - 0.5f, 0.5f, 1.0f);
++
++	if (m_nPedState == PED_ROLL)
++	{
++		if (!bIsCurRollAnim)
++			RestorePreviousState();
++
++		return;
++	}
++
++	// TODO Re-enable these once I get the FIRING_AND_AIMING define and FIRST_PERSON complete from the Extended Vice project
++	 if (bIsPlayerAiming && GetWeapon()->GetInfo()->m_nWeaponSlot == WEAPONSLOT_SNIPER)
++	 	return;
++
++	 if (bIsPlayerAiming || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++	 	TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.4f;
++
++	 	if ((m_fMoveSpeed < 0.1f || (padLeftRight != 0 && padUpDown == 0)) && !curCrouchIdleAssoc && !bIsCurRollAnim || m_nPedState == PED_ROLL)
++	 		curCrouchIdleAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++
++	 	if (pad->GetTarget() && m_fMoveSpeed > 0.1f && (!curCrouchIdleAssoc || curCrouchIdleAssoc && curCrouchIdleAssoc->blendAmount >= 1.0f) && !bIsCurMoveAnim && !bIsCurRollAnim && 
++	 		(padLeftRight < -20 || padLeftRight > 20)) {
++
++	 		if (curCrouchForwardAssoc)
++	 			delete curCrouchForwardAssoc;
++
++	 		if (curCrouchBackwardAssoc)
++	 			delete curCrouchBackwardAssoc;
++
++	 		if (curCrouchFireAssoc) {
++	 			delete curCrouchFireAssoc;
++	 			ClearWeaponTarget();
++	 		}
++
++	 		float angleToFace;
++	 		angleToFace = CGeneral::GetRadianAngleBetweenPoints(
++	 			GetPosition().x - TheCamera.GetRight().x, GetPosition().y - TheCamera.GetRight().y,
++	 			GetPosition().x, GetPosition().y);
++	 		angleToFace = CGeneral::LimitRadianAngle(angleToFace);
++	 		m_fRotationCur = CGeneral::LimitRadianAngle(m_fRotationCur);
++	 		m_fRotationCur = angleToFace;
++
++	 		bDontAllowWeaponChange = true;
++
++	 		SetPedState(PED_ROLL);
++
++	 		delete curCrouchIdleAssoc;
++
++	 		if (padLeftRight < 0) {
++	 			curCrouchRollLeftAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_ROLL_L, 4.0f);
++	 			curCrouchRollLeftAssoc->SetFinishCallback(FinishRollCB, this);
++	 		} else if (padLeftRight > 0) {
++	 			curCrouchRollRightAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_ROLL_R, 4.0f);
++	 			curCrouchRollRightAssoc->SetFinishCallback(FinishRollCB, this);
++	 		}
++
++	 		return;
++	 	}
++
++	 	if (m_fMoveSpeed > 0.1 && !bIsCurRollAnim) {
++	 		if (padUpDown != 0) {
++	 			if (padUpDown < 0) {
++	 				if (!curCrouchForwardAssoc)
++	 					curCrouchForwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_FORWARD, 4.0f);
++	 			} else if (padUpDown > 0) {
++	 				if (!curCrouchBackwardAssoc)
++	 					curCrouchBackwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_BACKWARD, 4.0f);
++	 			}
++	 		}
++	 	}
++	 } else if (pad) {
++	 	if (m_fMoveSpeed < 0.1f) {
++	 		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.6f;
++		
++	 		if (!curCrouchIdleAssoc)
++	 			curCrouchIdleAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++	 	}
++
++	 	if (m_fMoveSpeed > 0.1f) {
++	 		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.3f;
++
++	 		if (curCrouchIdleAssoc && !curCrouchForwardAssoc || curCrouchBackwardAssoc)
++	 			curCrouchForwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_FORWARD, 4.0f);
++	 	}
++	 }
++}
++
++void CPlayerPed::FinishRollCB(CAnimBlendAssociation* assoc, void* arg)
++{
++	assoc->blendDelta = -1000.0f;
++
++	bDontAllowWeaponChange = false;
++
++	CPlayerPed* ped = (CPlayerPed*)arg;
++
++	CAnimManager::BlendAnimation(ped->GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 1000.0f);
++}
++#endif
++
++
++// Hmm I could mess with this a bit for the stamina.
+ void
+ CPlayerPed::UseSprintEnergy(void)
+ {
+@@ -315,6 +440,15 @@ CPlayerPed::SetInitialState(void)
+ void
+ CPlayerPed::SetRealMoveAnim(void)
+ {
++
++#ifdef CROUCH
++	if (bIsDucking) {
++		ProcessCrouch();
++
++		return;
++	}
++#endif
++
+ 	CAnimBlendAssociation *curWalkAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_WALK);
+ 	CAnimBlendAssociation *curRunAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_RUN);
+ 	CAnimBlendAssociation *curSprintAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_RUNFAST);
+@@ -916,6 +1050,15 @@ CPlayerPed::PlayerControl1stPersonRunAround(CPad *padUsed)
+ 
+ 		ClearAttack();
+ 		ClearWeaponTarget();
++
++#ifdef CROUCH
++		if (bIsDucking) {
++			ClearDuck();
++
++			return;
++		}
++#endif
++
+ 		if (m_nEvadeAmount != 0 && m_pEvadingFrom) {
+ 			SetEvasiveDive((CPhysical*)m_pEvadingFrom, 1);
+ 			m_nEvadeAmount = 0;
+@@ -1664,6 +1807,11 @@ CPlayerPed::FindNewAttackPoints(void)
+ void
+ CPlayerPed::ProcessControl(void)
+ {
++#ifdef CROUCH
++	if (!bIsDucking && TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ != 0.0f)
++		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.0f;
++#endif
++
+ 	// Mobile has some debug/abandoned cheat thing in here: "gbFrankenTommy"
+ 
+ 	if (m_nEvadeAmount != 0)
+@@ -1784,6 +1932,19 @@ CPlayerPed::ProcessControl(void)
+ 	if (bIsLanding)
+ 		RunningLand(padUsed);
+ 
++#ifdef CROUCH
++	if (m_nPedState == PED_ROLL && !bIsStanding) {
++		RestorePreviousState();
++	
++		ClearDuck();
++	}
++	
++	if (m_nPedState == PED_ROLL && !RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_ROLL_L) && !RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CROUCH_ROLL_R)) {
++		SetRealMoveAnim();
++	}
++#endif
++
++
+ 	if (padUsed && padUsed->WeaponJustDown() && !TheCamera.Using1stPersonWeaponMode()) {
+ 		// ...Really?
+ 		eWeaponType playerWeapon = FindPlayerPed()->GetWeapon()->m_eWeaponType;
+@@ -1794,6 +1955,8 @@ CPlayerPed::ProcessControl(void)
+ 		}
+ 	}
+ 
++
++
+ 	switch (m_nPedState) {
+ 		case PED_NONE:
+ 		case PED_IDLE:
+@@ -1959,7 +2122,12 @@ CPlayerPed::ProcessControl(void)
+ 	}
+ 
+ 	if (bDontAllowWeaponChange && FindPlayerPed() == this) {
++#ifdef CROUCH
++		if (!CPad::GetPad(0)->GetTarget() && m_nPedState != PED_ROLL)
++#else
+ 		if (!CPad::GetPad(0)->GetTarget())
++#endif
++
+ 			bDontAllowWeaponChange = false;
+ 	}
+ 
+diff --git a/src/peds/PlayerPed.h b/src/peds/PlayerPed.h
+index 30b67199..2dd4c09e 100644
+--- a/src/peds/PlayerPed.h
++++ b/src/peds/PlayerPed.h
+@@ -105,6 +105,12 @@ public:
+ 	void SetNearbyPedsToInteractWithPlayer(void);
+ 	void UpdateMeleeAttackers(void);
+ 
++#ifdef CROUCH
++	void ProcessCrouch(void);
++
++	static void FinishRollCB(CAnimBlendAssociation* assoc, void* arg);
++#endif
++
+ 	static void SetupPlayerPed(int32);
+ 	static void DeactivatePlayerPed(int32);
+ 	static void ReactivatePlayerPed(int32);
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index 38afc86a..2927cea2 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -224,6 +224,9 @@ RwTexture *gpLaserSightTex;
+ RwTexture *gpLaserDotTex;
+ RwTexture *gpViewFinderTex;
+ 
++/// <summary>
++/// Draw most hud textures, these can be turned off such as the money on the screen by commenting out the code.
++/// </summary>
+ void CHud::Draw()
+ {
+ 	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERNEAREST);
+@@ -420,7 +423,8 @@ void CHud::Draw()
+ 		wchar sPrintIcon[16];
+ 		char sTemp[16];
+ 		float alpha;
+-
++		
++		// TODO Add a toggle option for this.
+ 		if (m_LastDisplayScore == CWorld::Players[CWorld::PlayerInFocus].m_nVisibleMoney) {
+ 			alpha = DrawFadeState(HUD_SCORE_FADING, 0);
+ 		} else {
+@@ -453,6 +457,7 @@ void CHud::Draw()
+ 		/*
+ 			DrawAmmo
+ 		*/
++		// TODO Add a toggle option for this.
+ 		if (m_LastWeapon == playerPed->GetWeapon()->m_eWeaponType) {
+ 			alpha = CHud::DrawFadeState(HUD_WEAPON_FADING, 0);
+ 		} else {
+@@ -488,6 +493,7 @@ void CHud::Draw()
+ 				DrawWeaponIcon
+ 			*/
+ 
++			// TODO Add a toggle option for this.
+ 			if (FrontEndMenuManager.m_PrefsShowHud) {
+ 				if (weaponInfo->m_nModelId <= 0) {
+ 					RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
+@@ -554,6 +560,7 @@ void CHud::Draw()
+ 		/*
+ 			DrawHealth
+ 		*/
++		// TODO Add a toggle option for this.
+ 		if ( m_LastTimeEnergyLost == CWorld::Players[CWorld::PlayerInFocus].m_nTimeLastHealthLoss ) {
+ 			CHud::DrawFadeState(HUD_ENERGY_FADING, 0);
+ 		} else {
+@@ -603,6 +610,7 @@ void CHud::Draw()
+ 			/*
+ 				DrawArmour
+ 			*/
++			// TODO Add a toggle option for this.
+ 			if (m_ItemToFlash == ITEM_ARMOUR && FRAMECOUNTER & 8 || m_ItemToFlash != ITEM_ARMOUR) {
+ 				CFont::SetScale(SCREEN_SCALE_X(HUD_TEXT_SCALE_X), SCREEN_SCALE_Y(HUD_TEXT_SCALE_Y));
+ 				if (playerPed->m_fArmour > 1.0f) {
+@@ -1968,6 +1976,11 @@ void CHud::SetMessage(wchar *message)
+ 	m_Message[i] = 0;
+ }
+ 
++/// <summary>
++/// Display a pager message on the screen.
++/// Only in use on Pager.cpp
++/// </summary>
++/// <param name="message"></param>
+ void CHud::SetPagerMessage(wchar *message)
+ {
+ 	int i = 0;
+@@ -1980,11 +1993,21 @@ void CHud::SetPagerMessage(wchar *message)
+ 	m_PagerMessage[i] = 0;
+ }
+ 
++/// <summary>
++/// Set the name of the vehicle for the hud.
++/// Seems to only be in use in User.cpp.
++/// </summary>
++/// <param name="name"></param>
+ void CHud::SetVehicleName(wchar *name)
+ {
+ 	m_VehicleName = name;
+ }
+ 
++/// <summary>
++/// Set the name of the zone for the hud.
++/// Seems to only be in use in User.cpp.
++/// </summary>
++/// <param name="name"></param>
+ void CHud::SetZoneName(wchar *name)
+ {
+ 	m_pZoneName = name;
+@@ -2015,6 +2038,13 @@ void CHud::Shutdown()
+ 	CTxdStore::RemoveTxdSlot(HudTXD);
+ }
+ 
++/// <summary>
++/// Draw the fade state for when the wanted stars are flashing,
++/// the health, money, and weapons are fading also.
++/// </summary>
++/// <param name="fadingElement"></param>
++/// <param name="forceFadingIn"></param>
++/// <returns></returns>
+ float CHud::DrawFadeState(DRAW_FADE_STATE fadingElement, int forceFadingIn)
+ {
+ 	float alpha = 255.0f;
+@@ -2118,6 +2148,11 @@ float CHud::DrawFadeState(DRAW_FADE_STATE fadingElement, int forceFadingIn)
+ 	return Clamp(alpha, 0.0f, 255.0f);
+ }
+ 
++/// <summary>
++/// This gets called right after the wasted screen.
++/// I'm quite sure it removes the wasted text off of the screen.
++/// </summary>
++/// <param name=""></param>
+ void
+ CHud::ResetWastedText(void)
+ {
+-- 
+2.45.1.windows.1
+

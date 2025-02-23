@@ -1,0 +1,178 @@
+From a3177197b8aa353dcb579c5d64da18389f9e2f62 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 15 Jan 2025 02:48:57 -0500
+Subject: [PATCH 12/42] Add linux premake, Mac OS premake, and FreeBSD premake
+ to readme.
+
+---
+ README.md | 140 ++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 137 insertions(+), 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 3599fb6f..5645e5b7 100644
+--- a/README.md
++++ b/README.md
+@@ -106,8 +106,49 @@ When using premake, you may want to point GTA_VC_RE_DIR environment variable to
+ Clone the repository with `git clone --recursive -b miami https://github.com/halpz/re3.git reVC`. Then `cd reVC` into the cloned repository.
+ 
+ <details><summary>Linux Premake</summary>
++Here is a link to the original wiki that this build guide was hosted on.
++<a href=https://web.archive.org/web/20201221051726/https://github.com/GTAmodding/re3/wiki/Building-on-Linux> Archive.org link for below guide </a>
+ 
+-For Linux using premake, proceed: [Building on Linux](https://github.com/GTAmodding/re3/wiki/Building-on-Linux)
++For Linux using premake:
++This wiki page shows how to build re3 on various Linux distros. 
++
++Tested on x86, x86_64, arm64 architectures, and GCC 7.5.0, 8.3.0, clang 10.0 compilers. In case of issues, fill an issue on github to be reviewed by one of the re3 developers.
++
++You need libraries and headers of;
++
++    openal / libopenal-dev
++    GLEW / libglew-dev (i386 unavailable on apt after Ubuntu 19.10)
++    glfw / libglfw3-dev (min. 3.3 is required, i386 unavailable on apt after Ubuntu 19.10)
++    libsndfile1-dev (Caution: install this before libmpg123-dev)
++    libmpg123-dev
++
++and compilers set up, i.e. for Ubuntu you should install build-essential.
++Steps
++
++    Run $ git clone --recursive https://github.com/GTAmodding/re3.git to clone the project to your PC
++
++    Enter the newly created re3 directory;
++        If you're on x86/x86_64, run $ premake5Linux --with-librw gmake2.
++        If you're on i.e. arm/arm64, you need to build your own premake5 from source. Then you can proceed to running premake5 with --with-librw gmake2 arguments.
++
++    Enter the build directory and run $ make help to see a help message with supported build configurations and architectures.
++
++    Compile librw and re3 by running $ make config=(your configuration goes here). If you want you can change compiler with setting CC and CXX.
++
++    In case you didn't copy some of the required gamefiles, copy all content from re3/gamefiles/ to the game root directory
++
++    (If you didn't set GTA_III_RE_DIR env. variable) Revisit the re3 directory, go to bin and find the appropriate re3 binary you just compiled, and copy it to your game folder with GTA3 inside
++
++    Play the game by running $ ./re3
++
++You can expect poor performance if you're not using Nvidia/AMD drivers. (At least it was in my case with my iGPU)
++
++Remember that re3 is an actively developed project which doesn't have a final version, so in case you'd like to get the game updated you have to reproduce the steps above.
++
++Struct sizes are different then on Windows, so don't enable validating struct sizes. Needlesly to say, your previous savegames will be incompatible.
++
++
++<!-- For Linux using premake, proceed: [Building on Linux](https://github.com/GTAmodding/re3/wiki/Building-on-Linux) -->
+ 
+ </details>
+ 
+@@ -124,14 +165,107 @@ conan build .. -if build -bf build -pf package
+ </details>
+ 
+ <details><summary>MacOS Premake</summary>
++Here is a link to the original wiki that this build guide was hosted on.
++<a href=https://web.archive.org/web/20210903085120/https://github.com/GTAmodding/re3/wiki/Building-on-MacOS> Archive.org link for below guide </a>
++
++
++For MacOS using premake (I don't have a Mac so I can't test this.):
++
++This wiki page shows how to build re3 on AMD64 and ARM64 Macs. 
++
++In case of issues, fill an issue on github to be reviewed by one of the re3 developers.
++
++You need libraries and headers of;
++
++    openal
++    glfw (min. 3.3 is required)
++    mpg123
++
++to be installed via Homebrew or MacPorts.
++Steps
++
++    Copy all the game contents to another directory. GTA Mac versions are packaged inside some kind of Wine wrapper, make sure you only copy the game directory's itself which should be something like "~/Library/Application Support/Steam/steamapps/common/grand theft auto iii/Grand Theft Auto III.app/Contents/Resources/transgaming/c_drive/Program Files/Rockstar Games/Grand Theft Auto III".
++
++    Switch to another directory which you will use for building premake5, and build your own premake5 from source (Not explained in this tutorial).
++
++    Switch to a directory you want to use for building re3, and run $ git clone --recursive https://github.com/GTAmodding/re3.git to clone the project to your PC.
++
++    Enter the newly created re3 directory.
+ 
+-For MacOS using premake, proceed: [Building on MacOS](https://github.com/GTAmodding/re3/wiki/Building-on-MacOS)
++    Move premake5 binary to here, and run it with --with-librw gmake2 arguments.
++
++    Enter the build directory and run $ make help to see a help message with supported build configurations and architectures. As of now, refer to one of the available configurations:
++        debug_macosx-arm64-librw_gl3_glfw-oal (for Apple ARM CPU)
++        release_macosx-arm64-librw_gl3_glfw-oal
++        debug_macosx-amd64-librw_gl3_glfw-oal (for Intel CPU)
++        release_macosx-amd64-librw_gl3_glfw-oal
++
++    Compile librw and re3 by running $ make config=(your configuration goes here). If you want you can change compiler with setting CC and CXX.
++
++    In case you didn't copy some of the required gamefiles, copy all content from re3/gamefiles/ to the game directory you just copied from Steam files.
++    Beware: You should select "Replace" if MacOS asks you what it should do with existing files.
++
++    (If you didn't set GTA_III_RE_DIR env. variable) Revisit the re3 directory, go to bin and find the appropriate re3 binary you just compiled, and copy it to your game folder with GTA3 inside.
++
++    If the resulting binary has ".app" extension, remove it.
++
++    Give re3 binary "executable" permission, and use xattr to remove "quarantine" extended attribute, game won't run without:
++
++    sudo chmod a+x re3
++    sudo xattr -r -d com.apple.quarantine re3
++
++    Play the game by running $ ./re3
++
++You can expect poor performance on intermediate resolutions, since there is some unknown scaling going on under the hood.
++
++Remember that re3 is an actively developed project which doesn't have a final version, so in case you'd like to get the game updated you have to reproduce the steps above.
+ 
+ </details>
+ 
+ <details><summary>FreeBSD</summary>
++Here is a link to the original wiki that this build guide was hosted on.
++<a href=https://web.archive.org/web/20210904123935/https://github.com/GTAmodding/re3/wiki/Building-on-FreeBSD> Archive.org link for below guide </a>
++
++For FreeBSD using premake:
++
++
++This wiki page shows how to build re3 on FreeBSD on a amd64/x86_64 system. 
++
++Tested on FreeBSD 12.2-RELEASE. Building on different architectures has not been tested and you might have to rely on adjusting the packages and code yourself. 
++
++In case of issues, fill an issue on github to be reviewed by one of the re3 developers.
++
++    Get the required packages by either building them in the /usr/ports directory or installing them via pkg:
++
++    $ pkg install git premake5 gmake glfw glew openal-soft mpg123 libsndfile libsysinfo
++
++    Disclaimer: you need to get premake5, there are also other premake versions available, only premake5 is supported. You will also need GNU make and not the built-in BSD make. (Library libsndfile is optional.)
++
++    Run $ git clone --recursive https://github.com/GTAmodding/re3.git to clone the project to your PC
++
++    Enter the newly created re3 directory and run $ premake5 --with-librw gmake2, remember to use premake5 you either have built in /usr/ports or installed it via pkg
++
++    Enter the build directory and run $ gmake help to see a help message with supported build configurations. As of now, refer to one of the available configurations:
++        debug_bsd-x86-librw_gl3_glfw-oal
++        debug_bsd-amd64-librw_gl3_glfw-oal
++        debug_bsd-arm-librw_gl3_glfw-oal
++        debug_bsd-arm64-librw_gl3_glfw-oal
++        release_bsd-x86-librw_gl3_glfw-oal
++        release_bsd-arm-librw_gl3_glfw-oal
++        release_bsd-arm64-librw_gl3_glfw-oal
++
++    Compile librw and re3 by running $ gmake CC=clang CXX=clang++ config=(your configuration goes here)
++
++    In case you didn't copy some of the required gamefiles, copy all content from re3/gamefiles/ to the game root directory
++
++    (If you didn't set GTA_III_RE_DIR env. variable) Revisit the re3 directory, go to bin and find the appropriate re3 binary you just compiled, and copy it to your game folder with GTA3 inside
++
++    Play the game by running $ ./re3
++
++Remember that re3 is an actively developed project which doesn't have a final version, so in case you'd like to get the game updated you have to reproduce the steps above.
++
+ 
+-For FreeBSD using premake, proceed: [Building on FreeBSD](https://github.com/GTAmodding/re3/wiki/Building-on-FreeBSD)
++<!-- For FreeBSD using premake, proceed: [Building on FreeBSD](https://github.com/GTAmodding/re3/wiki/Building-on-FreeBSD) -->
+ 
+ </details>
+ 
+-- 
+2.45.1.windows.1
+

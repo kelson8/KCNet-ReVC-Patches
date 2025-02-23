@@ -1,0 +1,487 @@
+From 63aad100930c82721fcf4c3d2e5e7ae656802b7a Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Feb 2025 03:09:27 -0500
+Subject: [PATCH 38/42] Fix the invincibility cheat to work. Document some
+ functions in Pad.cpp. Add bInvincibleCheat in Pad under ResetCheats.
+
+---
+ src/core/Pad.cpp                         | 139 +++++++++++++++++++++++
+ src/core/PlayerInfo.cpp                  |   7 ++
+ src/core/config.h                        |   3 +
+ src/extras/test/cheats/custom_cheats.cpp |   4 +-
+ src/peds/PlayerPed.cpp                   |   4 +
+ 5 files changed, 155 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 106ef359..930a7e95 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -104,6 +104,10 @@ extern bool gbFastTime;
+ extern bool gGravityCheat;
+ #endif
+ 
++/////////////////////
++// Begin Cheats
++/////////////////////
++
+ void SpecialCarCheats()
+ {
+ 	if ( !CVehicle::bCheat9 )
+@@ -180,6 +184,10 @@ void PickUpChicksCheat()
+ 	}
+ }
+ 
++/// <summary>
++/// Give the player brass knuckles, baseball bat, molotovs,
++/// a colt45 pistol, a regular shotgun, tec9, ruger, sniper, and flamethrower.
++/// </summary>
+ void WeaponCheat1()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT2"), true);
+@@ -221,6 +229,9 @@ void WeaponCheat1()
+ #endif
+ }
+ 
++/// <summary>
++/// Give the player a Katana, Grenades, Denenator grenades, Pistol, Stubby shotgun, M4, and Rocket Launcher
++/// </summary>
+ void WeaponCheat2()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT2"), true);
+@@ -265,6 +276,10 @@ void WeaponCheat2()
+ #endif
+ }
+ 
++/// <summary>
++/// Give the player a chainsaw, grenades, python pistol, spas12 shotgun,
++/// mp5, m4, and a minigun.
++/// </summary>
+ void WeaponCheat3()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT2"), true);
+@@ -310,6 +325,9 @@ void WeaponCheat3()
+ #endif
+ }
+ 
++/// <summary>
++/// Give the player max health, also give their vehicle max health if in it.
++/// </summary>
+ void HealthCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT3"), true);
+@@ -325,6 +343,11 @@ void HealthCheat()
+ }
+ 
+ // TODO(Miami): this is HELLA different on mobile, although it mostly has debug oriented things like player exiting it's current car and enters spawned one etc.
++/// <summary>
++/// Spawn vehicle cheat.
++/// TODO Figure out the difference in this one and mine in vehicle_functions.cpp.
++/// </summary>
++/// <param name="model"></param>
+ void VehicleCheat(int model)
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -362,6 +385,9 @@ void VehicleCheat(int model)
+ }
+ 
+ 
++/// <summary>
++/// Blow up all cars
++/// </summary>
+ void BlowUpCarsCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -373,6 +399,9 @@ void BlowUpCarsCheat()
+ 	}
+ }
+ 
++/// <summary>
++/// Change the player skin.
++/// </summary>
+ void ChangePlayerCheat()
+ {
+ 	// I don't know wtf is going on in here...
+@@ -404,6 +433,10 @@ void ChangePlayerCheat()
+ 	}
+ }
+ 
++/// <summary>
++/// Change the player model
++/// </summary>
++/// <param name="name"></param>
+ void ChangePlayerModel(const char* name) {
+ 	if (!FindPlayerVehicle()) {
+ 		FindPlayerPed()->Undress(name);
+@@ -412,6 +445,9 @@ void ChangePlayerModel(const char* name) {
+ 	}
+ }
+ 
++/// <summary>
++/// Toggle the mayhem cheat, everyone will hate the player and I'm quite sure everybody else.
++/// </summary>
+ void MayhemCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -425,6 +461,9 @@ void MayhemCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// Make everyone against the player and fight them.
++/// </summary>
+ void EverybodyAttacksPlayerCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -435,6 +474,9 @@ void EverybodyAttacksPlayerCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// Give weapons to all peds.
++/// </summary>
+ void WeaponsForAllCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -443,6 +485,9 @@ void WeaponsForAllCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// Faster time.
++/// </summary>
+ void FastTimeCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -450,6 +495,9 @@ void FastTimeCheat()
+ 		CTimer::SetTimeScale(CTimer::GetTimeScale() * 2.0f);
+ }
+ 
++/// <summary>
++/// Slower time.
++/// </summary>
+ void SlowTimeCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -457,66 +505,108 @@ void SlowTimeCheat()
+ 		CTimer::SetTimeScale(CTimer::GetTimeScale() * 0.5f);
+ }
+ 
++/// <summary>
++/// Give the player $250,000
++/// </summary>
+ void MoneyCheat()
+ {
+ 	CWorld::Players[CWorld::PlayerInFocus].m_nMoney += 250000;
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT6"), true);
+ }
+ 
++/// <summary>
++/// Give the player max armor
++/// </summary>
+ void ArmourCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT4"), true);
+ 	FindPlayerPed()->m_fArmour = CWorld::Players[0].m_nMaxArmour;
+ }
+ 
++/// <summary>
++/// This originally gave the player two wanted stars, I changed it to give one at a time..
++/// </summary>
+ void WantedLevelUpCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
++
++#ifdef CUSTOM_CODE
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(1, 6));
++#else
+ 	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 2, 6));
++#endif // CUSTOM_CODE
+ }
+ 
++/// <summary>
++/// Clear the players wanted level.
++/// </summary>
+ void WantedLevelDownCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
+ 	FindPlayerPed()->m_pWanted->CheatWantedLevel(0);
+ }
+ 
++//******** Weather cheats ********/
++
++/// <summary>
++/// Sets the weather to sunny.
++/// </summary>
+ void SunnyWeatherCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT7"), true);
+ 	CWeather::ForceWeatherNow(WEATHER_SUNNY);
+ }
+ 
++/// <summary>
++/// Sets the weather to extra sunny.
++/// </summary>
+ void ExtraSunnyWeatherCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT7"), true);
+ 	CWeather::ForceWeatherNow(WEATHER_EXTRA_SUNNY);
+ }
+ 
++/// <summary>
++/// Sets the weather to cloudy.
++/// </summary>
+ void CloudyWeatherCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT7"), true);
+ 	CWeather::ForceWeatherNow(WEATHER_CLOUDY);
+ }
+ 
++/// <summary>
++/// Sets the weather to rainy.
++/// </summary>
+ void RainyWeatherCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT7"), true);
+ 	CWeather::ForceWeatherNow(WEATHER_RAINY);
+ }
+ 
++/// <summary>
++/// Sets the weather to foggy.
++/// </summary>
+ void FoggyWeatherCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT7"), true);
+ 	CWeather::ForceWeatherNow(WEATHER_FOGGY);
+ }
+ 
++/// <summary>
++/// Sets fast time, this was never implemented.
++/// </summary>
+ void FastWeatherCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 	gbFastTime = !gbFastTime;
+ }
+ 
++//******** End weather cheats ********/
++
++/// <summary>
++/// Make all cars invisible except for the wheels.
++/// </summary>
+ void OnlyRenderWheelsCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -525,6 +615,9 @@ void OnlyRenderWheelsCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// Not sure what this one is doing.
++/// </summary>
+ void ChittyChittyBangBangCheat()
+ {
+ #ifdef BETTER_ALLCARSAREDODO_CHEAT
+@@ -537,6 +630,9 @@ void ChittyChittyBangBangCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
+ void StrongGripCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -545,6 +641,9 @@ void StrongGripCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
+ void FannyMagnetCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -552,6 +651,9 @@ void FannyMagnetCheat()
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// Set all traffic to the color black.
++/// </summary>
+ void BlackCarsCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -559,6 +661,9 @@ void BlackCarsCheat()
+ 	gbPinkCars = false;
+ }
+ 
++/// <summary>
++/// Set all traffic to the color pink.
++/// </summary>
+ void PinkCarsCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -566,24 +671,38 @@ void PinkCarsCheat()
+ 	gbPinkCars = true;
+ }
+ 
++/// <summary>
++/// Make all traffic lights green.
++/// </summary>
+ void TrafficLightsCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 	CTrafficLights::bGreenLightsCheat = true;
+ }
+ 
++/// <summary>
++/// Make all the peds bad drivers.
++/// </summary>
+ void MadCarsCheat()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 	CCarCtrl::bMadDriversCheat = true;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void NoSeaBedCheat(void)
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 	CWaterLevel::m_bRenderSeaBed = !CWaterLevel::m_bRenderSeaBed;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void RenderWaterLayersCheat(void)
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -591,6 +710,10 @@ void RenderWaterLayersCheat(void)
+ 			CWaterLevel::m_nRenderWaterLayers = 0;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void BackToTheFuture(void)
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -598,9 +721,16 @@ void BackToTheFuture(void)
+ 	CPad::bHasPlayerCheated = true;
+ }
+ 
++/// <summary>
++/// Kill the player.
++/// </summary>
++/// <param name=""></param>
+ void SuicideCheat(void) {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 	FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++#ifdef CUSTOM_CODE
++	FindPlayerPed()->m_fArmour = 0;
++#endif //CUSTOM_CODE
+ }
+ 
+ void DoChicksWithGunsCheat(void) {
+@@ -672,6 +802,11 @@ void WallClimbingCheat(void)
+ }
+ #endif
+ 
++
++/////////////////////
++// End Cheats
++/////////////////////
++
+ void FlyingFishCheat(void)
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+@@ -3442,6 +3577,10 @@ void CPad::ResetCheats(void)
+ 	CPed::bFannyMagnetCheat = false;
+ 	CPed::bPedCheat3 = false;
+ 
++#ifdef INVINCIBLE_CHEAT
++	CPlayerPed::bInvincibleCheat = false;
++#endif //INVINCIBLE_CHEAT
++
+ }
+ 
+ char *CPad::EditString(char *pStr, int32 nSize)
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index 8f7d81c8..2aca3c7f 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -327,7 +327,14 @@ CPlayerInfo::Process(void)
+ 				if (!surfaceBelowVeh || !CBridge::ThisIsABridgeObjectMovingUp(surfaceBelowVeh->GetModelIndex())) {
+ 					CVehicle *veh = m_pPed->m_pMyVehicle;
+ 					if (!veh->IsBoat() || veh->m_nDoorLock == CARLOCK_LOCKED_PLAYER_INSIDE) {
++						
++						
++#ifdef INVINCIBLE_CHEAT
++						if ((veh->GetStatus() != STATUS_WRECKED || m_pPed->bInvincibleCheat) && veh->GetStatus() != STATUS_TRAIN_MOVING && veh->m_nDoorLock != CARLOCK_LOCKED_PLAYER_INSIDE) {
++#else
+ 						if (veh->GetStatus() != STATUS_WRECKED && veh->GetStatus() != STATUS_TRAIN_MOVING && veh->m_nDoorLock != CARLOCK_LOCKED_PLAYER_INSIDE) {
++#endif // INVINCIBLE_CHEAT
++							
+ 							bool canJumpOff = false;
+ 							if (veh->m_vehType == VEHICLE_TYPE_BIKE) {
+ 								canJumpOff = veh->CanPedJumpOffBike();
+diff --git a/src/core/config.h b/src/core/config.h
+index 14d4a25e..55841a99 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -31,6 +31,9 @@
+ // Adds radio icons from radio.txd for the radio wheel and in the sound settings.
+ #define EX_RADIO_ICONS
+ 
++// Enable the invincibility cheat.
++#define INVINCIBLE_CHEAT
++
+ // Enable better crouching support
+ // #define CROUCH
+ 
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+index 02919391..ea46dd7b 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -87,8 +87,9 @@
+ bool chaosMode = false;
+ 
+ // Invincibility
++// Moved into ResetCheats in Pad.cpp
+ #ifdef INVINCIBLE_CHEAT
+-CPlayerPed::bInvincibleCheat = false;
++// CPlayerPed::bInvincibleCheat = false;
+ #endif
+ 
+ // TODO Figure out how to use the commands in the Script.cpp files.
+@@ -456,7 +457,6 @@ CustomCheats::InfiniteHealthCheat()
+ 	
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 
+-// TODO Fix this to work.
+ #ifdef INVINCIBLE_CHEAT
+ 	wchar *string;
+ 	if(pPed->bInvincibleCheat) 
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index f7e317f2..9ba42d7b 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -32,6 +32,10 @@ bool CPlayerPed::bDontAllowWeaponChange;
+ bool CPlayerPed::bDebugPlayerInfo;
+ #endif
+ 
++#ifdef INVINCIBLE_CHEAT
++bool CPlayerPed::bInvincibleCheat;
++#endif //INVINCIBLE_CHEAT
++
+ const uint32 CPlayerPed::nSaveStructSize =
+ #ifdef COMPATIBLE_SAVES
+ 	1752;
+-- 
+2.45.1.windows.1
+

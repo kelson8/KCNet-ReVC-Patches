@@ -1,0 +1,188 @@
+From 17e3e13a1fc3b854fb97a95d99fe3e235ccf56f9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Feb 2025 00:52:24 -0500
+Subject: [PATCH 25/42] Add toggle for my fast loader in options under general
+ settings. Add MENU_TEST preprocessor in config.h.
+
+---
+ src/core/Frontend.cpp          | 29 +++++++++++++++++++++++++++++
+ src/core/Frontend.h            | 13 +++++++++++++
+ src/core/MenuScreensCustom.cpp | 30 ++++++++++++++++++++++++++++++
+ src/core/config.h              |  6 ++++++
+ src/skel/win/win.cpp           |  3 +++
+ 5 files changed, 81 insertions(+)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index b84cf683..f5f03a90 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -36,6 +36,11 @@
+ #include "User.h"
+ #include "sampman.h"
+ 
++// Test
++#ifdef _TEST1
++#include "../extras/functions/ini_functions.h"
++#endif //_TEST1
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -1146,6 +1151,15 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						rightText = TheText.Get("FEM_OFF");
+ 					break;
+ #endif
++
++				// Ohh, this is where the texts go.
++					// New test
++					// It does toggle in the reVC.ini though.
++				case MENUACTION_FASTLOADER:
++					rightText = TheText.Get(gbFastLoader ? "FEM_ON" : "FEM_OFF");
++					break;
++
++
+ 				case MENUACTION_CTRLVIBRATION:
+ 					if (m_PrefsUseVibration)
+ 						rightText = TheText.Get("FEM_ON");
+@@ -5255,6 +5269,21 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 		SaveSettings();
+ 		break;
+ #endif // EX_GPS
++
++// This is where the toggles go, I think I messed up in the beginning.
++#ifdef _FAST_LOADER
++	case MENUACTION_FASTLOADER:
++		// TODO Check if user is on the main menu, if so don't automatically launch the save.
++		// This is setup under win.cpp in GS_FRONTEND, under this preprocessor:
++		// #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP 
++
++		// If this is toggled on the main menu, I want the user to stay on the
++		// main menu for that session.
++		gbFastLoader = !gbFastLoader;
++		SaveSettings();
++		break;
++#endif
++
+ #endif // GAMEPAD_MENU
+ 
+ 
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 656964b1..662307d4 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -213,6 +213,7 @@ enum eMenuScreen
+ #ifdef GAMEPAD_MENU
+ 	MENUPAGE_CONTROLLER_SETTINGS,
+ #endif
++
+ #ifdef LEGACY_MENU_OPTIONS
+ 	MENUPAGE_DEBUG_MENU,
+ 	MENUPAGE_CONTROLLER_PC_OLD1,
+@@ -235,6 +236,10 @@ enum eMenuScreen
+ #endif
+ 
+ 	MENUPAGE_OUTRO, // Originally 34, but CFO needs last screen to be empty to count number of menu pages
++
++#ifdef MENU_TEST
++	MENUPAGE_GENERAL_SETTINGS,
++#endif // CUSTOM_CODE
+ 	MENUPAGES
+ };
+ 
+@@ -311,6 +316,14 @@ enum eMenuAction
+ #ifdef EX_GPS
+ 	MENUACTION_GPS,
+ #endif
++
++#ifdef MENU_TEST
++	MENUACTION_GENERALMENU,
++	MENUACTION_TEST,
++	// Test in Frontend.cpp
++	MENUACTION_FASTLOADER,
++#endif
++
+ };
+ 
+ enum eCheckHover
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 2075f2e3..e03ddb2c 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -659,6 +659,13 @@ CMenuScreenCustom aScreens[] = {
+ #endif
+ 		 MENUACTION_CHANGEMENU,		"FEO_LAN", {nil, SAVESLOT_NONE, MENUPAGE_LANGUAGE_SETTINGS}, 0, 0, MENUALIGN_CENTER,
+ 		 MENUACTION_PLAYERSETUP,	"FET_PS", {nil, SAVESLOT_NONE, MENUPAGE_SKIN_SELECT}, 0, 0, MENUALIGN_CENTER,
++		 
++#ifdef MENU_TEST
++		// This works for a general menu, so far I have a fast loader toggle,
++		// and a back button for it
++		// General settings
++		 MENUACTION_CHANGEMENU,			"FEO_GEN", {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_CENTER,
++#endif
+ 		 MENUACTION_GOBACK,			"FEDS_TB", {nil, SAVESLOT_NONE, 0}, 0, 0, MENUALIGN_CENTER,
+    },
+ 
+@@ -822,6 +829,29 @@ CMenuScreenCustom aScreens[] = {
+ 
+ 	// MENUPAGE_OUTRO = 34
+ 	{ "", 0, nil, nil, },
++
++	// MENUPAGE_GENERAL_SETTINGS = 35
++	// Well changing from this to the below fixed the back button.
++	// { "FEO_GEN",MENUPAGE_GENERAL_SETTINGS, nil, nil,
++	{ "FEO_GEN",MENUPAGE_OPTIONS, nil, nil,
++		
++		// This is how to add a basic menu changer.
++		// MENUACTION_CHANGEMENU,      "FEO_AUD",  {nil, SAVESLOT_NONE, MENUPAGE_SOUND_SETTINGS}, 0, 0, MENUALIGN_CENTER, 
++		
++		// Here is a basic menu with my fast loader toggle, and a back button.
++		// Adding this blank option seems to have fixed this in the main menu.
++		// I still need to fix the auto load from when it is pressed in the main menu,
++		// it shouldn't automatically start the game.
++		MENUACTION_NOTHING, "", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 40, 150, MENUALIGN_LEFT,
++
++		// This mostly works now, the only problem with it is that it
++		// automatically loads a save slot when I toggle it in the main menu,
++		// so if you want to go back to the main menu you can't.
++		MENUACTION_FASTLOADER,      "FST_LD",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++        // MENUACTION_TEST,			"FEO_TES", {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_CENTER,
++
++		MENUACTION_GOBACK,			"FEDS_TB",   {nil, SAVESLOT_NONE, MENUPAGE_NONE}, 0, 0, MENUALIGN_LEFT,
++	},
+ };
+ 
+ #endif
+diff --git a/src/core/config.h b/src/core/config.h
+index f165535d..82722b4d 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -5,6 +5,12 @@
+ #define VANILLA_DEFINES
+ #endif
+ 
++// Test my custom menus
++// So far this has a fast loader toggle on it.
++// It needs worked on a bit but it seems to work well.
++// It changes the value in the reVC.ini file.
++#define MENU_TEST
++
+ // Copied from Extended Vice project.
+ #define VICE_EXTENDED
+ #ifdef VICE_EXTENDED
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 8ac04195..5ea34d00 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -2793,6 +2793,9 @@ WinMain(HINSTANCE instance,
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP 
+ 
+ 						// Only run if fastLoader is also enabled too with my ini settings, I can disable this for testing or if needed.
++						// I'm quite sure this breaks my menu option on the main menu, it automatically launches a game,
++						// as soon as I press the toggle for it to turn it on.
++						// TODO Fix this to work right on the main menu, check if user is on the main menu somewhere
+ 						if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
+ 					        {
+ 						        FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
+-- 
+2.45.1.windows.1
+

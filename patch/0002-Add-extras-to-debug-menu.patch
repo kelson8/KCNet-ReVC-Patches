@@ -1,0 +1,155 @@
+From 00cb5af654b99ff942b2e10a5cf478219a94eedc Mon Sep 17 00:00:00 2001
+From: kelson8 <chippy889@gmail.com>
+Date: Fri, 5 Jan 2024 22:33:44 -0500
+Subject: [PATCH 02/42] Add extras to debug menu.
+
+---
+ src/core/Pad.cpp | 104 +++++++++++++++++++++++++++++++++++++++++++++++
+ src/core/re3.cpp |   9 ++++
+ 2 files changed, 113 insertions(+)
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index e75510e5..2a5c77d8 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -88,6 +88,110 @@ extern bool gbFastTime;
+ extern bool gGravityCheat;
+ #endif
+ 
++// Custom added by kelson8
++// //////
++//
++// Infinite health
++// This works with a toggle.
++void
++InfiniteHealthCheat()
++{
++	// I have no idea what the option below is for but it didn't work.
++	//CPed *pPed = FindPlayerPed();
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	if(!pPed->bBulletProof && !pPed->bFireProof && !pPed->bCollisionProof && !pPed->bMeleeProof && 
++		!pPed->bOnlyDamagedByPlayer && !pPed->bExplosionProof && pPed->m_bCanBeDamaged) 
++	{
++		pPed->bBulletProof = true;
++		pPed->bFireProof = true;
++		pPed->bCollisionProof = true;
++		pPed->bMeleeProof = true;
++		pPed->bOnlyDamagedByPlayer = true;
++		pPed->bExplosionProof = true;
++		pPed->m_bCanBeDamaged = false;
++		CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++
++	} else {
++		pPed->bBulletProof = false;
++		pPed->bFireProof = false;
++		pPed->bCollisionProof = false;
++		pPed->bMeleeProof = false;
++		pPed->bOnlyDamagedByPlayer = false;
++		pPed->bExplosionProof = false;
++		pPed->m_bCanBeDamaged = true;
++		
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++	}
++}
++
++
++// Never wanted test
++// This works but I still get the wanted stars and police radio talk.
++// There doesn't seem to be an option to disable the cops easily.
++void
++NeverWantedCheat()
++{
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	if(!pPed->m_pWanted->m_bIgnoredByCops) 
++	{
++		// Clear wanted level
++		pPed->SetWantedLevel(0);
++
++		// Set ignored by cops
++		pPed->m_pWanted->m_bIgnoredByCops = true;
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++	} else {
++		pPed->m_pWanted->m_bIgnoredByCops = false;
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++	}
++}
++
++// Invincible car
++// I got this working with a toggle.
++void
++InvincibleVehicleCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	if(!pPed->EnteringCar() && pPed->bInVehicle) 
++	{ 
++		CVehicle *veh = pPed->m_pMyVehicle;
++
++		// This could be useful for getting a vehicles coords.
++		//CVector vehPos = veh->GetPosition();
++
++		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) 
++		{
++			((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++			((CAutomobile *)veh)->Fix();
++
++			veh->m_fHealth = 1000.0f;
++			veh->bBulletProof = true;
++			veh->bCollisionProof = true;
++			veh->bExplosionProof = true;
++			veh->bFireProof = true;
++			veh->bMeleeProof = true;
++			CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++		} else {
++			veh->bBulletProof = false;
++			veh->bCollisionProof = false;
++			veh->bExplosionProof = false;
++			veh->bFireProof = false;
++			veh->bMeleeProof = false;
++			CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++		}
++	}
++}
++
++// End custom added by kelson8
++// //////
++
++
+ void SpecialCarCheats()
+ {
+ 	if ( !CVehicle::bCheat9 )
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index b9cfc34d..5d96877c 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -711,6 +711,10 @@ void ChittyChittyBangBangCheat();
+ void StrongGripCheat();
+ void SpecialCarCheats();
+ void PickUpChicksCheat();
++// Custom added by kelson8
++void InfiniteHealthCheat();
++void NeverWantedCheat();
++void InvincibleVehicleCheat();
+ 
+ DebugMenuEntry *carCol1;
+ DebugMenuEntry *carCol2;
+@@ -946,6 +950,11 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddVar("Time & Weather", "Extracolour", &CTimeCycle::m_ExtraColour, nil, 1, 0, 23, extracols);
+ 		DebugMenuAddVar("Time & Weather", "Time scale", (float*)&CTimer::GetTimeScale(), nil, 0.1f, 0.0f, 10.0f);
+ 
++		// Custom added by kelson8
++		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
++		DebugMenuAddCmd("Cheats", "Never wanted", NeverWantedCheat);
++		DebugMenuAddCmd("Cheats", "Invincible Vehicle", InvincibleVehicleCheat);
++
+ 		DebugMenuAddCmd("Cheats", "Weapon set 1", WeaponCheat1);
+ 		DebugMenuAddCmd("Cheats", "Weapon set 2", WeaponCheat2);
+ 		DebugMenuAddCmd("Cheats", "Weapon set 3", WeaponCheat3);
+-- 
+2.45.1.windows.1
+

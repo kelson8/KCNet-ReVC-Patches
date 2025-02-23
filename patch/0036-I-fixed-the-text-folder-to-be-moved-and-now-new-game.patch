@@ -1,0 +1,45 @@
+From 42312ea70e74ccea13f6884b49aea3592ef3cb68 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Feb 2025 23:45:44 -0500
+Subject: [PATCH 36/42] I fixed the text folder to be moved and now new game
+ seems to work. Rename preprocessors for text to VICE_EXTENDED.
+
+---
+ src/text/Text.cpp | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/src/text/Text.cpp b/src/text/Text.cpp
+index 2bb6b507..5787d356 100644
+--- a/src/text/Text.cpp
++++ b/src/text/Text.cpp
+@@ -37,11 +37,9 @@ CText::Load(void)
+ 	Unload();
+ 
+ 	// This should move the gxt files into ViceExtended\\TEXT
+-#ifdef CUSTOM_CODE
+-	// Oops, this seems to break the new game loading.
+-	// I wonder why, I have disabled it for now.
+-	// CFileMgr::SetDir("ViceExtended\\TEXT");
+-	CFileMgr::SetDir("TEXT");
++#ifdef VICE_EXTENDED
++	// I fixed this by adding this line under the LoadMissionText function.
++	CFileMgr::SetDir("ViceExtended\\TEXT");
+ #else
+ 	CFileMgr::SetDir("TEXT");
+ #endif
+@@ -248,7 +246,12 @@ CText::LoadMissionText(char *MissionTableName)
+ 		return;
+ 	}
+ 
++#ifdef VICE_EXTENDED
++	// I had to put this down here too, I didn't see this was loading text also and it was crashing.
++	CFileMgr::SetDir("ViceExtended\\TEXT");
++#else
+ 	CFileMgr::SetDir("TEXT");
++#endif
+ 	switch (FrontEndMenuManager.m_PrefsLanguage) {
+ 	case CMenuManager::LANGUAGE_AMERICAN:
+ 		sprintf(filename, "AMERICAN.GXT");
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,81 @@
+From 67098de803da891f492da9a6878a83fb350715d9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Feb 2025 12:32:59 -0500
+Subject: [PATCH 21/42] Oops, forgot to commit changes to win.cpp.
+
+---
+ src/skel/win/win.cpp | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 27e8fe6a..8ac04195 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -56,6 +56,11 @@
+ #include "platform.h"
+ #include "crossplatform.h"
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++#include "Script.h"
++#include "GenericGameStorage.h"
++#endif
++
+ #define MAX_SUBSYSTEMS		(16)
+ 
+ static RwBool		  ForegroundApp = TRUE;
+@@ -642,6 +647,10 @@ void _psPrintCpuInfo()
+ /*
+  *****************************************************************************
+  */
++
++// TODO Possibly toggle the fast loader in here? 
++// I somewhat got the idea from here if it works:
++// https://github.com/ThirteenAG/III.VC.SA.SaveLoader/blob/master/source/dllmain.cpp#L442
+ RwBool
+ psInitialize(void)
+ {
+@@ -700,6 +709,8 @@ psInitialize(void)
+ 	
+ 	gGameState = GS_START_UP;
+ 	TRACE("gGameState = GS_START_UP");
++
++
+ #ifndef _WIN64
+ 	_psPrintCpuInfo();
+ #endif
+@@ -2778,6 +2789,32 @@ WinMain(HINSTANCE instance,
+ 						if (wp.showCmd != SW_SHOWMINIMIZED)
+ 							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
++						// This seems to work as a fast loader, copied from Extended Vice project.
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP 
++
++						// Only run if fastLoader is also enabled too with my ini settings, I can disable this for testing or if needed.
++						if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
++					        {
++						        FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
++
++						        FrontEndMenuManager.m_bWantToLoad = true;
++
++#ifdef USE_DEBUG_SCRIPT_LOADER
++						        CTheScripts::ScriptToLoad = 0;
++#endif
++
++#ifdef XBOX_MESSAGE_SCREEN
++						        SetDialogText("FELD_WR");
++						        ToggleDialog(true);
++#else
++						        if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++#endif
++						        FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++					        }
++#endif
++
++						//
++
+ #ifdef PS2_MENU
+ 						if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+ #else
+-- 
+2.45.1.windows.1
+

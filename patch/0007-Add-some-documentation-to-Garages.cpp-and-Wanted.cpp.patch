@@ -1,0 +1,1044 @@
+From 0be4649694f43966d476f604b0b1dd57ad56a65a Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Sep 2024 14:39:04 -0400
+Subject: [PATCH 07/42] Add some documentation to Garages.cpp and Wanted.cpp.
+ Add never wanted test, doesn't work yet.
+
+---
+ src/control/Garages.cpp | 295 +++++++++++++++++++++++++++++++++++++++-
+ src/core/Wanted.cpp     | 120 +++++++++++++++-
+ src/core/Wanted.h       |   8 ++
+ 3 files changed, 411 insertions(+), 12 deletions(-)
+
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index bdd65501..c2428c7c 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -134,6 +134,10 @@ bool CGarages::bCamShouldBeOutisde;
+ bool bPrintNearestObject;
+ #endif
+ 
++
++/// <summary>
++/// Initialize the garages.
++/// </summary>
+ void CGarages::Init(void)
+ {
+ #ifndef MASTER
+@@ -163,6 +167,9 @@ void CGarages::Init(void)
+ 		DMAudio.SetEntityStatus(hGarages, TRUE);
+ }
+ 
++/// <summary>
++/// Shutdown the garages.
++/// </summary>
+ void CGarages::Shutdown(void)
+ {
+ 	NumGarages = 0;
+@@ -172,6 +179,9 @@ void CGarages::Shutdown(void)
+ 	hGarages = AEHANDLE_NONE;
+ }
+ 
++/// <summary>
++/// Update the garages.
++/// </summary>
+ void CGarages::Update(void)
+ {
+ 	static uint32 GarageToBeTidied = 0;
+@@ -208,6 +218,17 @@ void CGarages::Update(void)
+ 		aGarages[GarageToBeTidied].TidyUpGarage();
+ }
+ 
++/// <summary>
++/// Add a new garage
++/// </summary>
++/// <param name="X1">X coord 1</param>
++/// <param name="Y1">Y coord 1</param>
++/// <param name="Z1">Z coord 1</param>
++/// <param name="X2">X coord 2</param>
++/// <param name="Y2">Y coord 2</param>
++/// <param name="Z2">Z coord 2</param>
++/// <param name="type"></param>
++/// <param name="targetId"></param>
+ int16 CGarages::AddOne(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId)
+ {
+ 	if (NumGarages >= NUM_GARAGES) {
+@@ -309,6 +330,12 @@ int16 CGarages::AddOne(float X1, float Y1, float Z1, float X2, float Y2, float X
+ 	return NumGarages++;
+ }
+ 
++/// <summary>
++/// Change the garage type, I'm not sure how this one works
++/// </summary>
++/// <param name="garage"></param>
++/// <param name="type"></param>
++/// <param name="mi"></param>
+ void CGarages::ChangeGarageType(int16 garage, uint8 type, int32 mi)
+ {
+ 	CGarage* pGarage = &aGarages[garage];
+@@ -317,6 +344,9 @@ void CGarages::ChangeGarageType(int16 garage, uint8 type, int32 mi)
+ 	pGarage->m_eGarageState = GS_FULLYCLOSED;
+ }
+ 
++/// <summary>
++/// Main thread for the garage updating and everything.
++/// </summary>
+ void CGarage::Update()
+ {
+ 	if (m_eGarageType != GARAGE_CRUSHER) {
+@@ -1161,6 +1191,11 @@ bool CGarage::IsStaticPlayerCarEntirelyInside()
+ 	return IsEntityEntirelyInside3D(pVehicle, 0.0f);
+ }
+ 
++/// <summary>
++/// Check if the point is inside of the garage.
++/// </summary>
++/// <param name="pos"></param>
++/// <returns></returns>
+ bool CGarage::IsPointInsideGarage(CVector pos)
+ {
+ 	// is it IsPointInsideGarage(pos, 0.0f)?
+@@ -1182,6 +1217,14 @@ bool CGarage::IsPointInsideGarage(CVector pos)
+ 	return true;
+ }
+ 
++
++
++/// <summary>
++/// Check if the point is inside of the garage.
++/// </summary>
++/// <param name="pos"></param>
++/// <param name="m_fMargin"></param>
++/// <returns>If the point is inside of a garage.</returns>
+ bool CGarage::IsPointInsideGarage(CVector pos, float m_fMargin)
+ {
+ 	if (pos.z < m_fInfZ - m_fMargin)
+@@ -1218,6 +1261,12 @@ bool CGarage::IsEntityEntirelyInside3D(CEntity* pEntity, float fMargin)
+ 	return true;
+ }
+ 
++/// <summary>
++/// Check if the entity is entirely outside of the garage.
++/// </summary>
++/// <param name="pEntity">Entity to check for.</param>
++/// <param name="fMargin"></param>
++/// <returns></returns>
+ bool CGarage::IsEntityEntirelyOutside(CEntity * pEntity, float fMargin)
+ {
+ 	if (pEntity->GetPosition().x > m_fInfX - fMargin && pEntity->GetPosition().x < m_fSupX + fMargin &&
+@@ -1233,6 +1282,10 @@ bool CGarage::IsEntityEntirelyOutside(CEntity * pEntity, float fMargin)
+ 	return true;
+ }
+ 
++/// <summary>
++/// Check if the garage is empty.
++/// </summary>
++/// <returns>If the garage is empty.</returns>
+ bool CGarage::IsGarageEmpty()
+ {
+ 	int16 num;
+@@ -1247,6 +1300,10 @@ bool CGarage::IsGarageEmpty()
+ 	return true;
+ }
+ 
++/// <summary>
++/// Check if a player is outside the garage.
++/// </summary>
++/// <returns>If the player is outside of the garage.</returns>
+ bool CGarage::IsPlayerOutsideGarage()
+ {
+ 	if (FindPlayerVehicle())
+@@ -1277,12 +1334,17 @@ bool CGarage::EntityHasASphereWayOutsideGarage(CEntity * pEntity, float fMargin)
+ 	for (int i = 0; i < pColModel->numSpheres; i++) {
+ 		CVector pos = pEntity->GetMatrix() * pColModel->spheres[i].center;
+ 		float radius = pColModel->spheres[i].radius;
+-		if (!IsPointInsideGarage(pos, fMargin + radius))
++		if (!IsPointInsideGarage(pos, fMargin + radius)) 
+ 			return true;
+ 	}
+ 	return false;
+ }
+ 
++/// <summary>
++/// Check if a vehicle is touching or close to the garage.
++/// </summary>
++/// <param name="pException"></param>
++/// <returns></returns>
+ bool CGarage::IsAnyOtherCarTouchingGarage(CVehicle * pException)
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -1325,6 +1387,11 @@ void CGarage::ThrowCarsNearDoorOutOfGarage(CVehicle* pException)
+ 	}
+ }
+ 
++/// <summary>
++/// Check if a ped is touching or close to the garage.
++/// </summary>
++/// <param name="pException"></param>
++/// <returns></returns>
+ bool CGarage::IsAnyOtherPedTouchingGarage(CPed * pException)
+ {
+ 	uint32 i = CPools::GetPedPool()->GetSize();
+@@ -1345,6 +1412,10 @@ bool CGarage::IsAnyOtherPedTouchingGarage(CPed * pException)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Check if any car is blocking the garage door.
++/// </summary>
++/// <returns>If any car is blocking the garage door.</returns>
+ bool CGarage::IsAnyCarBlockingDoor()
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -1365,6 +1436,11 @@ bool CGarage::IsAnyCarBlockingDoor()
+ 	return false;
+ }
+ 
++/// <summary>
++/// Count the amount of cars with their center point in the garage.
++/// </summary>
++/// <param name="pException"></param>
++/// <returns>The amount of cars with their center point in the garage.</returns>
+ int32 CGarage::CountCarsWithCenterPointWithinGarage(CEntity * pException)
+ {
+ 	int32 total = 0;
+@@ -1379,6 +1455,9 @@ int32 CGarage::CountCarsWithCenterPointWithinGarage(CEntity * pException)
+ 	return total;
+ }
+ 
++/// <summary>
++/// Remove the cars blocking the door that are not currently inside the garage.
++/// </summary>
+ void CGarage::RemoveCarsBlockingDoorNotInside()
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -1435,8 +1514,10 @@ void CGarages::PrintMessages()
+ 	}
+ }
+ 
+-// 5-29-2024 11:11AM
+-// This works!! This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
++/// <summary>
++/// 5-29-2024 11:11AM
++/// This works!! This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
++/// </summary>
+ bool CGarage::m_allowAllVehiclesRespray = false;
+ 
+ void
+@@ -1463,8 +1544,13 @@ CGarages::ToggleRespray()
+ 	}
+ }
+ 
+-// Code customized to allow repairing all vehicles, I need to set a toggle for this in the debug menu.
+ 
++
++/// <summary>
++/// Code customized to allow repairing all vehicles, I need to set a toggle for this in the debug menu.
++/// </summary>
++/// <param name="pVehicle">The vehicle to check for.</param>
++/// <returns>If the car is resprayable at a Pay N Spray</returns>
+ bool CGarages::IsCarSprayable(CVehicle * pVehicle)
+ {
+ #ifdef CUSTOM_CODE
+@@ -1632,6 +1718,13 @@ void CGarage::RefreshDoorPointers(bool bCreate)
+ 		FindDoorsEntities();
+ }
+ 
++/// <summary>
++/// Garage messages
++/// </summary>
++/// <param name="text">The text to write</param>
++/// <param name="num1"></param>
++/// <param name="time">The time to show on screen?</param>
++/// <param name="num2"></param>
+ void CGarages::TriggerMessage(const char* text, int16 num1, uint16 time, int16 num2)
+ {
+ 	if (strcmp(text, MessageIDString) == 0 &&
+@@ -1669,11 +1762,20 @@ bool CGarages::HasCarBeenDroppedOffYet(int16 garage)
+ 	return aGarages[garage].m_eGarageState == GS_CLOSEDCONTAINSCAR;
+ }
+ 
++/// <summary>
++/// Deactivate a garage (Turns it off and makes it stop opening/closing)
++/// </summary>
++/// <param name="garage">The garage to deactivate.</param>
+ void CGarages::DeActivateGarage(int16 garage)
+ {
+ 	aGarages[garage].m_bDeactivated = true;
+ }
+ 
++
++/// <summary>
++/// Activate a garage (Resume normal operation of the specified garage)
++/// </summary>
++/// <param name="garage">The garage to activate.</param>
+ void CGarages::ActivateGarage(int16 garage)
+ {
+ 	aGarages[garage].m_bDeactivated = false;
+@@ -1691,21 +1793,50 @@ bool CGarages::HasImportExportGarageCollectedThisCar(int16 garage, int8 car)
+ 	return CarTypesCollected[GetCarsCollectedIndexForGarageType(aGarages[garage].m_eGarageType)] & (BIT(car));
+ }
+ 
++// 
++
++/// <summary>
++/// Check if the garage is opened.
++/// </summary>
++/// <param name="garage">The garage to check if opened.</param>
++/// <returns>Is the garage open.</returns>
+ bool CGarages::IsGarageOpen(int16 garage)
+ {
+ 	return aGarages[garage].IsOpen();
+ }
+ 
++
++/// <summary>
++/// Check if the garage is closed
++/// </summary>
++/// <param name="garage">The garage to check if closed.</param>
++/// <returns>Is the garage closed.</returns>
+ bool CGarages::IsGarageClosed(int16 garage)
+ {
+ 	return aGarages[garage].IsClosed();
+ }
+ 
++//-----------------
++// Craig stuff
++//-----------------
++
++/// <summary>
++/// Has the car been collected for craig?
++/// </summary>
++/// <param name="garage"></param>
++/// <param name="id"></param>
++/// <returns>If the car has been collected for craig.</returns>
+ bool CGarages::HasThisCarBeenCollected(int16 garage, uint8 id)
+ {
+ 	return aGarages[garage].m_bCollectedCarsState & BIT(id);
+ }
+ 
++
++/// <summary>
++/// Does craig need the current vehicle?
++/// </summary>
++/// <param name="mi"></param>
++/// <returns>If craig needs the current vehicle.</returns>
+ bool CGarage::DoesCraigNeedThisCar(int32 mi)
+ {
+ 	int ct = CGarages::GetCarsCollectedIndexForGarageType(m_eGarageType);
+@@ -1716,6 +1847,11 @@ bool CGarage::DoesCraigNeedThisCar(int32 mi)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Has craig collected the current vehicle?
++/// </summary>
++/// <param name="mi"></param>
++/// <returns>If craig has collected the current vehicle.</returns>
+ bool CGarage::HasCraigCollectedThisCar(int32 mi)
+ {
+ 	int ct = CGarages::GetCarsCollectedIndexForGarageType(m_eGarageType);
+@@ -1726,6 +1862,11 @@ bool CGarage::HasCraigCollectedThisCar(int32 mi)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Mark car as collected for craig
++/// </summary>
++/// <param name="mi"></param>
++/// <returns>The car to mark as collected.</returns>
+ bool CGarage::MarkThisCarAsCollectedForCraig(int32 mi)
+ {
+ 	int ct = CGarages::GetCarsCollectedIndexForGarageType(m_eGarageType);
+@@ -1749,18 +1890,34 @@ bool CGarage::MarkThisCarAsCollectedForCraig(int32 mi)
+ 	return true;
+ }
+ 
++//-----------------
++// End craig stuff
++//-----------------
++
++/// <summary>
++/// Open garages
++/// </summary>
+ void CGarage::OpenThisGarage()
+ {
+ 	if (m_eGarageState == GS_FULLYCLOSED || m_eGarageState == GS_CLOSING || m_eGarageState == GS_CLOSEDCONTAINSCAR)
+ 		m_eGarageState = GS_OPENING;
+ }
+ 
++/// <summary>
++/// Close garages
++/// </summary>
+ void CGarage::CloseThisGarage()
+ {
+ 	if (m_eGarageState == GS_OPENED || m_eGarageState == GS_OPENING)
+ 		m_eGarageState = GS_CLOSING;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="X"></param>
++/// <param name="Y"></param>
++/// <returns></returns>
+ float CGarage::CalcDistToGarageRectangleSquared(float X, float Y)
+ {
+ 	float distX, distY;
+@@ -1779,6 +1936,12 @@ float CGarage::CalcDistToGarageRectangleSquared(float X, float Y)
+ 	return SQR(distX) + SQR(distY);
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="X"></param>
++/// <param name="Y"></param>
++/// <returns></returns>
+ float CGarage::CalcSmallestDistToGarageDoorSquared(float X, float Y)
+ {
+ 	float dist1 = 10000000.0f;
+@@ -1790,6 +1953,9 @@ float CGarage::CalcSmallestDistToGarageDoorSquared(float X, float Y)
+ 	return Min(dist1, dist2);
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
+ void CGarage::FindDoorsEntities()
+ {
+ 	m_pDoor1 = nil;
+@@ -1830,6 +1996,11 @@ void CGarage::FindDoorsEntities()
+ 		m_pDoor2->bUsesCollision = true;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="list"></param>
++/// <param name="dummy"></param>
+ void CGarage::FindDoorsEntitiesSectorList(CPtrList& list, bool dummy)
+ {
+ 	CPtrNode* node;
+@@ -1862,6 +2033,11 @@ void CGarage::FindDoorsEntitiesSectorList(CPtrList& list, bool dummy)
+ 	}
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="garage"></param>
++/// <returns></returns>
+ bool CGarages::HasResprayHappened(int16 garage)
+ {
+ 	bool result = aGarages[garage].m_bResprayHappened;
+@@ -1869,6 +2045,10 @@ bool CGarages::HasResprayHappened(int16 garage)
+ 	return result;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="garage"></param>
+ void CGarages::SetGarageDoorToRotate(int16 garage)
+ {
+ 	if (aGarages[garage].m_bRotatedDoor)
+@@ -1880,21 +2060,40 @@ void CGarages::SetGarageDoorToRotate(int16 garage)
+ 	aGarages[garage].UpdateDoorsHeight();
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="garage"></param>
+ void CGarages::SetLeaveCameraForThisGarage(int16 garage)
+ {
+ 	aGarages[garage].m_bCameraFollowsPlayer = true;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="garage"></param>
++/// <param name="pCar"></param>
++/// <returns></returns>
+ bool CGarages::IsThisCarWithinGarageArea(int16 garage, CEntity * pCar)
+ {
+ 	return aGarages[garage].IsEntityEntirelyInside3D(pCar, 0.0f);
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="handle"></param>
++/// <returns></returns>
+ bool CGarages::HasCarBeenCrushed(int32 handle)
+ {
+ 	return CrushedCarId == handle;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="pVehicle"></param>
+ void CStoredCar::StoreCar(CVehicle* pVehicle)
+ {
+ 	m_nModelIndex = pVehicle->GetModelIndex();
+@@ -1915,7 +2114,10 @@ void CStoredCar::StoreCar(CVehicle* pVehicle)
+ 		m_nCarBombType = ((CAutomobile*)pVehicle)->m_bombType; // NB: cast to CAutomobile is original behaviour
+ }
+ 
+-// This looks like it could be fun to mess with.
++/// <summary>
++/// This looks like it could be fun to mess with.
++/// </summary>
++/// <returns></returns>
+ CVehicle* CStoredCar::RestoreCar()
+ {
+ 	CStreaming::RequestModel(m_nModelIndex, STREAMFLAGS_DEPENDENCY);
+@@ -1968,6 +2170,11 @@ CVehicle* CStoredCar::RestoreCar()
+ 	return pVehicle;
+ }
+ 
++/// <summary>
++/// Something to do with saving cars
++/// </summary>
++/// <param name="aCars"></param>
++/// <param name="nMax"></param>
+ void CGarage::StoreAndRemoveCarsForThisHideout(CStoredCar* aCars, int32 nMax)
+ {
+ 	for (int i = 0; i < NUM_GARAGE_STORED_CARS; i++)
+@@ -1993,6 +2200,12 @@ void CGarage::StoreAndRemoveCarsForThisHideout(CStoredCar* aCars, int32 nMax)
+ 		aCars[i].Clear();
+ }
+ 
++
++/// <summary>
++/// Something to do with restoring cars
++/// </summary>
++/// <param name="aCars"></param>
++/// <returns>Unknown.</returns>
+ bool CGarage::RestoreCarsForThisHideout(CStoredCar* aCars)
+ {
+ 	for (int i = 0; i < NUM_GARAGE_STORED_CARS; i++) {
+@@ -2037,11 +2250,18 @@ bool CGarages::IsPointInAGarageCameraZone(CVector point)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Check if the garage camera should be outside.
++/// </summary>
++/// <returns>If the camera should be outside.</returns>
+ bool CGarages::CameraShouldBeOutside()
+ {
+ 	return bCamShouldBeOutisde;
+ }
+ 
++/// <summary>
++/// Give the player a detonator for the satchel charges.
++/// </summary>
+ void CGarages::GivePlayerDetonator()
+ {
+ 	CPlayerPed* pPed = FindPlayerPed();
+@@ -2058,6 +2278,9 @@ float CGarages::FindDoorHeightForMI(int32 mi)
+ 	return CModelInfo::GetColModel(mi)->boundingBox.max.z - CModelInfo::GetColModel(mi)->boundingBox.min.z - 0.1f;
+ }
+ 
++/// <summary>
++/// Garage cleanup
++/// </summary>
+ void CGarage::TidyUpGarage()
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -2078,6 +2301,9 @@ void CGarage::TidyUpGarage()
+ 	}
+ }
+ 
++/// <summary>
++/// Garage cleanup on close
++/// </summary>
+ void CGarage::TidyUpGarageClose()
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -2111,6 +2337,12 @@ void CGarage::TidyUpGarageClose()
+ 	}
+ }
+ 
++
++
++/// <summary>
++/// Close all the garages when the player is arrested or dies.
++/// TODO What is the difference in this one and the below method?
++/// </summary>
+ void CGarages::PlayerArrestedOrDied()
+ {
+ 	static int GarageToBeTidied = 0; // lol
+@@ -2126,6 +2358,9 @@ void CGarages::PlayerArrestedOrDied()
+ 	MessageStartTime = 0;
+ }
+ 
++/// <summary>
++/// Close all the garages when the player is arrested or dies.
++/// </summary>
+ void CGarage::PlayerArrestedOrDied()
+ {
+ 	switch (m_eGarageType) {
+@@ -2186,6 +2421,10 @@ void CGarage::PlayerArrestedOrDied()
+ 	}
+ }
+ 
++/// <summary>
++/// Center the car in the garage, not sure how this one works.
++/// </summary>
++/// <param name="pVehicle"></param>
+ void CGarage::CenterCarInGarage(CVehicle* pVehicle)
+ {
+ 	if (IsAnyOtherCarTouchingGarage(FindPlayerVehicle()))
+@@ -2211,6 +2450,9 @@ void CGarage::CenterCarInGarage(CVehicle* pVehicle)
+ 		pVehicle->SetPosition(pos);
+ }
+ 
++/// <summary>
++/// Close the hide out garages before a game save.
++/// </summary>
+ void CGarages::CloseHideOutGaragesBeforeSave()
+ {
+ #ifdef FIX_BUGS
+@@ -2230,6 +2472,9 @@ void CGarages::CloseHideOutGaragesBeforeSave()
+ 	}
+ }
+ 
++/// <summary>
++/// Count the amount of cars in the garage.
++/// </summary>
+ int32 CGarages::CountCarsInHideoutGarage(uint8 type)
+ {
+ 	int32 total = 0;
+@@ -2239,6 +2484,10 @@ int32 CGarages::CountCarsInHideoutGarage(uint8 type)
+ 	return total;
+ }
+ 
++/// <summary>
++/// Check if a player or vehicle is within a certain point in a hide out garage.
++/// TODO Does this work for players and vehicles?
++/// </summary>
+ bool CGarages::IsPointWithinHideOutGarage(Const CVector& point)
+ {
+ #ifdef FIX_BUGS
+@@ -2267,6 +2516,10 @@ bool CGarages::IsPointWithinHideOutGarage(Const CVector& point)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Check if a player or vehicle is within a certain point in a garage such as a Pay N Spray.
++/// TODO Does this work for players and vehicles?
++/// </summary>
+ bool CGarages::IsPointWithinAnyGarage(Const CVector& point)
+ {
+ #ifdef FIX_BUGS
+@@ -2285,6 +2538,9 @@ bool CGarages::IsPointWithinAnyGarage(Const CVector& point)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Reset the garage doors back to the original height.
++/// </summary>
+ void CGarages::SetAllDoorsBackToOriginalHeight()
+ {
+ #ifdef FIX_BUGS
+@@ -2323,6 +2579,11 @@ void CGarages::SetAllDoorsBackToOriginalHeight()
+ 	}
+ }
+ 
++/// <summary>
++/// Save all garage info and stats.
++/// </summary>
++/// <param name="buf"></param>
++/// <param name="size"></param>
+ void CGarages::Save(uint8 * buf, uint32 * size)
+ {
+ //INITSAVEBUF
+@@ -2411,6 +2672,11 @@ const CStoredCar &CStoredCar::operator=(const CStoredCar & other)
+ 	return *this;
+ }
+ 
++/// <summary>
++/// Load all garage info and stats.
++/// </summary>
++/// <param name="buf"></param>
++/// <param name="size"></param>
+ void CGarages::Load(uint8* buf, uint32 size)
+ {
+ //INITSAVEBUF
+@@ -2497,6 +2763,11 @@ void CGarages::Load(uint8* buf, uint32 size)
+ 	MessageStartTime = 0;
+ }
+ 
++/// <summary>
++/// Check if the model is a garage door.
++/// </summary>
++/// <param name="id"></param>
++/// <returns>If the model is a garage door.</returns>
+ bool
+ CGarages::IsModelIndexADoor(uint32 id)
+ {
+@@ -2525,6 +2796,14 @@ CGarages::IsModelIndexADoor(uint32 id)
+ 		id == MI_GARAGEDOOR26;
+ }
+ 
++//-----------------
++// Possibly un-used code
++//-----------------
++
++/// <summary>
++/// Stop the car from blowing up in the garage, this doesn't seem to be in use
++/// </summary>
++/// <param name="pCar"></param>
+ void CGarages::StopCarFromBlowingUp(CAutomobile* pCar)
+ {
+ 	pCar->m_fFireBlowUpTimer = 0.0f;
+@@ -2532,6 +2811,8 @@ void CGarages::StopCarFromBlowingUp(CAutomobile* pCar)
+ 	pCar->Damage.SetEngineStatus(Max(pCar->Damage.GetEngineStatus(), 275));
+ }
+ 
++// These below seem unused
++
+ bool CGarage::Does60SecondsNeedThisCarAtAll(int mi)
+ {
+ 	for (int i = 0; i < ARRAY_SIZE(gaCarsToCollectIn60Seconds); i++) {
+@@ -2558,6 +2839,10 @@ void CGarage::MarkThisCarAsCollectedFor60Seconds(int mi)
+ 	}
+ }
+ 
++//-----------------
++// End possibly un-used code
++//-----------------
++
+ bool CGarage::IsPlayerEntirelyInsideGarage()
+ {
+ 	return IsEntityEntirelyInside3D(FindPlayerVehicle() ? (CEntity*)FindPlayerVehicle() : (CEntity*)FindPlayerPed(), 0.0f);
+diff --git a/src/core/Wanted.cpp b/src/core/Wanted.cpp
+index f83444b4..505eae9d 100644
+--- a/src/core/Wanted.cpp
++++ b/src/core/Wanted.cpp
+@@ -11,6 +11,7 @@
+ #include "Wanted.h"
+ #include "General.h"
+ #include "Stats.h"
++#include "Pad.h"
+ 
+ int32 CWanted::MaximumWantedLevel = 6;
+ int32 CWanted::nMaximumWantedLevel = 9600;
+@@ -43,30 +44,50 @@ CWanted::Initialise()
+ 	ClearQdCrimes();
+ }
+ 
++/// <summary>
++/// Check if Miami Vice Police are required
++/// </summary>
++/// <returns>If Miami Vice Police are required</returns>
+ bool
+ CWanted::AreMiamiViceRequired()
+ {
+ 	return m_nWantedLevel >= 3;
+ }
+ 
++/// <summary>
++/// Check if SWAT Police are required
++/// </summary>
++/// <returns>If SWAT Police are required</returns>
+ bool
+ CWanted::AreSwatRequired()
+ {
+ 	return m_nWantedLevel == 4 || m_bSwatRequired;
+ }
+ 
++/// <summary>
++/// Check if FBI are required
++/// </summary>
++/// <returns>If FBI are required</returns>
+ bool
+ CWanted::AreFbiRequired()
+ {
+ 	return m_nWantedLevel == 5 || m_bFbiRequired;
+ }
+ 
++/// <summary>
++/// Check if Army are required
++/// </summary>
++/// <returns>If Army are required</returns>
+ bool
+ CWanted::AreArmyRequired()
+ {
+ 	return m_nWantedLevel == 6 || m_bArmyRequired;
+ }
+ 
++/// <summary>
++/// Check if number of police helicopters required
++/// </summary>
++/// <returns>Number of police helicopters required</returns>
+ int32
+ CWanted::NumOfHelisRequired()
+ {
+@@ -85,6 +106,10 @@ CWanted::NumOfHelisRequired()
+ 	}
+ }
+ 
++/// <summary>
++/// Set the wanted level
++/// </summary>
++/// <param name="level">Wanted level to set to.</param>
+ void
+ CWanted::SetWantedLevel(int32 level)
+ {
+@@ -120,6 +145,10 @@ CWanted::SetWantedLevel(int32 level)
+ 	UpdateWantedLevel();
+ }
+ 
++/// <summary>
++/// Set wanted level without it dropping.
++/// </summary>
++/// <param name="level">Wanted level to set to.</param>
+ void
+ CWanted::SetWantedLevelNoDrop(int32 level)
+ {
+@@ -130,6 +159,10 @@ CWanted::SetWantedLevelNoDrop(int32 level)
+ 		SetWantedLevel(level);
+ }
+ 
++/// <summary>
++/// Wanted level cheat
++/// </summary>
++/// <param name="level">Wanted level to set to.</param>
+ void
+ CWanted::CheatWantedLevel(int32 level)
+ {
+@@ -137,8 +170,11 @@ CWanted::CheatWantedLevel(int32 level)
+ 	UpdateWantedLevel();
+ }
+ 
+-// Possibly try and modify this via cleo redux, I might be able to make it work
+-// kelson8 1-2-2024 @ 2:09PM
++/// <summary>
++/// Possibly try and modify this via cleo redux, I might be able to make it work
++/// kelson8 1-2-2024 @ 2:09PM
++/// </summary>
++/// <param name="level">Wanted level to set to.</param>
+ void
+ CWanted::SetMaximumWantedLevel(int32 level)
+ {
+@@ -174,12 +210,26 @@ CWanted::SetMaximumWantedLevel(int32 level)
+ 	}
+ }
+ 
++/// <summary>
++/// Register the current crime
++/// </summary>
++/// <param name="type"></param>
++/// <param name="coors"></param>
++/// <param name="id"></param>
++/// <param name="policeDoesntCare"></param>
+ void
+ CWanted::RegisterCrime(eCrimeType type, const CVector &coors, uint32 id, bool policeDoesntCare)
+ {
+ 	AddCrimeToQ(type, id, coors, false, policeDoesntCare);
+ }
+ 
++/// <summary>
++/// Register the current crime immediately
++/// </summary>
++/// <param name="type"></param>
++/// <param name="coors"></param>
++/// <param name="id"></param>
++/// <param name="policeDoesntCare"></param>
+ void
+ CWanted::RegisterCrime_Immediately(eCrimeType type, const CVector &coors, uint32 id, bool policeDoesntCare)
+ {
+@@ -191,6 +241,9 @@ CWanted::RegisterCrime_Immediately(eCrimeType type, const CVector &coors, uint32
+ 		ReportCrimeNow(type, coors, policeDoesntCare);
+ }
+ 
++/// <summary>
++/// Clear current crimes.
++/// </summary>
+ void
+ CWanted::ClearQdCrimes()
+ {
+@@ -198,10 +251,21 @@ CWanted::ClearQdCrimes()
+ 		m_aCrimes[i].m_nType = CRIME_NONE;
+ }
+ 
+-// returns whether the crime had been reported already
++
++
++/// <summary>
++/// Checks whether the crime had been reported already.
++/// </summary>
++/// <param name="type"></param>
++/// <param name="id"></param>
++/// <param name="coors"></param>
++/// <param name="reported"></param>
++/// <param name="policeDoesntCare"></param>
++/// <returns>If the crime had been reported already.</returns>
+ bool
+ CWanted::AddCrimeToQ(eCrimeType type, int32 id, const CVector &coors, bool reported, bool policeDoesntCare)
+ {
++
+ 	int i;
+ 
+ 	for(i = 0; i < 16; i++)
+@@ -227,9 +291,24 @@ CWanted::AddCrimeToQ(eCrimeType type, int32 id, const CVector &coors, bool repor
+ 	return false;
+ }
+ 
++/// <summary>
++/// Report the crime event that happened.
++/// </summary>
++/// <param name="type"></param>
++/// <param name="coors"></param>
++/// <param name="policeDoesntCare"></param>
+ void
+ CWanted::ReportCrimeNow(eCrimeType type, const CVector &coors, bool policeDoesntCare)
+ {
++	// This might add a fix for no cops? This idea came from the gta sa reversed cheat.
++	//CPad NeverWantedCheat;
++	// TODO Test this
++	if(m_bNeverWanted) 
++	{ 
++		return;
++	}
++
++
+ 	float sensitivity, chaos;
+ 	int wantedLevelDrop;
+ 
+@@ -244,6 +323,7 @@ CWanted::ReportCrimeNow(eCrimeType type, const CVector &coors, bool policeDoesnt
+ 	if (policeDoesntCare)
+ 		chaos *= 0.333f;
+ 	switch(type){
++	// Was this never used?
+ 	case CRIME_POSSESSION_GUN:
+ 		break;
+ 	case CRIME_HIT_PED:
+@@ -309,16 +389,19 @@ CWanted::ReportCrimeNow(eCrimeType type, const CVector &coors, bool policeDoesnt
+ 	UpdateWantedLevel();
+ }
+ 
++/// <summary>
++/// Update the wanted level.
++/// </summary>
+ void
+ CWanted::UpdateWantedLevel()
+ {
+ 	int32 CurrWantedLevel = m_nWantedLevel;
+ 
+-	if (m_nChaos > nMaximumWantedLevel)
+-		m_nChaos = nMaximumWantedLevel;
++		if (m_nChaos > nMaximumWantedLevel)
++			m_nChaos = nMaximumWantedLevel;
+ 
+ 	if (m_nChaos >= 0 && m_nChaos < 50) {
+-		if (m_nWantedLevel == 1)
++		if (m_nWantedLevel == 1) 
+ 			++CStats::WantedStarsEvaded;
+ 		m_nWantedLevel = 0;
+ 		m_MaximumLawEnforcerVehicles = 0;
+@@ -362,10 +445,17 @@ CWanted::UpdateWantedLevel()
+ 		m_RoadblockDensity = 30;
+ 	}
+ 
+-	if (CurrWantedLevel != m_nWantedLevel)
++	if (CurrWantedLevel != m_nWantedLevel) 
+ 		m_nLastWantedLevelChange = CTimer::GetTimeInMilliseconds();
+ }
+ 
++/// <summary>
++/// TODO Figure out what exactly this does.
++/// Possibly checks out how many cops are supposed to be in a area?
++/// </summary>
++/// <param name="posn"></param>
++/// <param name="radius"></param>
++/// <returns></returns>
+ int32
+ CWanted::WorkOutPolicePresence(CVector posn, float radius)
+ {
+@@ -398,6 +488,9 @@ CWanted::WorkOutPolicePresence(CVector posn, float radius)
+ 	return numPolice;
+ }
+ 
++/// <summary>
++/// Updates to the wanted code
++/// </summary>
+ void
+ CWanted::Update(void)
+ {
+@@ -455,6 +548,10 @@ CWanted::Update(void)
+ 	}
+ }
+ 
++/// <summary>
++/// TODO Figure out what exactly this does.
++/// Possibly reset the police pursuit if the player loses them?
++/// </summary>
+ void
+ CWanted::ResetPolicePursuit(void)
+ {
+@@ -475,6 +572,9 @@ CWanted::ResetPolicePursuit(void)
+ 	m_CurrentCops = 0;
+ }
+ 
++/// <summary>
++/// Reset the wanted level
++/// </summary>
+ void
+ CWanted::Reset(void)
+ {
+@@ -482,6 +582,9 @@ CWanted::Reset(void)
+ 	Initialise();
+ }
+ 
++/// <summary>
++/// Update the crimes in the Q.
++/// </summary>
+ void
+ CWanted::UpdateCrimesQ(void)
+ {
+@@ -499,6 +602,9 @@ CWanted::UpdateCrimesQ(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Suspend the current crime, looks like it resets the wanted level and chaos level back to 0.
++/// </summary>
+ void
+ CWanted::Suspend(void)
+ {
+diff --git a/src/core/Wanted.h b/src/core/Wanted.h
+index f2da23e3..7fc6e1d7 100644
+--- a/src/core/Wanted.h
++++ b/src/core/Wanted.h
+@@ -2,6 +2,8 @@
+ 
+ #include "Crime.h"
+ 
++#define _CUSTOM_CODE
++
+ class CEntity;
+ class CCopPed;
+ 
+@@ -29,6 +31,12 @@ public:
+ 	CCrimeBeingQd m_aCrimes[16];
+ 	CCopPed *m_pCops[10];
+ 
++	#ifdef _CUSTOM_CODE
++	// Add test never wanted cheat
++	// This still just toggles the cops and not the wanted stars
++	bool m_bNeverWanted;
++	#endif //_CUSTOM_CODE
++
+ 	static int32 MaximumWantedLevel;
+ 	static int32 nMaximumWantedLevel;
+ 
+-- 
+2.45.1.windows.1
+

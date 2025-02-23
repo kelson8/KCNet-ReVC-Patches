@@ -1,0 +1,265 @@
+From f1610e01a1774ed22fcdf20332d9c884b1178776 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Feb 2025 12:30:35 -0500
+Subject: [PATCH 20/42] Add proper fast load support with slot selection in
+ ReVC.ini. This was copied from the Extended Vice project. Add stub for new
+ defines in config.h.
+
+---
+ src/core/Frontend.cpp                  |  22 +---
+ src/core/config.h                      | 147 +++++++++++++++++++++++++
+ src/core/main.cpp                      |   4 +
+ src/core/main.h                        |   4 +
+ src/extras/functions/ini_functions.cpp |   8 ++
+ 5 files changed, 168 insertions(+), 17 deletions(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 00ccdd6f..40f0e373 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -2289,26 +2289,14 @@ CMenuManager::DrawFrontEnd()
+ 	// I added an ini toggle for this under the "General" tab.
+ 	// If FastLoader is set to 1, this will run the fast loader.
+ 	// This will instantly load slot one with my new settings.
++
++	// 2-14-2025 @ 12:22PM
++	// I added a proper fast loader with save selection into the ini.
++	// I got the idea for this from the Extended Vice project.
++	// This is now located in the win.cpp code under GS_FRONTEND.
+ 	if (m_nCurrScreen == MENUPAGE_NONE) {
+ 		if (m_bGameNotLoaded) {
+-#ifdef _CUSTOM_CODE
+-			if(gbFastLoader) {
+-				// m_nCurrScreen = MENUPAGE_CHOOSE_LOAD_SLOT;
+-
+-				// This enables the fully working fast loader for save slot 1!!!
+-				// TODO Figure out how to cancel this with a keyboard key.
+-				// TODO Figure out how to go to the save selection menu.
+-				m_nCurrScreen = MENUPAGE_LOADING_IN_PROGRESS;
+-				// This.. Shows up the load save slot for the 1st save, I didn't think this would work.
+-				// m_nCurrScreen = MENUPAGE_LOAD_SLOT_CONFIRM;
+-				// MENUPAGE_LOADING_IN_PROGRESS
+-			} else {
+-				m_nCurrScreen = MENUPAGE_START_MENU;
+-			}
+-
+-			#else
+ 			m_nCurrScreen = MENUPAGE_START_MENU;
+-		#endif //_CUSTOM_CODE
+ 		} else {
+ 			m_nCurrScreen = MENUPAGE_PAUSE_MENU;
+ 		}
+diff --git a/src/core/config.h b/src/core/config.h
+index 109848ad..19c0ef7f 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -5,6 +5,153 @@
+ #define VANILLA_DEFINES
+ #endif
+ 
++// Copied from Extended Vice project.
++#define VICE_EXTENDED
++#ifdef VICE_EXTENDED
++#define EX_LOADING_GAME_SAVE_ON_STARTUP
++#endif //VICE_EXTENDED
++
++/* TODO Get these working from the Vice Extended source code
++
++// Well this adds a lot to the code..
++// TODO Try to use a lot of this into my custom ReVC project.
++#define VICE_EXTENDED
++#ifdef VICE_EXTENDED
++
++	#define MODLOADER // https://github.com/thelink2012/modloader
++
++	// These macros are used to navigation; Disabling them individually is not recommended
++
++	#define EX_SECOND_SAMPLE_BANK // ViceEx.RAW and ViceEx.SDT
++
++	#define UTILS // Useful tools
++
++	#define EX_EXPERIMENTAL
++
++	#define EX_OPCODES
++
++	#define CROUCH
++	#define FIRING_AND_AIMING
++	#define FIRST_PERSON
++
++	#define TRIANGLE_FOR_MOUSE_RECRUIT
++	#define IMPROVED_MENU_AND_INPUT
++	//#define NEW_MENU
++	#define EX_RADIO_ICONS
++	#define EX_WEAPON_SIGHT
++
++	#define IMPROVED_TECH_PART
++	#define WANTED_PATHS
++
++	#define VEHICLE_MODS
++	#define IMPROVED_VEHICLES
++	#define IMPROVED_VEHICLES_2
++	#define NEW_VEHICLE_LOADER
++
++	#define FEATURES_INI
++	#ifdef FEATURES_INI
++		#define CLIMBING
++		#define SWIMMING
++		#define EX_DISTANT_LIGHTS // thank https://github.com/ThirteenAG/III.VC.SA.IV.Project2DFX/releases/tag/gtavc
++		#define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++		#ifdef VEHICLE_MODS
++			#define EX_RANDOM_VEHICLE_MODS_IN_TRAFFIC
++		#endif
++	#endif
++
++	#ifdef NEW_VEHICLE_LOADER
++		#define EX_VCPD_WINTERGREEN
++	#endif
++
++	#ifdef EX_OPCODES
++		#define EX_GPS // thank https://github.com/DK22Pac/plugin-sdk/tree/master/examples/GPS
++		#define AUTOSAVE_AND_SAVE_ANYWHERE
++		#define EX_PED_VARIATIONS
++	#endif
++
++	#define EX_PARTICLES
++
++	/*#define EX_CLUMP_WEAPON_MODELS
++	#ifdef EX_CLUMP_WEAPON_MODELS
++		#define EX_IMPROVED_WEAPONS
++	#endif*/
++
++	/*
++
++	#define NEW_CHEATS
++
++	#define VICE_CRY
++
++	#define EX_MORE_BUTTON_ICONS
++	#define EX_PC_KEY_ICONS
++
++	#if defined EX_MORE_BUTTON_ICONS && defined EX_PC_KEY_ICONS
++		#define EX_PHOTO_MODE
++	#endif
++
++	#if defined UTILS && defined EX_EXPERIMENTAL
++		#define EX_BRYX_LIGHTS
++	#endif
++
++	#ifdef EX_EXPERIMENTAL
++		#define EX_OUTER_SPACE
++	#endif
++
++	#ifdef UTILS
++		#define EX_LOADING_GAME_SAVE_ON_STARTUP
++	#endif
++
++	#define EX_PED_ANIMS_IN_CAR
++
++	#define EX_DISPLAYED_COLLECTIBLES
++
++	#define EX_YCBCR_CORRECTION // thank https://github.com/aap/skygfx/
++
++	#ifdef EX_SECOND_SAMPLE_BANK
++		#define EX_NEW_WEAPONS
++		#ifdef EX_NEW_WEAPONS
++			#define EX_WEAPON_RCGRENADE
++			#define EX_WEAPON_AK47
++			#define EX_WEAPON_M16
++			#define EX_WEAPON_SHOTGUN2
++			#define EX_WEAPON_UZIOLD
++			#define EX_WEAPON_DEAGLE
++			#define EX_WEAPON_BERETTA
++			#define EX_WEAPON_STEYR
++		#endif
++	#endif
++
++	#if defined NEW_CHEATS && defined EX_NEW_WEAPONS
++		#define EX_CHEAT_WEAPON_4
++	#endif
++
++
++	#ifdef MODLOADER
++#undef USE_TXD_CDIMAGE
++#undef ONE_THREAD_PER_CHANNEL
++#undef FLUSHABLE_STREAMING
++
++/*#if !defined(_WIN32) || defined(__LP64__) || defined(_WIN64)
++#error Mod Loader is currently only supported in win-x86 builds
++#endif*/
++/*
++#endif
++
++#ifdef VICE_EXTENDED
++
++#ifndef BUTTON_ICONS
++#undef EX_MORE_BUTTON_ICONS
++#undef EX_PC_KEY_ICONS
++#endif
++
++#ifdef MORE_LANGUAGES
++#define EX_UKRAINIAN
++#endif
++
++#endif
++
++*/
++
+ enum Config {
+ 	NUMPLAYERS = 1,
+ 
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 80983f93..fd4975c2 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -105,6 +105,10 @@ bool gbNoMovies;
+ bool gbFastLoader;
+ #endif
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++uint8 gbGameSaveOnStartup = 0;
++#endif
++
+ volatile int32 frameCount;
+ 
+ RwRGBA gColourTop;
+diff --git a/src/core/main.h b/src/core/main.h
+index 478794a5..24163f8a 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -78,3 +78,7 @@ extern bool gbNoMovies;
+ #ifdef _FAST_LOADER
+ extern bool gbFastLoader;
+ #endif //_FAST_LOADER
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++extern uint8 gbGameSaveOnStartup;
++#endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 31b38b8c..27046817 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -497,6 +497,10 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
+ #endif //_FAST_LOADER
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
++	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++#endif
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	bool migrate = cfg.get("FrontendOptions").size() != 0;
+ 	for(int i = 0; i < MENUPAGES; i++) {
+@@ -610,6 +614,10 @@ SaveINISettings()
+ 	StoreIni("General", "FastLoader", gbFastLoader);
+ #endif //_FAST_LOADER
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
++	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
++#endif
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	for(int i = 0; i < MENUPAGES; i++) {
+ 		for(int j = 0; j < NUM_MENUROWS; j++) {
+-- 
+2.45.1.windows.1
+

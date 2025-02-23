@@ -1,0 +1,55 @@
+From 5c0a77e4efd0b906dba4d900e00cc0f0248a63f9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Feb 2025 12:58:11 -0500
+Subject: [PATCH 23/42] Add interior selector to debug menu from Extended Vice
+ project.
+
+---
+ src/extras/debug/debug_functions.cpp | 31 ++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 849c3e8d..e40a9ef5 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -692,6 +692,37 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Game", "Switch car collision", SwitchCarCollision);
+ 		DebugMenuAddCmd("Game", "Toggle Comedy Controls", ToggleComedy);
+ 
++		// Copied from Extended Vice project.
++		//? I guess this is for toggling the interiors.
++		// Original define: UTILS
++#ifdef CUSTOM_CODE
++			static const char *areanames[] = {
++				"0 - Main map",
++				"1 - Hotel",
++				"2 - Mansion",
++				"3 - Bank",
++				"4 - Mall",
++				"5 - Strip club",
++				"6 - Lawyers",
++				"7 - Coffee shop",
++				"8 - Concert hall",
++				"9 - Studio",
++				"10 - Rifle range",
++				"11 - Biker bar",
++				"12 - Police station",
++				"13 - Everywhere",
++				"14 - Dirt",
++				"15 - Blood",
++				"16 - Ovalring", 
++				"17 - Malibu club", 
++				"18 - Print works",
++		};
++		e = DebugMenuAddVar(
++		    "Game", "Current area", &CGame::currArea, []() { CStreaming::RemoveBuildingsNotInArea(CGame::currArea); }, 1, 0, ARRAY_SIZE(areanames) - 1,
++		    areanames);
++		DebugMenuEntrySetWrap(e, true);
++#endif //CUSTOM_CODE
++
+ #ifdef MISSION_SWITCHER
+ 		DebugMenuEntry *missionEntry;
+ 		static const char *missions[] = {"Initial",
+-- 
+2.45.1.windows.1
+

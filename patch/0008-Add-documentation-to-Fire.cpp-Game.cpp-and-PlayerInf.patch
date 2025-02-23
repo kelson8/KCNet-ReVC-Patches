@@ -1,0 +1,641 @@
+From 482208651ecde5259bfc2749d5336cffc4ce4bfb Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Sep 2024 14:00:58 -0400
+Subject: [PATCH 08/42] Add documentation to Fire.cpp, Game.cpp, and
+ PlayerInfo.cpp. Update PlayerInfo.h.
+
+---
+ src/core/Fire.cpp       |  92 +++++++++++++++++++++++++++++
+ src/core/Game.cpp       |  29 +++++++++
+ src/core/PlayerInfo.cpp | 126 ++++++++++++++++++++++++++++++++++++++--
+ src/core/PlayerInfo.h   |   4 +-
+ 4 files changed, 245 insertions(+), 6 deletions(-)
+
+diff --git a/src/core/Fire.cpp b/src/core/Fire.cpp
+index 57315b15..c3e42850 100644
+--- a/src/core/Fire.cpp
++++ b/src/core/Fire.cpp
+@@ -38,6 +38,9 @@ CFire::CFire()
+ 
+ CFire::~CFire() {}
+ 
++/// <summary>
++/// Process the fire around the player, vehicles and everywhere else.
++/// </summary>
+ void
+ CFire::ProcessFire(void)
+ {
+@@ -159,6 +162,9 @@ CFire::ProcessFire(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Report a fire in this area.
++/// </summary>
+ void
+ CFire::ReportThisFire(void)
+ {
+@@ -166,6 +172,9 @@ CFire::ReportThisFire(void)
+ 	CEventList::RegisterEvent(EVENT_FIRE, m_vecPos, 1000);
+ }
+ 
++/// <summary>
++/// Extinguish a fire.
++/// </summary>
+ void
+ CFire::Extinguish(void)
+ {
+@@ -200,6 +209,14 @@ CFire::Extinguish(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Start a fire.
++/// </summary>
++/// <param name="entityOnFire">The entity to be on fire</param>
++/// <param name="fleeFrom"></param>
++/// <param name="strength">Strength of the fire</param>
++/// TODO Figure out what below is.
++/// <param name="propagation">Possibly how far the fire spreads.</param>
+ void
+ CFireManager::StartFire(CVector pos, float size, uint8 propagation)
+ {
+@@ -222,6 +239,15 @@ CFireManager::StartFire(CVector pos, float size, uint8 propagation)
+ 	}
+ }
+ 
++/// <summary>
++/// Start a fire, this one doesn't seem to be in use
++/// </summary>
++/// <param name="entityOnFire">The entity to be on fire</param>
++/// <param name="fleeFrom"></param>
++/// <param name="strength">Strength of the fire</param>
++/// TODO Figure out what below is.
++/// <param name="propagation">Possibly how far the fire spreads.</param>
++/// <returns>The fire that was just started possibly.</returns>
+ CFire *
+ CFireManager::StartFire(CEntity *entityOnFire, CEntity *fleeFrom, float strength, uint8 propagation)
+ {
+@@ -309,6 +335,9 @@ CFireManager::StartFire(CEntity *entityOnFire, CEntity *fleeFrom, float strength
+ 	return fire;
+ }
+ 
++/// <summary>
++/// Updates the fire manager, and process ongoing fires.
++/// </summary>
+ void
+ CFireManager::Update(void)
+ {
+@@ -318,6 +347,12 @@ CFireManager::Update(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Find the closest fire with the vecPos from the pDistance.
++/// </summary>
++/// <param name="vecPos">The location to search for fires in.</param>
++/// <param name="pDistance">The distance to search for fires.</param>
++/// <returns></returns>
+ CFire* CFireManager::FindNearestFire(CVector vecPos, float *pDistance)
+ {
+ 	int fireId = -1;
+@@ -340,6 +375,14 @@ CFire* CFireManager::FindNearestFire(CVector vecPos, float *pDistance)
+ 	return nil;
+ }
+ 
++/// <summary>
++/// TODO Figure out what this is doing.
++/// Unknown as to what this does
++/// </summary>
++/// <param name="coords"></param>
++/// <param name="minRange"></param>
++/// <param name="maxRange"></param>
++/// <returns></returns>
+ CFire *
+ CFireManager::FindFurthestFire_NeverMindFireMen(CVector coords, float minRange, float maxRange)
+ {
+@@ -362,6 +405,11 @@ CFireManager::FindFurthestFire_NeverMindFireMen(CVector coords, float minRange,
+ 		return &m_aFires[furthestFire];
+ }
+ 
++/// <summary>
++/// TODO Figure out what this is doing.
++/// Get the next free fire in the script possibly, unknown what this actually does
++/// </summary>
++/// <returns></returns>
+ CFire *
+ CFireManager::GetNextFreeFire(void)
+ {
+@@ -372,12 +420,22 @@ CFireManager::GetNextFreeFire(void)
+ 	return nil;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
++/// <returns>The total amount of active fires</returns>
+ uint32
+ CFireManager::GetTotalActiveFires(void) const
+ {
+ 	return m_nTotalFires;
+ }
+ 
++/// <summary>
++/// Extinguish a certain point of fire.
++/// </summary>
++/// <param name="point">CVector of where the point is.</param>
++/// <param name="range">The range of the fire</param>
+ void
+ CFireManager::ExtinguishPoint(CVector point, float range)
+ {
+@@ -389,6 +447,13 @@ CFireManager::ExtinguishPoint(CVector point, float range)
+ 	}
+ }
+ 
++/// <summary>
++/// TODO Figure out why this is a boolean
++/// Extinguish a certain point of fire with water
++/// </summary>
++/// <param name="point">CVector of where the point is.</param>
++/// <param name="range">The range of the fire</param>
++/// <returns>Unknown</returns>
+ bool
+ CFireManager::ExtinguishPointWithWater(CVector point, float range)
+ {
+@@ -417,6 +482,15 @@ CFireManager::ExtinguishPointWithWater(CVector point, float range)
+ 	return true;
+ }
+ 
++/// <summary>
++/// Start a fire in an area
++/// </summary>
++/// <param name="pos">Vector3 coords to location</param>
++/// <param name="target">Entity to target</param>
++/// <param name="strength">Strength of the fire</param>
++/// TODO Figure out what below is.
++/// <param name="propagation">Possibly how far the fire spreads.</param>
++/// <returns></returns>
+ int32
+ CFireManager::StartScriptFire(const CVector &pos, CEntity *target, float strength, uint8 propagation)
+ {
+@@ -470,12 +544,21 @@ CFireManager::StartScriptFire(const CVector &pos, CEntity *target, float strengt
+ 	return fire - m_aFires;
+ }
+ 
++
++/// <summary>
++/// Check if the script fire is extinguished or not.
++/// </summary>
++/// <param name="index">The fire to check for</param>
++/// <returns>If the script fire is extinguished or not</returns>
+ bool
+ CFireManager::IsScriptFireExtinguish(int16 index)
+ {
+ 	return !m_aFires[index].m_bIsOngoing;
+ }
+ 
++/// <summary>
++/// Remove all script fires
++/// </summary>
+ void
+ CFireManager::RemoveAllScriptFires(void)
+ {
+@@ -486,6 +569,10 @@ CFireManager::RemoveAllScriptFires(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Remove the script fire
++/// </summary>
++/// <param name="index">The fire to remove</param>
+ void
+ CFireManager::RemoveScriptFire(int16 index)
+ {
+@@ -493,6 +580,11 @@ CFireManager::RemoveScriptFire(int16 index)
+ 	m_aFires[index].m_bIsScriptFire = false;
+ }
+ 
++/// <summary>
++/// Sets the audio to a script fire
++/// </summary>
++/// <param name="index">The fire to set audio for</param>
++/// <param name="state">Enabled or disabled.</param>
+ void
+ CFireManager::SetScriptFireAudio(int16 index, bool state)
+ {
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 77c8965f..7c76a57a 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -188,6 +188,10 @@ void ReplaceAtomicPipeCallback();
+ #endif // PS2_ALPHA_TEST
+ #endif // !LIBRW
+ 
++/// <summary>
++/// Initialize the render ware engine.
++/// </summary>
++/// <returns></returns>
+ bool
+ CGame::InitialiseRenderWare(void)
+ {
+@@ -280,6 +284,10 @@ CGame::InitialiseRenderWare(void)
+ 	return (true);
+ }
+ 
++/// <summary>
++/// Shuts down the render ware engine.
++/// </summary>
++/// <param name=""></param>
+ void CGame::ShutdownRenderWare(void)
+ {
+ #ifdef SCREEN_DROPLETS
+@@ -363,6 +371,12 @@ CGame::FinalShutdown(void)
+ 	CdStreamShutdown();
+ }
+ 
++/// <summary>
++/// Looks like the main loading for the game.
++/// Hmm I could play with this and stop certain features from being enabled.
++/// </summary>
++/// <param name="datFile"></param>
++/// <returns>TODO Possibly if the game is loaded?</returns>
+ bool CGame::Initialise(const char* datFile)
+ {
+ 	ResetLoadingScreenBar();
+@@ -841,6 +855,9 @@ void CGame::InitialiseWhenRestarting(void)
+ #endif
+ }
+ 
++/// <summary>
++/// Process everything for the game such as events.
++/// </summary>
+ void CGame::Process(void) 
+ {
+ 	CPad::UpdatePads();
+@@ -1327,6 +1344,10 @@ void CGame::ProcessTidyUpMemory(void)
+ #endif
+ }
+ 
++/// <summary>
++/// TODO Look into using something like this and making it to where the game doesn't pause when minimized.
++/// Initialize the game after focus loss.
++/// </summary>
+ void
+ CGame::InitAfterFocusLoss()
+ {
+@@ -1337,6 +1358,10 @@ CGame::InitAfterFocusLoss()
+ 		FrontEndMenuManager.m_bStartUpFrontEndRequested = true;
+ }
+ 
++/// <summary>
++/// Check if the player can see water from current area.
++/// </summary>
++/// <returns>The current area</returns>
+ bool
+ CGame::CanSeeWaterFromCurrArea(void)
+ {
+@@ -1344,6 +1369,10 @@ CGame::CanSeeWaterFromCurrArea(void)
+ 		|| currArea == AREA_HOTEL;
+ }
+ 
++/// <summary>
++/// Check if the player can see outside from current area.
++/// </summary>
++/// <returns>The current area</returns>
+ bool
+ CGame::CanSeeOutSideFromCurrArea(void)
+ {
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index d7a8d427..8f7d81c8 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -37,6 +37,11 @@
+ 
+ CVector lastPlayerPos;
+ 
++//bool vehUpsidedownExplode;
++
++/// <summary>
++/// Resets the player stats back to normal.
++/// </summary>
+ void
+ CPlayerInfo::Clear(void)
+ {
+@@ -95,8 +100,15 @@ CPlayerInfo::Clear(void)
+ 	m_fMediaAttention = 0.0f;
+ 	m_nCurrentBustedAudio = 1;
+ 	m_nBustedAudioStatus = BUSTEDAUDIO_NONE;
++
++	#ifdef CUSTOM_CODE
++	//vehUpsidedownExplode = true;
++	#endif //CUSTOM_CODE
+ }
+ 
++/// <summary>
++/// Process the player info, pretty much everything to do with the player, updating the stats and everything.
++/// </summary>
+ void
+ CPlayerInfo::Process(void)
+ {
+@@ -441,14 +453,18 @@ CPlayerInfo::Process(void)
+ // I added this preprocessor to config.h, it should stay enabled.
+ //#define CUSTOM_CODE	
+ #ifdef CUSTOM_CODE
+-			 bool vehUpsidedownExplode = true;
++			//bool vehUpsidedownExplode = true;
++			
++			CPlayerInfo *cPlayerInfo = new CPlayerInfo();
+ 
+-			if (vehUpsidedownExplode) {
++			// This seems like it'll work once I figure out how to add it to the debug menu.
++			//if (cPlayerInfo->vehUpsidedownExplode) {
++			if(vehUpsidedownExplode) {
+ 				if(veh->GetUp().z < -0.5f) {
+ 					m_nUpsideDownCounter += 2;
+-			} else {
+-				m_nUpsideDownCounter++;
+-			}
++				} else {
++					m_nUpsideDownCounter++;
++				}
+ 		}
+ #else
+ 			// Original code
+@@ -558,6 +574,11 @@ CPlayerInfo::IsPlayerInRemoteMode()
+ 	return m_pRemoteVehicle || m_bInRemoteMode;
+ }
+ 
++/// <summary>
++/// Saves the player info.
++/// </summary>
++/// <param name="buf"></param>
++/// <param name="size"></param>
+ void
+ CPlayerInfo::SavePlayerInfo(uint8 *buf, uint32 *size)
+ {
+@@ -587,6 +608,11 @@ CPlayerInfo::SavePlayerInfo(uint8 *buf, uint32 *size)
+ #undef CopyToBuf
+ }
+ 
++/// <summary>
++/// Loads the player info.
++/// </summary>
++/// <param name="buf"></param>
++/// <param name="size"></param>
+ void
+ CPlayerInfo::LoadPlayerInfo(uint8 *buf, uint32 size)
+ {
+@@ -639,6 +665,16 @@ CPlayerInfo::FindClosestCarSectorList(CPtrList& carList, CPed* ped, float unk1,
+ }
+ 
+ // lastCloseness is passed to other calls of this function
++
++/// <summary>
++/// TODO Figure out what exactly this does.
++/// Check the position of the car
++/// </summary>
++/// <param name="carToTest">Car to check position to.</param>
++/// <param name="player">The player.</param>
++/// <param name="carBoundCentrePedDist">Distance to check for</param>
++/// <param name="lastCloseness">Unknown</param>
++/// <param name="closestCarOutput">Unknown</param>
+ void
+ CPlayerInfo::EvaluateCarPosition(CEntity *carToTest, CPed *player, float carBoundCentrePedDist, float *lastCloseness, CVehicle **closestCarOutput)
+ {
+@@ -662,6 +698,10 @@ CPlayerInfo::EvaluateCarPosition(CEntity *carToTest, CPed *player, float carBoun
+ 	}
+ }
+ 
++/// <summary>
++/// Get the players current position
++/// </summary>
++/// <returns>The players position</returns>
+ const CVector &
+ CPlayerInfo::GetPos()
+ {
+@@ -674,6 +714,10 @@ CPlayerInfo::GetPos()
+ 	return m_pPed->GetPosition();
+ }
+ 
++/// <summary>
++/// Get the players coords.
++/// </summary>
++/// <returns>The X, Y, Z, and possibly rotation.</returns>
+ CVector
+ FindPlayerCoors(void)
+ {
+@@ -688,6 +732,10 @@ FindPlayerCoors(void)
+ 		return ped->GetPosition();
+ }
+ 
++/// <summary>
++/// Get the players speed
++/// </summary>
++/// <returns>The current move speed</returns>
+ const CVector &
+ FindPlayerSpeed(void)
+ {
+@@ -703,6 +751,10 @@ FindPlayerSpeed(void)
+ 		return ped->m_vecMoveSpeed;
+ }
+ 
++/// <summary>
++/// Get the players current vehicle
++/// </summary>
++/// <returns>The vehicle the player is in.</returns>
+ CVehicle *
+ FindPlayerVehicle(void)
+ {
+@@ -711,6 +763,10 @@ FindPlayerVehicle(void)
+ 	return nil;
+ }
+ 
++/// <summary>
++/// Find the player entity (Possibly the entity id or handle.)
++/// </summary>
++/// <returns>The ped of the player</returns>
+ CEntity *
+ FindPlayerEntity(void)
+ {
+@@ -721,6 +777,11 @@ FindPlayerEntity(void)
+ 		return ped;
+ }
+ 
++/// <summary>
++/// Check if the vehicle is a train
++/// </summary>
++/// <param name=""></param>
++/// <returns>True if the vehicle is a train, otherwise nil.</returns>
+ CVehicle *
+ FindPlayerTrain(void)
+ {
+@@ -730,12 +791,21 @@ FindPlayerTrain(void)
+ 		return nil;
+ }
+ 
++/// <summary>
++/// Get the current player.
++/// </summary>
++/// <returns>The current player</returns>
+ CPlayerPed *
+ FindPlayerPed(void)
+ {
+ 	return CWorld::Players[CWorld::PlayerInFocus].m_pPed;
+ }
+ 
++/// <summary>
++/// Find the center of the world for the player.
++/// </summary>
++/// <param name="player">The player.</param>
++/// <returns>The center of the world.</returns>
+ const CVector &
+ FindPlayerCentreOfWorld(int32 player)
+ {
+@@ -748,6 +818,11 @@ FindPlayerCentreOfWorld(int32 player)
+ 	return CWorld::Players[player].m_pPed->GetPosition();
+ }
+ 
++/// <summary>
++/// TODO Figure out what this does.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ const CVector &
+ FindPlayerCentreOfWorld_NoSniperShift(void)
+ {
+@@ -761,6 +836,10 @@ FindPlayerCentreOfWorld_NoSniperShift(void)
+ 	return FindPlayerPed()->GetPosition();
+ }
+ 
++/// <summary>
++/// Find the players heading.
++/// </summary>
++/// <returns>The heading of the player.</returns>
+ float
+ FindPlayerHeading(void)
+ {
+@@ -770,18 +849,30 @@ FindPlayerHeading(void)
+ 	return FindPlayerPed()->GetForward().Heading();
+ }
+ 
++/// <summary>
++/// Is the player restarting after dying.
++/// </summary>
++/// <returns>If the player is restarting after dying</returns>
+ bool
+ CPlayerInfo::IsRestartingAfterDeath()
+ {
+ 	return m_WBState == WBSTATE_WASTED;
+ }
+ 
++/// <summary>
++/// Is the player restarting after being busted.
++/// </summary>
++/// <returns>If the player is restarting after being busted</returns>
+ bool
+ CPlayerInfo::IsRestartingAfterArrest()
+ {
+ 	return m_WBState == WBSTATE_BUSTED;
+ }
+ 
++/// <summary>
++/// Kills the player, and increase the stat
++/// TODO Does this work?
++/// </summary>
+ void
+ CPlayerInfo::KillPlayer()
+ {
+@@ -794,6 +885,9 @@ CPlayerInfo::KillPlayer()
+ 	CStats::TimesDied++;
+ }
+ 
++/// <summary>
++/// Arrest/bust the player.
++/// </summary>
+ void
+ CPlayerInfo::ArrestPlayer()
+ {
+@@ -807,6 +901,9 @@ CPlayerInfo::ArrestPlayer()
+ 	CStats::TimesArrested++;
+ }
+ 
++/// <summary>
++/// Unknown
++/// </summary>
+ void
+ CPlayerInfo::PlayerFailedCriticalMission()
+ {
+@@ -828,6 +925,10 @@ CPlayerInfo::CancelPlayerEnteringCars(CVehicle *car)
+ 		m_pPed->ClearObjective();
+ }
+ 
++/// <summary>
++/// Gives the player invincibility and makes it to where they are ignored, also disables cops.
++/// </summary>
++/// <param name="toggle"></param>
+ void
+ CPlayerInfo::MakePlayerSafe(bool toggle)
+ {
+@@ -867,6 +968,10 @@ CPlayerInfo::MakePlayerSafe(bool toggle)
+ 	}
+ }
+ 
++/// <summary>
++/// Blow up the rc car.
++/// </summary>
++/// <param name="actually>Unknown param.</param>
+ void
+ CPlayerInfo::BlowUpRCBuggy(bool actually)
+ {
+@@ -878,7 +983,12 @@ CPlayerInfo::BlowUpRCBuggy(bool actually)
+ 		m_pRemoteVehicle->BlowUpCar(FindPlayerPed());
+ }
+ 
++
+ #ifdef GTA_PC
++/// <summary>
++/// Sets the players skin.
++/// </summary>
++/// <param name="skin">The skin to set to.</param>
+ void
+ CPlayerInfo::SetPlayerSkin(const char *skin)
+ {
+@@ -886,6 +996,9 @@ CPlayerInfo::SetPlayerSkin(const char *skin)
+ 	LoadPlayerSkin();
+ }
+ 
++/// <summary>
++/// Loads the players skin.
++/// </summary>
+ void
+ CPlayerInfo::LoadPlayerSkin()
+ {
+@@ -894,6 +1007,9 @@ CPlayerInfo::LoadPlayerSkin()
+ 	m_pSkinTexture = CPlayerSkin::GetSkinTexture(m_aSkinName);
+ }
+ 
++/// <summary>
++/// Deletes the players skin.
++/// </summary>
+ void
+ CPlayerInfo::DeletePlayerSkin()
+ {
+diff --git a/src/core/PlayerInfo.h b/src/core/PlayerInfo.h
+index 6d63e027..9b0786d9 100644
+--- a/src/core/PlayerInfo.h
++++ b/src/core/PlayerInfo.h
+@@ -86,7 +86,9 @@ public:
+ 	int16 m_nCurrentBustedAudio;
+ 
+ 	// Custom code added by kelson8
+-	static bool vehUpsidedownExplode;
++#ifdef CUSTOM_CODE
++	bool vehUpsidedownExplode;
++#endif //CUSTOM_CODE
+ #ifdef GTA_PC
+ 	char m_aSkinName[32];
+ 	RwTexture *m_pSkinTexture;
+-- 
+2.45.1.windows.1
+

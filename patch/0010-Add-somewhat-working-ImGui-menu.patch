@@ -1,0 +1,891 @@
+From 9277b1014ba26ea08381154b0eb4b52702b60d5c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 15 Jan 2025 02:35:01 -0500
+Subject: [PATCH 10/42] Add somewhat working ImGui menu. Open with F9, cannot
+ be closed and no mouse shows up yet. Fix the broken logo in the readme, make
+ it point to internal revc image.
+
+---
+ src/extras/Imgui_test.cpp | 250 +++++++++++++++------
+ src/extras/imgui_test.h   |   2 +
+ src/skel/win/win.cpp      | 449 +++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 631 insertions(+), 70 deletions(-)
+
+diff --git a/src/extras/Imgui_test.cpp b/src/extras/Imgui_test.cpp
+index c0016436..6d398b19 100644
+--- a/src/extras/Imgui_test.cpp
++++ b/src/extras/Imgui_test.cpp
+@@ -10,7 +10,9 @@
+ // - Introduction, links and more at the top of imgui.cpp
+ 
+ #ifndef IMGUI_TEST
+-//#define IMGUI_TEST
++// I somewhat got this working so I have enabled it for now.
++// This is most likely Windows only for now like this.
++#define IMGUI_TEST
+ #endif
+ 
+ #ifdef IMGUI_TEST
+@@ -22,6 +24,17 @@
+ 
+ #include "imgui_test.h"
+ 
++// New, ReVC functions
++// These don't work
++#ifdef _TEST1
++
++#include "ControllerConfig.h"
++#include "skeleton.h"
++#endif //_TEST1
++
++#include "platform.h"
++//
++
+ // This code is very incomplete, copied from the example on ImGui, it would need to be integrated into the main function of ReVC
+ // But I can modify every little piece of the code using a menu like this.
+ // 5-30-2024 @ 12:00AM
+@@ -31,6 +44,11 @@
+ //
+ // This almost works, freezes the entire game when opened though and I cannot see the mouse in the window.
+ 
++// 1-15-2025 @ 2:30AM
++// I got this to draw, I added it to GS_PLAYING_GAME in the main loop under the gGameState switch state
++// It doesn't have a mouse and the F9 keybind doesn't close it yet
++// I'm getting close on figuring this out.
++
+ //
+ 
+ // Data
+@@ -49,26 +67,11 @@ ResetDevice();
+ LRESULT WINAPI
+ WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ 
+-void
+-ImGuiVCTest::CreateImGuiWindow()
+-{
+-	// Create application window
+-	// ImGui_ImplWin32_EnableDpiAwareness();
+-	WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr};
+-	::RegisterClassExW(&wc);
+-	HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX9 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance,
+-	                            nullptr);
+-
+-	// Initialize Direct3D
+-	if(!CreateDeviceD3D(hwnd)) {
+-		CleanupDeviceD3D();
+-		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+-	}
+-
+-	// Show the window
+-	::ShowWindow(hwnd, SW_SHOWDEFAULT);
+-	::UpdateWindow(hwnd);
+ 
++// TODO Test these
++ImGuiIO
++getImGuiIo()
++{
+ 	// Setup Dear ImGui context
+ 	IMGUI_CHECKVERSION();
+ 	ImGui::CreateContext();
+@@ -77,31 +80,73 @@ ImGuiVCTest::CreateImGuiWindow()
+ 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+ 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+ 
+-	// Setup Dear ImGui style
+-	ImGui::StyleColorsDark();
+-	// ImGui::StyleColorsLight();
++	return io;
++}
+ 
+-	// Setup Platform/Renderer backends
+-	ImGui_ImplWin32_Init(hwnd);
+-	ImGui_ImplDX9_Init(g_pd3dDevice);
++void
++Window1(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
++{
++	ImGuiIO io;
++	static float f = 0.0f;
++	static int counter = 0;
++
++	ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
++
++	ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
++	ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
++	ImGui::Checkbox("Another Window", &show_another_window);
++
++	ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
++	ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
++
++	if(ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
++		counter++;
++	ImGui::SameLine();
++	ImGui::Text("counter = %d", counter);
++
++	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
++	ImGui::End();
++
++	// 3. Show another simple window.
++	if(show_another_window) {
++		ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++		                                                      // will clear the bool when clicked)
++		ImGui::Text("Hello from another window!");
++		if(ImGui::Button("Close Me")) show_another_window = false;
++		ImGui::End();
++	}
++}
+ 
+-	// Load Fonts
+-	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
+-	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
+-	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display
+-	// an error and quit).
+-	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(),
+-	// which ImGui_ImplXXXX_NewFrame below will call.
+-	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
+-	// - Read 'docs/FONTS.md' for more instructions and details.
+-	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
+-	// io.Fonts->AddFontDefault();
+-	// io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf", 18.0f);
+-	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
+-	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
+-	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
+-	// ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
+-	// IM_ASSERT(font != nullptr);
++//
++
++// TODO Possibly fix this to work
++#ifdef _TEST1
++bool showImGuiWindow = false;
++void
++KeyboardButtonTest()
++{
++
++	CControllerConfigManager configManager = CControllerConfigManager();
++	ImGuiVCTest imguiVCTest = ImGuiVCTest();
++	// if (configManager.GetIsKeyboardKeyDown(rsF9))
++
++	// CMouseControllerState controllerState = CMouseControllerState();
++	// controllerState
++
++	// CMenuManager menuManager = CMenuManager();
++
++	showImGuiWindow = !showImGuiWindow;
++	if(configManager.GetIsKeyboardKeyJustDown(rsF9)) 
++	{
++		// TODO Figure out how to close the ImGui menu
++	}
++}
++#endif //_TEST1
++
++
++void
++ImGuiMainLoop()
++{
+ 
+ 	// Our state
+ 	bool show_demo_window = true;
+@@ -109,8 +154,15 @@ ImGuiVCTest::CreateImGuiWindow()
+ 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+ 
+ 	// Main loop
++	// TODO Possibly make boolean public, and pressing f9 on ImGui press will set this back to false
+ 	bool done = false;
++
+ 	while(!done) {
++#ifdef _TEST1
++		// Run this to possibly stop the menu
++		KeyboardButtonTest();
++#endif //_TEST1
++
+ 		// Poll and handle messages (inputs, window resize, etc.)
+ 		// See the WndProc() function below for our to dispatch events to the Win32 backend.
+ 		MSG msg;
+@@ -137,36 +189,22 @@ ImGuiVCTest::CreateImGuiWindow()
+ 		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+ 		if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+ 
+-		// 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+ 		{
+-			static float f = 0.0f;
+-			static int counter = 0;
++			// https://www.unknowncheats.me/forum/general-programming-and-reversing/505033-imgui-mouse-interaction-video.html
++			ImGuiIO &io = ImGui::GetIO();
++			// This shows a cursor but is locked into the ImGui window and breaks it
++			// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
++			// io.MouseDrawCursor = true;
+ 
+-			ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
++			// POINT p;
++			// GetCursorPos(&p);
++			// io.MousePos = ImVec2(p.x, p.y);
+ 
+-			ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
+-			ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
+-			ImGui::Checkbox("Another Window", &show_another_window);
++			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+ 
+-			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
+-			ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+-
+-			if(ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
+-				counter++;
+-			ImGui::SameLine();
+-			ImGui::Text("counter = %d", counter);
+-
+-			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+-			ImGui::End();
+-		}
+-
+-		// 3. Show another simple window.
+-		if(show_another_window) {
+-			ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
+-			                                                      // will clear the bool when clicked)
+-			ImGui::Text("Hello from another window!");
+-			if(ImGui::Button("Close Me")) show_another_window = false;
+-			ImGui::End();
++			// Moved this into its own method
++			Window1(true, true, clear_color);
+ 		}
+ 
+ 		// Rendering
+@@ -187,7 +225,79 @@ ImGuiVCTest::CreateImGuiWindow()
+ 		// Handle loss of D3D9 device
+ 		if(result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) ResetDevice();
+ 	}
++}
++
++void
++ImGuiVCTest::CreateImGuiWindow()
++{
++	// Test, what will this do?
++	//_InputShutdownMouse();
++	// 
++	//
++	// Create application window
++	// ImGui_ImplWin32_EnableDpiAwareness();
++	WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr};
++	::RegisterClassExW(&wc);
++	HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX9 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance,
++	                            nullptr);
++
++	// Initialize Direct3D
++	if(!CreateDeviceD3D(hwnd)) {
++		CleanupDeviceD3D();
++		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
++	}
++
++	// Show the window
++	::ShowWindow(hwnd, SW_SHOWDEFAULT);
++	::UpdateWindow(hwnd);
++
++	// Setup Dear ImGui context
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	(void)io;
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
++	// Setup Dear ImGui style
++	ImGui::StyleColorsDark();
++	// ImGui::StyleColorsLight();
++
++	// Setup Platform/Renderer backends
++	ImGui_ImplWin32_Init(hwnd);
++	ImGui_ImplDX9_Init(g_pd3dDevice);
++
++	// Load Fonts
++	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
++	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
++	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display
++	// an error and quit).
++	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(),
++	// which ImGui_ImplXXXX_NewFrame below will call.
++	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
++	// - Read 'docs/FONTS.md' for more instructions and details.
++	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
++	// io.Fonts->AddFontDefault();
++	// io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf", 18.0f);
++	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
++	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
++	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
++	// ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
++	// IM_ASSERT(font != nullptr);
+ 
++	// Our state
++	bool show_demo_window = true;
++	bool show_another_window = false;
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++
++	// Main loop
++	// TODO Move loop code into another function.
++	bool done = false;
++	// Run the main loop for ImGui.
++	ImGuiMainLoop();
++	//
++
++	// Shutdown DX9 for this and cleanup
+ 	ImGui_ImplDX9_Shutdown();
+ 	ImGui_ImplWin32_Shutdown();
+ 	ImGui::DestroyContext();
+@@ -195,6 +305,8 @@ ImGuiVCTest::CreateImGuiWindow()
+ 	CleanupDeviceD3D();
+ 	::DestroyWindow(hwnd);
+ 	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
++	//
++
+ }
+ 
+ 
+diff --git a/src/extras/imgui_test.h b/src/extras/imgui_test.h
+index b8179ff8..32fd382c 100644
+--- a/src/extras/imgui_test.h
++++ b/src/extras/imgui_test.h
+@@ -3,4 +3,6 @@ class ImGuiVCTest
+ {
+ public:
+ 	static void CreateImGuiWindow();
++	// If this is true, then ImGui should hide.
++	bool done;
+ };
+\ No newline at end of file
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index c49f0ab9..94ed5287 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -16,6 +16,9 @@
+ 
+ #include <dbt.h>
+ 
++// New 
++#include <iostream>
++
+ #pragma warning( push )
+ #pragma warning( disable : 4005)
+ 
+@@ -23,6 +26,8 @@
+ #define MAPVK_VK_TO_CHAR (2) // this is missing from codewarrior win32 headers - but it gets used ... how?
+ #endif
+ 
++
++
+ #include <ddraw.h>
+ #include <DShow.h>
+ #pragma warning( pop )
+@@ -132,6 +137,8 @@ static RwBool defaultFullscreenRes = FALSE;
+ static RwInt32 bestWndMode = -1;
+ #endif
+ 
++// TODO Possibly split up some of the code in this win.cpp file
++
+ CJoySticks::CJoySticks()
+ {
+ 	for (int i = 0; i < MAX_JOYSTICKS; i++)
+@@ -347,6 +354,7 @@ psNativeTextureSupport(void)
+ /*
+  *****************************************************************************
+  */
++// TODO Possibly add ImGui init into here?
+ static HWND
+ InitInstance(HANDLE instance)
+ {
+@@ -400,6 +408,24 @@ void _GetVideoMemInfo(LPDWORD total, LPDWORD avaible)
+  */
+ typedef HRESULT(WINAPI * DIRECTDRAWCREATEEX)( GUID*, VOID**, REFIID, IUnknown* );
+ 
++//#define _CUSTOM_CODE
++//#ifdef _CUSTOM_CODE
++
++// This is very incomplete, Idk what it'll do.
++// Well DWORD needs a return value
++// I need to learn more how dlls work and are injected before I really mess with this.
++//DWORD
++//void
++//LoadImGui() 
++//{ 
++//	HINSTANCE imGuiHookDll = nil;
++//	imGuiHookDll = LoadLibrary("imgui_d3d9_hook.dll");
++//	if(imGuiHookDll == nil) 
++//	{ 
++//		OutputDebugString("Couldn't LoadLibrary imgui_d3d9_hook\r\n");
++//	}
++//}
++//#endif //CUSTOM_CODE
+ 
+ //-----------------------------------------------------------------------------
+ // Name: GetDXVersion()
+@@ -964,6 +990,9 @@ MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ 	POINTS points;
+ 	static BOOL noMemory = FALSE;
+ 
++	#ifdef _IMGUI_TEST
++	if(ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam)) { return true; }
++	#endif //_IMGUI_TEST
+ 	
+ 	switch( message )
+ 	{
+@@ -2002,9 +2031,154 @@ void HandleExit()
+ 		}
+ 	}
+ }
+- 
++
++//********************
++// Begin my ImGui test
++//********************
++
++// Well this doesn't crash anymore, it don't do anything but I think I'm getting close to adding this into
++// ReVC, I just have to figure out where to put it.
++
++// I have a better test of this in the imgui_test.cpp, this just complains that stuff is already defined.
++//#define _IMGUI_TEST
++
++
++#ifdef _IMGUI_TEST
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++
++
++static void
++setupImGui()
++{
++	// Copied from my ImGui test
++	// Setup Dear ImGui context
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	(void)io;
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
++	// Setup Dear ImGui style to dark mode.
++	ImGui::StyleColorsDark();
++}
++
++
++
++
++
++// New
++// ImGui
++static LPDIRECT3D9 g_pD3D = nullptr;
++static LPDIRECT3DDEVICE9 g_pd3dDevice = nullptr;
++static UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
++static D3DPRESENT_PARAMETERS g_d3dpp = {};
++
++bool
++CreateDeviceD3D(HWND hWnd)
++{
++	if((g_pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == nullptr) return false;
++
++	// Create the D3DDevice
++	ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
++	g_d3dpp.Windowed = TRUE;
++	g_d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
++	g_d3dpp.BackBufferFormat = D3DFMT_UNKNOWN; // Need to use an explicit format with alpha if needing per-pixel alpha composition.
++	g_d3dpp.EnableAutoDepthStencil = TRUE;
++	g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
++	g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE; // Present with vsync
++	// g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;   // Present without vsync, maximum unthrottled framerate
++	if(g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0) return false;
++
++	return true;
++}
++
++void
++ResetDevice()
++{
++	ImGui_ImplDX9_InvalidateDeviceObjects();
++	HRESULT hr = g_pd3dDevice->Reset(&g_d3dpp);
++	if(hr == D3DERR_INVALIDCALL) IM_ASSERT(0);
++	ImGui_ImplDX9_CreateDeviceObjects();
++}
++
++static void
++Render(ImVec4 clear_color)
++{
++//#ifndef _TEST2 //!_TEST2
++	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
++	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++	g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
++	D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
++	                                      (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
++	g_pd3dDevice->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
++	if(g_pd3dDevice->BeginScene() >= 0) {
++		ImGui::Render();
++		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++		g_pd3dDevice->EndScene();
++	}
++	HRESULT result = g_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
++
++	// Handle loss of D3D9 device
++	if(result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) 
++		ResetDevice();
++}
++
++//
++// Forward declarations of helper functions
++bool
++CreateDeviceD3D(HWND hWnd);
++void
++CleanupDeviceD3D();
++void
++ResetDevice();
++
++/// <summary>
++/// This just crashses the program.
++/// </summary>
++/// <param name="hwnd"></param>
++/// <param name="wc"></param>
++static void
++InitializeD3D(HWND hwnd, WNDCLASSEXW wc)
++{
++	// Initialize Direct3D
++
++#ifndef _TEST2 //!_TEST2
++	if(!CreateDeviceD3D(hwnd))
++#else
++	if(!Helpers::CreateDeviceD3D(hwnd))
++#endif //!_TEST2
++	{
++#ifndef _TEST2 //!_TEST2
++		CleanupDeviceD3D();
++#else
++		Helpers::CleanupDeviceD3D();
++#endif //!_TEST2
++		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
++		// return 1;
++	}
++}
++
++//
++
++
++
++
++
++#endif // _IMGUI_TEST
++
++#include "imgui_test.h"
++
++//********************
++// End my ImGui test
++//********************
++
+ /*
+  *****************************************************************************
++ * Main Thread (Possibly for the dll or exe?)
+  */
+ int PASCAL
+ WinMain(HINSTANCE instance, 
+@@ -2018,6 +2192,104 @@ WinMain(HINSTANCE instance,
+ 	RwChar **argv;
+ 	SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, nil, SPIF_SENDCHANGE);
+ 
++
++//********************
++// Begin my ImGui test
++//********************
++
++// 
++// Wtf this didn't crash? Hmm... Time to add a keybind to show ImGui and a demo window.
++// I've been wanting to integrate this into ReVC for a while now.
++// Well I spoke too soon, I added something else and it crashes again.
++// TODO Add some of this code to main while loop, check for keybind.
++#ifdef _IMGUI_TEST
++	// TODO Add ImGui into here.
++	// Initialize ImGui
++	// Set show window variable
++	bool show_window = false;
++
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++	//LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++
++
++	#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++	// Run setup
++	setupImGui();
++
++	// Copied from my ImGui test
++	const wchar_t *window_title = L"KCNet ImGui";
++
++	// Create application window
++	// ImGui_ImplWin32_EnableDpiAwareness();
++	//WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, window_title, nullptr};
++	WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, MainWndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, window_title, nullptr};
++	::RegisterClassExW(&wc);
++	HWND hwnd = ::CreateWindowW(wc.lpszClassName, window_title, WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
++
++
++	// Initialize Direct3D
++	// TODO Test
++	//InitializeD3D(hwnd, wc);
++
++	// Test
++	CreateDeviceD3D(hwnd);
++
++	
++	// Show the window
++	::ShowWindow(hwnd, SW_SHOWDEFAULT);
++	::UpdateWindow(hwnd);
++	//
++
++	//
++	
++
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	//ImGuiIO &io = ImGui::GetIO();
++	ImGuiIO &io = ImGui::GetIO(); (void)io;
++
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
++	ImGui::StyleColorsDark();
++	
++	ImGui_ImplWin32_Init(hwnd);  // Replace 'hwnd' with your window handle
++	ImGui_ImplDX9_Init(g_pd3dDevice); // Replace 'pDevice' with your DirectX 9 device
++
++// TODO Test moving into loop
++#ifdef _DISABLED_CODE
++	ImGui_ImplDX9_NewFrame();
++	ImGui_ImplWin32_NewFrame();
++	ImGui::NewFrame();
++
++	if(show_window) { 
++		if(ImGui::Begin("KCNet ReVC Test", nullptr, ImGuiWindowFlags_MenuBar)) { 
++			ImGui::Text("Hello");
++		}
++	}
++
++	ImGui::End();
++
++	ImGui::EndFrame();
++	Render(clear_color);
++
++#endif //_DISABLED_CODE
++
++#endif // _IMGUI_TEST
++
++
++	#define _TEST
++	#ifdef _TEST
++	// Show window for ImGui, defaults to false
++	bool showImGuiWindow = false;
++	#endif //_TEST
++
++
++//********************
++// End my ImGui test
++//********************
++
+ #ifndef MASTER
+ 	if (strstr(cmdLine, "-console"))
+ 	{
+@@ -2218,10 +2490,92 @@ WinMain(HINSTANCE instance,
+ #endif
+ 	}
+ #endif
++	// TODO Add imgui test in here and hook directly into the exe, no need to worry about injecting a dll.
++
++	// 8-7-2024 @ 8:30PM
++	// I think I found the main entry point to the program.
++	
++	#ifdef _IMGUI_TEST
++	// Run setup
++	setupImGui();
++
++
++	#endif //_IMGUI_TEST
++
++
+ 
+ 	while ( TRUE )
+ 	{
+ 		RwInitialised = TRUE;
++
++
++					// Ok, this test somewhat launches, I don't have a mouse though but this one shows up.
++		// It's a pain to close out really and is a very early prototype for ImGui
++
++		// TODO Fix this keybind to work.
++#define _TEST2
++#ifdef _TEST2
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++
++		// Moved into GS_PLAYING_GAME
++		 //if(CPad::GetPad(0)->HornJustDown()) {
++			////show_window = !show_window;
++			//ImGuiVCTest::CreateImGuiWindow();
++		 //}
++
++		//if(KEYDOWN(VK_F9)) { 
++		// Didn't work
++		//CControllerConfigManager configManager = CControllerConfigManager();
++		////if (configManager.GetIsKeyboardKeyDown(rsF9))
++		//if (configManager.GetIsKeyboardKeyJustDown(rsF9))
++		//{
++		//	ImGuiVCTest::CreateImGuiWindow(); 
++		//}
++		//
++		//if(KEYDOWN(rsF9)) { 
++		// ImGuiVCTest::CreateImGuiWindow(); 
++		//	
++		//}
++
++		//if ((CPad::NewKeyState.PGDN))
++		//	//CPad::GetPad0
++		//{ 
++		//	ImGuiVCTest::CreateImGuiWindow(); 
++		//}
++
++#endif //_TEST2
++#undef _TEST2
++
++		// TODO Test this here
++		// This doesn't seem to do anything
++		#ifdef _IMGUI_TEST
++
++		// TODO Test this, keybind test
++		CKeyboardState keyboardState;
++		// This just crashes it
++		//if(CPad::GetPad(0)->GetCharJustDown('F12')) { 
++		// This doesn't seem to work, I don't think I have this menu setup right.
++		if(CPad::GetPad(0)->HornJustDown()) { 
++			show_window = !show_window; 
++		}
++
++		//
++
++		// ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)a);
++		// TODO Test this
++		if(KEYDOWN(VK_F9)) { 
++			show_window = !show_window; 
++		}
++
++		if(ControlsManager.GetIsKeyboardKeyJustDown(rsF9)) {
++		// This didn't work either.
++		//if(CPad::GetPad(0)->GetMinusJustDown()){
++			
++			std::cout << "- Pressed";
++			show_window = !show_window;
++		}
++		#endif // _IMGUI_TEST
+ 		
+ 		/* 
+ 		* Set the initial mouse position...
+@@ -2490,6 +2844,97 @@ WinMain(HINSTANCE instance,
+ 						{
+ 							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
++						
++						//********************
++						// Begin my new ImGui test
++						//********************
++						
++						// TODO Possibly add ImGui into this part of loop?
++
++							// New test
++							// This actually works in here!!!!
++							// I got the ImGui window to show up but I still lose the mouse when I open it.
++							// And it freezes the game until the ImGui window is closed.
++														
++							// 
++							// TODO Add the code for hooking into the mouse, make it show up when the menu is open
++							// TODO Fix this to work and not freeze the game
++							// TODO Fix this to run with multiple keybinds, such as Control + M or something
++							// TODO Fix this to toggle the window on and off.
++
++							// New ImGui test, somewhat works I just need to figure out how to hook into the game itself,
++							// instead of freezing it.
++							#ifdef _TEST
++						        CControllerConfigManager configManager = CControllerConfigManager();
++								ImGuiVCTest imguiVCTest = ImGuiVCTest();
++						        // if (configManager.GetIsKeyboardKeyDown(rsF9))
++
++								//CMouseControllerState controllerState = CMouseControllerState();
++								//controllerState
++
++								//CMenuManager menuManager = CMenuManager();
++
++						        if(configManager.GetIsKeyboardKeyJustDown(rsF9)) { 
++									//showImGuiWindow = !showImGuiWindow;
++									//if (showImGuiWindow) { 
++										// Turn the window on, this doesn't close the window or show a mouse yet.
++										ImGuiVCTest::CreateImGuiWindow();
++										// Note to self, probably never use these.
++										// Woops, these make infinite menu clicking sounds
++										// That was loud...
++								        //menuManager.m_bShowMouse = true;
++									//}
++									//else {
++									//	// Will this work?
++								 //        //ImGuiVCTest::done = true;
++									//	// This doesn't seem to break out of the loop and kill the window.
++								 //        imguiVCTest.done = true;
++									//	// TODO Figure out how to close ImGui window
++								 //        //menuManager.m_bShowMouse = false;
++									//}
++									
++								}
++
++								#endif //_TEST
++								// Disable _TEST below this
++								#undef _TEST
++
++						//********************
++						// End my new ImGui test
++						//********************
++						
++						#ifdef _IMGUI_TEST
++
++	#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++
++
++	//ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)a);
++	// TODO Test this
++	// I don't think this works like this
++	//if (KEYDOWN(VK_F9)) {
++	
++
++	ImGui_ImplDX9_NewFrame();
++	ImGui_ImplWin32_NewFrame();
++	ImGui::NewFrame();
++
++	if(show_window) { 
++		if(ImGui::Begin("KCNet ReVC Test", nullptr, ImGuiWindowFlags_MenuBar)) { 
++			ImGui::Text("Hello");
++		}
++		ImGui::End();
++	}
++
++	
++
++	ImGui::EndFrame();
++	Render(clear_color);
++	#endif //_IMGUI_TEST
++
++	#ifdef _IMGUI_TEST
++#undef _IMGUI_TEST // Undefine _IMGUI_TEST
++#endif             // _IMGUI_TEST
+ 						}
+ 						break;
+ 					}
+@@ -2592,6 +3037,8 @@ WinMain(HINSTANCE instance,
+ 	}
+ 	
+ 
++	// TODO Shutdown ImGui once working.
++
+ #ifndef MASTER
+ 	if ( gbModelViewer )
+ 		CAnimViewer::Shutdown();
+-- 
+2.45.1.windows.1
+

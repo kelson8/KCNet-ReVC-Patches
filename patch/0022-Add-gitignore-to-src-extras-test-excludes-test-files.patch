@@ -1,0 +1,33 @@
+From 422cdaec8653c5dd08234f06aef80c45531e9c8e Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Feb 2025 12:36:38 -0500
+Subject: [PATCH 22/42] Add gitignore to src/extras/test, excludes test files.
+
+---
+ src/extras/test/.gitignore | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+ create mode 100644 src/extras/test/.gitignore
+
+diff --git a/src/extras/test/.gitignore b/src/extras/test/.gitignore
+new file mode 100644
+index 00000000..ff0460ea
+--- /dev/null
++++ b/src/extras/test/.gitignore
+@@ -0,0 +1,13 @@
++# Misc testing features
++imgui_vc_test1.cpp
++ScriptCommandNames.h
++
++scriptcommands_test.h
++
++mouse_test.cpp
++
++ped_test.cpp
++ped_test.h
++
++# Extras
++cheats/old
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,1866 @@
+From 5adda25b684fdc8d08c1f5889abc96389c2b88e6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 18 Feb 2025 01:53:12 -0500
+Subject: [PATCH 39/42] Add rest of modloader code, it still seems broken and
+ doesn't work though. Add ini functions test for fastloader slot in menu. Add
+ some more imgui tests into win.cpp.
+
+---
+ src/animation/AnimManager.cpp      |   8 ++
+ src/animation/CutsceneMgr.cpp      |  14 ++
+ src/control/Script.cpp             |  35 ++---
+ src/control/Script6.cpp            |   4 +
+ src/control/ScriptDebug.cpp        |   4 +
+ src/core/CdStream.cpp              |  25 +++-
+ src/core/Directory.cpp             |   8 ++
+ src/core/FileLoader.cpp            |  42 ++++++
+ src/core/Frontend.cpp              |  60 +++++++-
+ src/core/Frontend.h                |  12 +-
+ src/core/Game.cpp                  |  14 ++
+ src/core/MenuScreensCustom.cpp     |  31 +++++
+ src/core/Streaming.cpp             |  42 +++++-
+ src/core/SurfaceTable.cpp          |   8 ++
+ src/core/config.h                  |   9 ++
+ src/core/main.cpp                  |   6 +-
+ src/modelinfo/VehicleModelInfo.cpp |   8 ++
+ src/objects/ObjectData.cpp         |   8 ++
+ src/peds/PedFight.cpp              |   8 ++
+ src/peds/PedType.cpp               |  12 ++
+ src/peds/Population.cpp            |   8 ++
+ src/renderer/Font.cpp              | 217 ++++++++++++++++++++++-------
+ src/renderer/ParticleMgr.cpp       |  13 ++
+ src/renderer/PlayerSkin.cpp        |  14 +-
+ src/renderer/SpecialFX.cpp         |   9 ++
+ src/renderer/Timecycle.cpp         |   8 ++
+ src/renderer/WaterLevel.cpp        |  18 ++-
+ src/skel/win/win.cpp               | 163 ++++++++++++++--------
+ src/text/Text.cpp                  |  12 ++
+ src/vehicles/HandlingMgr.cpp       |   8 ++
+ src/vehicles/Plane.cpp             |   8 ++
+ src/weapons/WeaponInfo.cpp         |  16 ++-
+ 32 files changed, 710 insertions(+), 142 deletions(-)
+
+diff --git a/src/animation/AnimManager.cpp b/src/animation/AnimManager.cpp
+index 46136bde..605c8d74 100644
+--- a/src/animation/AnimManager.cpp
++++ b/src/animation/AnimManager.cpp
+@@ -12,6 +12,10 @@
+ #include "AnimManager.h"
+ #include "Streaming.h"
+ 
++#ifdef MODLOADER // LoadAnimFile
++#include "modloader.h"
++#endif
++
+ CAnimBlock CAnimManager::ms_aAnimBlocks[NUMANIMBLOCKS];
+ CAnimBlendHierarchy CAnimManager::ms_aAnimations[NUMANIMATIONS];
+ int32 CAnimManager::ms_numAnimBlocks;
+@@ -1295,7 +1299,11 @@ void
+ CAnimManager::LoadAnimFile(const char *filename)
+ {
+ 	RwStream *stream;
++#ifdef MODLOADER // LoadAnimFile
++	stream = (RwStream*)ModLoader_AnimFile(rwSTREAMFILENAME, rwSTREAMREAD, filename);
++#else
+ 	stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, filename);
++#endif
+ 	assert(stream);
+ 	LoadAnimFile(stream, true);
+ 	RwStreamClose(stream, nil);
+diff --git a/src/animation/CutsceneMgr.cpp b/src/animation/CutsceneMgr.cpp
+index 633618b1..4c6653e8 100644
+--- a/src/animation/CutsceneMgr.cpp
++++ b/src/animation/CutsceneMgr.cpp
+@@ -23,6 +23,10 @@
+ #include "Radar.h"
+ #include "Pools.h"
+ 
++#ifdef MODLOADER // cuts.img
++#include "modloader.h"
++#endif
++
+ const struct {
+ 	const char *szTrackName;
+ 	int iTrackId;
+@@ -201,7 +205,12 @@ CCutsceneMgr::LoadCutsceneData(const char *szCutsceneName)
+ 	strcpy(ms_cutsceneName, szCutsceneName);
+ 
+ 	RwStream *stream;
++
++	#ifdef MODLOADER // cuts.img
++	stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, ModLoader_GetCdStreamPath_Unsafe("ANIM\\CUTS.IMG"));
++#else
+ 	stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, "ANIM\\CUTS.IMG");
++#endif
+ 	assert(stream);
+ 
+ 	// Load animations
+@@ -220,7 +229,12 @@ CCutsceneMgr::LoadCutsceneData(const char *szCutsceneName)
+ 	RwStreamClose(stream, nil);
+ 
+ 	// Load camera data
++#ifdef MODLOADER // cuts.img
++	file = CFileMgr::OpenFile(ModLoader_GetCdStreamPath_Unsafe("ANIM\\CUTS.IMG"), "rb");
++#else
+ 	file = CFileMgr::OpenFile("ANIM\\CUTS.IMG", "rb");
++#endif
++
+ 	sprintf(gString, "%s.DAT", szCutsceneName);
+ 	if (ms_pCutsceneDir->FindItem(gString, offset, size)) {
+ 		CStreaming::ImGonnaUseStreamingMemory();
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 4aa11281..c7c1db4a 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -734,36 +734,29 @@ int CTheScripts::ScriptToLoad = 0;
+ int CTheScripts::OpenScript()
+ {
+ 	CFileMgr::ChangeDir("\\");
+-	switch (ScriptToLoad) {
+-
++#ifdef VICE_EXTENDED // ViceExtended folder - scm
++		switch (ScriptToLoad) {
+ #ifdef MODLOADER // main.scm
+-	case 0: return ModLoader_MainScm("test\\data\\main.scm", "rb");
++		case 0: return ModLoader_MainScm("ViceExtended\\data\\main.scm", "rb");
+ #else
+-	
+-#ifdef VICE_EXTENDED
+ 		case 0: return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++#endif // MODLOADER
+ 		case 1: return CFileMgr::OpenFile("ViceExtended\\data\\freeroam_miami.scm", "rb");
+ 		case 2: return CFileMgr::OpenFile("ViceExtended\\data\\main_d.scm", "rb");
++		}
++#ifdef MODLOADER // main.scm
++		return ModLoader_MainScm("ViceExtended\\data\\main.scm", "rb");
+ #else
++		return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++#endif // MODLOADER
++#else
++		switch (ScriptToLoad) {
+ 		case 0: return CFileMgr::OpenFile("data\\main.scm", "rb");
+ 		case 1: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
+ 		case 2: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
+-#endif //VICE_EXTENDED
+-
+-#endif // MODLOADER
+-	}
+-
+-#ifdef MODLOADER
+-	return ModLoader_MainScm("test\\data\\main.scm", "rb");
+-#else
+-
+-#ifdef VICE_EXTENDED
+-	return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
+-#else
+-	return CFileMgr::OpenFile("data\\main.scm", "rb");
+-
+-#endif //VICE_EXTENDED
+-#endif // MODLOADER
++		}
++		return CFileMgr::OpenFile("data\\main.scm", "rb");
++#endif // VICE_EXTENDED
+ }
+ #endif
+ 
+diff --git a/src/control/Script6.cpp b/src/control/Script6.cpp
+index 6c73e969..6dcc93da 100644
+--- a/src/control/Script6.cpp
++++ b/src/control/Script6.cpp
+@@ -38,6 +38,10 @@
+ #include "Pickups.h"
+ #include "Fluff.h"
+ 
++#ifdef MODLOADER // main.scm
++#include "modloader.h"
++#endif
++
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ extern const char* scriptfile;
+ #endif
+diff --git a/src/control/ScriptDebug.cpp b/src/control/ScriptDebug.cpp
+index 87774e58..bb8cb98f 100644
+--- a/src/control/ScriptDebug.cpp
++++ b/src/control/ScriptDebug.cpp
+@@ -16,6 +16,10 @@
+ #include <stdarg.h>
+ #endif
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 
+ char CRunningScript::commandInfo[1024];
+diff --git a/src/core/CdStream.cpp b/src/core/CdStream.cpp
+index 977f16c2..73dd03fb 100644
+--- a/src/core/CdStream.cpp
++++ b/src/core/CdStream.cpp
+@@ -7,6 +7,10 @@
+ #include "RwHelper.h"
+ #include "MemoryMgr.h"
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ struct CdReadInfo
+ {
+ 	uint32 nSectorOffset;
+@@ -201,6 +205,13 @@ CdStreamRead(int32 channel, void *buffer, uint32 offset, uint32 size)
+ 	
+ 	ASSERT( _GET_INDEX(offset) < MAX_CDIMAGES );
+ 	HANDLE hImage = gImgFiles[_GET_INDEX(offset)];
++#ifdef MODLOADER
++	{
++		HANDLE hCustomFile = ModLoader_AcquireNextModelFileHandle();
++		if (hCustomFile != INVALID_HANDLE_VALUE)
++			hImage = hCustomFile;
++	}
++#endif
+ 	ASSERT( hImage != nil );
+ 	
+ 	
+@@ -396,7 +407,12 @@ DWORD
+ WINAPI CdStreamThread(LPVOID lpThreadParameter)
+ {
+ 	debug("Created cdstream thread\n");
+-	
++
++#ifdef MODLOADER
++	if (ModLoader_CdStreamThread())
++		return 0;
++#endif
++
+ 	while ( true )
+ 	{
+ 		WaitForSingleObject(gCdStreamSema, INFINITE);
+@@ -483,8 +499,13 @@ CdStreamAddImage(char const *path)
+ 	ASSERT(gNumImages < MAX_CDIMAGES);
+ 	
+ 	SetLastError(0);
+-	
++
++	#ifdef MODLOADER
++	gImgFiles[gNumImages] = CreateFile(ModLoader_GetCdStreamPath_Unsafe(path),
++#else
+ 	gImgFiles[gNumImages] = CreateFile(path,
++#endif
++	
+ 	                                   GENERIC_READ,
+ 	                                   FILE_SHARE_READ,
+ 	                                   nil,
+diff --git a/src/core/Directory.cpp b/src/core/Directory.cpp
+index 05344065..e66f13df 100644
+--- a/src/core/Directory.cpp
++++ b/src/core/Directory.cpp
+@@ -4,6 +4,10 @@
+ #include "FileMgr.h"
+ #include "Directory.h"
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ CDirectory::CDirectory(int32 maxEntries)
+  : numEntries(0), maxEntries(maxEntries)
+ {
+@@ -21,7 +25,11 @@ CDirectory::ReadDirFile(const char *filename)
+ 	int fd;
+ 	DirectoryInfo dirinfo;
+ 
++#ifdef MODLOADER
++	fd = CFileMgr::OpenFile(ModLoader_GetCdDirectoryPath_Unsafe(filename), "rb");
++#else
+ 	fd = CFileMgr::OpenFile(filename, "rb");
++#endif
+ 	while(CFileMgr::Read(fd, (char*)&dirinfo, sizeof(dirinfo)))
+ 		AddItem(dirinfo);
+ 	CFileMgr::CloseFile(fd);
+diff --git a/src/core/FileLoader.cpp b/src/core/FileLoader.cpp
+index dbf2cad9..ef0f402d 100644
+--- a/src/core/FileLoader.cpp
++++ b/src/core/FileLoader.cpp
+@@ -30,6 +30,10 @@
+ #include "ColStore.h"
+ #include "Occlusion.h"
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ char CFileLoader::ms_line[256];
+ 
+ const char*
+@@ -61,7 +65,16 @@ CFileLoader::LoadLevel(const char *filename)
+ 		savedTxd = RwTexDictionaryCreate();
+ 		RwTexDictionarySetCurrent(savedTxd);
+ 	}
++#ifdef MODLOADER
++	if (strstr(filename, "DEFAULT.DAT"))
++		fd = ModLoader_DefaultDat(filename, "r");
++	else if (strstr(filename, "GTA_VC.DAT"))
++		fd = ModLoader_GtaDat(filename, "r");
++	else // ViceEx.dat
++		fd = CFileMgr::OpenFile(filename, "r");
++#else
+ 	fd = CFileMgr::OpenFile(filename, "r");
++#endif
+ 	assert(fd > 0);
+ 
+ 	for(line = LoadLine(fd); line; line = LoadLine(fd)){
+@@ -77,22 +90,47 @@ CFileLoader::LoadLevel(const char *filename)
+ 			PUSH_MEMID(MEMID_TEXTURES);
+ 			strcpy(txdname, line+11);
+ 			LoadingScreenLoadingFile(txdname);
++#ifdef MODLOADER
++			RwTexDictionary *txd = LoadTexDictionary(ModLoader_RegisterAndGetTexDiction_Unsafe(txdname));
++#else
+ 			RwTexDictionary *txd = LoadTexDictionary(txdname);
++#endif
+ 			AddTexDictionaries(savedTxd, txd);
+ 			RwTexDictionaryDestroy(txd);
+ 			POP_MEMID();
++
+ 		}else if(strncmp(line, "COLFILE", 7) == 0){
+ 			LoadingScreenLoadingFile(line+10);
++#ifdef MODLOADER
++			LoadCollisionFile(ModLoader_RegisterAndGetColFile_Unsafe(line + 10), 0);
++#else
+ 			LoadCollisionFile(line+10, 0);
++#endif
++
+ 		}else if(strncmp(line, "MODELFILE", 9) == 0){
+ 			LoadingScreenLoadingFile(line + 10);
++#ifdef MODLOADER
++			LoadModelFile(ModLoader_RegisterAndGetAtomicFile_Unsafe(line + 10));
++#else
+ 			LoadModelFile(line + 10);
++#endif
++
+ 		}else if(strncmp(line, "HIERFILE", 8) == 0){
+ 			LoadingScreenLoadingFile(line + 9);
++#ifdef MODLOADER
++			LoadClumpFile(ModLoader_RegisterAndGetClumpFile_Unsafe(line + 9));
++#else
+ 			LoadClumpFile(line + 9);
++#endif
++
+ 		}else if(strncmp(line, "IDE", 3) == 0){
+ 			LoadingScreenLoadingFile(line + 4);
++			#ifdef MODLOADER
++			LoadObjectTypes(ModLoader_RegisterAndGetIdeFile_Unsafe(line + 4));
++#else
+ 			LoadObjectTypes(line + 4);
++#endif
++
+ 		}else if(strncmp(line, "IPL", 3) == 0){
+ 			if(!objectsLoaded){
+ 				LoadingScreenLoadingFile("Collision");
+@@ -110,7 +148,11 @@ CFileLoader::LoadLevel(const char *filename)
+ 			}
+ 			PUSH_MEMID(MEMID_WORLD);
+ 			LoadingScreenLoadingFile(line + 4);
++#ifdef MODLOADER
++			LoadScene(ModLoader_RegisterAndGetIplFile_Unsafe(line + 4));
++#else
+ 			LoadScene(line + 4);
++#endif
+ 			POP_MEMID();
+ 		}else if(strncmp(line, "SPLASH", 6) == 0){
+ #ifndef DISABLE_LOADING_SCREEN
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 09e0e0b4..44adea5c 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -43,6 +43,16 @@
+ #include "../extras/functions/ini_functions.h"
+ #endif //_TEST1
+ 
++#ifdef CUSTOM_CODE
++#include "extras/functions/ini_functions.h"
++
++#endif
++
++#ifdef MODLOADER // fronten1.txd, fronten2.txd
++#include "modloader.h"
++#endif
++
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -74,6 +84,13 @@ const CRGBA SCROLLBAR_COLOR = LABEL_COLOR;
+ #define MAX_VISIBLE_OPTION_ON_SCREEN (hasNativeList(m_nCurrScreen) ? MAX_VISIBLE_LIST_ROW : MAX_VISIBLE_OPTION)
+ #define SCREEN_HAS_AUTO_SCROLLBAR (m_nTotalListRow > MAX_VISIBLE_OPTION && !hasNativeList(m_nCurrScreen))
+ 
++
++#ifdef _TEST1
++// Setup the save slot
++// This is save slot 1
++// uint8 m_bSaveSlotNum = SAVESLOT_0;
++#endif
++
+ int GetOptionCount(int screen)
+ {
+ 	int i = 0;
+@@ -1172,6 +1189,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					break;
+ #endif
+ 
++#ifdef _FAST_LOADER
+ 				// Ohh, this is where the texts go.
+ 					// New test
+ 					// It does toggle in the reVC.ini though.
+@@ -1179,6 +1197,13 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					rightText = TheText.Get(gbFastLoader ? "FEM_ON" : "FEM_OFF");
+ 					break;
+ 
++				// TODO Setup later
++// #ifdef _TEST1
++// 				case MENUACTION_FASTLOADER_SLOT:
++
++// 					break;
++// #endif //_TEST1
++#endif
+ 
+ 				case MENUACTION_CTRLVIBRATION:
+ 					if (m_PrefsUseVibration)
+@@ -3099,7 +3124,12 @@ CMenuManager::LoadAllTextures()
+ 		frontendTxdSlot1 = CTxdStore::AddTxdSlot("frontend1");
+ 
+ 	printf("LOAD frontend1\n");
++#ifdef MODLOADER // fronten1.txd
++	ModLoader_Fronten1Txd(frontendTxdSlot1, "MODELS/FRONTEN1.TXD");
++#else
++	//CTxdStore::LoadTxd(frontendTxdSlot1, "ViceExtended/MODELS/FRONTEN1.TXD");
+ 	CTxdStore::LoadTxd(frontendTxdSlot1, "MODELS/FRONTEN1.TXD");
++#endif
+ 	CTxdStore::AddRef(frontendTxdSlot1);
+ 	CTxdStore::SetCurrentTxd(frontendTxdSlot1);
+ 
+@@ -3150,7 +3180,16 @@ CMenuManager::LoadAllTextures()
+ 			frontendTxdSlot2 = CTxdStore::AddTxdSlot("frontend2");
+ 
+ 		printf("LOAD frontend2\n");
++#ifdef VICE_EXTENDED // ViceExtended folder - fronten2.txd
++#ifdef MODLOADER // fronten2.txd
++			ModLoader_Fronten2Txd(frontendTxdSlot2, "MODELS/FRONTEN2.TXD");
++#else
++		//CTxdStore::LoadTxd(frontendTxdSlot2, "ViceExtended/MODELS/FRONTEN2.TXD");
++		CTxdStore::LoadTxd(frontendTxdSlot2, "MODELS/FRONTEN2.TXD");
++#endif
++#else
+ 		CTxdStore::LoadTxd(frontendTxdSlot2, "MODELS/FRONTEN2.TXD");
++#endif
+ 		CTxdStore::AddRef(frontendTxdSlot2);
+ 		CTxdStore::SetCurrentTxd(frontendTxdSlot2);
+ 
+@@ -5328,6 +5367,12 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 	}
+ }
+ 
++
++#ifdef _TEST1
++	//bool selectedSaveSlot = IniFunctions::ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++	uint8 selectedSaveSlot = IniFunctions::ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++#endif // _TEST1
++
+ void
+ CMenuManager::ProcessOnOffMenuOptions()
+ {
+@@ -5368,7 +5413,20 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 			SaveSettings();
+ 		}
+ 		break;
+-#endif
++
++		// TODO Setup later
++		// Oops, this needs to be obtained 
++		// from the ini file, not from the C++ definition.
++
++#ifdef _TEST1
++		case MENUACTION_FASTLOADER_SLOT:
++			// gbGameSaveOnStartup = ;
++			selectedSaveSlot = m_bSaveSlotNum;
++			SaveSettings();
++		break;
++#endif // _TEST1
++
++#endif // _FAST_LOADER
+ 
+ #endif // GAMEPAD_MENU
+ 
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 7cc79b3e..73bd9b2e 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -10,6 +10,11 @@
+ #include "DMAudio.h"
+ #endif
+ 
++#ifdef _TEST1
++// extern int m_bSaveSlotNum;
++extern uint8 m_bSaveSlotNum;
++#endif
++
+ #define MENUHEADER_POS_X 10.0f
+ #define MENUHEADER_POS_Y 10.0f
+ #define MENUHEADER_HEIGHT 2.0f
+@@ -243,7 +248,7 @@ enum eMenuScreen
+ 
+ #ifdef MENU_TEST
+ 	MENUPAGE_GENERAL_SETTINGS,
+-#endif // CUSTOM_CODE
++#endif // MENU_TEST
+ 	MENUPAGES
+ };
+ 
+@@ -326,7 +331,10 @@ enum eMenuAction
+ 	MENUACTION_TEST,
+ 	// Test in Frontend.cpp
+ 	MENUACTION_FASTLOADER,
+-#endif
++#ifdef _TEST1
++	MENUACTION_FASTLOADER_SLOT,
++#endif //_TEST1
++#endif // MENU_TEST
+ 
+ };
+ 
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 658d0f38..642182c1 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -96,6 +96,10 @@
+ #include "TexturePools.h"
+ #endif
+ 
++#ifdef MODLOADER // particle.txd
++#include "modloader.h"
++#endif
++
+ eLevelName CGame::currLevel;
+ int32 CGame::currArea;
+ bool CGame::bDemoMode = true;
+@@ -479,6 +483,16 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	CdStreamAddImage("MODELS\\GTA3.IMG");
+ 
++// Not using these below
++
++// #ifdef VICE_EXTENDED// ViceExtended folder - ViceEx.dat
++// 	CFileLoader::LoadLevel("ViceExtended\\DATA\\ViceEx.DAT");
++// #endif
++
++// #ifdef VICE_EXTENDED // ViceExtended folder - default.dat
++	// CFileLoader::LoadLevel("ViceExtended\\DATA\\DEFAULT.DAT");
++// #else
++
+ 	CFileLoader::LoadLevel("DATA\\DEFAULT.DAT");
+ 	CFileLoader::LoadLevel(datFile);
+ 
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index e03ddb2c..b81e5677 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -105,6 +105,19 @@
+ const char *filterNames[] = { "FEM_NON", "FEM_SIM", "FEM_NRM", "FEM_MOB" };
+ const char *off_on[] = { "FEM_OFF", "FEM_ON" };
+ 
++#ifdef CUSTOM_CODE
++// This should be the right amount of save slots
++//const char *saveSlotNumbers[] = {"1", "2", "3", "4", "5", "6", "7", "8"};
++const char *saveSlotNumbers[] = {"FST_SL1", "FST_SL2", "FST_SL3", "FST_SL4", "FST_SL5", "FST_SL6", "FST_SL7", "FST_SL8"};
++
++// Setup the save slot
++// This is save slot 1
++#ifdef _TEST1
++uint8 m_bSaveSlotNum = SAVESLOT_0;
++#endif // _TEST1
++
++#endif
++
+ void RestoreDefGraphics(int8 action) {
+ 	if (action != FEOPTION_ACTION_SELECT)
+ 		return;
+@@ -847,7 +860,25 @@ CMenuScreenCustom aScreens[] = {
+ 		// This mostly works now, the only problem with it is that it
+ 		// automatically loads a save slot when I toggle it in the main menu,
+ 		// so if you want to go back to the main menu you can't.
++		// Well I have added an option to disable this being toggled in the main menu, so it can only be toggled in game
+ 		MENUACTION_FASTLOADER,      "FST_LD",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++		// MENUACTION_CFO_SLIDER,      "FST_SLT",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++
++
++		// Test
++		// Well now this shows the numbers but it says "1-8 missing" in the menu selector for it.
++		// TODO Use this to create a fast loader slot selector, I have the slot numbers setup
++		// I just have to figure what Graphics and ColourFilter are doing.
++		//MENUACTION_CFO_SELECT, "FST_SLT", { new CCFOSelect((int8*)&CPostFX::EffectSwitch, "Graphics", "ColourFilter", saveSlotNumbers, ARRAY_SIZE(saveSlotNumbers), false) }, 0, 0, MENUALIGN_LEFT,
++
++		// Well this shows up right since I added the text, I still need to figure out how to implement it into the Frontend.cpp for the
++		// Ini settings though then it'll be complete, its disabled for now.
++ #ifdef _TEST1 
++		MENUACTION_CFO_SELECT,	  "FST_SLT",  {new CCFOSelect((int8 *)&m_bSaveSlotNum, "Graphics", "ColourFilter", 
++		saveSlotNumbers, ARRAY_SIZE(saveSlotNumbers), false)}, 0, 0, MENUALIGN_LEFT,
++ #endif //_TEST1
++
++
+         // MENUACTION_TEST,			"FEO_TES", {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_CENTER,
+ 
+ 		MENUACTION_GOBACK,			"FEDS_TB",   {nil, SAVESLOT_NONE, MENUPAGE_NONE}, 0, 0, MENUALIGN_LEFT,
+diff --git a/src/core/Streaming.cpp b/src/core/Streaming.cpp
+index 54d3f12c..1ab65870 100644
+--- a/src/core/Streaming.cpp
++++ b/src/core/Streaming.cpp
+@@ -38,6 +38,10 @@
+ #include "Frontend.h"
+ #include "VarConsole.h"
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ bool CStreaming::ms_disableStreaming;
+ bool CStreaming::ms_bLoadingBigModel;
+ int32 CStreaming::ms_numModelsRequested;
+@@ -203,7 +207,11 @@ CStreaming::Init2(void)
+ 	ms_loadedGangs = 0;
+ 	ms_currentPedLoading = NUMMODELSPERPEDGROUP;	// unused, whatever it is
+ 
++#ifdef MODLOADER
++	ModLoader_LoadCdDirectory();
++#else
+ 	LoadCdDirectory();
++#endif
+ 
+ 	// allocate streaming buffers
+ 	if(ms_streamingBufferSize & 1) ms_streamingBufferSize++;
+@@ -393,7 +401,11 @@ CStreaming::LoadCdDirectory(void)
+ 	while(i-- >= 1){
+ 		strcpy(dirname, CdStreamGetImageName(i));
+ 		strncpy(strrchr(dirname, '.') + 1, "DIR", 3);
++#ifdef MODLOADER
++		ModLoader_FetchCdDirectory(dirname, i);
++#else
+ 		LoadCdDirectory(dirname, i);
++#endif
+ 	}
+ 
+ 	ms_lastImageRead = 0;
+@@ -409,7 +421,11 @@ CStreaming::LoadCdDirectory(const char *dirname, int n)
+ 	char *dot;
+ 
+ 	lastID = -1;
++#ifdef MODLOADER
++	fd = CFileMgr::OpenFile(ModLoader_GetCdDirectoryPath_Unsafe(dirname), "rb");
++#else
+ 	fd = CFileMgr::OpenFile(dirname, "rb");
++#endif
+ 	assert(fd > 0);
+ 
+ 	imgSelector = n<<24;
+@@ -1134,6 +1150,9 @@ CStreaming::RequestSpecialModel(int32 modelId, const char *modelName, int32 flag
+ 	else
+ 		mi->SetTexDictionary(modelName);
+ 	ms_aInfoForModel[modelId].SetCdPosnAndSize(pos, size);
++#ifdef MODLOADER
++	ModLoader_OnRequestSpecialModel(modelId, modelName, pos, size);
++#endif
+ 	RequestModel(modelId, flags);
+ }
+ 
+@@ -2204,6 +2223,12 @@ CStreaming::RequestModelStream(int32 ch)
+ 		ms_bLoadingBigModel = true;
+ 	}
+ 
++#ifdef MODLOADER
++	// No worries about the loop that follows this call because Mod Loader isn't
++	// interested in files that have adjascent files (not loading from cd image).
++	ModLoader_RegisterNextModelRead(streamId);
++#endif
++
+ 	// Load up to 4 adjacent files
+ 	haveBigFile = 0;
+ 	havePed = 0;
+@@ -2261,8 +2286,15 @@ CStreaming::RequestModelStream(int32 ch)
+ 		ms_channel[ch].streamIds[i] = -1;
+ 	// Now read the data
+ 	assert(!(ms_bLoadingBigModel && ch == 1));	// this would clobber the buffer
++
++#ifdef MODLOADER
++	if (ModLoader_CdStreamRead(ch, ms_pStreamingBuffer[ch], imgOffset + posn, totalSize) == STREAM_NONE)
++		debug("FUCKFUCKFUCK\n");
++#else
+ 	if(CdStreamRead(ch, ms_pStreamingBuffer[ch], imgOffset+posn, totalSize) == STREAM_NONE)
+ 		debug("FUCKFUCKFUCK\n");
++#endif
++
+ 	ms_channel[ch].state = CHANNELSTATE_READING;
+ 	ms_channel[ch].field24 = 0;
+ 	ms_channel[ch].size = totalSize;
+@@ -2560,9 +2592,15 @@ CStreaming::LoadAllRequestedModels(bool priority)
+ 		DecrementRef(streamId);
+ 
+ 		if(ms_aInfoForModel[streamId].GetCdPosnAndSize(posn, size)){
+-			do
++			do {
++				#ifdef MODLOADER
++				ModLoader_RegisterNextModelRead(streamId);
++				status = ModLoader_CdStreamRead(0, ms_pStreamingBuffer[0], imgOffset + posn, size);
++#else
+ 				status = CdStreamRead(0, ms_pStreamingBuffer[0], imgOffset+posn, size);
+-			while(CdStreamSync(0) || status == STREAM_NONE);
++#endif
++			
++			} while(CdStreamSync(0) || status == STREAM_NONE);
+ 			ms_aInfoForModel[streamId].m_loadState = STREAMSTATE_READING;
+ 
+ 			MakeSpaceFor(size * CDSTREAM_SECTOR_SIZE);
+diff --git a/src/core/SurfaceTable.cpp b/src/core/SurfaceTable.cpp
+index c4b184bf..f3950a70 100644
+--- a/src/core/SurfaceTable.cpp
++++ b/src/core/SurfaceTable.cpp
+@@ -6,6 +6,10 @@
+ #include "Collision.h"
+ #include "SurfaceTable.h"
+ 
++#ifdef MODLOADER // surface.dat
++#include "modloader.h"
++#endif
++
+ float CSurfaceTable::ms_aAdhesiveLimitTable[NUMADHESIVEGROUPS][NUMADHESIVEGROUPS];
+ 
+ void
+@@ -17,7 +21,11 @@ CSurfaceTable::Initialise(Const char *filename)
+ 	float adhesiveLimit;
+ 
+ 	CFileMgr::SetDir("");
++#ifdef MODLOADER // surface.dat
++	ModLoader_SurfaceDat(filename, work_buff, sizeof(work_buff), "r");
++#else
+ 	CFileMgr::LoadFile(filename, work_buff, sizeof(work_buff), "r");
++#endif
+ 
+ 	line = (char*)work_buff;
+ 	for(lineno = 0; lineno < NUMADHESIVEGROUPS; lineno++){
+diff --git a/src/core/config.h b/src/core/config.h
+index 55841a99..c57bf97c 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -47,6 +47,15 @@
+ // Enable util functions
+ #define UTILS
+ 
++// If modloader is enabled, I'm quite sure these need disabled.
++// #define MODLOADER
++
++#ifdef MODLOADER
++#undef USE_TXD_CDIMAGE
++#undef ONE_THREAD_PER_CHANNEL
++#undef FLUSHABLE_STREAMING
++#endif //MODLOADER
++
+ // Test for third person aim using the rocket launcher, from Extended Vice project
+ // I will still need to add these defines to make this work.
+ // #define FIRST_PERSON
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 06d242f0..558f3d5a 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -595,7 +595,11 @@ LoadSplash(const char *name)
+ 			splash.Delete();
+ 		if(txd)
+ 			CTxdStore::RemoveTxd(splashTxdId);
+-		CTxdStore::LoadTxd(splashTxdId, filename);
++#ifdef MODLOADER // LoadSplash
++			CTxdStore::LoadTxd(splashTxdId, ModLoader_RegisterAndGetSplashFile_Unsafe(filename));
++#else
++			CTxdStore::LoadTxd(splashTxdId, filename);
++#endif
+ 		CTxdStore::AddRef(splashTxdId);
+ 		CTxdStore::PushCurrentTxd();
+ 		CTxdStore::SetCurrentTxd(splashTxdId);
+diff --git a/src/modelinfo/VehicleModelInfo.cpp b/src/modelinfo/VehicleModelInfo.cpp
+index d31962ce..b991b7fe 100644
+--- a/src/modelinfo/VehicleModelInfo.cpp
++++ b/src/modelinfo/VehicleModelInfo.cpp
+@@ -21,6 +21,10 @@
+ #include "ModelInfo.h"
+ #include "custompipes.h"
+ 
++#ifdef MODLOADER // carcols.dat
++#include "modloader.h"
++#endif
++
+ int8 CVehicleModelInfo::ms_compsToUse[2] = { -2, -2 };
+ int8 CVehicleModelInfo::ms_compsUsed[2];
+ RwRGBA CVehicleModelInfo::ms_vehicleColourTable[256];
+@@ -992,7 +996,11 @@ CVehicleModelInfo::LoadVehicleColours(void)
+ 	int n;
+ 
+ 	CFileMgr::ChangeDir("\\DATA\\");
++#ifdef MODLOADER // carcols.dat
++	fd = ModLoader_CarcolsDat("CARCOLS.DAT", "r");
++#else
+ 	fd = CFileMgr::OpenFile("CARCOLS.DAT", "r");
++#endif
+ 	CFileMgr::ChangeDir("\\");
+ 
+ 	for(i = 0; i < 256; i++)
+diff --git a/src/objects/ObjectData.cpp b/src/objects/ObjectData.cpp
+index 8b23f0ae..ffc09a02 100644
+--- a/src/objects/ObjectData.cpp
++++ b/src/objects/ObjectData.cpp
+@@ -6,6 +6,10 @@
+ #include "FileMgr.h"
+ #include "ObjectData.h"
+ 
++#ifdef MODLOADER // object.dat
++#include "modloader.h"
++#endif
++
+ CObjectInfo CObjectData::ms_aObjectInfo[NUMOBJECTINFO];
+ 
+ // Another ugly file reader
+@@ -64,7 +68,11 @@ CObjectData::Initialise(const char *filename)
+ 	ms_aObjectInfo[3].m_bCameraToAvoidThisObject = true;
+ 
+ 	CFileMgr::SetDir("");
++#ifdef MODLOADER // object.dat
++	ModLoader_ObjectDat(filename, work_buff, sizeof(work_buff), "r");
++#else
+ 	CFileMgr::LoadFile(filename, work_buff, sizeof(work_buff), "r");
++#endif
+ 
+ 	id = 4;
+ 	p = (char*)work_buff;
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index ce400a9d..1b8e3354 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -26,6 +26,10 @@
+ #include "Glass.h"
+ #include "SpecialFX.h"
+ 
++#ifdef MODLOADER // fistfite.dat
++#include "modloader.h"
++#endif
++
+ uint16 nPlayerInComboMove;
+ RpClump* flyingClumpTemp;
+ 
+@@ -2348,7 +2352,11 @@ CPed::LoadFightData(void)
+ 	size_t bp, buflen;
+ 	int lp, linelen;
+ 
++#ifdef MODLOADER // fistfite.dat
++	buflen = ModLoader_FistfiteDat("DATA\\fistfite.dat", work_buff, sizeof(work_buff), "r");
++#else
+ 	buflen = CFileMgr::LoadFile("DATA\\fistfite.dat", work_buff, sizeof(work_buff), "r");
++#endif
+ 
+ 	for (bp = 0; bp < buflen; ) {
+ 		// read file line by line
+diff --git a/src/peds/PedType.cpp b/src/peds/PedType.cpp
+index cae81df5..f45ab251 100644
+--- a/src/peds/PedType.cpp
++++ b/src/peds/PedType.cpp
+@@ -5,6 +5,10 @@
+ #include "PedType.h"
+ #include "SaveBuf.h"
+ 
++#ifdef MODLOADER // ped.dat, pedstats.dat
++#include "modloader.h"
++#endif
++
+ CPedType *CPedType::ms_apPedType[NUM_PEDTYPES];
+ CPedStats *CPedStats::ms_apPedStats[NUM_PEDSTATS];
+ 
+@@ -64,7 +68,11 @@ CPedType::LoadPedData(void)
+ 	buf = new char[16 * 1024];
+ 
+ 	CFileMgr::SetDir("DATA");
++#ifdef MODLOADER // ped.dat
++	buflen = ModLoader_PedDat("PED.DAT", (uint8*)buf, 16 * 1024, "r");
++#else
+ 	buflen = CFileMgr::LoadFile("PED.DAT", (uint8*)buf, 16 * 1024, "r");
++#endif
+ 	CFileMgr::SetDir("");
+ 
+ 	for(bp = 0; bp < buflen; ){
+@@ -290,7 +298,11 @@ CPedStats::LoadPedStats(void)
+ 	buf = new char[16 * 1024];
+ 
+ 	CFileMgr::SetDir("DATA");
++#ifdef MODLOADER // pedstats.dat
++	buflen = ModLoader_PedStatsDat("PEDSTATS.DAT", (uint8*)buf, 16 * 1024, "r");
++#else
+ 	buflen = CFileMgr::LoadFile("PEDSTATS.DAT", (uint8*)buf, 16 * 1024, "r");
++#endif
+ 	CFileMgr::SetDir("");
+ 
+ 	for(bp = 0; bp < buflen; ){
+diff --git a/src/peds/Population.cpp b/src/peds/Population.cpp
+index 473b922d..61e3114a 100644
+--- a/src/peds/Population.cpp
++++ b/src/peds/Population.cpp
+@@ -29,6 +29,10 @@
+ #include "Clock.h"
+ #include "WaterLevel.h"
+ 
++#ifdef MODLOADER // pedgrp.dat
++#include "modloader.h"
++#endif
++
+ #define MIN_CREATION_DIST		40.0f // not for start of the game (look at the GeneratePedsAtStartOfGame)
+ #define CREATION_RANGE			10.0f // added over the MIN_CREATION_DIST.
+ #define OFFSCREEN_CREATION_MULT	0.5f
+@@ -175,7 +179,11 @@ CPopulation::LoadPedGroups()
+ 	char modelName[256];
+ 
+ 	CFileMgr::ChangeDir("\\DATA\\");
++#ifdef MODLOADER // pedgrp.dat
++	fd = ModLoader_PedGrpDat("PEDGRP.DAT", "r");
++#else
+ 	fd = CFileMgr::OpenFile("PEDGRP.DAT", "r");
++#endif
+ 	CFileMgr::ChangeDir("\\");
+ 	while (CFileMgr::ReadLine(fd, line, sizeof(line))) {
+ 		int end;
+diff --git a/src/renderer/Font.cpp b/src/renderer/Font.cpp
+index 6ae10011..7e13a798 100644
+--- a/src/renderer/Font.cpp
++++ b/src/renderer/Font.cpp
+@@ -8,6 +8,10 @@
+ #endif
+ #include "Timer.h"
+ 
++#ifdef MODLOADER // fonts.txd, fonts_p.txd, fonts_r.txd, fonts_j.txd
++#include "modloader.h"
++#endif
++
+ void
+ AsciiToUnicode(const char *src, wchar *dst)
+ {
+@@ -71,7 +75,7 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 		18, 10, 17, 17, 17, 17, 17, 15, 12, 16,  5, 30, 30, 30, 30, 30,
+ 		//   A,  B,  C,  D,  E,  F,  G,  H,  I,  J,  K,  L,  M,  N,  O,
+ 		12, 16, 19, 16, 19, 18, 18, 17, 22, 11, 17, 18, 18, 30, 22, 19,
+-		//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, ??, ??, ??,  ¡,  \,
++		//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, ??, ??, ??,  ï¿½,  \,
+ 		#ifdef FIX_BUGS
+ 		22, 19, 19, 20, 18, 19, 19, 29, 19, 18, 19, 19, 33, 33, 10, 19,
+ 		#else
+@@ -81,11 +85,11 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 		12, 14, 11, 11, 16, 11, 12, 14, 14, 10, 13, 12, 10, 19, 18, 12,
+ 		//p, q,  r,  s,  t,  u,  v,  w,  x,  y,  z, ??, ??, ??, ??, ??,
+ 		16, 13, 13, 11, 12, 15, 12, 15, 13, 12, 12, 37, 33, 37, 35, 37,
+-		//À, Á,  Â,  Ä,  Æ,  Ç,  È,  É,  Ê,  Ë,  Ì,  Í,  Î,  Ï,  Ò,  Ó,
++		//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 		16, 16, 16, 16, 33, 17, 18, 18, 18, 18, 11, 11, 11, 11, 19, 19,
+-		//Ô, Ö,  Ù,  Ú,  Û,  Ü,  ß,  à,  á,  â,  ä,  æ,  ç,  è,  é,  ê,
++		//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 		19, 19, 19, 19, 19, 19, 15, 14, 14, 14, 14, 20, 14, 11, 11, 11,
+-		//ë, ì,  í,  î,  ï,  ò,  ó,  ô,  ö,  ù,  ú,  û,  ü,  Ñ,  ñ,  ¿,
++		//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 		#ifdef FIX_BUGS
+ 		11, 10, 10, 10, 10, 12, 12, 12, 12, 15, 15, 15, 15, 22, 18, 21,
+ 		#else
+@@ -110,7 +114,7 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 		20,  7, 20, 20, 21, 20, 20, 19, 21, 20,  8, 30, 24, 30, 24, 19,
+ 		//TM,A,  B,  C,  D,  E,  F,  G,  H,  I,  J,  K,  L,  M,  N,  O,
+ 		20, 22, 22, 21, 22, 18, 18, 22, 22,  9, 14, 21, 18, 27, 21, 24,
+-		//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, *I,  \, *I,  ¡,  °,
++		//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, *I,  \, *I,  ï¿½,  ï¿½,
+ 		#ifdef FIX_BUGS
+ 		22, 22, 23, 20, 19, 23, 22, 31, 23, 23, 21, 25, 13, 30,  7, 19,
+ 		#else
+@@ -120,11 +124,11 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 		10, 17, 17, 16, 17, 17, 11, 17, 17,  7,  7, 18,  7, 25, 17, 17,
+ 		//p, q,  r,  s,  t,  u,  v,  w,  x,  y,  z, *I, *I, $2, (2, )2,
+ 		17, 17, 11, 17, 11, 17, 18, 25, 19, 18, 17, 28, 26, 20, 15, 15,
+-		//À, Á,  Â,  Ä,  Æ,  Ç,  È,  É,  Ê,  Ë,  Ì,  Í,  Î,  Ï,  Ò,  Ó,
++		//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 		20, 20, 20, 20, 29, 22, 19, 19, 19, 19,  9,  9,  9,  9, 23, 23,
+-		//Ô, Ö,  Ù,  Ú,  Û,  Ü,  ß,  à,  á,  â,  ä,  æ,  ç,  è,  é,  ê,
++		//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 		23, 23, 24, 24, 24, 24, 20, 19, 17, 17, 17, 30, 16, 17, 17, 17,
+-		//ë, ì,  í,  î,  ï,  ò,  ó,  ô,  ö,  ù,  ú,  û,  ü,  Ñ,  ñ,  ¿,
++		//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 		#ifdef FIX_BUGS
+ 		17, 11, 11, 15, 12, 17, 17, 17, 17, 17, 17, 17, 17, 21, 17, 19,
+ 		#else
+@@ -134,9 +138,9 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 		20, 18, 19, 19, 21, 19, 19, 19, 19, 19, 16, 19, 19, 19, 20, 19,
+ 		//F2,G2,H2, I2, J2, K2, L2, M2, N2, O2, P2, Q2, R2, S2, T2, U2,
+ 		16, 19, 19,  9, 19, 20, 14, 29, 19, 19, 19, 19, 19, 19, 21, 19,
+-		//V2,W2,X2, Y2, Z2, À2, Á2, Â2, Ä2, Æ2, Ç2, È2, É2, Ê2, Ë2, Ì2,
++		//V2,W2,X2, Y2, Z2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2,
+ 		20, 32, 20, 19, 19, 19, 19, 19, 19, 29, 19, 19, 19, 19, 19,  9,
+-		//Í2,Î2,Ï2, Ò2, Ó2, Ô2, Ö2, Ù2, Ú2, Û2, Ü2, ß2, Ñ2, ¿2, '2, .2,
++		//ï¿½2,ï¿½2,ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, '2, .2,
+ 		#ifdef FIX_BUGS
+ 		 9,  9,  9, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 10,  9,
+ 		#else
+@@ -191,17 +195,17 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 			18, 10, 17, 17, 17, 17, 17, 15, 12, 16,  5, 30, 30, 30, 30, 30,
+ 			//   A,  B,  C,  D,  E,  F,  G,  H,  I,  J,  K,  L,  M,  N,  O,
+ 			12, 16, 19, 16, 19, 18, 18, 17, 22, 11, 17, 18, 18, 30, 22, 19,
+-			//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, ??, ??, ??,  ¡,  \,
++			//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, ??, ??, ??,  ï¿½,  \,
+ 			22, 19, 19, 20, 18, 19, 19, 29, 19, 18, 19, 19, 33, 33, 10, 19,
+ 			//??,a,  b,  c,  d,  e,  f,  g,  h,  i,  j,  k,  l,  m,  n,  o,
+ 			12, 14, 11, 11, 16, 11, 12, 14, 14, 10, 13, 12, 10, 19, 18, 12,
+ 			//p, q,  r,  s,  t,  u,  v,  w,  x,  y,  z, ??, ??, ??, ??, ??,
+ 			16, 13, 13, 11, 12, 15, 12, 15, 13, 12, 12, 37, 33, 37, 35, 37,
+-			//À, Á,  Â,  Ä,  Æ,  Ç,  È,  É,  Ê,  Ë,  Ì,  Í,  Î,  Ï,  Ò,  Ó,
++			//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 			16, 16, 16, 16, 33, 17, 18, 18, 18, 18, 11, 11, 11, 11, 19, 19,
+-			//Ô, Ö,  Ù,  Ú,  Û,  Ü,  ß,  à,  á,  â,  ä,  æ,  ç,  è,  é,  ê,
++			//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 			19, 19, 19, 19, 19, 19, 15, 14, 14, 14, 14, 20, 14, 11, 11, 11,
+-			//ë, ì,  í,  î,  ï,  ò,  ó,  ô,  ö,  ù,  ú,  û,  ü,  Ñ,  ñ,  ¿,
++			//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 			11, 10, 10, 10, 10, 12, 12, 12, 12, 15, 15, 15, 15, 22, 18, 21,
+ 			//i,BLANKS
+ 			10, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
+@@ -222,25 +226,25 @@ int16 CFont::Size[MAX_FONTS][210] = {
+ 			20,  7, 20, 20, 21, 20, 20, 19, 21, 20,  8, 30, 24, 30, 24, 19,
+ 			//TM,A,  B,  C,  D,  E,  F,  G,  H,  I,  J,  K,  L,  M,  N,  O,
+ 			20, 22, 22, 21, 22, 18, 18, 22, 22,  9, 14, 21, 18, 27, 21, 24,
+-			//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, *I,  \, *I,  ¡,  °,
++			//P, Q,  R,  S,  T,  U,  V,  W,  X,  Y,  Z, *I,  \, *I,  ï¿½,  ï¿½,
+ 			22, 22, 23, 20, 19, 23, 22, 31, 23, 23, 21, 25, 13, 30,  7, 19,
+ 			//(C),a, b,  c,  d,  e,  f,  g,  h,  i,  j,  k,  l,  m,  n,  o,
+ 			10, 17, 17, 16, 17, 17, 11, 17, 17,  7,  7, 18,  7, 25, 17, 17,
+ 			//p, q,  r,  s,  t,  u,  v,  w,  x,  y,  z, *I, *I, $2, (2, )2,
+ 			17, 17, 11, 17, 11, 17, 18, 25, 19, 18, 17, 28, 26, 20, 15, 15,
+-			//À, Á,  Â,  Ä,  Æ,  Ç,  È,  É,  Ê,  Ë,  Ì,  Í,  Î,  Ï,  Ò,  Ó,
++			//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 			20, 20, 20, 20, 29, 22, 19, 19, 19, 19,  9,  9,  9,  9, 23, 23,
+-			//Ô, Ö,  Ù,  Ú,  Û,  Ü,  ß,  à,  á,  â,  ä,  æ,  ç,  è,  é,  ê,
++			//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 			23, 23, 24, 24, 24, 24, 20, 19, 17, 17, 17, 30, 16, 17, 17, 17,
+-			//ë, ì,  í,  î,  ï,  ò,  ó,  ô,  ö,  ù,  ú,  û,  ü,  Ñ,  ñ,  ¿,
++			//ï¿½, ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,  ï¿½,
+ 			17, 11, 11, 15, 12, 17, 17, 17, 17, 17, 17, 17, 17, 21, 17, 19,
+ 			//02,12,22, 32, 42, 52, 62, 72, 82, 92, :2, A2, B2, C2, D2, E2,
+ 			20, 18, 19, 19, 21, 19, 19, 19, 19, 19, 16, 19, 19, 19, 20, 19,
+ 			//F2,G2,H2, I2, J2, K2, L2, M2, N2, O2, P2, Q2, R2, S2, T2, U2,
+ 			16, 19, 19,  9, 19, 20, 14, 29, 19, 19, 19, 19, 19, 19, 21, 19,
+-			//V2,W2,X2, Y2, Z2, À2, Á2, Â2, Ä2, Æ2, Ç2, È2, É2, Ê2, Ë2, Ì2,
++			//V2,W2,X2, Y2, Z2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2,
+ 			20, 32, 20, 19, 19, 19, 19, 19, 19, 29, 19, 19, 19, 19, 19,  9,
+-			//Í2,Î2,Ï2, Ò2, Ó2, Ô2, Ö2, Ù2, Ú2, Û2, Ü2, ß2, Ñ2, ¿2, '2, .2,
++			//ï¿½2,ï¿½2,ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, ï¿½2, '2, .2,
+ 			 9,  9,  9, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 10,  9,
+ 			//space, unprop
+ 			10, 20
+@@ -307,27 +311,89 @@ CFont::Initialise(void)
+ 	int slot;
+ 
+ 	slot = CTxdStore::AddTxdSlot("fonts");
++
++
++#ifdef VICE_EXTENDED // ViceExtended folder - fonts
+ #ifdef MORE_LANGUAGES
+-	Slot = slot;
+-	switch (LanguageSet)
+-	{
+-	case FONT_LANGSET_EFIGS:
+-	default:
+-		CTxdStore::LoadTxd(slot, "MODELS/FONTS.TXD");
+-		break;
+-	case FONT_LANGSET_POLISH:
+-		CTxdStore::LoadTxd(slot, "MODELS/FONTS_P.TXD");
+-		break;
+-	case FONT_LANGSET_RUSSIAN:
+-		CTxdStore::LoadTxd(slot, "MODELS/FONTS_R.TXD");
+-		break;
+-	case FONT_LANGSET_JAPANESE:
+-		CTxdStore::LoadTxd(slot, "MODELS/FONTS_J.TXD");
+-		break;
+-	}
++		Slot = slot;
++#ifdef MODLOADER // fonts.txd, fonts_p.txd, fonts_r.txd, fonts_j.txd
++		switch (LanguageSet)
++		{
++		case FONT_LANGSET_EFIGS:
++		default:
++			ModLoader_FontsTxd(slot, "MODELS/FONTS.TXD");
++			break;
++		case FONT_LANGSET_POLISH:
++			ModLoader_FontsTxd(slot, "ViceExtended/MODELS/FONTS_P.TXD");
++			break;
++		case FONT_LANGSET_RUSSIAN:
++			ModLoader_FontsTxd(slot, "ViceExtended/MODELS/FONTS_R.TXD");
++			break;
++		case FONT_LANGSET_JAPANESE:
++			ModLoader_FontsTxd(slot, "ViceExtended/MODELS/FONTS_J.TXD");
++			break;
++#ifdef EX_UKRAINIAN // LoadTxd
++		case FONT_LANGSET_UKRAINIAN:
++			CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS_U.TXD");
++			break;
++#endif // EX_UKRAINIAN
++		}
++#else
++		switch (LanguageSet)
++		{
++		case FONT_LANGSET_EFIGS:
++		default:
++			//CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS.TXD");
++			CTxdStore::LoadTxd(slot, "MODELS/FONTS.TXD");
++			break;
++		case FONT_LANGSET_POLISH:
++			CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS_P.TXD");
++			break;
++		case FONT_LANGSET_RUSSIAN:
++			CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS_R.TXD");
++			break;
++		case FONT_LANGSET_JAPANESE:
++			CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS_J.TXD");
++			break;
++#ifdef EX_UKRAINIAN // LoadTxd
++		case FONT_LANGSET_UKRAINIAN:
++			CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS_U.TXD");
++			break;
++#endif // EX_UKRAINIAN
++		}
++#endif // MODLOADER
+ #else
+-	CTxdStore::LoadTxd(slot, "MODELS/FONTS.TXD");
++#ifdef MODLOADER // fonts.txd
++		ModLoader_FontsTxd(slot, "MODELS/FONTS.TXD");
++#else
++		//CTxdStore::LoadTxd(slot, "ViceExtended/MODELS/FONTS.TXD");
++		CTxdStore::LoadTxd(slot, "MODELS/FONTS.TXD");
++#endif // MORE_LANGUAGES
+ #endif
++#else
++#ifdef MORE_LANGUAGES
++		Slot = slot;
++		switch (LanguageSet)
++		{
++		case FONT_LANGSET_EFIGS:
++		default:
++			CTxdStore::LoadTxd(slot, "MODELS/FONTS.TXD");
++			break;
++		case FONT_LANGSET_POLISH:
++			CTxdStore::LoadTxd(slot, "MODELS/FONTS_P.TXD");
++			break;
++		case FONT_LANGSET_RUSSIAN:
++			CTxdStore::LoadTxd(slot, "MODELS/FONTS_R.TXD");
++			break;
++		case FONT_LANGSET_JAPANESE:
++			CTxdStore::LoadTxd(slot, "MODELS/FONTS_J.TXD");
++			break;
++		}
++	#else
++		CTxdStore::LoadTxd(slot, "MODELS/FONTS.TXD");
++	#endif
++	#endif
++
+ 	CTxdStore::AddRef(slot);
+ 	CTxdStore::PushCurrentTxd();
+ 	CTxdStore::SetCurrentTxd(slot);
+@@ -424,20 +490,67 @@ CFont::ReloadFonts(uint8 set)
+ 		CTxdStore::RemoveTxd(Slot);
+ 		switch (set)
+ 		{
+-		case FONT_LANGSET_EFIGS:
+-		default:
+-			CTxdStore::LoadTxd(Slot, "MODELS/FONTS.TXD");
+-			break;
+-		case FONT_LANGSET_POLISH:
+-			CTxdStore::LoadTxd(Slot, "MODELS/FONTS_P.TXD");
+-			break;
+-		case FONT_LANGSET_RUSSIAN:
+-			CTxdStore::LoadTxd(Slot, "MODELS/FONTS_R.TXD");
+-			break;
+-		case FONT_LANGSET_JAPANESE:
+-			CTxdStore::LoadTxd(Slot, "MODELS/FONTS_J.TXD");
+-			break;
+-		}
++#ifdef VICE_EXTENDED // ViceExtended folder - fonts
++#ifdef MODLOADER // fonts.txd, fonts_p.txd, fonts_r.txd, fonts_j.txd
++					case FONT_LANGSET_EFIGS:
++					default:
++						ModLoader_FontsTxd(Slot, "MODELS/FONTS.TXD");
++						break;
++					case FONT_LANGSET_POLISH:
++						ModLoader_FontsTxd(Slot, "ViceExtended/MODELS/FONTS_P.TXD");
++						break;
++					case FONT_LANGSET_RUSSIAN:
++						ModLoader_FontsTxd(Slot, "ViceExtended/MODELS/FONTS_R.TXD");
++						break;
++					case FONT_LANGSET_JAPANESE:
++						ModLoader_FontsTxd(Slot, "ViceExtended/MODELS/FONTS_J.TXD");
++						break;
++#ifdef EX_UKRAINIAN // LoadTxd
++					case FONT_LANGSET_UKRAINIAN:
++						CTxdStore::LoadTxd(Slot, "ViceExtended/MODELS/FONTS_U.TXD");
++						break;
++#endif
++					}
++#else
++					case FONT_LANGSET_EFIGS:
++					default:
++						//CTxdStore::LoadTxd(Slot, "ViceExtended/MODELS/FONTS.TXD");
++						CTxdStore::LoadTxd(Slot, "MODELS/FONTS.TXD");
++						break;
++					case FONT_LANGSET_POLISH:
++						CTxdStore::LoadTxd(Slot, "ViceExtended/MODELS/FONTS_P.TXD");
++						break;
++					case FONT_LANGSET_RUSSIAN:
++						CTxdStore::LoadTxd(Slot, "ViceExtended/MODELS/FONTS_R.TXD");
++						break;
++					case FONT_LANGSET_JAPANESE:
++						CTxdStore::LoadTxd(Slot, "ViceExtended/MODELS/FONTS_J.TXD");
++						break;
++#ifdef EX_UKRAINIAN // LoadTxd
++					case FONT_LANGSET_UKRAINIAN:
++						CTxdStore::LoadTxd(Slot, "ViceExtended/MODELS/FONTS_U.TXD");
++						break;
++#endif
++					}
++#endif
++#else
++					case FONT_LANGSET_EFIGS:
++					default:
++						CTxdStore::LoadTxd(Slot, "MODELS/FONTS.TXD");
++						break;
++					case FONT_LANGSET_POLISH:
++						CTxdStore::LoadTxd(Slot, "MODELS/FONTS_P.TXD");
++						break;
++					case FONT_LANGSET_RUSSIAN:
++						CTxdStore::LoadTxd(Slot, "MODELS/FONTS_R.TXD");
++						break;
++					case FONT_LANGSET_JAPANESE:
++						CTxdStore::LoadTxd(Slot, "MODELS/FONTS_J.TXD");
++						break;
++					}
++#endif
++
++
+ 		CTxdStore::SetCurrentTxd(Slot);
+ 		Sprite[0].SetTexture("font2", "font2_mask");
+ 		if (set == FONT_LANGSET_JAPANESE) {
+diff --git a/src/renderer/ParticleMgr.cpp b/src/renderer/ParticleMgr.cpp
+index f6919435..8ba9ac65 100644
+--- a/src/renderer/ParticleMgr.cpp
++++ b/src/renderer/ParticleMgr.cpp
+@@ -4,6 +4,10 @@
+ #include "FileMgr.h"
+ #include "ParticleMgr.h"
+ 
++#ifdef MODLOADER // particle.cfg
++#include "modloader.h"
++#endif
++
+ cParticleSystemMgr mod_ParticleSystemManager;
+ 
+ const char *ParticleFilename = "PARTICLE.CFG";
+@@ -23,8 +27,17 @@ void cParticleSystemMgr::Initialise()
+ 
+ void cParticleSystemMgr::LoadParticleData()
+ {
++#ifdef VICE_EXTENDED // ViceExtended folder - particle.cfg
++	CFileMgr::SetDir("ViceExtended");
++#ifdef MODLOADER // particle.cfg
++	ModLoader_ParticleCfg("data\\particle.cfg", work_buff, ARRAY_SIZE(work_buff), "r");
++#else
++	CFileMgr::LoadFile("data\\particle.cfg", work_buff, ARRAY_SIZE(work_buff), "r");
++#endif
++#else
+ 	CFileMgr::SetDir("DATA");
+ 	CFileMgr::LoadFile(ParticleFilename, work_buff, ARRAY_SIZE(work_buff), "r");
++#endif
+ 	CFileMgr::SetDir("");
+ 	
+ 	tParticleSystemData *entry = nil;
+diff --git a/src/renderer/PlayerSkin.cpp b/src/renderer/PlayerSkin.cpp
+index ee944ca7..04d16569 100644
+--- a/src/renderer/PlayerSkin.cpp
++++ b/src/renderer/PlayerSkin.cpp
+@@ -16,6 +16,10 @@
+ #include "Lights.h"
+ #include "MemoryMgr.h"
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ RpClump *gpPlayerClump;
+ float gOldFov;
+ 
+@@ -27,7 +31,11 @@ FindPlayerDff(uint32 &offset, uint32 &size)
+ 	int file;
+ 	CDirectory::DirectoryInfo info;
+ 
++#ifdef MODLOADER
++	file = CFileMgr::OpenFile(ModLoader_GetCdDirectoryPath_Unsafe("models\\gta3.dir"), "rb");
++#else
+ 	file = CFileMgr::OpenFile("models\\gta3.dir", "rb");
++#endif
+ 
+ 	do {
+ 		if (!CFileMgr::Read(file, (char*)&info, sizeof(CDirectory::DirectoryInfo)))
+@@ -101,7 +109,11 @@ CPlayerSkin::GetSkinTexture(const char *texName)
+ 	if (tex != nil) return tex;
+ 
+ 	if (strcmp(DEFAULT_SKIN_NAME, texName) == 0 || texName[0] == '\0')
+-		sprintf(gString, "models\\generic\\player.bmp");
++#ifdef MODLOADER // player.bmp
++	sprintf(gString, ModLoader_RegisterAndGetPlayerBmpFile_Unsafe("models\\generic\\player.bmp"));
++#else
++	sprintf(gString, "models\\generic\\player.bmp");
++#endif
+ 	else
+ 		sprintf(gString, "skins\\%s.bmp", texName);
+ 
+diff --git a/src/renderer/SpecialFX.cpp b/src/renderer/SpecialFX.cpp
+index 61750f85..1dd0b6f6 100644
+--- a/src/renderer/SpecialFX.cpp
++++ b/src/renderer/SpecialFX.cpp
+@@ -26,6 +26,10 @@
+ #include "Script.h"
+ #include "DMAudio.h"
+ 
++#ifdef MODLOADER // arrow.dff, zonecylb.dff
++#include "modloader.h"
++#endif
++
+ RwIm3DVertex StreakVertices[4];
+ RwImVertexIndex StreakIndexList[12];
+ 
+@@ -754,8 +758,13 @@ C3dMarkers::Init()
+ 	CTxdStore::PushCurrentTxd();
+ 	CTxdStore::SetCurrentTxd(txdSlot);
+ 	CFileMgr::ChangeDir("\\");
++#ifdef MODLOADER // arrow.dff, zonecylb.dff
++	m_pRpClumpArray[MARKERTYPE_ARROW] = (RpClump*)ModLoader_ArrowDff("models/generic/arrow.dff");
++	m_pRpClumpArray[MARKERTYPE_CYLINDER] = (RpClump*)ModLoader_ZonecylbDff("models/generic/zonecylb.dff");
++#else
+ 	m_pRpClumpArray[MARKERTYPE_ARROW] = CFileLoader::LoadAtomicFile2Return("models/generic/arrow.dff");
+ 	m_pRpClumpArray[MARKERTYPE_CYLINDER] = CFileLoader::LoadAtomicFile2Return("models/generic/zonecylb.dff");
++#endif
+ 	CTxdStore::PopCurrentTxd();
+ }
+ 
+diff --git a/src/renderer/Timecycle.cpp b/src/renderer/Timecycle.cpp
+index 95d9fe3c..63761484 100644
+--- a/src/renderer/Timecycle.cpp
++++ b/src/renderer/Timecycle.cpp
+@@ -10,6 +10,10 @@
+ #include "FileMgr.h"
+ #include "Timecycle.h"
+ 
++#ifdef MODLOADER // timecyc.dat
++#include "modloader.h"
++#endif
++
+ uint8 CTimeCycle::m_nAmbientRed[NUMHOURS][NUMWEATHERS];
+ uint8 CTimeCycle::m_nAmbientGreen[NUMHOURS][NUMWEATHERS];
+ uint8 CTimeCycle::m_nAmbientBlue[NUMHOURS][NUMWEATHERS];
+@@ -162,7 +166,11 @@ CTimeCycle::Initialise(void)
+ 	debug("Intialising CTimeCycle...\n");
+ 
+ 	CFileMgr::SetDir("DATA");
++#ifdef MODLOADER // timecyc.dat
++	ModLoader_TimecycleDat("TIMECYC.DAT", work_buff, sizeof(work_buff), "rb");
++#else
+ 	CFileMgr::LoadFile("TIMECYC.DAT", work_buff, sizeof(work_buff), "rb");
++#endif
+ 	CFileMgr::SetDir("");
+ 
+ 	line[0] = '\0';
+diff --git a/src/renderer/WaterLevel.cpp b/src/renderer/WaterLevel.cpp
+index dee60d66..5984a86d 100644
+--- a/src/renderer/WaterLevel.cpp
++++ b/src/renderer/WaterLevel.cpp
+@@ -31,6 +31,10 @@
+ #include "SurfaceTable.h"
+ #include "WaterCreatures.h"
+ 
++#ifdef MODLOADER // waterpro.dat
++#include "modloader.h"
++#endif
++
+ #define RwIm3DVertexSet_RGBA(vert, rgba) RwIm3DVertexSetRGBA(vert, rgba.red, rgba.green, rgba.blue, rgba.alpha) // (RwRGBAAssign(&(_dst)->color, &_src))
+ 
+ float TEXTURE_ADDU;
+@@ -122,12 +126,20 @@ CWaterLevel::Initialise(Const char *pWaterDat)
+ 
+ 	do
+ 	{
++#ifdef MODLOADER // waterpro.dat
++		hFile = ModLoader_WaterproDat("DATA\\waterpro.dat", "rb");
++#else
+ 		hFile = CFileMgr::OpenFile("DATA\\waterpro.dat", "rb");
++#endif // MODLOADER
+ 	}
+ 	while ( hFile < 0 );
++#else
++#ifdef MODLOADER // waterpro.dat
++	int32 hFile = ModLoader_WaterproDat("DATA\\waterpro.dat", "rb");
+ #else
+ 	int32 hFile = CFileMgr::OpenFile("DATA\\waterpro.dat", "rb");
+-#endif
++#endif // MODLOADER
++#endif // MASTER
+ 	
+ 	if (hFile > 0)
+ 	{
+@@ -257,7 +269,11 @@ CWaterLevel::Initialise(Const char *pWaterDat)
+ 			}
+ 		}
+ 
++#ifdef MODLOADER // waterpro.dat
++		hFile = ModLoader_WaterproDat("data\\waterpro.dat", "wb");
++#else
+ 		hFile = CFileMgr::OpenFileForWriting("data\\waterpro.dat");
++#endif
+ 
+ 		if (hFile > 0)
+ 		{
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 3101ec54..c87f6643 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -65,6 +65,18 @@
+ #include "modloader.h"
+ #endif
+ 
++// I have a quick test for this setup under GS_PLAYING_GAME
++// I got it to show up on a separate window.
++// But if I attempt to close it it kills the game.
++// #define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++#include "imgui_test.h"
++// #include "imgui.h"
++// #include "imgui_impl_dx9.h"
++// #include "imgui_impl_win32.h"
++#endif
++#undef _IMGUI_TEST
++
+ #define MAX_SUBSYSTEMS		(16)
+ 
+ static RwBool		  ForegroundApp = TRUE;
+@@ -2061,7 +2073,7 @@ void HandleExit()
+ // I have a better test of this in the imgui_test.cpp, this just complains that stuff is already defined.
+ //#define _IMGUI_TEST
+ 
+-
++// #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+@@ -2188,8 +2200,9 @@ InitializeD3D(HWND hwnd, WNDCLASSEXW wc)
+ 
+ 
+ #endif // _IMGUI_TEST
++#undef IMGUI_TEST
+ 
+-#include "imgui_test.h"
++// #include "imgui_test.h"
+ 
+ //********************
+ // End my ImGui test
+@@ -2226,7 +2239,17 @@ CMenuManager cMenuManager = CMenuManager();
+ // I've been wanting to integrate this into ReVC for a while now.
+ // Well I spoke too soon, I added something else and it crashes again.
+ // TODO Add some of this code to main while loop, check for keybind.
++
++// Ohh this isn't even added to the game window, it just creates a separate one.
++// I wonder how I could add it.
++
++
++
++
+ #ifdef _IMGUI_TEST
++	//IMGUI_CHECKVERSION();
++	//ImGui::CreateContext();
++	//ImGuiIO &io = ImGui::GetIO();
+ 	// TODO Add ImGui into here.
+ 	// Initialize ImGui
+ 	// Set show window variable
+@@ -2281,6 +2304,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 	ImGui_ImplWin32_Init(hwnd);  // Replace 'hwnd' with your window handle
+ 	ImGui_ImplDX9_Init(g_pd3dDevice); // Replace 'pDevice' with your DirectX 9 device
+ 
++//#define _DISABLED_CODE
+ // TODO Test moving into loop
+ #ifdef _DISABLED_CODE
+ 	ImGui_ImplDX9_NewFrame();
+@@ -2302,14 +2326,6 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ #endif // _IMGUI_TEST
+ 
+-
+-	#define _TEST
+-	#ifdef _TEST
+-	// Show window for ImGui, defaults to false
+-	bool showImGuiWindow = false;
+-	#endif //_TEST
+-
+-
+ //********************
+ // End my ImGui test
+ //********************
+@@ -2526,12 +2542,14 @@ CMenuManager cMenuManager = CMenuManager();
+ 	// 8-7-2024 @ 8:30PM
+ 	// I think I found the main entry point to the program.
+ 	
++	// #define _IMGUI_TEST
+ 	#ifdef _IMGUI_TEST
+ 	// Run setup
+ 	setupImGui();
+ 
+ 
+ 	#endif //_IMGUI_TEST
++	
+ 
+ 
+ 
+@@ -2548,65 +2566,46 @@ CMenuManager cMenuManager = CMenuManager();
+ #ifdef _TEST2
+ #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 
+-
+-		// Moved into GS_PLAYING_GAME
+-		 //if(CPad::GetPad(0)->HornJustDown()) {
+-			////show_window = !show_window;
+-			//ImGuiVCTest::CreateImGuiWindow();
+-		 //}
+-
+-		//if(KEYDOWN(VK_F9)) { 
+-		// Didn't work
+-		//CControllerConfigManager configManager = CControllerConfigManager();
+-		////if (configManager.GetIsKeyboardKeyDown(rsF9))
+-		//if (configManager.GetIsKeyboardKeyJustDown(rsF9))
+-		//{
+-		//	ImGuiVCTest::CreateImGuiWindow(); 
+-		//}
+-		//
+-		//if(KEYDOWN(rsF9)) { 
+-		// ImGuiVCTest::CreateImGuiWindow(); 
+-		//	
+-		//}
+-
+-		//if ((CPad::NewKeyState.PGDN))
+-		//	//CPad::GetPad0
+-		//{ 
+-		//	ImGuiVCTest::CreateImGuiWindow(); 
+-		//}
+-
+ #endif //_TEST2
+ #undef _TEST2
+ 
+ 		// TODO Test this here
+ 		// This doesn't seem to do anything
++
+ 		#ifdef _IMGUI_TEST
+ 
++		#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++		bool show_window = false;
++
+ 		// TODO Test this, keybind test
+-		CKeyboardState keyboardState;
++		// CKeyboardState keyboardState;
+ 		// This just crashes it
+ 		//if(CPad::GetPad(0)->GetCharJustDown('F12')) { 
+ 		// This doesn't seem to work, I don't think I have this menu setup right.
+-		if(CPad::GetPad(0)->HornJustDown()) { 
+-			show_window = !show_window; 
+-		}
++		// if(CPad::GetPad(0)->HornJustDown()) { 
++		// 	show_window = !show_window; 
++		// }
+ 
+ 		//
+ 
+ 		// ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)a);
+ 		// TODO Test this
+-		if(KEYDOWN(VK_F9)) { 
+-			show_window = !show_window; 
+-		}
++		//if(KEYDOWN(VK_F9)) { 
++		// if(KEYDOWN('F9')) { 
++		// 	show_window = !show_window; 
++		// }
+ 
+-		if(ControlsManager.GetIsKeyboardKeyJustDown(rsF9)) {
+-		// This didn't work either.
+-		//if(CPad::GetPad(0)->GetMinusJustDown()){
++		// if(ControlsManager.GetIsKeyboardKeyJustDown(rsF9)) {
++		// // This didn't work either.
++		// //if(CPad::GetPad(0)->GetMinusJustDown()){
+ 			
+-			std::cout << "- Pressed";
+-			show_window = !show_window;
+-		}
++		// 	std::cout << "- Pressed";
++		// 	show_window = !show_window;
++		// }
++
+ 		#endif // _IMGUI_TEST
++		#undef _IMGUI_TEST
+ 		
+ 		/* 
+ 		* Set the initial mouse position...
+@@ -2671,7 +2670,11 @@ CMenuManager cMenuManager = CMenuManager();
+ 					case GS_INIT_LOGO_MPEG:
+ 					{
+ 						if ( !startupDeactivate )
+-							PlayMovieInWindow(cmdShow, "movies\\Logo.mpg");
++#ifdef MODLOADER // Logo.mpg
++						ModLoader_PlayMovieInWindow_Logo(cmdShow, "movies\\Logo.mpg");
++#else
++						PlayMovieInWindow(cmdShow, "movies\\Logo.mpg");
++#endif // MODLOADER
+ 						gGameState = GS_LOGO_MPEG;
+ 						TRACE("gGameState = GS_LOGO_MPEG;");
+ 						break;
+@@ -2710,9 +2713,17 @@ CMenuManager cMenuManager = CMenuManager();
+ #endif
+ 						
+ 						if ( FrontEndMenuManager.OS_Language == LANG_FRENCH || FrontEndMenuManager.OS_Language == LANG_GERMAN )
+-							PlayMovieInWindow(cmdShow, "movies\\GTAtitlesGER.mpg");
++#ifdef MODLOADER
++						ModLoader_PlayMovieInWindow_GTAtitles(cmdShow, "movies\\GTAtitlesGER.mpg");
++#else
++						PlayMovieInWindow(cmdShow, "movies\\GTAtitlesGER.mpg");
++#endif
+ 						else
+-							PlayMovieInWindow(cmdShow, "movies\\GTAtitles.mpg");
++#ifdef MODLOADER
++						ModLoader_PlayMovieInWindow_GTAtitles(cmdShow, "movies\\GTAtitles.mpg");
++#else
++						PlayMovieInWindow(cmdShow, "movies\\GTAtitles.mpg");
++#endif
+ 						
+ 						gGameState = GS_INTRO_MPEG;
+ 						TRACE("gGameState = GS_INTRO_MPEG;");
+@@ -2806,6 +2817,28 @@ CMenuManager cMenuManager = CMenuManager();
+ 					{
+ 						GetWindowPlacement(PSGLOBAL(window), &wp);
+ 						
++						// Quick ImGui test
++						// This shows up if I don't have a keybind, cannot be toggled back off though.
++					        //ImGuiVCTest::CreateImGuiWindow();
++						 //#define _TEST1
++						#ifdef _TEST1
++
++						#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++						if (KEYDOWN(rsF9))
++
++						{
++						//ImGuiVCTest::CreateImGuiWindow();
++
++							//if (ImGuiVCTest::done) 
++							//{ 
++							//	ImGuiVCTest::CreateImGuiWindow();
++							//}
++							//ImGuiVCTest::done = !ImGuiVCTest::done;
++						}
++						#endif
++						#undef _TEST1
++						//
++
+ 						if (wp.showCmd != SW_SHOWMINIMIZED)
+ 							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
+@@ -2949,9 +2982,11 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 							// New ImGui test, somewhat works I just need to figure out how to hook into the game itself,
+ 							// instead of freezing it.
++							// #define _TEST1
+ 							#ifdef _TEST1
++							#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 						        CControllerConfigManager configManager = CControllerConfigManager();
+-								ImGuiVCTest imguiVCTest = ImGuiVCTest();
++								// ImGuiVCTest imguiVCTest = ImGuiVCTest();
+ 						        // if (configManager.GetIsKeyboardKeyDown(rsF9))
+ 
+ 								//CMouseControllerState controllerState = CMouseControllerState();
+@@ -2959,11 +2994,23 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 								//CMenuManager menuManager = CMenuManager();
+ 
+-						        if(configManager.GetIsKeyboardKeyJustDown(rsF9)) { 
++								// if(KEYDOWN('F9')) { 
++								if(KEYDOWN(rsF8)) { 
++									// This shows up again
++									ImGuiVCTest::CreateImGuiWindow();
++							        // ImGuiVCTest::done = !ImGuiVCTest::done;
++									// if (!ImGuiVCTest::done)
++									// { 
++									// 	ImGuiVCTest::CreateImGuiWindow();
++									// }
++									// show_window = !show_window; 
++								}
++						        // if(configManager.GetIsKeyboardKeyJustDown(rsF9)) { 
+ 									//showImGuiWindow = !showImGuiWindow;
+ 									//if (showImGuiWindow) { 
+ 										// Turn the window on, this doesn't close the window or show a mouse yet.
+-										ImGuiVCTest::CreateImGuiWindow();
++										// ImGuiVCTest::CreateImGuiWindow();
++										// show_window = !show_window;
+ 										// Note to self, probably never use these.
+ 										// Woops, these make infinite menu clicking sounds
+ 										// That was loud...
+@@ -2978,7 +3025,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 								 //        //menuManager.m_bShowMouse = false;
+ 									//}
+ 									
+-								}
++								// }
+ 
+ 								#endif //_TEST1
+ 								// Disable _TEST1 below this
+@@ -2987,7 +3034,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 						//********************
+ 						// End my new ImGui test
+ 						//********************
+-						
++						#undef _IMGUI_TEST
+ 						#ifdef _IMGUI_TEST
+ 
+ 	#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+diff --git a/src/text/Text.cpp b/src/text/Text.cpp
+index 5787d356..0fd3a7e8 100644
+--- a/src/text/Text.cpp
++++ b/src/text/Text.cpp
+@@ -9,6 +9,10 @@
+ #include "Text.h"
+ #include "Timer.h"
+ 
++#ifdef MODLOADER // GXT
++#include "modloader.h"
++#endif
++
+ wchar WideErrorString[25];
+ 
+ CText TheText;
+@@ -72,7 +76,11 @@ CText::Load(void)
+ #endif
+ 	}
+ 
++#ifdef MODLOADER // GXT
++	file = CFileMgr::OpenFile(ModLoader_RegisterAndGetGxtFile_Unsafe(filename), "rb");
++#else
+ 	file = CFileMgr::OpenFile(filename, "rb");
++#endif
+ 
+ 	offset = 0;
+ 	while (!tkey_loaded || !tdat_loaded) {
+@@ -281,7 +289,11 @@ CText::LoadMissionText(char *MissionTableName)
+ #endif
+ 	}
+ 	CTimer::Suspend();
++#ifdef MODLOADER // GXT
++	int file = CFileMgr::OpenFile(ModLoader_RegisterAndGetGxtFile_Unsafe(filename), "rb");
++#else
+ 	int file = CFileMgr::OpenFile(filename, "rb");
++#endif
+ 	CFileMgr::Seek(file, MissionTextOffsets.data[missionTableId].offset, SEEK_SET);
+ 
+ 	char TableCheck[8];
+diff --git a/src/vehicles/HandlingMgr.cpp b/src/vehicles/HandlingMgr.cpp
+index b3e835fb..8dcb4074 100644
+--- a/src/vehicles/HandlingMgr.cpp
++++ b/src/vehicles/HandlingMgr.cpp
+@@ -5,6 +5,10 @@
+ #include "Physical.h"
+ #include "HandlingMgr.h"
+ 
++#ifdef MODLOADER // handling.cfg
++#include "modloader.h"
++#endif
++
+ cHandlingDataMgr mod_HandlingManager;
+ 
+ const char *HandlingFilename = "HANDLING.CFG";
+@@ -153,7 +157,11 @@ cHandlingDataMgr::LoadHandlingData(void)
+ 	tBikeHandlingData *bikeHandling;
+ 
+ 	CFileMgr::SetDir("DATA");
++#ifdef MODLOADER // handling.cfg
++	ModLoader_HandlingCfg(HandlingFilename, work_buff, sizeof(work_buff), "r");
++#else
+ 	CFileMgr::LoadFile(HandlingFilename, work_buff, sizeof(work_buff), "r");
++#endif
+ 	CFileMgr::SetDir("");
+ 
+ 	start = (char*)work_buff;
+diff --git a/src/vehicles/Plane.cpp b/src/vehicles/Plane.cpp
+index 0b40ca7e..e37b9c77 100644
+--- a/src/vehicles/Plane.cpp
++++ b/src/vehicles/Plane.cpp
+@@ -20,6 +20,10 @@
+ #include "Plane.h"
+ #include "MemoryHeap.h"
+ 
++#ifdef MODLOADER // flight.dat (1-4)
++#include "modloader.h"
++#endif
++
+ CPlaneNode *pPathNodes;
+ CPlaneNode *pPath2Nodes;
+ CPlaneNode *pPath3Nodes;
+@@ -817,7 +821,11 @@ CPlane::LoadPath(char const *filename, int32 &numNodes, float &totalLength, bool
+ 	int bp, lp;
+ 	int i;
+ 
++#ifdef MODLOADER // flight.dat (1-4)
++	ModLoader_FlightDat(filename, work_buff, sizeof(work_buff), "r");
++#else
+ 	CFileMgr::LoadFile(filename, work_buff, sizeof(work_buff), "r");
++#endif
+ 	*gString = '\0';
+ 	for(bp = 0, lp = 0; work_buff[bp] != '\n'; bp++, lp++)
+ 		gString[lp] = work_buff[bp];
+diff --git a/src/weapons/WeaponInfo.cpp b/src/weapons/WeaponInfo.cpp
+index 1f78b7d4..985b6e04 100644
+--- a/src/weapons/WeaponInfo.cpp
++++ b/src/weapons/WeaponInfo.cpp
+@@ -9,6 +9,10 @@
+ #include "ModelInfo.h"
+ #include "ModelIndices.h"
+ 
++#ifdef MODLOADER // weapon.dat
++#include "modloader.h"
++#endif
++
+ uint16 CWeaponInfo::ms_aReloadSampleTime[WEAPONTYPE_TOTALWEAPONS] =
+ {
+ 	0,			// UNARMED
+@@ -151,9 +155,19 @@ CWeaponInfo::LoadWeaponData(void)
+ 
+ 	size_t bp, buflen;
+ 	int lp, linelen;
+-		
++
++// TODO Fix this from crashing, 
++#ifdef VICE_EXTENDED // ViceExtended folder - weapon.dat
++	CFileMgr::SetDir("ViceExtended");
++#ifdef MODLOADER // weapon.dat
++	buflen = ModLoader_WeaponDat("data\\WEAPON.DAT", work_buff, sizeof(work_buff), "r");
++#else
++	buflen = CFileMgr::LoadFile("data\\WEAPON.DAT", work_buff, sizeof(work_buff), "r");
++#endif
++#else
+ 	CFileMgr::SetDir("DATA");
+ 	buflen = CFileMgr::LoadFile("WEAPON.DAT", work_buff, sizeof(work_buff), "r");
++#endif
+ 
+ 	for (bp = 0; bp < buflen; ) {
+ 		// read file line by line
+-- 
+2.45.1.windows.1
+

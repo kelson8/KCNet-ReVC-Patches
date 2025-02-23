@@ -1,0 +1,1440 @@
+From 3e2900d970267f9ce52b0edc49da57e90e1ad1dd Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Feb 2025 03:10:03 -0500
+Subject: [PATCH 26/42] Add partial modloader support. This is very incomplete
+ and is disabled for now. I still have to add this into some more files first.
+
+---
+ src/control/Script.cpp      |  14 +
+ src/core/FileMgr.cpp        |   4 +
+ src/core/FileMgr.h          |   4 +
+ src/core/Streaming.cpp      |  86 ++++++
+ src/core/Streaming.h        |   5 +
+ src/core/config.h           |   5 +
+ src/extras/modloader.cpp    | 584 ++++++++++++++++++++++++++++++++++++
+ src/extras/modloader.h      | 459 ++++++++++++++++++++++++++++
+ src/extras/modloader_reVC.h | 156 ++++++++++
+ 9 files changed, 1317 insertions(+)
+ create mode 100644 src/extras/modloader.cpp
+ create mode 100644 src/extras/modloader.h
+ create mode 100644 src/extras/modloader_reVC.h
+
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 92b18d9d..0a46aee5 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -53,6 +53,10 @@
+ #include <stdarg.h>
+ #endif
+ 
++#ifdef MODLOADER // main.scm
++#include "modloader.h"
++#endif
++
+ uint8 CTheScripts::ScriptSpace[SIZE_SCRIPT_SPACE];
+ CRunningScript CTheScripts::ScriptsArray[MAX_NUM_SCRIPTS];
+ intro_text_line CTheScripts::IntroTextLines[MAX_NUM_INTRO_TEXT_LINES];
+@@ -731,11 +735,21 @@ int CTheScripts::OpenScript()
+ {
+ 	CFileMgr::ChangeDir("\\");
+ 	switch (ScriptToLoad) {
++
++#ifdef MODLOADER // main.scm
++	case 0: return ModLoader_MainScm("test\\data\\main.scm", "rb");
++#else
+ 	case 0: return CFileMgr::OpenFile("data\\main.scm", "rb");
++#endif // MODLOADER
+ 	case 1: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
+ 	case 2: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
+ 	}
++
++#ifdef MODLOADER
++	return ModLoader_MainScm("test\\data\\main.scm", "rb");
++#else
+ 	return CFileMgr::OpenFile("data\\main.scm", "rb");
++#endif // MODLOADER
+ }
+ #endif
+ 
+diff --git a/src/core/FileMgr.cpp b/src/core/FileMgr.cpp
+index 32aa4041..4f995795 100644
+--- a/src/core/FileMgr.cpp
++++ b/src/core/FileMgr.cpp
+@@ -240,7 +240,11 @@ CFileMgr::SetDirMyDocuments(void)
+ 	mychdir(_psGetUserFilesFolder());
+ }
+ 
++#if defined MODLOADER && defined _WIN64 // CFileMgr::LoadFile return type
++int
++#else
+ ssize_t
++#endif
+ CFileMgr::LoadFile(const char *file, uint8 *buf, int maxlen, const char *mode)
+ {
+ 	int fd;
+diff --git a/src/core/FileMgr.h b/src/core/FileMgr.h
+index f70451b7..06e9a17e 100644
+--- a/src/core/FileMgr.h
++++ b/src/core/FileMgr.h
+@@ -9,7 +9,11 @@ public:
+ 	static void ChangeDir(const char *dir);
+ 	static void SetDir(const char *dir);
+ 	static void SetDirMyDocuments(void);
++#if defined MODLOADER && defined _WIN64 // CFileMgr::LoadFile return type
++	static int LoadFile(const char *file, uint8 *buf, int maxlen, const char *mode);
++#else
+ 	static ssize_t LoadFile(const char *file, uint8 *buf, int maxlen, const char *mode);
++#endif
+ 	static int OpenFile(const char *file, const char *mode);
+ 	static int OpenFile(const char *file) { return OpenFile(file, "rb"); }
+ 	static int OpenFileForWriting(const char *file);
+diff --git a/src/core/Streaming.cpp b/src/core/Streaming.cpp
+index 6d980e18..54d3f12c 100644
+--- a/src/core/Streaming.cpp
++++ b/src/core/Streaming.cpp
+@@ -479,6 +479,92 @@ CStreaming::LoadCdDirectory(const char *dirname, int n)
+ 	CFileMgr::CloseFile(fd);
+ }
+ 
++#ifdef MODLOADER
++void
++CStreaming::LoadCdDirectoryUsingCallbacks(void* pUserData, int n, bool(*ReadEntry)(void*, void*, uint32_t), bool(*RegisterEntry)(void*, void*, bool), void(*RegisterSpecialEntry)(void*, void*))
++{
++	int lastID, imgSelector;
++	int modelId;
++	CDirectory::DirectoryInfo direntry;
++	char *dot;
++
++	assert(ReadEntry != nullptr);
++
++	lastID = -1;
++
++	imgSelector = n<<24;
++	assert(sizeof(direntry) == 32);
++	while(ReadEntry(pUserData, &direntry, sizeof(direntry))) {
++		bool bAddToStreaming = false;
++
++		if(direntry.size > (uint32)ms_streamingBufferSize)
++			ms_streamingBufferSize = direntry.size;
++		direntry.name[23] = '\0';
++		dot = strchr(direntry.name, '.');
++		if(dot == nil || dot-direntry.name > 20){
++			debug("%s is too long\n", direntry.name);
++			lastID = -1;
++			continue;
++		}
++
++		*dot = '\0';
++
++		if(strncasecmp(dot+1, "DFF", 3) == 0){
++			if(CModelInfo::GetModelInfo(direntry.name, &modelId)){
++				bAddToStreaming = true;
++			}else{
++				if(RegisterSpecialEntry)
++					RegisterSpecialEntry(pUserData, &direntry);
++
++				uint32_t unused1, unused2;
++				if(!ms_pExtraObjectsDir->FindItem(direntry.name, unused1, unused2)) {
++#ifdef FIX_BUGS
++					// remember which cdimage this came from
++					ms_pExtraObjectsDir->AddItem(direntry, n);
++#else
++					ms_pExtraObjectsDir->AddItem(direntry);
++#endif
++				}
++				lastID = -1;
++			}
++		}else if(strncasecmp(dot+1, "TXD", 3) == 0){
++			modelId = CTxdStore::FindTxdSlot(direntry.name);
++			if(modelId == -1)
++				modelId = CTxdStore::AddTxdSlot(direntry.name);
++			modelId += STREAM_OFFSET_TXD;
++			bAddToStreaming = true;
++		}else if(strncasecmp(dot+1, "COL", 3) == 0){
++			modelId = CColStore::FindColSlot(direntry.name);
++			if(modelId == -1)
++				modelId = CColStore::AddColSlot(direntry.name);
++			modelId += STREAM_OFFSET_COL;
++			bAddToStreaming = true;
++		}else if(strncasecmp(dot+1, "IFP", 3) == 0){
++			modelId = CAnimManager::RegisterAnimBlock(direntry.name);
++			modelId += STREAM_OFFSET_ANIM;
++			bAddToStreaming = true;
++		}else{
++			*dot = '.';
++			lastID = -1;
++		}
++
++		if(bAddToStreaming){
++			bool hadModel = ms_aInfoForModel[modelId].GetCdSize();
++			hadModel = RegisterEntry(pUserData, &ms_aInfoForModel[modelId], hadModel);
++			if (hadModel){
++				debug("%s appears more than once\n", direntry.name);
++				lastID = -1;
++			}else{
++				direntry.offset |= imgSelector;
++				ms_aInfoForModel[modelId].SetCdPosnAndSize(direntry.offset, direntry.size);
++				if(lastID != -1) ms_aInfoForModel[lastID].m_nextID = modelId;
++				lastID = modelId;
++			}
++		}
++	}
++}
++#endif
++
+ static char*
+ GetObjectName(int streamId)
+ {
+diff --git a/src/core/Streaming.h b/src/core/Streaming.h
+index 4ddf0b3b..ea8a4fc7 100644
+--- a/src/core/Streaming.h
++++ b/src/core/Streaming.h
+@@ -216,4 +216,9 @@ public:
+ 	static void UpdateForAnimViewer(void);
+ 
+ 	static void PrintStreamingBufferState();
++
++#ifdef MODLOADER
++	static void LoadCdDirectoryUsingCallbacks(void *pUserData, int n, bool (*ReadEntry)(void *, void *, uint32_t),
++											  bool (*RegisterEntry)(void *, void *, bool), void (*RegisterSpecialEntry)(void *, void *));
++#endif
+ };
+diff --git a/src/core/config.h b/src/core/config.h
+index 82722b4d..002544d4 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -11,6 +11,11 @@
+ // It changes the value in the reVC.ini file.
+ #define MENU_TEST
+ 
++// Enable mod loader test
++// TODO Copy in more from the Extended Vice project until I get this modloader working.
++// It should allow me to edit files without replacing them like in GTA SA
++//#define MODLOADER
++
+ // Copied from Extended Vice project.
+ #define VICE_EXTENDED
+ #ifdef VICE_EXTENDED
+diff --git a/src/extras/modloader.cpp b/src/extras/modloader.cpp
+new file mode 100644
+index 00000000..a1f84616
+--- /dev/null
++++ b/src/extras/modloader.cpp
+@@ -0,0 +1,584 @@
++/*
++The MIT License (MIT)
++
++Copyright (c) 2013-2015 Denilson das Mercês Amorim (aka LINK/2012)
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
++*/
++
++
++#include "config.h"
++
++#include "modloader.h"
++
++#ifdef MODLOADER
++#include <windows.h>
++#include <cstdio>
++#include <cstdint>
++
++#include "modloader_reVC.h"
++
++
++
++//
++#include "common.h"
++#include "Streaming.h"
++#include "Directory.h"
++#include "CdStream.h"
++#include "Timer.h"
++#include "FileLoader.h"
++#include "main.h"
++#include "FileMgr.h"
++#include "TxdStore.h"
++
++extern RwUInt32 gGameState;
++extern void PlayMovieInWindow(int, const char*);
++
++extern BOOL _gbCdStreamOverlapped;
++extern BOOL _gbCdStreamAsync;
++extern DWORD _gdwCdStreamFlags;
++extern HANDLE gCdStreamSema;
++extern Queue gChannelRequestQ;
++extern struct CdReadInfo* gpReadInfo;
++
++extern DWORD WINAPI CdStreamThread(LPVOID lpThreadParameter);
++
++static bool CDirectory__FindItem4(void* pThis, const char* name, uint32_t* out1, uint32_t* out2)
++{
++    return reinterpret_cast<CDirectory*>(pThis)->FindItem(name, *out1, *out2);
++}
++//
++
++
++static HMODULE hModLoader;
++
++static modloader_fInitFromREVC modloader_InitFromREVC;
++static modloader_reVC_t modloader_reVC_share;
++static modloader_reVC_addr_table_t reVC_addr_table;
++
++void ModLoader_Init()
++{
++    if (!SetEnvironmentVariableA("MODLOADER_REVC", "1")) {
++        fprintf(stderr, "Failed to set MODLOADER_REVC=1 (error %d)\n", GetLastError());
++        return;
++    }
++
++    ::hModLoader = LoadLibraryA("modloader.asi");
++    if (hModLoader == NULL) {
++        fprintf(stderr, "Failed to load modloader.asi (error %d)\n", GetLastError());
++        return;
++    }
++
++    modloader_InitFromREVC = (modloader_fInitFromREVC)GetProcAddress(::hModLoader, "modloader_InitFromREVC");
++    if (modloader_InitFromREVC == NULL) {
++        fprintf(stderr, "modloader_InitFromREVC not found in modloader.asi\n");
++        FreeLibrary(::hModLoader);
++        hModLoader = NULL;
++        return;
++    }
++
++    memset(&modloader_reVC_share, 0, sizeof(modloader_reVC_share));
++    modloader_reVC_share.size = sizeof(modloader_reVC_share);
++    modloader_reVC_share.reVC_version = 0;
++    reVC_addr_table.size = sizeof(reVC_addr_table);
++    modloader_reVC_share.reVC_addr_table = &reVC_addr_table;
++
++    reVC_addr_table.p_gGameState = reinterpret_cast<int*>(&gGameState);
++    reVC_addr_table.PlayMovieInWindow = PlayMovieInWindow;
++    reVC_addr_table.ms_aInfoForModel = CStreaming::ms_aInfoForModel;
++    reVC_addr_table.uMaxResources = NUMSTREAMINFO;
++    reVC_addr_table.p_gCdStreamFlags = &_gdwCdStreamFlags;
++    reVC_addr_table.p_gCdStreamSema = &gCdStreamSema;
++    reVC_addr_table.p_gChannelRequestQ = &gChannelRequestQ;
++    reVC_addr_table.p_gpReadInfo = (void**)&gpReadInfo;
++    reVC_addr_table.p_gbCdStreamOverlapped = &_gbCdStreamOverlapped;
++    reVC_addr_table.p_gbCdStreamAsync = &_gbCdStreamAsync;
++    reVC_addr_table.p_ms_pStreamingBuffer = (void**)CStreaming::ms_pStreamingBuffer;
++    reVC_addr_table.p_ms_streamingBufferSize = (uint32_t*)&CStreaming::ms_streamingBufferSize;
++    reVC_addr_table.CDirectory__FindItem4 = CDirectory__FindItem4;
++    reVC_addr_table.CStreaming__LoadCdDirectory0 = &CStreaming::LoadCdDirectory;
++    reVC_addr_table.CStreaming__LoadCdDirectory2 = &CStreaming::LoadCdDirectory;
++    reVC_addr_table.CdStreamRead = &CdStreamRead;
++
++    reVC_addr_table.CFileMgr_OpenFile = &CFileMgr::OpenFile;
++    // I made some slight modifications to FileMgr.cpp and FileMgr.h to make this not complain, now to test it.
++    reVC_addr_table.CFileMgr_LoadFile = &CFileMgr::LoadFile;
++
++    reVC_addr_table.CTxdStore_LoadTxd = &CTxdStore::LoadTxd;
++    reVC_addr_table.CFileLoader_LoadAtomicFile2Return = (void* (*)(const char* filename)) &CFileLoader::LoadAtomicFile2Return;
++    reVC_addr_table.RwStreamOpen = (void* (*)(int32_t type, int32_t accessType, const char* pData)) &RwStreamOpen;
++    reVC_addr_table.InitialiseGame = &InitialiseGame;
++
++    reVC_addr_table.LoadCdDirectoryUsingCallbacks = &CStreaming::LoadCdDirectoryUsingCallbacks;
++
++    reVC_addr_table.CTimer__Resume = &CTimer::Resume;
++    reVC_addr_table.CTimer__Suspend = &CTimer::Suspend;
++    reVC_addr_table.CStreaming__RequestModel = &CStreaming::RequestModel;
++    reVC_addr_table.CStreaming__RemoveModel = &CStreaming::RemoveModel;
++    reVC_addr_table.CStreaming__LoadAllRequestedModels = &CStreaming::LoadAllRequestedModels;
++    reVC_addr_table.CStreaming__FlushChannels = &CStreaming::FlushChannels;
++    reVC_addr_table.CStreaming__RemoveAllUnusedModels = &CStreaming::RemoveAllUnusedModels;
++    reVC_addr_table.CStreaming__RemoveLeastUsedModel2 = &CStreaming::RemoveLeastUsedModel;
++
++    if (!modloader_InitFromREVC(&modloader_reVC_share)) {
++        FreeLibrary(::hModLoader);
++        hModLoader = NULL;
++        return;
++    }
++}
++
++void ModLoader_Shutdown()
++{
++    if (hModLoader == NULL)
++        return;
++
++    modloader_reVC_share.Shutdown(&modloader_reVC_share);
++
++    FreeLibrary(::hModLoader);
++    ::hModLoader = NULL;
++}
++
++void ModLoader_Tick()
++{
++    if (hModLoader == NULL)
++        return;
++
++    modloader_reVC_share.Tick(&modloader_reVC_share);
++}
++
++void
++ModLoader_PlayMovieInWindow_Logo(int cmdshow, const char* filename)
++{
++    if (hModLoader == NULL) return;
++
++    if (!modloader_reVC_share.callback_table->PlayMovieInWindow_Logo) return modloader_reVC_share.reVC_addr_table->PlayMovieInWindow(cmdshow, filename);
++
++    return modloader_reVC_share.callback_table->PlayMovieInWindow_Logo(cmdshow, filename);
++}
++
++void ModLoader_PlayMovieInWindow_GTAtitles(int cmdshow, const char* filename)
++{
++    if (!modloader_reVC_share.callback_table->PlayMovieInWindow_GTAtitles)
++        return modloader_reVC_share.reVC_addr_table->PlayMovieInWindow(cmdshow, filename);
++
++    return modloader_reVC_share.callback_table->PlayMovieInWindow_GTAtitles(cmdshow, filename);
++}
++
++int32_t
++ModLoader_GtaDat(const char* file, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->OpenFile_GtaDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_OpenFile(file, mode);
++
++    return modloader_reVC_share.callback_table->OpenFile_GtaDat(file, mode);
++}
++
++int32_t
++ModLoader_DefaultDat(const char* file, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->OpenFile_DefaultDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_OpenFile(file, mode);
++
++    return modloader_reVC_share.callback_table->OpenFile_DefaultDat(file, mode);
++}
++
++int32_t
++ModLoader_CarcolsDat(const char* file, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->OpenFile_CarcolsDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_OpenFile(file, mode);
++
++    return modloader_reVC_share.callback_table->OpenFile_CarcolsDat(file, mode);
++}
++
++int32_t ModLoader_PedGrpDat(const char* file, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->OpenFile_PedGrpDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_OpenFile(file, mode);
++
++    return modloader_reVC_share.callback_table->OpenFile_PedGrpDat(file, mode);
++}
++
++int32_t ModLoader_MainScm(const char* file, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->OpenFile_MainScm)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_OpenFile(file, mode);
++
++    return modloader_reVC_share.callback_table->OpenFile_MainScm(file, mode);
++}
++
++int32_t ModLoader_WaterproDat(const char* file, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->OpenFile_WaterproDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_OpenFile(file, mode);
++
++    return modloader_reVC_share.callback_table->OpenFile_WaterproDat(file, mode);
++}
++
++int ModLoader_FistfiteDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_FistfiteDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_FistfiteDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_HandlingCfg(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_HandlingCfg)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_HandlingCfg(file, buf, maxlen, mode);
++}
++
++int ModLoader_PedDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_PedDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_PedDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_ObjectDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_ObjectDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_ObjectDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_PedStatsDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_PedStatsDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_PedStatsDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_WeaponDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_WeaponDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_WeaponDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_ParticleCfg(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_ParticleCfg)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_ParticleCfg(file, buf, maxlen, mode);
++}
++
++int ModLoader_SurfaceDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_SurfaceDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_SurfaceDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_TimecycleDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (!modloader_reVC_share.callback_table->LoadFile_TimecycleDat)
++        return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++    return modloader_reVC_share.callback_table->LoadFile_TimecycleDat(file, buf, maxlen, mode);
++}
++
++int ModLoader_FlightDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (strstr(file, "flight.dat")) {
++        if (!modloader_reVC_share.callback_table->LoadFile_FlightDat)
++            return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++        return modloader_reVC_share.callback_table->LoadFile_FlightDat(file, buf, maxlen, mode);
++    } else if (strstr(file, "flight2.dat")) {
++        if (!modloader_reVC_share.callback_table->LoadFile_Flight2Dat)
++            return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++        return modloader_reVC_share.callback_table->LoadFile_Flight2Dat(file, buf, maxlen, mode);
++    } else {
++        // flight3.dat
++        if (!modloader_reVC_share.callback_table->LoadFile_Flight3Dat)
++            return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++        return modloader_reVC_share.callback_table->LoadFile_Flight3Dat(file, buf, maxlen, mode);
++    }
++}
++
++int ModLoader_TracksDat(const char* file, uint8_t* buf, int maxlen, const char* mode)
++{
++    if (strstr(file, "tracks.dat")) {
++        if (!modloader_reVC_share.callback_table->LoadFile_TracksDat)
++            return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++        return modloader_reVC_share.callback_table->LoadFile_TracksDat(file, buf, maxlen, mode);
++    }
++    else { // tracks2.dat
++        if (!modloader_reVC_share.callback_table->LoadFile_Tracks2Dat)
++            return modloader_reVC_share.reVC_addr_table->CFileMgr_LoadFile(file, buf, maxlen, mode);
++
++        return modloader_reVC_share.callback_table->LoadFile_Tracks2Dat(file, buf, maxlen, mode);
++    }
++}
++
++bool ModLoader_FontsTxd(int slot, const char* file)
++{
++    if (strstr(file, "FONTS.TXD")) {
++        if (!modloader_reVC_share.callback_table->LoadTxd_FontsTxd)
++            return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++        return modloader_reVC_share.callback_table->LoadTxd_FontsTxd(slot, file);
++    }
++    else if (strstr(file, "FONTS_P.TXD")) {
++        if (!modloader_reVC_share.callback_table->LoadTxd_FontsPTxd)
++            return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++        return modloader_reVC_share.callback_table->LoadTxd_FontsPTxd(slot, file);
++    }
++    else if (strstr(file, "FONTS_R.TXD")) {
++        if (!modloader_reVC_share.callback_table->LoadTxd_FontsRTxd)
++            return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++        return modloader_reVC_share.callback_table->LoadTxd_FontsRTxd(slot, file);
++    }
++    else { // FONTS_J.TXD
++        if (!modloader_reVC_share.callback_table->LoadTxd_FontsJTxd)
++            return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++        return modloader_reVC_share.callback_table->LoadTxd_FontsJTxd(slot, file);
++    }
++}
++
++bool ModLoader_Fronten1Txd(int slot, const char* file)
++{
++    if (!modloader_reVC_share.callback_table->LoadTxd_Fronten1Txd)
++        return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++    return modloader_reVC_share.callback_table->LoadTxd_Fronten1Txd(slot, file);
++}
++
++bool ModLoader_HudTxd(int slot, const char* file)
++{
++    if (!modloader_reVC_share.callback_table->LoadTxd_HudTxd)
++        return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++    return modloader_reVC_share.callback_table->LoadTxd_HudTxd(slot, file);
++}
++
++bool ModLoader_Fronten2Txd(int slot, const char* file)
++{
++    if (!modloader_reVC_share.callback_table->LoadTxd_Fronten2Txd)
++        return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++    return modloader_reVC_share.callback_table->LoadTxd_Fronten2Txd(slot, file);
++}
++
++bool ModLoader_ParticleTxd(int slot, const char* file)
++{
++    if (!modloader_reVC_share.callback_table->LoadTxd_ParticleTxd)
++        return modloader_reVC_share.reVC_addr_table->CTxdStore_LoadTxd(slot, file);
++
++    return modloader_reVC_share.callback_table->LoadTxd_ParticleTxd(slot, file);
++}
++
++void* ModLoader_ArrowDff(const char* file)
++{
++    if (!modloader_reVC_share.callback_table->LoadAtomic2Return_ArrowDff)
++        return modloader_reVC_share.reVC_addr_table->CFileLoader_LoadAtomicFile2Return(file);
++
++    return modloader_reVC_share.callback_table->LoadAtomic2Return_ArrowDff(file);
++}
++
++void* ModLoader_ZonecylbDff(const char* file)
++{
++    if (!modloader_reVC_share.callback_table->LoadAtomic2Return_ZonecylbDff)
++        return modloader_reVC_share.reVC_addr_table->CFileLoader_LoadAtomicFile2Return(file);
++
++    return modloader_reVC_share.callback_table->LoadAtomic2Return_ZonecylbDff(file);
++}
++
++void* ModLoader_AnimFile(int32_t type, int32_t accessType, const char* pData)
++{
++    if (!modloader_reVC_share.callback_table->RwStreamOpen_AnimFile)
++        return modloader_reVC_share.reVC_addr_table->RwStreamOpen(type, accessType, pData);
++
++    return modloader_reVC_share.callback_table->RwStreamOpen_AnimFile(type, accessType, pData);
++}
++
++void ModLoader_InitialiseGame()
++{
++    if (!modloader_reVC_share.callback_table->InitialiseGame)
++        return modloader_reVC_share.reVC_addr_table->InitialiseGame();
++
++    return modloader_reVC_share.callback_table->InitialiseGame();
++}
++
++
++bool
++ModLoader_CdStreamThread()
++{
++    if (modloader_reVC_share.callback_table->CdStreamThread) {
++        modloader_reVC_share.callback_table->CdStreamThread();
++        return true;
++    }
++    return false;
++}
++
++
++void*
++ModLoader_AcquireNextModelFileHandle()
++{
++    if (modloader_reVC_share.callback_table->AcquireNextModelFileHandle)
++        return modloader_reVC_share.callback_table->AcquireNextModelFileHandle();
++    return INVALID_HANDLE_VALUE;
++}
++
++void
++ModLoader_LoadCdDirectory()
++{
++    if (modloader_reVC_share.callback_table->LoadCdDirectory0)
++        return modloader_reVC_share.callback_table->LoadCdDirectory0();
++    return modloader_reVC_share.reVC_addr_table->CStreaming__LoadCdDirectory0();
++}
++
++void
++ModLoader_FetchCdDirectory(const char* filename, int cd_index)
++{
++    if (modloader_reVC_share.callback_table->FetchCdDirectory)
++        return modloader_reVC_share.callback_table->FetchCdDirectory(filename, cd_index);
++    return modloader_reVC_share.reVC_addr_table->CStreaming__LoadCdDirectory2(filename, cd_index);
++}
++
++void
++ModLoader_RegisterNextModelRead(int resource_id)
++{
++    if (modloader_reVC_share.callback_table->RegisterNextModelRead)
++        return modloader_reVC_share.callback_table->RegisterNextModelRead(resource_id);
++}
++
++int32_t
++ModLoader_CdStreamRead(int32_t channel, void* buffer, uint32_t offset, uint32_t size)
++{
++    if (modloader_reVC_share.callback_table->CdStreamThread)
++        return modloader_reVC_share.callback_table->CdStreamRead(channel, buffer, offset, size);
++    return modloader_reVC_share.reVC_addr_table->CdStreamRead(channel, buffer, offset, size);
++}
++
++void
++ModLoader_OnRequestSpecialModel(uint32_t model_id, const char* model_name, uint32_t pos, uint32_t size)
++{
++    if (modloader_reVC_share.callback_table->OnRequestSpecialModel)
++        return modloader_reVC_share.callback_table->OnRequestSpecialModel(model_id, model_name, pos, size);
++}
++
++const char*
++ModLoader_GetCdStreamPath_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->GetCdStreamPath_Unsafe)
++        return modloader_reVC_share.callback_table->GetCdStreamPath_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_GetCdDirectoryPath_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->GetCdDirectoryPath_Unsafe)
++        return modloader_reVC_share.callback_table->GetCdDirectoryPath_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_RegisterAndGetColFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetColFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetColFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_RegisterAndGetAtomicFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetAtomicFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetAtomicFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_RegisterAndGetClumpFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetClumpFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetClumpFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_RegisterAndGetTexDiction_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetTexDiction_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetTexDiction_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_RegisterAndGetIdeFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetIdeFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetIdeFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char*
++ModLoader_RegisterAndGetIplFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetIplFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetIplFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char* ModLoader_RegisterAndGetGxtFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetGxtFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetGxtFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char* ModLoader_RegisterAndGetPlayerBmpFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetPlayerBmpFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetPlayerBmpFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char* ModLoader_RegisterAndGetSplashFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->RegisterAndGetSplashFile_Unsafe)
++        return modloader_reVC_share.callback_table->RegisterAndGetSplashFile_Unsafe(filepath);
++    return filepath;
++}
++
++const char* ModLoader_GetAnimFile_Unsafe(const char* filepath)
++{
++    if (modloader_reVC_share.callback_table->GetAnimFile_Unsafe)
++        return modloader_reVC_share.callback_table->GetAnimFile_Unsafe(filepath);
++    return filepath;
++}
++#endif
+\ No newline at end of file
+diff --git a/src/extras/modloader.h b/src/extras/modloader.h
+new file mode 100644
+index 00000000..6f63dc09
+--- /dev/null
++++ b/src/extras/modloader.h
+@@ -0,0 +1,459 @@
++/*
++The MIT License (MIT)
++
++Copyright (c) 2013-2015 Denilson das Mercês Amorim (aka LINK/2012)
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
++*/
++
++
++#pragma once
++#include "config.h"
++
++#ifdef MODLOADER
++
++#include <cstdint>
++
++void ModLoader_Init();
++void ModLoader_Shutdown();
++void ModLoader_Tick();
++
++void ModLoader_PlayMovieInWindow_Logo(int, const char*);
++void ModLoader_PlayMovieInWindow_GTAtitles(int, const char*);
++int32_t ModLoader_GtaDat(const char* file, const char* mode);
++int32_t ModLoader_DefaultDat(const char* file, const char* mode);
++int32_t ModLoader_CarcolsDat(const char* file, const char* mode);
++int32_t ModLoader_PedGrpDat(const char* file, const char* mode);
++int32_t ModLoader_MainScm(const char* file, const char* mode);
++int32_t ModLoader_WaterproDat(const char* file, const char* mode);
++int ModLoader_FistfiteDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_HandlingCfg(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_PedDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_ObjectDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_PedStatsDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_WeaponDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_ParticleCfg(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_SurfaceDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_TimecycleDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_FlightDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++int ModLoader_TracksDat(const char* file, uint8_t* buf, int maxlen, const char* mode);
++bool ModLoader_FontsTxd(int slot, const char* file);
++bool ModLoader_Fronten1Txd(int slot, const char* file);
++bool ModLoader_HudTxd(int slot, const char* file);
++bool ModLoader_Fronten2Txd(int slot, const char* file);
++bool ModLoader_ParticleTxd(int slot, const char* file);
++void* ModLoader_ArrowDff(const char* file);
++void* ModLoader_ZonecylbDff(const char* file);
++void* ModLoader_AnimFile(int32_t type, int32_t accessType, const char* pData);
++void ModLoader_InitialiseGame();
++
++bool ModLoader_CdStreamThread();
++void* ModLoader_AcquireNextModelFileHandle();
++void ModLoader_LoadCdDirectory();
++void ModLoader_FetchCdDirectory(const char*, int);
++void ModLoader_RegisterNextModelRead(int);
++int32_t ModLoader_CdStreamRead(int32_t channel, void* buffer, uint32_t offset, uint32_t size);
++
++void ModLoader_OnRequestSpecialModel(uint32_t model_id, const char* model_name, uint32_t pos, uint32_t size);
++
++// unsafe because returns pointer to a static buffer
++const char*
++ModLoader_GetCdStreamPath_Unsafe(const char* filepath);
++const char*
++ModLoader_GetCdDirectoryPath_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetColFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetAtomicFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetClumpFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetTexDiction_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetIdeFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetIplFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetGxtFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetPlayerBmpFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_RegisterAndGetSplashFile_Unsafe(const char* filepath);
++
++const char*
++ModLoader_GetAnimFile_Unsafe(const char* filepath);
++
++
++/*
++ *  Mod Loader C Plugin Interface
++ *      The interface is extremly simple and you don't have to link with modloader.
++ *      The only thing you are requiered to do is export a 'GetPluginData' function (see below for the prototype).
++ *      Put your plugin at '/modloader/.data/plugins' folder.
++ *
++ *
++ *  This source code is offered for use in the public domain. You may
++ *  use, modify or distribute it freely.
++ *
++ *  This code is distributed in the hope that it will be useful but
++ *  WITHOUT ANY WARRANTY. ALL WARRANTIES, EXPRESS OR IMPLIED ARE HEREBY
++ *  DISCLAIMED. This includes but is not limited to warranties of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
++ *
++ */
++#ifndef MODLOADER_H
++#define	MODLOADER_H
++#pragma once
++
++#include <stddef.h>
++#include <stdarg.h>
++#include <stdint.h>
++
++#ifdef	__cplusplus
++extern "C" {
++#endif
++
++    /* Version */
++#define MODLOADER_VERSION_MAJOR         0
++#define MODLOADER_VERSION_MINOR         3
++#define MODLOADER_VERSION_REVISION      9
++#ifdef NDEBUG
++#define MODLOADER_VERSION_ISDEV         0
++#else
++#define MODLOADER_VERSION_ISDEV         1
++#endif
++
++
++/**************************************
++ *    CONSTANTS
++ **************************************/
++
++ /* Check file result */
++#define MODLOADER_BEHAVIOUR_NO          0
++#define MODLOADER_BEHAVIOUR_YES         1
++#define MODLOADER_BEHAVIOUR_CALLME      2
++
++/* modloader_file_t flags */
++#define MODLOADER_FF_IS_DIRECTORY   1
++
++
++/**************************************
++ *    COMMON DATA TYPES
++ **************************************/
++
++ /* Forwarding */
++    struct modloader_t;
++    struct modloader_plugin_t;
++
++
++    /*
++     * modloader_mod_t
++     *      This structure represents a mod
++     */
++    typedef struct
++    {
++        uint64_t    id;         // Unique mod id
++        uint32_t    priority;   // Mod priority
++        uint32_t    _pad1;
++
++    } modloader_mod_t;
++
++
++    /*
++     * modloader_file_t
++     *      This structure represents a file
++     */
++    typedef struct
++    {
++        uint32_t            flags;          /* File flags */
++        const char* buffer;         /* Pointer to the file buffer... that's the file path relative to game dir  */
++        uint8_t             pos_eos;        /* The null terminator position (length of the string)  */
++        uint8_t             pos_filedir;    /* The position of the filepath relative to the mod folder (e.g. "modloader/my mod/stuff/a.dat" -> "stuff/a.dat") */
++        uint8_t             pos_filename;   /* The position of the file name  */
++        uint8_t             pos_filext;     /* The position of the file extension  */
++        uint32_t            hash;           /* The filename hash (as in "modloader/util/hash.hpp" */
++        uint32_t            _rsv1;          /* Reserved */
++        modloader_mod_t* parent;         /* The mod owner of this file */
++        uint64_t            size;           /* Size of the file in bytes  */
++        uint64_t            time;           /* File modification time  */
++        /*  (as FILETIME, 100-nanosecond intervals since January 1, 1601 UTC) */
++        uint64_t            behaviour;      /* The file behaviour */
++
++    } modloader_file_t;
++
++
++
++
++
++
++    /**************************************
++     *    THE LOADER EXPORTS
++     **************************************/
++
++     /*
++      *  Shared data between plugins
++      */
++#define MODLOADER_SHDATA_ANY        0       /* Could be any data (default value) */
++#define MODLOADER_SHDATA_EMPTY      1       /* Empty variable */
++#define MODLOADER_SHDATA_FUNCTION   2       /* Function variable */
++#define MODLOADER_SHDATA_POINTER    3       /* Pointer variable */
++#define MODLOADER_SHDATA_INT        4       /* Signed 32 Bits Integer */
++#define MODLOADER_SHDATA_UINT       5       /* Unsigned 32 Bits Integer */
++      /*#define MODLOADER_SHDATA_LIST       10    /* Linked list */
++
++    struct modloader_shdata_t
++    {
++        uint32_t    type;       /* Type of the data as in MODLOADER_SHDATA_* constants */
++
++        /* Data */
++        union {
++            void* p;    /* MODLOADER_SHDATA_POINTER pointer */
++            void* f;    /* MODLOADER_SHDATA_FUNCTION function pointer */
++            int32_t   i;    /* MODLOADER_SHDATA_INT */
++            uint32_t  u;    /* MODLOADER_SHDATA_UINT */
++        };
++    };
++
++    /*
++     *  modloader_fCreateSharedData -> Creates a shared data named @name. Returns a pointer to the created shared data or NULL on failure.
++     *  modloader_fDeleteSharedData -> Frees a previosly @data created using CreateSharedData.
++     *  modloader_fFindSharedData    -> Gets the pointer of the shared data named @name. Returns the pointer to the shared data object or NULL on failure.
++     */
++    typedef modloader_shdata_t* (*modloader_fCreateSharedData)(const char* name);
++    typedef void (*modloader_fDeleteSharedData)(modloader_shdata_t* data);
++    typedef modloader_shdata_t* (*modloader_fFindSharedData)(const char* name);
++
++
++    /*
++     * Log
++     *      Logs something into the modloader log file
++     */
++    typedef void (*modloader_fLog)(const char* msg, ...);
++    typedef void (*modloader_fvLog)(const char* msg, va_list va);
++
++    /*
++     * Error
++     *      Displays a message box with a error message
++     *      Log may suit your needs.
++     */
++    typedef void (*modloader_fError)(const char* errmsg, ...);
++
++    /* Game Identifier */
++#define MODLOADER_GAME_REBIT 0x80 
++#define MODLOADER_GAME_UNK   0
++#define MODLOADER_GAME_III   1
++#define MODLOADER_GAME_VC    2
++#define MODLOADER_GAME_SA    3
++#define MODLOADER_GAME_RE3   (MODLOADER_GAME_III | MODLOADER_GAME_REBIT)
++#define MODLOADER_GAME_REVC   (MODLOADER_GAME_VC | MODLOADER_GAME_REBIT)
++
++/* ---- Interface ---- */
++    typedef struct modloader_t
++    {
++        const char* gamepath;       /* game path */
++        const char* _rsvc;          /* (deprecated - reserved) */
++        const char* commonappdata;  /* fullpath to a "modloader/" directory in the %ProgramData% directory */
++        const char* localappdata;   /* fullpath to a "modloader/" directory in the "%LocalAppData% directory */
++        const char* _rsv0[2];       /* Reserved */
++
++        uint32_t   _rsv1[4];        /* Reserved */
++        uint8_t    has_game_started;
++        uint8_t    has_game_loaded;
++        uint8_t    game_id;         /* see MODLOADER_GAME_* constants */
++        uint8_t    _rsv4;           /* Reserved */
++
++        /* Interface */
++        modloader_fLog                  Log;
++        modloader_fvLog                 vLog;
++        modloader_fError                Error;
++        modloader_fCreateSharedData     CreateSharedData;
++        modloader_fDeleteSharedData     DeleteSharedData;
++        modloader_fFindSharedData       FindSharedData;
++
++    } modloader_t;
++
++
++
++
++
++
++    /**************************************
++     *    THE PLUGIN EXPORTS
++     **************************************/
++
++     /*
++             You have to export this function!
++             Then you shall JUST (and JUST) fill 'major', 'minor' and 'revision' with  the values of
++             MODLOADER_VERSION_MAJOR, MODLOADER_VERSION_MINOR,  MODLOADER_VERSION_REVISION macros.
++             If the version checking goes okay, GetPluginData will get called.
++     */
++    typedef void (*modloader_fGetLoaderVersion)(uint8_t* major, uint8_t* minor, uint8_t* revision);
++
++    /*
++            You have to export this function!
++            Then you shall JUST (and JUST) fill 'data' with the plugin information.
++            If everything goes okay, data->OnStartup will get called.
++            Note that data->modloader is already set here :)
++    */
++    typedef void (*modloader_fGetPluginData)(modloader_plugin_t* data);
++
++    /*
++     *  GetVersion
++     *      Get plugin version string (e.g. "1.4")
++     *      This will show up once, when the plugin get loaded
++     *      @data: The plugin data
++     */
++    typedef const char* (*modloader_fGetVersion)(modloader_plugin_t* data);
++
++    /*
++     *  GetAuthor
++     *      Get plugin author (e.g. "My Name")
++     *      This will show up once, when the plugin get loaded
++     *      @data: The plugin data
++     */
++    typedef const char* (*modloader_fGetAuthor)(modloader_plugin_t* data);
++
++
++    /*
++     *  OnStartup
++     *      Plugin started up, this happens before the the game engine starts.
++     *      @data: The plugin shall fill 'data' parameter with it's information.
++     *      @return 0 on success and 1 on failure;
++     */
++    typedef int (*modloader_fOnStartup)(modloader_plugin_t* data);
++
++    /*
++     *  OnShutdown
++     *      Plugin shut dowing
++     *      @data: The plugin data
++     *      @return 0 on success and 1 on failure;
++     */
++    typedef int (*modloader_fOnShutdown)(modloader_plugin_t* data);
++
++    /*
++     * GetBehaviour
++     *      Gets the behaviour of this plugin in relation to the specified file
++     *      @data: The plugin data
++     *      @return MODLOADER_BEHAVIOUR_NO      for no relationship
++     *              MODLOADER_BEHAVIOUR_YES     for strong relationship, this plugin will handle the file installation. Should set file->behaviour to a file-unique id.
++     *              MODLOADER_BEHAVIOUR_CALLME  for weak relationship, this plugin won't handle the file installation but will receive it at Install, Uninstall and so on.
++     *
++     *
++     */
++    typedef int (*modloader_fGetBehaviour)(modloader_plugin_t* data, modloader_file_t* file);
++
++    /*
++     * InstallFile
++     *      Called to install a file previosly checked as MODLOADER_BEHAVIOUR_YES or MODLOADER_BEHAVIOUR_CALLME
++     *      @data: The plugin data
++     *      @return 0 on success and 1 on failure;
++     */
++    typedef int (*modloader_fInstallFile)(modloader_plugin_t* data, const modloader_file_t* file);
++
++
++    /*
++     * ReinstallFile
++     *      Called to reinstall a file  previosly installed, the file was updated
++     *      @data: The plugin data
++     *      @return 0 on success and 1 on failure;
++     */
++    typedef int (*modloader_fReinstallFile)(modloader_plugin_t* data, const modloader_file_t* file);
++
++
++    /*
++     * UninstallFile
++     *      Called to uninstall a file previosly installed with 'InstallFile'
++     *      @data: The plugin data
++     *      @return 0 on success and 1 on failure;
++     */
++    typedef int (*modloader_fUninstallFile)(modloader_plugin_t* data, const modloader_file_t* file);
++
++
++    /*
++     * Update
++     *      Update is called after a serie of install/uninstalls, maybe you need a delayed refresh
++     *      @data: The plugin data
++     */
++    typedef void (*modloader_fUpdate)(modloader_plugin_t* data);
++
++
++
++
++    /* ---- Interface ---- Should be compatible with all versions of modloader.asi */
++    typedef struct modloader_plugin_t
++    {
++        // Data to be set by Mod Loader itself, read-only data for plugins!
++        struct
++        {
++            uint8_t major, minor, revision, _pad0;
++            void* pThis, * pModule;                      /* this pointer and HMODULE */
++            const char* name, * author, * version;        /* Plugin info */
++            modloader_t* loader;                        /* Modloader pointer  */
++            uint8_t has_started;                        /* Determines whether the plugin has started up successfully */
++            uint8_t _pad1[3];                           /* Reserved */
++        };
++
++        /* Userdata, set it to whatever you want */
++        void* userdata;
++
++        /* Extension table, set it to a pointer of extensions that this plugin handles */
++        const char** extable;   /* Can be null if extable_len is equal to zero */
++        size_t extable_len;     /* The length of the extension table */
++
++        /*
++         * The plugin priority, normally this is set outside the plugin in a config file, not recommend to touch this value.
++         * Mod Loader sets this to the default priority "50"; "0" means ignore this plugin.
++         */
++        int priority;
++
++        /* Callbacks */
++        modloader_fGetAuthor        GetAuthor;
++        modloader_fGetVersion       GetVersion;
++        modloader_fOnStartup        OnStartup;
++        modloader_fOnShutdown       OnShutdown;
++        modloader_fGetBehaviour     GetBehaviour;
++        modloader_fInstallFile      InstallFile;
++        modloader_fReinstallFile    ReinstallFile;
++        modloader_fUninstallFile    UninstallFile;
++        modloader_fUpdate           Update;
++
++    } modloader_plugin_t;
++
++
++
++
++
++
++
++#ifdef	__cplusplus
++}
++#endif
++
++#endif
++
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/modloader_reVC.h b/src/extras/modloader_reVC.h
+new file mode 100644
+index 00000000..220ada0b
+--- /dev/null
++++ b/src/extras/modloader_reVC.h
+@@ -0,0 +1,156 @@
++/*
++The MIT License (MIT)
++
++Copyright (c) 2013-2015 Denilson das Mercês Amorim (aka LINK/2012)
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in
++all copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++THE SOFTWARE.
++*/
++
++
++#pragma once
++#include "modloader.h"
++#include <cstdint>
++
++typedef struct {
++
++    uint32_t size;
++
++    int* p_gGameState;
++
++    void (*PlayMovieInWindow)(int, const char*);
++    int32_t(*CFileMgr_OpenFile)(const char* file, const char* mode);
++    int (*CFileMgr_LoadFile)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    bool (*CTxdStore_LoadTxd)(int slot, const char* filename);
++    void* (*CFileLoader_LoadAtomicFile2Return)(const char* filename);
++    void* (*RwStreamOpen)(int32_t type, int32_t accessType, const char* pData);
++    void (*InitialiseGame)();
++
++    void* ms_aInfoForModel;
++    uint32_t uMaxResources;
++    DWORD* p_gCdStreamFlags;
++    HANDLE* p_gCdStreamSema;
++    void* p_gChannelRequestQ;
++    void** p_gpReadInfo;
++    BOOL* p_gbCdStreamOverlapped;
++    BOOL* p_gbCdStreamAsync;
++    void** p_ms_pStreamingBuffer;
++    uint32_t* p_ms_streamingBufferSize;
++    bool (*CDirectory__FindItem4)(void*, const char*, uint32_t*, uint32_t*);
++    void (*CStreaming__LoadCdDirectory0)();
++    void (*CStreaming__LoadCdDirectory2)(const char* filename, int cd_index);
++    int32_t(*CdStreamRead)(int32_t channel, void* buffer, uint32_t offset, uint32_t size);
++
++    void (*LoadCdDirectoryUsingCallbacks)(void* pUserData, int n, bool (*ReadEntry)(void*, void*, uint32_t),
++        bool (*RegisterEntry)(void*, void*, bool), void (*RegisterSpecialEntry)(void*, void*));
++
++    void (*CTimer__Resume)();
++    void (*CTimer__Suspend)();
++    void (*CStreaming__FlushChannels)();
++    void (*CStreaming__RequestModel)(int32_t id, int32_t flags);
++    void (*CStreaming__RemoveModel)(int32_t id);
++    void (*CStreaming__LoadAllRequestedModels)(bool priority);
++    void (*CStreaming__RemoveAllUnusedModels)();
++    bool (*CStreaming__RemoveLeastUsedModel2)(uint32_t excludeMask);
++
++} modloader_reVC_addr_table_t;
++
++typedef struct {
++
++    uint32_t size;
++
++    void (*PlayMovieInWindow_Logo)(int, const char*);
++    void (*PlayMovieInWindow_GTAtitles)(int, const char*);
++    int32_t(*OpenFile_GtaDat)(const char* file, const char* mode);
++    int32_t(*OpenFile_DefaultDat)(const char* file, const char* mode);
++    int32_t(*OpenFile_CarcolsDat)(const char* file, const char* mode);
++    int32_t(*OpenFile_PedGrpDat)(const char* file, const char* mode);
++    int32_t(*OpenFile_MainScm)(const char* file, const char* mode);
++    int32_t(*OpenFile_WaterproDat)(const char* file, const char* mode);
++    int (*LoadFile_FistfiteDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_HandlingCfg)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_PedDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_ObjectDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_PedStatsDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_WeaponDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_ParticleCfg)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_SurfaceDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_TimecycleDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_FlightDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_Flight2Dat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_Flight3Dat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_TracksDat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    int (*LoadFile_Tracks2Dat)(const char* file, uint8_t* buf, int maxlen, const char* mode);
++    bool (*LoadTxd_FontsTxd)(int slot, const char* filename);
++    bool (*LoadTxd_FontsPTxd)(int slot, const char* filename);
++    bool (*LoadTxd_FontsRTxd)(int slot, const char* filename);
++    bool (*LoadTxd_FontsJTxd)(int slot, const char* filename);
++    bool (*LoadTxd_Fronten1Txd)(int slot, const char* filename);
++    bool (*LoadTxd_HudTxd)(int slot, const char* filename);
++    bool (*LoadTxd_Fronten2Txd)(int slot, const char* filename);
++    bool (*LoadTxd_ParticleTxd)(int slot, const char* filename);
++    void* (*LoadAtomic2Return_ArrowDff)(const char* filename);
++    void* (*LoadAtomic2Return_ZonecylbDff)(const char* filename);
++    void* (*RwStreamOpen_AnimFile)(int32_t type, int32_t accessType, const char* pData);
++    void (*InitialiseGame)();
++
++    void (*CdStreamThread)();
++    void (*LoadCdDirectory0)();
++    void (*RegisterNextModelRead)(uint32_t);
++    HANDLE(*AcquireNextModelFileHandle)();
++    void (*FetchCdDirectory)(const char*, int);
++    int32_t(*CdStreamRead)(int32_t channel, void* buffer, uint32_t offset, uint32_t size);
++
++    void(*OnRequestSpecialModel)(uint32_t model_id, const char* model_name, uint32_t pos, uint32_t size);
++
++    const char* (*GetCdDirectoryPath_Unsafe)(const char* filepath);
++    const char* (*GetCdStreamPath_Unsafe)(const char* filepath);
++
++    const char* (*RegisterAndGetAtomicFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetClumpFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetTexDiction_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetColFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetIdeFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetIplFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetGxtFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetPlayerBmpFile_Unsafe)(const char* filepath);
++    const char* (*RegisterAndGetSplashFile_Unsafe)(const char* filepath);
++    const char* (*GetAnimFile_Unsafe)(const char* filepath);
++
++    int32_t(*CFileMgr__OpenFile0)(const char* file, const char* mode);
++    int32_t(*CFileMgr__OpenFile1)(int* pThis, const char* file, const char* mode);
++
++} modloader_reVC_callback_table_t;
++
++typedef struct modloader_reVC_t {
++
++    uint32_t size;
++    uint32_t reVC_version;
++
++    modloader_t* modloader;
++    modloader_reVC_addr_table_t* reVC_addr_table;
++    modloader_reVC_callback_table_t* callback_table;
++
++    void (*Tick)(struct modloader_reVC_t*);
++    void (*Shutdown)(struct modloader_reVC_t*);
++
++    void* movies_plugin_ptr;
++
++} modloader_reVC_t;
++
++typedef int (*modloader_fInitFromREVC)(modloader_reVC_t*);
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

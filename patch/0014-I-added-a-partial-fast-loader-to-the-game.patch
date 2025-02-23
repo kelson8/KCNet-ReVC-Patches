@@ -1,0 +1,80 @@
+From b5e6023a8dc9f1251ed353d33fdd667231552540 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Feb 2025 15:53:21 -0500
+Subject: [PATCH 14/42] I added a partial fast loader to the game. This one in
+ ReVC shows the save slot title, unlike in Re3.
+
+---
+ src/core/Frontend.cpp | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 875bb76b..ec44c513 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -2278,15 +2278,28 @@ CMenuManager::DrawFrontEnd()
+ 	SetFrontEndRenderStates();
+ 	m_NoEmptyBinding = true;
+ 
++
++
++#define _CUSTOM_CODE
++	// I found the spot where I can jump out the main menu at least.
++	// I finally made a partial fast loader for ReVC
++	// 	2-13-2025 @ 3:33PM
+ 	if (m_nCurrScreen == MENUPAGE_NONE) {
+ 		if (m_bGameNotLoaded) {
++#ifdef _CUSTOM_CODE
++			m_nCurrScreen = MENUPAGE_CHOOSE_LOAD_SLOT;
++			#else
+ 			m_nCurrScreen = MENUPAGE_START_MENU;
++		#endif //_CUSTOM_CODE
+ 		} else {
+ 			m_nCurrScreen = MENUPAGE_PAUSE_MENU;
+ 		}
+ 		SETUP_SCROLLING(m_nCurrScreen)
+ 	}
+ 
++// Disable _CUSTOM_CODE here.
++#undef _CUSTOM_CODE
++
+ 	if (m_nCurrOption == 0 && aScreens[m_nCurrScreen].m_aEntries[0].m_Action == MENUACTION_LABEL)
+ 		m_nCurrOption = 1;
+ 
+@@ -3080,6 +3093,7 @@ CMenuManager::LoadAllTextures()
+ 	CTimer::Update();
+ }
+ 
++// Load the settings from the .set file
+ void
+ CMenuManager::LoadSettings()
+ {
+@@ -4576,6 +4590,7 @@ CMenuManager::UserInput(void)
+ #endif
+ }
+ 
++// Seems to be the main user input for the start menu and everything.
+ void
+ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, uint8 goBack, int8 changeAmount)
+ {
+@@ -4758,6 +4773,8 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 				InitialiseChangedLanguageSettings();
+ 				SaveSettings();
+ 				break;
++
++			// Save slots
+ 			case MENUACTION_CHECKSAVE:
+ 			{
+ 				int saveSlot = aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_SaveSlot;
+@@ -4804,6 +4821,8 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 				RetryMission(MISSION_RETRY_TYPE_BEGIN_RESTARTING);
+ 				return;
+ #endif
++
++			// Save the game
+ 			case MENUACTION_SAVEGAME:
+ 			{
+ 				int saveSlot = aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_SaveSlot;
+-- 
+2.45.1.windows.1
+

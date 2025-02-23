@@ -1,0 +1,2714 @@
+From dde53654baf2c0a1ac064eb06f6375f6069b0252 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Feb 2025 05:24:35 -0500
+Subject: [PATCH 40/42] Document most functions in Vehicle.cpp Document some
+ CarAI and CarCtrl functions. Add car unlocked and car locked messages, fix
+ car unlock to work. Add my new gxt files.
+
+---
+ gamefiles/TEXT/american.gxt              | Bin 424134 -> 429802 bytes
+ src/control/CarAI.cpp                    |  21 +
+ src/control/CarCtrl.cpp                  |   8 +-
+ src/extras/test/cheats/custom_cheats.cpp |  33 +-
+ src/vehicles/Vehicle.cpp                 | 302 +++++++++++++++
+ utils/gxt/american.txt                   | 467 ++++++++++++++++++++---
+ 6 files changed, 755 insertions(+), 76 deletions(-)
+
+diff --git a/gamefiles/TEXT/american.gxt b/gamefiles/TEXT/american.gxt
+index ca03b34c1c0906e32d1a960bfb542cc152bb05ab..31141bab8d46fa52eff95b8ab6242b511804a286 100644
+GIT binary patch
+delta 31118
+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
+
+delta 26707
+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
+zNC5ytK~i5qQ!xMvNdW*uK~i5qQ!)S?iva*bK~i5s0001LD**sQK~i5uSWp1ai2(pZ
+zK~i5#0001h2LS*>K~i5%PXGXRiU9yaK~i5-0002evy}`V0ZC%U002WsML|?C004r<
+z002WsML|?D005lE002WsML|?E006ee002WsML|?F007R$002WsML|?G008vH002Ws
+zML|?H000b={S703DzX3oLr6tMR6$4pcJ=`PLr6tZQdv*{_Im*ULr7Ca00000;==#{
+zLrG3UK}`Svt`q<OLrg_hMN$9&fS~~ZLrhOdMNCitZc+gNLrhOpNHG8afK~wjLrhOp
+zNHH(~)=~igLrhOpNHPEbBvSzZLrhOpNHYKcrc(g`LrhP9R7f-c03uWY07FbqR7f=d
+z0IpO407FbqR7f@e047xd07FbqR7f`f0GL$)07FbqR7f}g02WpO07FbqR7g1h00<cZ
+z07FbvUr0<c07?%507FhxGG8$O0A3FP07FhxGG8(P0Dcbv07FhxGG8+Q0DJ`j07Fhx
+zLRDEY016qCS`QX~yt4oRLr+0NNB{r;-n9S#Lr+0dR7U^+;I;q&Lr+0dR82tuuF?Pi
+zLr+UFUo!vz^wIzTLr+UFUp4>$jMD%BLr+UGUokKM=F<QGLr+UGUokNNHq-zBLr+UG
+zUokQORMY?fLr+UGUokiUjMM-CLr+UGUoklVzSIB!Lr+V8GG8(_04UP{07FkpGG8|U
+z0O-^J07FkpGhZ<P01njv07FkpGhZ?Q06NtG07FkpGhZ_R0Cv>?07FkpGhZ|S0E*WD
+z07FkpG+!|=0M6F{07FkpG+!|>04&%507FkpG+!|{0Aknx07FkpG+!||0FKrG07Fkp
+zG+#0R0KC|L002WzOEh0HF#zD$002WzOEh0HG5{Xg002WzOEh0HGXOl<002WzOEh0H
+zIRKj0002WzOEh0L007w5002WzOEh0M008pV002WzOEh0N001P{002WzOEh0O002PO
+z002WzOEh0OK>*Ix002WzOEh0s000oy002WzOEg~)SO5S<)&KxQPfIjkSpWcjll>4o
+ze`pE;07FkqGG8_T0IUiD07FkqGG8`A00avG07FkqGG8`B0Crgc07FkqGG93W03r(k
+z07FkqGhaaf0ALFN07FkqGhadg0J;kS07FkqGhagh05A*z07FkqGhaji0E7$y07Fkq
+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
+
+diff --git a/src/control/CarAI.cpp b/src/control/CarAI.cpp
+index c8230d4d..c03fb8f0 100644
+--- a/src/control/CarAI.cpp
++++ b/src/control/CarAI.cpp
+@@ -39,6 +39,10 @@ float CCarAI::FindSwitchDistanceFar(CVehicle* pVehicle)
+ 	return FindSwitchDistanceFarNormalVehicle(pVehicle);
+ }
+ 
++/// <summary>
++/// Sets the vehicles back to cruising or "normal" it looks like.
++/// </summary>
++/// <param name="pVehicle"></param>
+ void CCarAI::BackToCruisingIfNoWantedLevel(CVehicle* pVehicle)
+ {
+ 	if (FindPlayerPed()->m_pWanted->m_bIgnoredByEveryone || pVehicle->bIsLawEnforcer &&
+@@ -580,6 +584,10 @@ void CCarAI::AddFiretruckOccupants(CVehicle* pVehicle)
+ 	pVehicle->SetupPassenger(0);
+ }
+ 
++/// <summary>
++/// Make everyone leave the current vehicle
++/// </summary>
++/// <param name="pVehicle"></param>
+ void CCarAI::TellOccupantsToLeaveCar(CVehicle* pVehicle)
+ {
+ 	if (pVehicle->pDriver){
+@@ -607,6 +615,10 @@ void CCarAI::TellOccupantsToLeaveCar(CVehicle* pVehicle)
+ 	}
+ }
+ 
++/// <summary>
++/// Make everyone flee the vehicle, get away until its safe.
++/// </summary>
++/// <param name="pVehicle"></param>
+ void CCarAI::TellOccupantsToFleeCar(CVehicle* pVehicle)
+ {
+ 	if (pVehicle->pDriver && !pVehicle->pDriver->IsPlayer()) {
+@@ -652,6 +664,11 @@ void CCarAI::TellCarToBlockOtherCar(CVehicle* pVehicle, CVehicle* pTarget)
+ 	pVehicle->AutoPilot.m_nCruiseSpeed = Max(6, pVehicle->AutoPilot.m_nCruiseSpeed);
+ }
+ 
++/// <summary>
++/// Hmm, this looks like the police code for ramming or blocking the player.
++/// If so, this is using some random number generator to get random outcomes for it.
++/// </summary>
++/// <returns></returns>
+ uint8 CCarAI::FindPoliceCarMissionForWantedLevel()
+ {
+ 	switch (CWorld::Players[CWorld::PlayerInFocus].m_pPed->m_pWanted->GetWantedLevel()){
+@@ -738,6 +755,10 @@ void CCarAI::MellowOutChaseSpeed(CVehicle* pVehicle)
+ 	}
+ }
+ 
++/// <summary>
++/// TODO What is this doing?
++/// </summary>
++/// <param name="pVehicle"></param>
+ void CCarAI::MellowOutChaseSpeedBoat(CVehicle* pVehicle)
+ {
+ 	switch (CWorld::Players[CWorld::PlayerInFocus].m_pPed->m_pWanted->GetWantedLevel()) {
+diff --git a/src/control/CarCtrl.cpp b/src/control/CarCtrl.cpp
+index 670d2bb1..7a85e831 100644
+--- a/src/control/CarCtrl.cpp
++++ b/src/control/CarCtrl.cpp
+@@ -130,6 +130,7 @@ CCarCtrl::GenerateRandomCars()
+ 		GenerateEmergencyServicesCar();
+ }
+ 
++// TODO Look into this function later, I could play with this.
+ void
+ CCarCtrl::GenerateOneRandomCar()
+ {
+@@ -344,15 +345,19 @@ CCarCtrl::GenerateOneRandomCar()
+ 		/* Not spawning vehicle if road is one way and intended direction is opposide to that way. */
+ 		return;
+ 	CVehicle* pVehicle;
++
++	// This is where the game determines which vehicle to spawn and sets it.
+ 	if (CModelInfo::IsBoatModel(carModel))
+ 		pVehicle = new CBoat(carModel, RANDOM_VEHICLE);
+ 	else if (CModelInfo::IsBikeModel(carModel))
+ 		pVehicle = new CBike(carModel, RANDOM_VEHICLE);
+ 	else
+ 		pVehicle = new CAutomobile(carModel, RANDOM_VEHICLE);
++
+ 	pVehicle->AutoPilot.m_nPrevRouteNode = 0;
+ 	pVehicle->AutoPilot.m_nCurrentRouteNode = curNodeId;
+ 	pVehicle->AutoPilot.m_nNextRouteNode = nextNodeId;
++
+ 	switch (carClass) {
+ 	case COPS:
+ 		pVehicle->AutoPilot.m_nTempAction = TEMPACT_NONE;
+@@ -389,7 +394,7 @@ CCarCtrl::GenerateOneRandomCar()
+ 		else if(carClass == POOR)
+ 			pVehicle->AutoPilot.m_nCruiseSpeed = CGeneral::GetRandomNumberInRange(7, 10);
+ 		#else
+-		// Why did I duplicate this?
++		// TODO Why did I duplicate this?
+ 		//pVehicle->AutoPilot.m_nCruiseSpeed = CGeneral::GetRandomNumberInRange(9, 14);
+ 		if(carClass == EXEC)
+ 			pVehicle->AutoPilot.m_nCruiseSpeed = CGeneral::GetRandomNumberInRange(12, 18);
+@@ -658,6 +663,7 @@ CCarCtrl::GenerateOneRandomCar()
+ 			}
+ 		}
+ 	}
++	// TODO Figure out what this is doing, this seems interesting.
+ 	int nMadDrivers;
+ 	switch (pVehicle->GetVehicleAppearance()) {
+ 	case VEHICLE_APPEARANCE_BIKE:
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+index ea46dd7b..39703dca 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -74,6 +74,8 @@
+ // My code
+ #include "functions/vehicle_functions.h"
+ 
++#include "extras/test/ped_test.h"
++
+ #include "..\extras\test\enums\model_ids.h"
+ #include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+@@ -243,6 +245,7 @@ CustomCheats::LockDoors()
+ 	if(pPed->bInVehicle) {
+ 		CVehicle *playerVeh = pPed->m_pMyVehicle;
+ 		playerVeh->m_nDoorLock = eCarLock::CARLOCK_LOCKED;
++		CHud::SetHelpMessage(TheText.Get("KCCARLK"), false);
+ 	}
+ }
+ 
+@@ -251,12 +254,12 @@ CustomCheats::LockDoors()
+ void
+ CustomCheats::UnlockDoors()
+ {
+-	CRunningScript *cRunningScript = new CRunningScript();
++	//CRunningScript *cRunningScript = new CRunningScript();
+ 	// How would I use these?
+ 	// COMMAND_ADD_EXPLOSION;
+ 	// This might work if I can figure out how to give it variables.
+ 	// cRunningScript->ProcessCommands0To99(COMMAND_GET_PLAYER_COORDINATES);
+-	cRunningScript->ProcessCommands0To99(COMMAND_SET_PLAYER_COORDINATES);
++	//cRunningScript->ProcessCommands0To99(COMMAND_SET_PLAYER_COORDINATES);
+ 
+ 	// Test from plugin sdk, I doubt this'll work.
+ 	// plugin::Commands::ADD_BLIP_FOR_COORD_OLD<2>;
+@@ -269,19 +272,22 @@ CustomCheats::UnlockDoors()
+ 	// CVehicle newVeh = nil;
+ 	if(pPed->bInVehicle) {
+ 
+-		// TODO Store vehicle player was last in.
+ 		CVehicle *playerVeh = pPed->m_pMyVehicle;
+-		int vehRef = CPools::GetVehiclePool()->GetIndex(playerVeh);
+-		// AppEventHandler
+-		// CEventList
+-		// EVENT_DEAD_PED
+-		//  Will this work?
+-		CVehicle *newVeh = CPools::GetVehiclePool()->GetAt(vehRef);
+-		newVeh->m_nDoorLock = eCarLock::CARLOCK_UNLOCKED;
++		playerVeh->m_nDoorLock = eCarLock::CARLOCK_UNLOCKED;
++		CHud::SetHelpMessage(TheText.Get("KCCARUK"), false);
++		// TODO Store vehicle player was last in.
++		//CVehicle *playerVeh = pPed->m_pMyVehicle;
++		//int vehRef = CPools::GetVehiclePool()->GetIndex(playerVeh);
++		//// AppEventHandler
++		//// CEventList
++		//// EVENT_DEAD_PED
++		////  Will this work?
++		//CVehicle *newVeh = CPools::GetVehiclePool()->GetAt(vehRef);
++		//newVeh->m_nDoorLock = eCarLock::CARLOCK_UNLOCKED;
+ 		// playerVeh->m_nDoorLock = eCarLock::CARLOCK_UNLOCKED;
+-	} else {
++	//} else {
+ 		// TODO How to pass parameters to this?
+-		COMMAND_UNLOCK_ALL_CAR_DOORS_IN_AREA;
++		//COMMAND_UNLOCK_ALL_CAR_DOORS_IN_AREA;
+ 
+ 		// {leftBottomX} [float] {leftBottomY} [float] {topRightX} [float] {topRightY} [float]
+ 		// plugin::Command<plugin::Commands::UNLOCK_ALL_CAR_DOORS_IN_AREA>(pPedCoords.x, pPedCoords.y, pPedCoords.x + 5, pPedCoords.y + 5);
+@@ -364,6 +370,9 @@ CustomCheats::SpawnPedCheat()
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	CVector pPedCoords = FindPlayerCoors();
++
++	PedTest::SpawnDrivingPed();
++
+ 	// CPed *customPed = PED
+ }
+ 
+diff --git a/src/vehicles/Vehicle.cpp b/src/vehicles/Vehicle.cpp
+index f13dbb04..56b95958 100644
+--- a/src/vehicles/Vehicle.cpp
++++ b/src/vehicles/Vehicle.cpp
+@@ -170,6 +170,7 @@ CVehicle::CVehicle(uint8 CreatedBy)
+ 		m_nRadioStation = RADIO_OFF;
+ 		break;
+ 	default:
++		// Oh, the radio station selector for when the player gets into a car, uses a random number generator.
+ 		m_nRadioStation = CGeneral::GetRandomNumber() % NUM_RADIOS;
+ 		break;
+ 	}
+@@ -214,6 +215,10 @@ CVehicle::~CVehicle()
+ 	}
+ }
+ 
++/// <summary>
++/// Set the model index of the vehicle.
++/// </summary>
++/// <param name="id"></param>
+ void
+ CVehicle::SetModelIndex(uint32 id)
+ {
+@@ -223,6 +228,11 @@ CVehicle::SetModelIndex(uint32 id)
+ 	m_nNumMaxPassengers = CVehicleModelInfo::GetMaximumNumberOfPassengersFromNumberOfDoors(id);
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::SetupLighting(void)
+ {
+@@ -243,12 +253,21 @@ CVehicle::SetupLighting(void)
+ 	return false;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="reset"></param>
+ void
+ CVehicle::RemoveLighting(bool reset)
+ {
+ 	CRenderer::RemoveVehiclePedLights(this, reset);
+ }
+ 
++/// <summary>
++/// Check if it is safe for the car to drive away.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsClearToDriveAway(void)
+ {
+@@ -261,12 +280,21 @@ CVehicle::IsClearToDriveAway(void)
+ 		ent == this;
+ }
+ 
++/// <summary>
++/// Get the vehicle height above the road.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ float
+ CVehicle::GetHeightAboveRoad(void)
+ {
+ 	return -1.0f * GetColModel()->boundingBox.min.z;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="flightModel"></param>
+ void
+ CVehicle::FlyingControl(eFlightModel flightModel)
+ {
+@@ -561,6 +589,15 @@ float ROTOR_COL_ELASTICITY = 1.0f;
+ float ROTOR_COL_TURNMULT = -0.001f;
+ float ROTOR_DEFAULT_DAMAGE = 100.0f;
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="pos"></param>
++/// <param name="matrix"></param>
++/// <param name="rotorType"></param>
++/// <param name="radius"></param>
++/// <param name="damageMult"></param>
++/// <returns></returns>
+ bool
+ CVehicle::DoBladeCollision(CVector pos, CMatrix &matrix, int16 rotorType, float radius, float damageMult)
+ {
+@@ -643,6 +680,15 @@ CVehicle::DoBladeCollision(CVector pos, CMatrix &matrix, int16 rotorType, float
+ 	return hadCollision;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="list"></param>
++/// <param name="rotorColModel"></param>
++/// <param name="matrix"></param>
++/// <param name="rotorType"></param>
++/// <param name="damageMult"></param>
++/// <returns></returns>
+ bool
+ CVehicle::BladeColSectorList(CPtrList &list, CColModel &rotorColModel, CMatrix &matrix, int16 rotorType, float damageMult)
+ {
+@@ -775,6 +821,21 @@ CVehicle::BladeColSectorList(CPtrList &list, CColModel &rotorColModel, CMatrix &
+ float fBurstSpeedMax = 0.3f;
+ float fBurstTyreMod = 0.13f;
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="wheelFwd"></param>
++/// <param name="wheelRight"></param>
++/// <param name="wheelContactSpeed"></param>
++/// <param name="wheelContactPoint"></param>
++/// <param name="wheelsOnGround"></param>
++/// <param name="thrust"></param>
++/// <param name="brake"></param>
++/// <param name="adhesion"></param>
++/// <param name="wheelId"></param>
++/// <param name="wheelSpeed"></param>
++/// <param name="wheelState"></param>
++/// <param name="wheelStatus"></param>
+ void
+ CVehicle::ProcessWheel(CVector &wheelFwd, CVector &wheelRight, CVector &wheelContactSpeed, CVector &wheelContactPoint,
+ 	int32 wheelsOnGround, float thrust, float brake, float adhesion, int8 wheelId, float *wheelSpeed, tWheelState *wheelState, uint16 wheelStatus)
+@@ -931,6 +992,23 @@ float fBurstBikeSpeedMax = 0.12f;
+ float fBurstBikeTyreMod = 0.05f;
+ float fTweakBikeWheelTurnForce = 2.0f;
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="wheelFwd"></param>
++/// <param name="wheelRight"></param>
++/// <param name="wheelContactSpeed"></param>
++/// <param name="wheelContactPoint"></param>
++/// <param name="wheelsOnGround"></param>
++/// <param name="thrust"></param>
++/// <param name="brake"></param>
++/// <param name="adhesion"></param>
++/// <param name="destabTraction"></param>
++/// <param name="wheelId"></param>
++/// <param name="wheelSpeed"></param>
++/// <param name="wheelState"></param>
++/// <param name="special"></param>
++/// <param name="wheelStatus"></param>
+ void
+ CVehicle::ProcessBikeWheel(CVector &wheelFwd, CVector &wheelRight, CVector &wheelContactSpeed, CVector &wheelContactPoint,
+ 	int32 wheelsOnGround, float thrust, float brake, float adhesion, float destabTraction, int8 wheelId, float *wheelSpeed, tWheelState *wheelState, eBikeWheelSpecial special, uint16 wheelStatus)
+@@ -1086,6 +1164,14 @@ CVehicle::ProcessBikeWheel(CVector &wheelFwd, CVector &wheelRight, CVector &whee
+ 	}
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="state"></param>
++/// <param name="fwd"></param>
++/// <param name="speed"></param>
++/// <param name="radius"></param>
++/// <returns></returns>
+ float
+ CVehicle::ProcessWheelRotation(tWheelState state, const CVector &fwd, const CVector &speed, float radius)
+ {
+@@ -1104,6 +1190,12 @@ CVehicle::ProcessWheelRotation(tWheelState state, const CVector &fwd, const CVec
+ 	return angularVelocity * CTimer::GetTimeStep();
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="x"></param>
++/// <param name="y"></param>
++/// <returns></returns>
+ int
+ CVehicle::FindTyreNearestPoint(float x, float y)
+ {
+@@ -1122,6 +1214,15 @@ CVehicle::FindTyreNearestPoint(float x, float y)
+ 	return piece - CAR_PIECE_WHEEL_LF;
+ }
+ 
++/// <summary>
++/// This is the code for when something damages the vehicle.
++/// Sets the bFrightensDriver flag to true.
++/// Sets each vehicle invincibility proofs.
++/// </summary>
++/// <param name="damagedBy"></param>
++/// <param name="weaponType"></param>
++/// <param name="damage"></param>
++/// <param name="pos"></param>
+ void
+ CVehicle::InflictDamage(CEntity *damagedBy, eWeaponType weaponType, float damage, CVector pos)
+ {
+@@ -1326,6 +1427,10 @@ CVehicle::InflictDamage(CEntity *damagedBy, eWeaponType weaponType, float damage
+ 		FindPlayerPed()->SetWantedLevelNoDrop(1);
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::DoFixedMachineGuns(void)
+ {
+@@ -1339,6 +1444,10 @@ CVehicle::DoFixedMachineGuns(void)
+ 	}
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::FireFixedMachineGuns(void)
+ {
+@@ -1383,6 +1492,10 @@ CVehicle::FireFixedMachineGuns(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Activate the car bomb on a timer.
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::ActivateBomb(void)
+ {
+@@ -1399,6 +1512,10 @@ CVehicle::ActivateBomb(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Activate the car bomb when entered.
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::ActivateBombWhenEntered(void)
+ {
+@@ -1416,6 +1533,12 @@ CVehicle::ActivateBombWhenEntered(void)
+ 		bDriverLastFrame = false;
+ }
+ 
++/// <summary>
++/// Set the vehicle health to not be on fire.
++/// Extinguish the vehicle fire.
++/// 
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::ExtinguishCarFire(void)
+ {
+@@ -1572,6 +1695,11 @@ CVehicle::ProcessDelayedExplosion(void)
+ 		BlowUpCar(m_pBlowUpEntity);
+ }
+ 
++/// <summary>
++/// Check if the vehicle is a police vehicle.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsLawEnforcementVehicle(void)
+ {
+@@ -1589,6 +1717,12 @@ CVehicle::IsLawEnforcementVehicle(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Check if the vehicle uses a siren
++/// TODO Add more to this and see what it does
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::UsesSiren(void)
+ {
+@@ -1641,6 +1775,11 @@ CVehicle::IsOnItsSide(void)
+ 	return true;
+ }
+ 
++/// <summary>
++/// Set if a vehicle can be removed from the game.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanBeDeleted(void)
+ {
+@@ -1684,6 +1823,11 @@ CVehicle::CanBeDeleted(void)
+ 	return true;
+ }
+ 
++/// <summary>
++/// This looks like the code where the door lock statuses are set
++/// </summary>
++/// <param name="ped"></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanPedOpenLocks(CPed *ped)
+ {
+@@ -1697,6 +1841,11 @@ CVehicle::CanPedOpenLocks(CPed *ped)
+ 	return true;
+ }
+ 
++/// <summary>
++/// The doors can only be damaged if the car isn't locked
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanDoorsBeDamaged(void)
+ {
+@@ -1705,6 +1854,11 @@ CVehicle::CanDoorsBeDamaged(void)
+ 		m_nDoorLock == CARLOCK_LOCKED_BUT_CAN_BE_DAMAGED;
+ }
+ 
++/// <summary>
++/// If the vehicle is upside down, this won't allow the peds to enter it.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanPedEnterCar(void)
+ {
+@@ -1735,6 +1889,13 @@ CVehicle::CanPedEnterCar(void)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Check if the ped is going too fast, and a few other things.
++/// TODO Mess with this, I wonder what happens if I exit the vehicle too fast.
++/// Will it crash?
++/// </summary>
++/// <param name="jumpExit"></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanPedExitCar(bool jumpExit)
+ {
+@@ -1766,6 +1927,11 @@ CVehicle::CanPedExitCar(bool jumpExit)
+ 	}
+ }
+ 
++/// <summary>
++/// Check if a ped can jump out of a car
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanPedJumpOutCar(void)
+ {
+@@ -1775,6 +1941,11 @@ CVehicle::CanPedJumpOutCar(void)
+ 	return speed < 0.1f || speed > 0.5f ? false : true;
+ }
+ 
++/// <summary>
++/// Check if a ped can jump off of a bike
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CVehicle::CanPedJumpOffBike(void)
+ {
+@@ -1783,6 +1954,10 @@ CVehicle::CanPedJumpOffBike(void)
+ 	return m_vecMoveSpeed.MagnitudeSqr() < 0.07f ? false : true;
+ }
+ 
++/// <summary>
++/// Change the state of the police.
++/// </summary>
++/// <param name="enable"></param>
+ void
+ CVehicle::ChangeLawEnforcerState(uint8 enable)
+ {
+@@ -1799,6 +1974,11 @@ CVehicle::ChangeLawEnforcerState(uint8 enable)
+ 	}
+ }
+ 
++/// <summary>
++/// If the vehicle is not a random vehicle, then this sets up a driver for it.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ CPed*
+ CVehicle::SetUpDriver(void)
+ {
+@@ -1817,6 +1997,11 @@ CVehicle::SetUpDriver(void)
+ 	return pDriver;
+ }
+ 
++/// <summary>
++/// Setup the passengers in vehicles.
++/// </summary>
++/// <param name="n"></param>
++/// <returns></returns>
+ CPed*
+ CVehicle::SetupPassenger(int n)
+ {
+@@ -1850,6 +2035,15 @@ CVehicle::SetupPassenger(int n)
+ 	return pPassengers[n];
+ }
+ 
++/// <summary>
++/// Set the driver to certain vehicles.
++/// Give the player more health when entering an ambulance.
++/// Give the player some money when entering a taxi, cabbie, zebra, or kaufman.
++/// Give the player a shotgun when entering a cop car.
++/// Give the player armor when entering an enforcer.
++/// Give the player a golf club if they get into a caddy. 
++/// </summary>
++/// <param name="driver">The driver, such as the player</param>
+ void
+ CVehicle::SetDriver(CPed *driver)
+ {
+@@ -1895,6 +2089,11 @@ CVehicle::SetDriver(CPed *driver)
+ 			0.0f);
+ }
+ 
++/// <summary>
++/// Add a passenger to the vehicle.
++/// </summary>
++/// <param name="passenger"></param>
++/// <returns></returns>
+ bool
+ CVehicle::AddPassenger(CPed *passenger)
+ {
+@@ -1917,6 +2116,12 @@ CVehicle::AddPassenger(CPed *passenger)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Add a passenger to the vehicle.
++/// </summary>
++/// <param name="passenger"></param>
++/// <param name="n"></param>
++/// <returns></returns>
+ bool
+ CVehicle::AddPassenger(CPed *passenger, uint8 n)
+ {
+@@ -1939,6 +2144,11 @@ CVehicle::AddPassenger(CPed *passenger, uint8 n)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Remove the driver, set the vehicle status as abandoned.
++/// 
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::RemoveDriver(void)
+ {
+@@ -1965,6 +2175,10 @@ CVehicle::RemoveDriver(void)
+ 	pDriver = nil;
+ }
+ 
++/// <summary>
++/// Remove a passenger from the vehicle.
++/// </summary>
++/// <param name="p"></param>
+ void
+ CVehicle::RemovePassenger(CPed *p)
+ {
+@@ -1987,18 +2201,33 @@ CVehicle::RemovePassenger(CPed *p)
+ 	}
+ }
+ 
++/// <summary>
++/// Check if the ped is the driver.
++/// </summary>
++/// <param name="ped"></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsDriver(CPed *ped)
+ {
+ 	return ped && ped == pDriver;
+ }
+ 
++/// <summary>
++/// Check if the ped model is the driver.
++/// </summary>
++/// <param name="model"></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsDriver(int32 model)
+ {
+ 	return pDriver && pDriver->GetModelIndex() == model;
+ }
+ 
++/// <summary>
++/// Check if the ped is the passenger
++/// </summary>
++/// <param name="ped"></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsPassenger(CPed *ped)
+ {
+@@ -2011,6 +2240,11 @@ CVehicle::IsPassenger(CPed *ped)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Check if the ped model is the passenger
++/// </summary>
++/// <param name="ped"></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsPassenger(int32 model)
+ {
+@@ -2021,6 +2255,10 @@ CVehicle::IsPassenger(int32 model)
+ 	return false;
+ }
+ 
++/// <summary>
++/// Update the passenger list, not sure what this is doing.
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::UpdatePassengerList(void)
+ {
+@@ -2036,6 +2274,10 @@ CVehicle::UpdatePassengerList(void)
+ 		m_nNumPassengers = 0;
+ }
+ 
++/// <summary>
++/// This runs the car alarms that randomly go off when you steal certain vehicles.
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::ProcessCarAlarm(void)
+ {
+@@ -2052,6 +2294,14 @@ CVehicle::ProcessCarAlarm(void)
+ 		m_nAlarmState -= step;
+ }
+ 
++/// <summary>
++/// Check if a sphere is touching a vehicle, could possibly be used for custom garages or something.
++/// </summary>
++/// <param name="sx"></param>
++/// <param name="sy"></param>
++/// <param name="sz"></param>
++/// <param name="radius"></param>
++/// <returns></returns>
+ bool
+ CVehicle::IsSphereTouchingVehicle(float sx, float sy, float sz, float radius)
+ {
+@@ -2076,6 +2326,12 @@ CVehicle::IsSphereTouchingVehicle(float sx, float sy, float sz, float radius)
+ 	return true;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="material"></param>
++/// <param name="data"></param>
++/// <returns></returns>
+ RpMaterial*
+ SetCompAlphaCB(RpMaterial *material, void *data)
+ {
+@@ -2085,6 +2341,11 @@ SetCompAlphaCB(RpMaterial *material, void *data)
+ 	return material;
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name="atomic"></param>
++/// <param name="alpha"></param>
+ void
+ CVehicle::SetComponentAtomicAlpha(RpAtomic *atomic, int32 alpha)
+ {
+@@ -2093,6 +2354,10 @@ CVehicle::SetComponentAtomicAlpha(RpAtomic *atomic, int32 alpha)
+ 	RpGeometryForAllMaterials(geo, SetCompAlphaCB, (void*)alpha);
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::UpdateClumpAlpha(void)
+ {
+@@ -2109,6 +2374,13 @@ CVehicle::UpdateClumpAlpha(void)
+ 	CVisibilityPlugins::SetClumpAlpha((RpClump*)m_rwObject, clumpAlpha);
+ }
+ 
++/// <summary>
++/// Generate the dust from the helicopter when it is close to the player.
++/// </summary>
++/// <param name="heli"></param>
++/// <param name="radius"></param>
++/// <param name="ground"></param>
++/// <param name="rnd"></param>
+ void
+ CVehicle::HeliDustGenerate(CEntity *heli, float radius, float ground, int rnd)
+ {
+@@ -2233,6 +2505,10 @@ CVehicle::HeliDustGenerate(CEntity *heli, float radius, float ground, int rnd)
+ #define GLARE_MIN_ANGLE (0.99f)
+ #define GLARE_FULL_ANGLE (0.995f)
+ 
++/// <summary>
++/// I think this does the sun glare effect on screen when in a vehicle.
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::DoSunGlare(void)
+ {
+@@ -2331,6 +2607,10 @@ CVehicle::DoSunGlare(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Kill all the peds in the vehicle.
++/// </summary>
++/// <param name=""></param>
+ void
+ CVehicle::KillPedsInVehicle(void)
+ {
+@@ -2357,6 +2637,10 @@ CVehicle::KillPedsInVehicle(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Destroy the vehicle and kill the peds in it also.
++/// </summary>
++/// <param name="pVehicle"></param>
+ void
+ DestroyVehicleAndDriverAndPassengers(CVehicle* pVehicle)
+ {
+@@ -2375,6 +2659,10 @@ DestroyVehicleAndDriverAndPassengers(CVehicle* pVehicle)
+ }
+ 
+ #ifdef COMPATIBLE_SAVES
++/// <summary>
++/// Save for the vehicles data
++/// </summary>
++/// <param name="buf"></param>
+ void
+ CVehicle::Save(uint8*& buf)
+ {
+@@ -2436,6 +2724,10 @@ CVehicle::Save(uint8*& buf)
+ 	ZeroSaveBuf(buf, 108);
+ }
+ 
++/// <summary>
++/// Load for the vehicles data
++/// </summary>
++/// <param name="buf"></param>
+ void
+ CVehicle::Load(uint8*& buf)
+ {
+@@ -2500,6 +2792,11 @@ CVehicle::Load(uint8*& buf)
+ }
+ #endif
+ 
++/// <summary>
++/// Check if the vehicle is a car, bike, helicopter, plane, or boat.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ eVehicleAppearance
+ CVehicle::GetVehicleAppearance(void)
+ {
+@@ -2517,6 +2814,11 @@ CVehicle::GetVehicleAppearance(void)
+ 	return VEHICLE_APPEARANCE_NONE;
+ }
+ 
++/// <summary>
++/// Check if the pointer to the vehicle is valid.
++/// </summary>
++/// <param name="pVehicle"></param>
++/// <returns></returns>
+ bool
+ IsVehiclePointerValid(CVehicle* pVehicle)
+ {
+diff --git a/utils/gxt/american.txt b/utils/gxt/american.txt
+index be179c5b..f7f2498c 100644
+--- a/utils/gxt/american.txt
++++ b/utils/gxt/american.txt
+@@ -1,9 +1,4 @@
+-﻿# Idk if this'll work
+-[CUST1]
+-Your current position is
+-#
+-
+-[IN_VEH]
++﻿[IN_VEH]
+ ~g~Hey! Get back in the vehicle!
+ 
+ [HEY]
+@@ -490,7 +485,7 @@ Check Out at the Check In
+ Loose Ends
+ 
+ [ANSWER]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ to answer your cell phone.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~to answer your cell phone.
+ 
+ [MOB_01A]
+ Awright me ol'china! It's Paul. I might have a little result for you, but I need to speak to you in person.
+@@ -1482,17 +1477,17 @@ Accelerate
+ [FEC_CCF]
+ Configuration
+ 
+-[FEC_CF1]
+-Setup 1
++[FEC_CF1]   
++Classic
+ 
+-[FEC_CF2]
+-Setup 2
++[FEC_CF2]   
++Standard
+ 
+-[FEC_CF3]
+-Setup 3
++[FEC_CF3]   
++Classic
+ 
+-[FEC_CF4]
+-Setup 4
++[FEC_CF4]   
++Standard
+ 
+ [FEC_CDP]
+ Controller Display
+@@ -3582,9 +3577,51 @@ Display Setup
+ [FEO_LAN]
+ Language Setup
+ 
++[FEO_TES]
++Test
++
+ [FEO_PLA]
+ Player Setup
+ 
++[FEO_GEN]
++General Settings
++
++[FST_LD]
++Fast Loader
++
++[FST_SLT]
++Fast Loader Slot
++
++[FST_SL1]
++Slot 1
++
++[FST_SL2]
++Slot 2
++
++[FST_SL3]
++Slot 3
++
++[FST_SL4]
++Slot 4
++
++[FST_SL5]
++Slot 5
++
++[FST_SL6]
++Slot 6
++
++[FST_SL7]
++Slot 7
++
++[FST_SL8]
++Slot 8
++
++[KCCARLK]
++Car Locked
++
++[KCCARUK]
++Car Unlocked
++
+ [FEA_OUT]
+ Output
+ 
+@@ -3949,7 +3986,7 @@ NO LONGER NEEDED
+ NO LONGER NEEDED
+ 
+ [HELP31]
+-To do a drive-by, first look left or right using the ~h~~k~~VEHICLE_LOOKLEFT~~w~ or the ~h~~k~~VEHICLE_LOOKRIGHT~.
++To do a drive-by, first look left or right using the ~h~~k~~VEHICLE_LOOKLEFT~ ~w~or the ~h~~k~~VEHICLE_LOOKRIGHT~ ~w~.
+ 
+ [HELP34]
+ You must have a sub machine gun to perform a drive-by.
+@@ -4234,7 +4271,7 @@ Casual
+ Mr Vercetti
+ 
+ [OUTFT10]
+-Tracksuit
++Black Tracksuit
+ 
+ [OUTFT13]
+ MC Tommy
+@@ -4306,34 +4343,34 @@ Tank now available from the Army Barracks!
+ Hunter now available from the Army Barracks!
+ 
+ [CLOTH1]
+-Soiree outfit delivered to Rafael's on Ocean Beach.
++Soiree outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH2]
+ Street outfit delivered to Safehouses.
+ 
+ [CLOTH3]
+-Coveralls outfit delivered to Tooled Up in The North Point Mall.
++Coveralls outfit delivered to Safehouses.
+ 
+ [CLOTH4]
+-Country Club outfit delivered to The Golf Club in Leaf Links.
++Country Club outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH5]
+-Havana outfit delivered to Little Havana Streetwear in Little Havana.
++Havana outfit delivered to Safehouses.
+ 
+ [CLOTH6]
+-Cop outfit delivered to Police Station on Washington Beach.
++Cop outfit delivered to Safehouses.
+ 
+ [CLOTH7]
+-Casual outfit delivered to Gash in The North Point Mall.
++Casual outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH8]
+-Mr Vercetti outfit delivered to Collar & Cuffs on Ocean Beach.
++Mr Vercetti outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH9]
+-Tracksuit outfit delivered to Jocksport in Downtown.
++Tracksuit outfits delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH10]
+-Bank Job outfit delivered to Malibu Club in Vice Point.
++Bank Job outfit delivered to Safehouses.
+ 
+ [MOB_62A]
+ Tommy, is Ricardo Diaz, I want to thank you for looking out for me my man.
+@@ -4483,16 +4520,16 @@ Press the~h~ ~k~~VEHICLE_HANDBRAKE~ button ~w~to apply the vehicle's ~h~handbrak
+ Press the ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~button to enter or exit a vehicle.
+ 
+ [HELP27]
+-Press the ~h~~k~~VEHICLE_TURRETUP~~w~ button and the ~h~~k~~VEHICLE_TURRETDOWN~~w~ button, to shift your weight on a bike.
++Press the ~h~~k~~VEHICLE_TURRETUP~ ~w~button and the ~h~~k~~VEHICLE_TURRETDOWN~ ~w~button, to shift your weight on a bike.
+ 
+ [HELP28]
+-Press the ~h~~k~~VEHICLE_TURRETUP~~w~ button and the ~h~~k~~VEHICLE_TURRETDOWN~~w~ button, to shift your weight on a bike.
++Press the ~h~~k~~VEHICLE_TURRETUP~ ~w~button and the ~h~~k~~VEHICLE_TURRETDOWN~ ~w~button, to shift your weight on a bike.
+ 
+ [HELP35]
+-Press the ~h~~k~~GO_LEFT~~w~, and the ~h~~k~~GO_RIGHT~~w~, to steer the vehicle.
++Press the ~h~~k~~GO_LEFT~,~w~ and the ~h~~k~~GO_RIGHT~,~w~ to steer the vehicle.
+ 
+ [HELP36]
+-Press the ~h~~k~~GO_LEFT~~w~, and the ~h~~k~~GO_RIGHT~~w~, to steer the vehicle.
++Press the ~h~~k~~GO_LEFT~,~w~ and the ~h~~k~~GO_RIGHT~,~w~ to steer the vehicle.
+ 
+ [HELP42]
+ Follow the ~q~pink blip~w~ to find the hotel.
+@@ -6346,7 +6383,7 @@ Fastest time for 'Cone Crazy'
+ Stop in the ~q~pink marker.
+ 
+ [HELP45]
+-Press the ~h~~k~~PED_DUCK~~w~ button to duck. This will increase the accuracy of guns you are holding.
++Press the ~h~~k~~PED_DUCK~ ~w~button to duck. This will increase the accuracy of guns you are holding.
+ 
+ [RCR1_5]
+ RC Bandit Race
+@@ -6442,16 +6479,16 @@ Warning! This savegame is set to use DTS. This requires DTS compatible hardware
+ Fastest time for Checkpoint Charlie
+ 
+ [HELP50]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to set the camera behind you.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to set the camera behind you.
+ 
+ [HELP51]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to set the camera behind you.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to set the camera behind you.
+ 
+ [HELP52]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to set the camera behind you.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to set the camera behind you.
+ 
+ [HELP53]
+-Press ~h~~k~~PED_CYCLE_WEAPON_LEFT~~w~ button or ~h~~k~~PED_CYCLE_WEAPON_RIGHT~~w~ button to cycle through your available weapons.
++Press ~h~~k~~PED_CYCLE_WEAPON_LEFT~ ~w~button or ~h~~k~~PED_CYCLE_WEAPON_RIGHT~ ~w~button to cycle through your available weapons.
+ 
+ [HELP46]
+ There are eight different types of weapon.
+@@ -6463,7 +6500,7 @@ You can carry one of each type of weapon at a time - one type of pistol, one typ
+ ~w~Cost: $~1~ ~r~Buying this will replace your current weapon.
+ 
+ [HELP2A2]
+-Press the ~h~~k~~PED_SPRINT~~w~ button when running to ~h~sprint
++Press the ~h~~k~~PED_SPRINT~ ~w~button when running to ~h~sprint
+ 
+ [HLPSN_A]
+ The sniper rifle allows you to zoom in and fire accurately at targets from a distance.
+@@ -6475,26 +6512,26 @@ Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~target~w~ with the sn
+ Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~target~w~ with the sniper rifle.
+ 
+ [HLPSN_D]
+-Press the ~h~~k~~PED_SNIPER_ZOOM_IN~~w~ button ~w~to ~h~zoom in ~w~with the rifle and the~h~ ~k~~PED_SNIPER_ZOOM_OUT~ button ~w~to ~h~zoom out ~w~again.
++Press the ~h~~k~~PED_SNIPER_ZOOM_IN~ ~w~button ~w~to ~h~zoom in ~w~with the rifle and the~h~ ~k~~PED_SNIPER_ZOOM_OUT~ button ~w~to ~h~zoom out ~w~again.
+ 
+ [HLPSN_E]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button ~w~to ~h~fire~w~ the sniper rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button ~w~to ~h~fire~w~ the sniper rifle.
+ 
+ [HLPSN_F]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button ~w~to ~h~fire~w~ the sniper rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button ~w~to ~h~fire~w~ the sniper rifle.
+ 
+ [HLPSN_G]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ the sniper rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ the sniper rifle.
+ 
+ [PLANE_H]
+-Use the ~h~~k~~VEHICLE_ACCELERATE~~w~ button to accelerate, Left and right to turn.
++Use the ~h~~k~~VEHICLE_ACCELERATE~ ~w~button to accelerate, Left and right to turn.
+ 
+ [PLANE_4] { reVC update }
+-{ Use the ~h~~k~~VEHICLE_ACCELERATE~~w~ button to accelerate, Left and right to turn. }
++{ Use the ~h~~k~~VEHICLE_ACCELERATE~ ~w~button to accelerate, Left and right to turn. }
+ Use the right analog stick to accelerate, pull back on the left analog stick to climb, push forwards to descend. Left and right to turn.
+ 
+ [HELP55]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to attack the chef.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to attack the chef.
+ 
+ [STPR_8]
+ Pole Position Club
+@@ -6764,7 +6801,7 @@ Longest Stoppie distance (m)
+ Longest 2 wheels distance (m)
+ 
+ [OUTFT11]
+-Tracksuit
++Red Tracksuit
+ 
+ [OUTFT12]
+ Frankie
+@@ -6815,7 +6852,7 @@ ALETHEIA SIMONSON
+ JOHN JANSEN
+ 
+ [CUNTY]
+-New clothes delivered to the Vercetti Estate!
++New clothes delivered to Safehouses!
+ 
+ [GOODBOY]
+ $50 Good Citizen Bonus!
+@@ -6836,10 +6873,10 @@ Are you sure you want to start a new game? All progress will be lost. Proceed?
+ TIME:
+ 
+ [HELP56]
+-Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~~w~ button to change camera modes.
++Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~ ~w~button to change camera modes.
+ 
+ [HELP57]
+-Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~~w~ button to change camera modes.
++Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~ ~w~button to change camera modes.
+ 
+ [HELP58]
+ While targeting you can press the ~h~~k~~PED_CYCLE_TARGET_LEFT~ button or ~k~~PED_CYCLE_TARGET_RIGHT~ ~w~button to cycle through targets.
+@@ -7301,7 +7338,7 @@ PLAYER SKIN SETUP
+ OPTION NOT AVAILABLE
+ 
+ [FEH_MPH]
+-MOUSE, CURSORS TO MOVE - PGUP, PGDN, MSWHEEL TO ZOOM, L - LEGEND
++MOUSE, CURSORS to move, MOUSE WHEEL to zoom, L - legend, RIGHT MOUSE BUTTON - marker, TAB - collectables
+ 
+ [FEA_MP3]
+ MP3 PLAYER
+@@ -9957,10 +9994,10 @@ Fire Fighter mission ended.
+ ~g~Burning vehicles reported in the ~a~ area. Go and extinguish the fire.
+ 
+ [SPRAY_4:FIRETRK] { reVC update }
+-Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~~w~ and ~h~~k~~VEHICLE_TURRETRIGHT~~w~.
++Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~ ~w~and ~h~~k~~VEHICLE_TURRETRIGHT~.~w~
+ 
+ [SPRAY_1:FIRETRK] { reVC update }
+-Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~~w~ and ~h~~k~~VEHICLE_TURRETRIGHT~~w~.
++Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~ ~w~and ~h~~k~~VEHICLE_TURRETRIGHT~.~w~
+ 
+ {=================================== MISSION TABLE GENERA1 ===================================}
+ 
+@@ -10293,31 +10330,31 @@ Tommy! I'll stay here and watch over Diaz!
+ The Kruger is an assault rifle, which allows you to manually aim in 1st person.
+ 
+ [GEN3_58:GENERA3]
+-Press and hold the~h~ ~k~~PED_LOCK_TARGET~~w~ button to ~h~aim~w~ with an assault rifle.
++Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~aim~w~ with an assault rifle.
+ 
+ [GEN3_59:GENERA3]
+-Press and hold the~h~ ~k~~PED_LOCK_TARGET~~w~ button to ~h~aim~w~ with an assault rifle.
++Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~aim~w~ with an assault rifle.
+ 
+ [GEN3_60:GENERA3]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ an assault rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ an assault rifle.
+ 
+ [GEN3_61:GENERA3]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ an assault rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ an assault rifle.
+ 
+ [GEN3_62:GENERA3]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ an assault rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ an assault rifle.
+ 
+ [GEN3_63:GENERA3]
+ As well as performing drive-by's,~h~ motorbikes ~w~allow you to ~h~shoot forwards~w~.
+ 
+ [GEN3_64:GENERA3] { reVC update }
+-To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~~w~ button.
++To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button.
+ 
+ [GEN3_65:GENERA3] { reVC update }
+-To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~~w~ button.
++To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button.
+ 
+ [GEN3_66:GENERA3] { reVC update }
+-To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~~w~ button.
++To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button.
+ 
+ [GEN3_67:GENERA3]
+ You must have a sub machine gun to shoot forwards on a motorbike.
+@@ -10886,7 +10923,7 @@ ICECREAM ASSET COMPLETED
+ ~g~The icecream factory will now generate revenue up to a maximum of $~1~. Make sure you collect it regularly.
+ 
+ [ICC1_2:ICECRE1]
+-~g~Park your van and press the ~h~~k~~VEHICLE_HORN~~w~ to play your ice cream jingle to notify customers that your ready for business.
++~g~Park your van and press the ~h~~k~~VEHICLE_HORN~ ~w~to play your ice cream jingle to notify customers that your ready for business.
+ 
+ [ICC1_16:ICECRE1]
+ ~g~Use your Mr. Whoopee van to distribute Cherry Poppers product around Vice City.
+@@ -12336,7 +12373,7 @@ Hey! Get back on the bike!
+ Pizzas left:
+ 
+ [PIZ1_06:PIZZA]
+-Press the~h~ ~k~~TOGGLE_SUBMISSIONS~~w~ when on the bike to cancel the mission.
++Press the~h~ ~k~~TOGGLE_SUBMISSIONS~ ~w~when on the bike to cancel the mission.
+ 
+ [PIZ1_13:PIZZA]
+ Get these delivered nice and hot.
+@@ -12955,7 +12992,7 @@ Oh, we gotta redecorate this place. We gotta make it look older.
+ You're my lawyer, Rosenberg, not my interior decorator. Got it?
+ 
+ [BUYP3:PROT1]
+-Stand inside the pickup, then press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to purchase that property.
++Stand inside the pickup, then press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to purchase that property.
+ 
+ [PRO1_13:PROT1]
+ ~g~You have five minutes to smash them all.
+@@ -13933,7 +13970,7 @@ Press the ~h~~k~~VEHICLE_LOOKRIGHT~ ~w~button to rotate the helicopter clockwise
+ ~r~You destroyed the TOPFUN van that contained the bombs and RC helicopter!
+ 
+ [TEX3_32:SERG3]
+-You can ~h~look behind~w~ by simultaneously pressing the ~h~~k~~VEHICLE_LOOKLEFT~~w~ and the ~h~~k~~VEHICLE_LOOKRIGHT~~w~ buttons.
++You can ~h~look behind~w~ by simultaneously pressing the ~h~~k~~VEHICLE_LOOKLEFT~ ~w~and the ~h~~k~~VEHICLE_LOOKRIGHT~ ~w~buttons.
+ 
+ [TEX3_4:SERG3] { reVC update }
+ ~g~To drop a bomb press the~h~ ~k~~VEHICLE_FIREWEAPON~ ~g~button.
+@@ -13997,7 +14034,7 @@ Pushing ~h~forward on the analog stick ~w~increases the rotor speed, causing the
+ To drop a bomb press the ~h~~k~~VEHICLE_HANDBRAKE~ ~w~button.
+ 
+ [TEX3_23:SERG3]
+-Press the ~h~~k~~VEHICLE_TURRETUP~~w~ and ~h~~k~~VEHICLE_TURRETDOWN~~w~ buttons to tilt the helicopter in the direction you wish to maneuver it.
++Press the ~h~~k~~VEHICLE_TURRETUP~ ~w~and ~h~~k~~VEHICLE_TURRETDOWN~ ~w~buttons to tilt the helicopter in the direction you wish to maneuver it.
+ 
+ {=================================== MISSION TABLE TAXI1 ===================================}
+ 
+@@ -14437,6 +14474,310 @@ PED DENSITY
+ [FEM_CAR]
+ CAR DENSITY
+ 
++{______________________________Vice Extended______________________________}
++[FEC_AIM]
++Auto aiming
++
++[FEC_LSX]
++Look sensitivity X
++
++[FEC_LSY]   
++Look sensitivity Y
++
++[FEC_ASX]   
++Aiming sensitivity X
++
++[FEC_ASY]   
++Aiming sensitivity Y
++
++[FEC_IVL]   
++Invert vertically
++
++[FEC_LZN]   
++Left stick deadzone
++
++[FEC_RZN]   
++Right stick deadzone
++
++[FEC_VBF]   
++Vibration force
++
++[FEC_PRS]   
++Previous radio station
++
++[FEC_NRS]   
++Next radio station
++
++[FEC_RTC]   
++Rotate camera
++
++[FET_AGC]   
++GAMEPAD CONFIGURATION
++
++[FET_AGS]   
++GAMEPAD SETTINGS
++
++[FEC_FOV]   
++Field of view
++
++[FEC_ACV]   
++Auto-centering in vehicle
++
++[FEC_RVD]   
++Relative vehicle while driveby
++
++[FEC_DOM]   
++DOOM Mode
++
++[GA_22]
++Just one car!
++
++[GA_23]
++You don't have enough money to buy this modification
++
++[GA_24]
++You already have this modification
++
++[LG_39]
++Property for sale
++
++[FEC_WAL]
++Walk
++
++[FEC_RZO]
++Radar zoom
++
++[FEC_REL]
++Reload weapon
++
++[FED_GPS]
++GPS
++
++[FEC_DS5]
++DUALSENSE
++
++[FEC_ATK]
++Attack
++
++[FET_SGP]
++Store gallery photos
++
++[FES_SAV]
++You cannot save the game at this time.
++
++[FET_AUT]
++Autosave
++
++[FEM_SL9]
++Autosave File Not Present
++
++[FEO_OTH]
++Other settings
++
++[LG_40]
++Bomb shop
++
++[LG_41]
++Race
++
++[LG_42]
++Store
++
++[FEC_LTS]
++Left turn signals
++
++[FEC_RTS]
++Right turn signals
++
++[FEC_EML]
++Emergency lights
++
++[CLOTH_1]
++Use ~h~~k~~GO_LEFT~ ~w~~h~~k~~GO_RIGHT~ ~w~to select clothes. To buy the selected clothes, press ~h~~k~~PED_SPRINT~.~w~ Press ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~to leave the store.
++
++[CLOTH_2]
++You don't have enough money to buy this item
++
++[FED_BRL]
++Borderless
++
++[CLOTH_3]
++Purchased
++
++[CLOTH_4]
++Use ~h~~k~~GO_LEFT~ ~h~~k~~GO_RIGHT~ ~w~to select clothes. To put on the selected clothes, press ~h~~k~~PED_SPRINT~.~w~ Press ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~to leave the wardrobe.
++
++[CLOTH_5]
++Used
++
++[FEM_PHT]
++PHOTO MODE
++
++[PM_CAM]
++CAMERA
++
++[PM_ZOOM]
++ZOOM
++
++[PM_TILT]
++TILT
++
++[PM_ZOTI]
++ZOOM AND TILT
++
++[PM_NCP]
++NEAR CLIP PLANE
++
++[PM_CHAR]
++CHARACTER
++
++[PM_VSBL]
++VISIBILITY
++
++[PM_CLTH]
++CLOTHES
++
++[PM_ANIM]
++ANIMATION
++
++[PM_ANFR]
++ANIMATION FRAME
++
++[PM_WEAP]
++WEAPON
++
++[PM_MUZL]
++MUZZLE FLASH
++
++[PM_ROT]
++ROTATE
++
++[PM_SKY]
++SKY
++
++[PM_SUN]
++SUN AND MOON ANGLE
++
++[PM_HOUR]
++TIME IN HOURS
++
++[PM_MIN]
++TIME IN MINUTES
++
++[PM_WTHR]
++WEATHER
++
++[PM_SNNY]
++SUNNY
++
++[PM_CLDY]
++CLOUDY
++
++[PM_RANY]
++RAINY
++
++[PM_FGGY]
++FOGGY
++
++[PM_SNN2]
++SUNNY 2
++
++[PM_HRCN]
++HURRICANE
++
++[PM_LGHT]
++LIGHT
++
++[PM_DEFL]
++DEFAULT LIGHT
++
++[PM_COLR]
++COLOR RED
++
++[PM_COLG]
++COLOR GREEN
++
++[PM_COLB]
++COLOR BLUE
++
++[PM_DARK]
++DARK LIGHT
++
++[PM_EFFE]
++EFFECTS
++
++[PM_CLFL]
++COLORFILTER
++
++[PM_INTS]
++INTENSITY
++
++[PM_BRTN]
++BRIGHTNESS
++
++[PM_FRMS]
++FRAMES
++
++[PM_TOGL]
++MENU
++
++[PM_EXIT]
++EXIT
++
++[PM_MOVE]
++MOVE
++
++[PM_PHTO]
++PHOTO
++
++[PM_UI]
++UI
++
++[PM_SPED]
++SPEED
++
++[PM_ADJS]
++ADJUST
++
++[PM_MVLI]
++MOVE LIGHT
++
++[PM_MVCH]
++MOVE CHARACTER
++
++[PM_SAVE]
++PHOTO SAVED TO VICEEXTENDED\USERFILES\GALLERY
++
++[FED_WST]
++Weapon sight
++
++[FEM_COM]
++Complex
++
++[FEM_DEF]
++Default
++
++[LG_43]
++Hidden package
++
++[LG_44]
++Unique stunt
++
++[LG_45]
++Rampage
++
++[MOB_SKP]
++Press ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~to skip a phone call.
++
++[FEH_MPJ]
++LEFT STICK to move, TRIGGERS to zoom, RIGHT BUMPER - legend, LEFT BUTTON - marker, LEFT BUMPER - collectables
++
++[BERETTA]
++Beretta
++
++[FEL_UKR]
++UKRAINIAN
++
+ { end of file }
+ [DUMMY]
+ THIS LABEL NEEDS TO BE HERE !!!
+-- 
+2.45.1.windows.1
+

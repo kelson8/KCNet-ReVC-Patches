@@ -1,0 +1,57 @@
+From b9477d615b705d9390d36eb3efbd4483dfb96a37 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Feb 2025 15:18:18 -0500
+Subject: [PATCH 34/42] Move vehicle spawner into vehicle menu, add option from
+ original code in debug menu. Now my vehicle spawner has a selection menu for
+ it.
+
+---
+ src/extras/debug/debug_functions.cpp | 24 +++++++++++++++++-------
+ 1 file changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 437f4a49..2e461f64 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -468,14 +468,7 @@ DebugMenuPopulate(void)
+ 		// at a Pay N Spray
+ 		DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", CGarages::ToggleRespray);
+ 
+-		// Spawn a vehicle that is set under the SpawnCarTestCheat function
+-		// I have modified the original debug menu function for this.
+-		// TODO Add a toggle option and names for the vehicles, kind of like the original debug menu function
+-		DebugMenuAddCmd("Cheats", "Spawn Vehicle", CustomCheats::SpawnCarTestCheat);
+-		// Test spawning a ped
+-		// DebugMenuAddCmd("Cheats", "Spawn Ped", CustomCheats::SpawnPedTest);
+ 
+-		//
+ 		DebugMenuAddCmd("Cheats", "Drop a bomb", CustomCheats::ExplosionCheat);
+ #else
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
+@@ -843,6 +836,23 @@ DebugMenuPopulate(void)
+ #ifdef CUSTOM_CODE
+ 
+ 		// Vehicle menu
++		// Spawn a vehicle that is set under the SpawnCarTestCheat function
++		// I have modified the original debug menu function for this.
++		// I basically copied the original debug function and made it use my spawn vehicle function,
++		// which removes the players current vehicle and warps them into a new one
++		// 
++		// TODO Fix the player warping into a vehicle, they sometimes get forced out of it, 
++		// I guess it's something I'm doing in the function.
++		e = DebugMenuAddVar("Vehicle", "Spawn Vehicle id", &spawnCarId, nil, 1, MI_LANDSTAL, MI_VICECHEE, carnames);
++		DebugMenuEntrySetWrap(e, true);
++		DebugMenuAddCmd("Vehicle", "Spawn vehicle", []() {
++			// Make sure the vehicle isn't a airtrain, deaddodo or a chopper.
++			if(spawnCarId == MI_CHOPPER || spawnCarId == MI_AIRTRAIN || spawnCarId == MI_DEADDODO) return;
++			VehicleFunctions::SpawnVehicle(spawnCarId, true, true);
++		});
++		// Original function for above.
++		// DebugMenuAddCmd("Vehicle", "Spawn Vehicle", CustomCheats::SpawnCarTestCheat);
++
+ 		DebugMenuAddCmd("Vehicle", "Lock Doors", CustomCheats::LockDoors);
+ 		DebugMenuAddCmd("Vehicle", "Unlock Doors", CustomCheats::UnlockDoors);
+ 		DebugMenuAddCmd("Vehicle", "Remove vehicle", VehicleFunctions::RemoveCurrentVehicleFromWorld);
+-- 
+2.45.1.windows.1
+

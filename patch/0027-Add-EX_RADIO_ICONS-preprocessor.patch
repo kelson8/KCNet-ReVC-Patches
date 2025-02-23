@@ -1,0 +1,415 @@
+From 760ab5a7f9f98e0c398040e87088b3c318ef29db Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Feb 2025 03:35:42 -0500
+Subject: [PATCH 27/42] Add EX_RADIO_ICONS preprocessor Adds icons for the
+ radio stations in vehicle and sound settings.
+
+---
+ src/audio/MusicManager.cpp | 10 +++++
+ src/core/Frontend.cpp      | 90 ++++++++++++++++++++++++++++++++++++++
+ src/core/Frontend.h        | 33 ++++++++++++++
+ src/core/config.h          |  3 ++
+ src/skel/win/win.cpp       | 47 ++++++++++++++++----
+ 5 files changed, 175 insertions(+), 8 deletions(-)
+
+diff --git a/src/audio/MusicManager.cpp b/src/audio/MusicManager.cpp
+index c97b9c24..06dfc968 100644
+--- a/src/audio/MusicManager.cpp
++++ b/src/audio/MusicManager.cpp
+@@ -21,6 +21,10 @@
+ #include "DMAudio.h"
+ #include "GenericGameStorage.h"
+ 
++#ifdef EX_RADIO_ICONS
++#include "Frontend.h"
++#endif
++
+ #if !defined FIX_BUGS && (defined RADIO_SCROLL_TO_PREV_STATION || defined RADIO_OFF_TEXT)
+ static_assert(false, "R*'s radio implementation is quite buggy, RADIO_SCROLL_TO_PREV_STATION and RADIO_OFF_TEXT won't work without FIX_BUGS");
+ #endif
+@@ -1356,6 +1360,11 @@ cMusicManager::DisplayRadioStationName()
+ #endif
+ 			}
+ 
++#ifdef EX_RADIO_ICONS
++			FrontEndMenuManager.m_aFrontEndRadioSprites[track].Draw(CRect(SCREEN_WIDTH / 2 - SCREEN_SCALE_X(22.0f) + SCREEN_SCALE_X(15.0f) - SCREEN_STRETCH_Y(32.0f), SCREEN_SCALE_Y(22.0f) + SCREEN_SCALE_Y(15.0f) - SCREEN_STRETCH_Y(32.0f),
++																		  SCREEN_WIDTH / 2 - SCREEN_SCALE_X(22.0f) + SCREEN_SCALE_X(15.0f) + SCREEN_STRETCH_Y(32.0f), SCREEN_SCALE_Y(22.0f) + SCREEN_SCALE_Y(15.0f) + SCREEN_STRETCH_Y(32.0f)),
++																		  CRGBA(255, 255, 255, 255));
++#else
+ 			CFont::SetJustifyOff();
+ 			CFont::SetBackgroundOff();
+ 			CFont::SetScale(SCREEN_SCALE_X(0.8f), SCREEN_SCALE_Y(1.35f));
+@@ -1373,6 +1382,7 @@ cMusicManager::DisplayRadioStationName()
+ 
+ 			CFont::PrintString(SCREEN_WIDTH / 2, SCREEN_SCALE_Y(22.0f), pCurrentStation);
+ 			CFont::DrawFonts();
++#endif
+ 		}
+ 	}
+ 	// Always show station text after entering car. Same behaviour as III and SA.
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index f5f03a90..09621514 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -13,7 +13,9 @@
+ #include "RwHelper.h"
+ #include "Timer.h"
+ #include "Game.h"
++#ifndef EX_RADIO_ICONS
+ #include "DMAudio.h"
++#endif
+ #include "FileMgr.h"
+ #include "Streaming.h"
+ #include "TxdStore.h"
+@@ -169,6 +171,22 @@ const char* FrontendFilenames[][2] = {
+ 	{"fe_arrows4", "" },
+ #endif
+ };
++#ifdef EX_RADIO_ICONS
++const char* FrontendRadioFilenames[][2] = {
++	{"wildstyle", "wildstyleA"},
++	{"flash", "flashA"},
++	{"kchat", "kchatA"},
++	{"fever", "feverA"},
++	{"vrock", "vrockA"},
++	{"vcpr", "vcprA"},
++	{"espantoso", "espantosoA"},
++	{"emotion", "emotionA"},
++	{"wave103", "wave103A"},
++	{"mp3", "mp3A"},
++	{"none", "noneA"},
++};
++#endif
++
+ 
+ #define MENU_X_RIGHT_ALIGNED(x) SCALE_AND_CENTER_X(DEFAULT_SCREEN_WIDTH - (x))
+ 
+@@ -362,6 +380,7 @@ CMenuManager::ThingsToDoBeforeLeavingPage()
+ inline int8
+ CMenuManager::GetPreviousPageOption()
+ {
++	// TODO Possibly use something like this for my fast loader.
+ 	int8 prevPage = !m_bGameNotLoaded ? aScreens[m_nCurrScreen].m_PreviousPage :
+ 		(m_nCurrScreen == MENUPAGE_NEW_GAME || m_nCurrScreen == MENUPAGE_OPTIONS || m_nCurrScreen == MENUPAGE_EXIT ? MENUPAGE_START_MENU : aScreens[m_nCurrScreen].m_PreviousPage);
+ 
+@@ -652,6 +671,7 @@ CMenuManager::CentreMousePointer()
+ 	}
+ }
+ 
++// TODO Possibly look into using this for keybinds.
+ void
+ CMenuManager::CheckCodesForControls(int typeOfControl)
+ {
+@@ -3091,6 +3111,34 @@ CMenuManager::LoadAllTextures()
+ 	CTxdStore::PopCurrentTxd();
+ 	CStreaming::IHaveUsedStreamingMemory();
+ 
++#ifdef EX_RADIO_ICONS
++	CStreaming::MakeSpaceFor(350 * CDSTREAM_SECTOR_SIZE); // twice of it in mobile
++	CStreaming::ImGonnaUseStreamingMemory();
++	CGame::TidyUpMemory(false, true);
++	CTxdStore::PushCurrentTxd();
++	int radioFrontendTxdSlot = CTxdStore::FindTxdSlot("radio");
++
++	if (radioFrontendTxdSlot == -1)
++		radioFrontendTxdSlot = CTxdStore::AddTxdSlot("radio");
++
++	printf("LOAD radio\n");
++#ifdef VICE_EXTENDED1 // ViceExtended folder - radio.txd
++	CTxdStore::LoadTxd(radioFrontendTxdSlot, "ViceExtended/MODELS/RADIO.TXD");
++#else
++	CTxdStore::LoadTxd(radioFrontendTxdSlot, "MODELS/RADIO.TXD");
++#endif
++	CTxdStore::AddRef(radioFrontendTxdSlot);
++	CTxdStore::SetCurrentTxd(radioFrontendTxdSlot);
++
++	for (int i = 0; i < NUM_RADIOS + 1; i++) {
++		m_aFrontEndRadioSprites[i].SetTexture(FrontendRadioFilenames[i][0], FrontendRadioFilenames[i][1]);
++		m_aFrontEndRadioSprites[i].SetAddressing(rwTEXTUREADDRESSBORDER);
++	}
++
++	CTxdStore::PopCurrentTxd();
++	CStreaming::IHaveUsedStreamingMemory();
++#endif
++
+ 	if (!m_OnlySaveMenu) {
+ 		CStreaming::MakeSpaceFor(692 * CDSTREAM_SECTOR_SIZE); // twice of it in mobile
+ 		CStreaming::ImGonnaUseStreamingMemory();
+@@ -4008,8 +4056,38 @@ CMenuManager::PrintRadioSelector(void)
+ 	int fourth = ((m_PrefsRadioStation + 1) + rightMostStation + 1) % (rightMostStation + 1);
+ 	int fifth = ((m_PrefsRadioStation + 2) + rightMostStation + 1) % (rightMostStation + 1);
+ 
++#ifdef EX_RADIO_ICONS
+ 	// First one is only drawn on transition to next
+ 	if (m_ScrollRadioBy == 1) {
++		m_aFrontEndRadioSprites[first].Draw(m_LeftMostRadioX, MENU_Y(MENURADIO_ICON_Y), MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_SIZE),
++			CRGBA(INACTIVE_RADIO_COLOR.r, INACTIVE_RADIO_COLOR.g, INACTIVE_RADIO_COLOR.b, FadeIn(INACTIVE_RADIO_COLOR.a)));
++	}
++
++	// Second
++	m_aFrontEndRadioSprites[second].Draw(m_LeftMostRadioX + MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_Y), MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_SIZE),
++		CRGBA(INACTIVE_RADIO_COLOR.r, INACTIVE_RADIO_COLOR.g, INACTIVE_RADIO_COLOR.b, FadeIn(INACTIVE_RADIO_COLOR.a)));
++
++	// Fourth
++	m_aFrontEndRadioSprites[fourth].Draw(m_LeftMostRadioX + MENU_X(MENURADIO_ICON_SIZE * 3), MENU_Y(MENURADIO_ICON_Y), MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_SIZE),
++		CRGBA(INACTIVE_RADIO_COLOR.r, INACTIVE_RADIO_COLOR.g, INACTIVE_RADIO_COLOR.b, FadeIn(INACTIVE_RADIO_COLOR.a)));
++
++	// Fifth one is only drawn on transition to prev.
++	if (m_ScrollRadioBy == -1) {
++		m_aFrontEndRadioSprites[fifth].Draw(m_LeftMostRadioX + MENU_X(MENURADIO_ICON_SIZE * 4), MENU_Y(MENURADIO_ICON_Y), MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_SIZE),
++			CRGBA(INACTIVE_RADIO_COLOR.r, INACTIVE_RADIO_COLOR.g, INACTIVE_RADIO_COLOR.b, FadeIn(INACTIVE_RADIO_COLOR.a)));
++	}
++
++	// Middle one(third) is colored differently depending on if it's in transition.
++	// If not in transition then this icon indicates selected radio, and should be on top of all icons. thus drawn last
++	if (m_ScrollRadioBy != 0) {
++		m_aFrontEndRadioSprites[third].Draw(m_LeftMostRadioX + MENU_X(MENURADIO_ICON_SIZE * 2), MENU_Y(MENURADIO_ICON_Y), MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_SIZE),
++			CRGBA(INACTIVE_RADIO_COLOR.r, INACTIVE_RADIO_COLOR.g, INACTIVE_RADIO_COLOR.b, FadeIn(INACTIVE_RADIO_COLOR.a)));		
++	} else {
++		m_aFrontEndRadioSprites[third].Draw(m_LeftMostRadioX + MENU_X(MENURADIO_ICON_SIZE * 2 - 10.f), MENU_Y(MENURADIO_ICON_Y - 10.f), MENU_X(MENURADIO_ICON_SIZE) + MENU_X(20.f), MENU_Y(MENURADIO_ICON_SIZE) + MENU_Y(20.f),
++			CRGBA(255, 255, 255, FadeIn(255)));
++	}
++#else
++	// First one is only drawn on transition to next
+ 		m_aFrontEndSprites[first + MENUSPRITE_WILDSTYLE].Draw(m_LeftMostRadioX, MENU_Y(MENURADIO_ICON_Y), MENU_X(MENURADIO_ICON_SIZE), MENU_Y(MENURADIO_ICON_SIZE),
+ 			CRGBA(INACTIVE_RADIO_COLOR.r, INACTIVE_RADIO_COLOR.g, INACTIVE_RADIO_COLOR.b, FadeIn(INACTIVE_RADIO_COLOR.a)));
+ 	}
+@@ -4037,6 +4115,7 @@ CMenuManager::PrintRadioSelector(void)
+ 		m_aFrontEndSprites[third + MENUSPRITE_WILDSTYLE].Draw(m_LeftMostRadioX + MENU_X(MENURADIO_ICON_SIZE * 2 - 10.f), MENU_Y(MENURADIO_ICON_Y - 10.f), MENU_X(MENURADIO_ICON_SIZE) + MENU_X(20.f), MENU_Y(MENURADIO_ICON_SIZE) + MENU_Y(20.f),
+ 			CRGBA(255, 255, 255, FadeIn(255)));
+ 	}
++#endif
+ #endif
+ 
+ 	static bool radioChangeRequested = false;
+@@ -5776,6 +5855,17 @@ CMenuManager::SwitchMenuOnAndOff()
+ #endif
+ }
+ 
++#ifdef EX_RADIO_ICONS
++void CMenuManager::UnloadRadioTextures()
++{
++	int radioFrontend = CTxdStore::FindTxdSlot("radio");
++	for (int i = 0; i < NUM_RADIOS + 1; ++i)
++		m_aFrontEndRadioSprites[i].Delete();
++
++	CTxdStore::RemoveTxd(radioFrontend);
++}
++#endif
++
+ void
+ CMenuManager::UnloadTextures()
+ {
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 662307d4..7cc79b3e 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -6,6 +6,10 @@
+ #include "Sprite2d.h"
+ #include "Timer.h"
+ 
++#ifdef EX_RADIO_ICONS
++#include "DMAudio.h"
++#endif
++
+ #define MENUHEADER_POS_X 10.0f
+ #define MENUHEADER_POS_Y 10.0f
+ #define MENUHEADER_HEIGHT 2.0f
+@@ -608,16 +612,24 @@ struct MenuTrapezoid
+ class CMenuManager
+ {
+ public:
++	// Stats
+ 	int8 m_StatsScrollDirection;
+ 	float m_StatsScrollSpeed;
++	
+ 	uint8 field_8;
++	
++	// Preferences
+ 	bool m_PrefsUseVibration;
+ 	bool m_PrefsShowHud;
+ 	int32 m_PrefsRadarMode;
++	
+ 	bool m_DisplayControllerOnFoot;
+ 	bool m_bShutDownFrontEndRequested;
+ 	bool m_bStartUpFrontEndRequested;
++
+ 	int32 m_KeyPressedCode;
++	
++	// Preferences
+ 	int32 m_PrefsBrightness;
+ 	float m_PrefsLOD;
+ 	int8 m_PrefsShowSubtitles;
+@@ -633,30 +645,41 @@ public:
+ 	int8 m_PrefsMusicVolume;
+ 	int8 m_PrefsRadioStation;
+ 	uint8 m_PrefsStereoMono; // unused except restore settings
++	
+ 	int32 m_nCurrOption;
+ 	bool m_bQuitGameNoCD;
+ 	bool m_bMenuMapActive;
+ 	bool m_AllowNavigation;
++
+ 	uint8 field_37;
++	
+ 	bool m_bMenuActive;
+ 	bool m_bWantToRestart;
+ 	bool m_bFirstTime;
+ 	bool m_bActivateSaveMenu;
+ 	bool m_bWantToLoad;
++	
++	// Map size, CenterX, and CenterY
+ 	float m_fMapSize;
+ 	float m_fMapCenterX;
+ 	float m_fMapCenterY;
++	
++	// Language stuff
+ 	uint32 OS_Language;
+ 	int32 m_PrefsLanguage;
+ 	int32 field_54;
+ 	int8 m_bLanguageLoaded;
++
+ 	uint8 m_PrefsAllowNastyGame;
+ 	int8 m_PrefsMP3BoostVolume;
++
+ 	int8 m_ControlMethod;
+ 	int32 m_nPrefsVideoMode;
+ 	int32 m_nDisplayVideoMode;
++
+ 	int32 m_nMouseTempPosX;
+ 	int32 m_nMouseTempPosY;
++	
+ 	bool m_bGameNotLoaded;
+ 	int8 m_lastWorking3DAudioProvider;
+ 	bool m_bFrontEnd_ReloadObrTxtGxt;
+@@ -666,6 +689,11 @@ public:
+ 	bool m_OnlySaveMenu;
+ 	int32 m_firstStartCounter;
+ 	CSprite2d m_aFrontEndSprites[NUM_MENU_SPRITES];
++
++#ifdef EX_RADIO_ICONS
++	CSprite2d m_aFrontEndRadioSprites[NUM_RADIOS + 1];
++#endif
++
+ 	bool m_bSpritesLoaded;
+ 	int32 m_LeftMostRadioX;
+ 	int32 m_ScrollRadioBy;
+@@ -861,6 +889,11 @@ public:
+ 	float StretchY(float);
+ 	void SwitchMenuOnAndOff();
+ 	void UnloadTextures();
++
++#ifdef EX_RADIO_ICONS
++	void UnloadRadioTextures();
++#endif
++
+ 	void WaitForUserCD();
+ 	int GetNumOptionsCntrlConfigScreens();
+ 	void SwitchToNewScreen(int8);
+diff --git a/src/core/config.h b/src/core/config.h
+index 002544d4..e38a769b 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -27,6 +27,9 @@
+ // Also, there is an option to toggle this under display settings.
+ #define EX_GPS
+ 
++// Adds radio icons from radio.txd for the radio wheel and in the sound settings.
++#define EX_RADIO_ICONS
++
+ #endif //VICE_EXTENDED
+ 
+ /* TODO Get these working from the Vice Extended source code
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 5ea34d00..d2f59c41 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -913,6 +913,10 @@ void _psSelectScreenVM(RwInt32 videoMode)
+ {
+ 	RwTexDictionarySetCurrent( nil );
+ 	
++#ifdef EX_RADIO_ICONS
++	FrontEndMenuManager.UnloadRadioTextures();
++#endif
++
+ 	FrontEndMenuManager.UnloadTextures();
+ 	
+ 	if ( !_psSetVideoMode(RwEngineGetCurrentSubSystem(), videoMode) )
+@@ -2204,6 +2208,11 @@ WinMain(HINSTANCE instance,
+ 	SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, nil, SPIF_SENDCHANGE);
+ 
+ 
++#ifdef CUSTOM_CODE
++CMenuManager cMenuManager = CMenuManager();
++#endif //CUSTOM_CODE
++// Test
++
+ //********************
+ // Begin my ImGui test
+ //********************
+@@ -2796,23 +2805,39 @@ WinMain(HINSTANCE instance,
+ 						// I'm quite sure this breaks my menu option on the main menu, it automatically launches a game,
+ 						// as soon as I press the toggle for it to turn it on.
+ 						// TODO Fix this to work right on the main menu, check if user is on the main menu somewhere
++
++						// TODO Fix this to have a keybind to toggle it off, press control to disable fast loader on start.
++					       
++						// Well this didn't work.
++						//if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader &&
++						//	cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU && cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS)	
++
+ 						if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
++							// Well this check breaks it, it won't load the fast loader if I do this.
++							//&& !FrontEndMenuManager.m_bMenuActive)
+ 					        {
+-						        FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
++								// TODO Test
++								// This doesn't work.
++						   //     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
++						   //        cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS &&
++									//cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
+ 
+-						        FrontEndMenuManager.m_bWantToLoad = true;
++							        FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
++
++							        FrontEndMenuManager.m_bWantToLoad = true;
+ 
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+-						        CTheScripts::ScriptToLoad = 0;
++							        CTheScripts::ScriptToLoad = 0;
+ #endif
+ 
+ #ifdef XBOX_MESSAGE_SCREEN
+-						        SetDialogText("FELD_WR");
+-						        ToggleDialog(true);
++							        SetDialogText("FELD_WR");
++							        ToggleDialog(true);
+ #else
+-						        if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++							        if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
+ #endif
+-						        FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++							        FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++						        //}
+ 					        }
+ #endif
+ 
+@@ -3004,8 +3029,14 @@ WinMain(HINSTANCE instance,
+ 		if ( !(FrontEndMenuManager.m_bWantToRestart || TheMemoryCard.b_FoundRecentSavedGameWantToLoad))
+ 			break;
+ #else
+-		if ( !FrontEndMenuManager.m_bWantToRestart )
++		if ( !FrontEndMenuManager.m_bWantToRestart ) 
++		{
++#ifdef EX_RADIO_ICONS
++			FrontEndMenuManager.UnloadRadioTextures();
++#endif
++		
+ 			break;
++		}
+ #endif
+ 		
+ 		CPad::ResetCheats();
+-- 
+2.45.1.windows.1
+

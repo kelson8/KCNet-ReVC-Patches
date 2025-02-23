@@ -1,0 +1,35 @@
+From 88b840e9526d21f0cc5b93001f33bfa7c29f98c6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Feb 2025 04:27:44 -0500
+Subject: [PATCH 28/42] Disable fast loader toggle on main menu, it only works
+ properly in game.
+
+---
+ src/core/Frontend.cpp | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 09621514..c1e2894c 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -5358,8 +5358,15 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 
+ 		// If this is toggled on the main menu, I want the user to stay on the
+ 		// main menu for that session.
+-		gbFastLoader = !gbFastLoader;
+-		SaveSettings();
++		// 
++		//if (!FrontEndMenuManager.m_bMenuActive) { 
++
++		// Temporary fix, this disables toggling the fast loader on the main menu but it can still be toggled when a save is loaded.
++		// TODO Come up with a better solution for this
++		if(!m_bGameNotLoaded) { 
++			gbFastLoader = !gbFastLoader;
++			SaveSettings();
++		}
+ 		break;
+ #endif
+ 
+-- 
+2.45.1.windows.1
+

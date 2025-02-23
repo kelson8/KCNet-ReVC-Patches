@@ -1,0 +1,46 @@
+From 3e2cec7f367a3da97dfcaebb153fe8060adf279d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Feb 2025 03:41:08 -0500
+Subject: [PATCH 18/42] Fix fast loader to instantly load from slot 1, this
+ took a while to find out.
+
+---
+ src/core/Frontend.cpp | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 62c0bcea..00ccdd6f 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -2282,17 +2282,26 @@ CMenuManager::DrawFrontEnd()
+ 
+ #define _CUSTOM_CODE
+ 	// I found the spot where I can jump out the main menu at least.
+-	// I finally made a partial fast loader for ReVC
++	// I finally made a fast loader for ReVC
+ 	// 	2-13-2025 @ 3:33PM
+ 
+ 	// 2-14-2025 @ 1:16AM
+ 	// I added an ini toggle for this under the "General" tab.
+ 	// If FastLoader is set to 1, this will run the fast loader.
++	// This will instantly load slot one with my new settings.
+ 	if (m_nCurrScreen == MENUPAGE_NONE) {
+ 		if (m_bGameNotLoaded) {
+ #ifdef _CUSTOM_CODE
+ 			if(gbFastLoader) {
+-				m_nCurrScreen = MENUPAGE_CHOOSE_LOAD_SLOT;
++				// m_nCurrScreen = MENUPAGE_CHOOSE_LOAD_SLOT;
++
++				// This enables the fully working fast loader for save slot 1!!!
++				// TODO Figure out how to cancel this with a keyboard key.
++				// TODO Figure out how to go to the save selection menu.
++				m_nCurrScreen = MENUPAGE_LOADING_IN_PROGRESS;
++				// This.. Shows up the load save slot for the 1st save, I didn't think this would work.
++				// m_nCurrScreen = MENUPAGE_LOAD_SLOT_CONFIRM;
++				// MENUPAGE_LOADING_IN_PROGRESS
+ 			} else {
+ 				m_nCurrScreen = MENUPAGE_START_MENU;
+ 			}
+-- 
+2.45.1.windows.1
+

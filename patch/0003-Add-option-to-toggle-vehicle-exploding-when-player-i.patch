@@ -1,0 +1,882 @@
+From 6cec44aa88ce41bd0b057b85767438794f232c4b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 30 May 2024 19:13:27 -0400
+Subject: [PATCH 03/42] Add option to toggle vehicle exploding when player is
+ in and it flips over. Add toggle respray for all vehicles such as cop cars.
+ Add partial ImGui support, it is incomplete.
+
+---
+ src/control/Garages.cpp     |  68 ++++++++-
+ src/control/Garages.h       |   8 ++
+ src/core/Pad.cpp            | 143 ++++++++++++++++++-
+ src/core/Pad.h              |   5 +
+ src/core/PlayerInfo.cpp     |  25 +++-
+ src/core/PlayerInfo.h       |   3 +
+ src/core/config.h           |   3 +
+ src/core/re3.cpp            |  32 ++++-
+ src/extras/Imgui_test.cpp   | 274 ++++++++++++++++++++++++++++++++++++
+ src/extras/imgui_test.h     |   6 +
+ src/vehicles/Automobile.cpp |  37 ++++-
+ src/vehicles/Vehicle.cpp    |  25 +++-
+ 12 files changed, 612 insertions(+), 17 deletions(-)
+ create mode 100644 src/extras/Imgui_test.cpp
+ create mode 100644 src/extras/imgui_test.h
+
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index b24c9122..faf07855 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -461,6 +461,7 @@ void CGarage::Update()
+ 					FindPlayerVehicle()->m_fHealth = 1000.0f;
+ 					if (FindPlayerVehicle()->IsCar()) {
+ 						((CAutomobile*)(FindPlayerVehicle()))->m_fFireBlowUpTimer = 0.0f;
++						// TODO Check if commenting this out makes it to where the car doesn't get repaired when going in a safe house on here and gta 3
+ 						((CAutomobile*)(FindPlayerVehicle()))->Fix();
+ 					}
+ 					else {
+@@ -1426,9 +1427,67 @@ void CGarages::PrintMessages()
+ 	}
+ }
+ 
++// 5-29-2024 11:11AM
++// This works!! This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
++bool CGarage::m_allowAllVehiclesRespray = false;
++
++void
++CGarages::ToggleRespray()
++{
++	//wchar enabledMessage = L'Enabled';
++	//wchar disabledMessage = L'Disabled';
++
++	CGarage::m_allowAllVehiclesRespray != CGarage::m_allowAllVehiclesRespray;
++	 if(!CGarage::m_allowAllVehiclesRespray) {
++		 // These messages don't work, I don't know how to use them yet.
++		 //CMessages::AddMessage(&enabledMessage, 1000, 0);
++		 // This prints off
++		 CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++		 CGarage::m_allowAllVehiclesRespray = true;
++	}
++	 else
++	{
++		 // These messages don't work, I don't know how to use them yet.
++		 //CMessages::AddMessage(&disabledMessage, 1000, 0);
++		 // This prints off
++		 CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++		 CGarage::m_allowAllVehiclesRespray = false;
++	}
++}
++
++// Code customized to allow repairing all vehicles, I need to set a toggle for this in the debug menu.
++
+ bool CGarages::IsCarSprayable(CVehicle * pVehicle)
+ {
+-	switch (pVehicle->GetModelIndex()) {
++#ifdef CUSTOM_CODE
++	//bool allowAllVehiclesRespray = false;
++	//if (allowAllVehiclesRespray)
++	if(CGarage::m_allowAllVehiclesRespray)
++	{ 
++		return true;
++	}
++	// Run original code.
++	else
++		switch(pVehicle->GetModelIndex()) {
++		case MI_FIRETRUCK:
++		case MI_AMBULAN:
++		case MI_POLICE:
++		case MI_ENFORCER:
++		case MI_BUS:
++		case MI_RHINO:
++		case MI_BARRACKS:
++		case MI_DODO:
++		case MI_COACH:
++#ifndef GTA_PS2
++		case MI_FBIRANCH:
++#endif
++			return false;
++		default: break;
++		}
++	return true;
++#else
++	 // Original code without the allow respray check.
++	switch(pVehicle->GetModelIndex()) {
+ 	case MI_FIRETRUCK:
+ 	case MI_AMBULAN:
+ 	case MI_POLICE:
+@@ -1440,12 +1499,13 @@ bool CGarages::IsCarSprayable(CVehicle * pVehicle)
+ 	case MI_COACH:
+ #ifndef GTA_PS2
+ 	case MI_FBIRANCH:
+-#endif
++#endif //GTA_PS2
+ 		return false;
+-	default:
+-		break;
++	default: break;
+ 	}
+ 	return true;
++#endif //CUSTOM_CODE
++
+ }
+ 
+ void CGarage::UpdateDoorsHeight()
+diff --git a/src/control/Garages.h b/src/control/Garages.h
+index 358d404d..0a1b66cb 100644
+--- a/src/control/Garages.h
++++ b/src/control/Garages.h
+@@ -137,6 +137,11 @@ public:
+ 	CVehicle *m_pTarget;
+ 	CStoredCar m_sStoredCar; // not needed
+ 
++	// Custom code
++	static bool m_allowAllVehiclesRespray;
++
++	//
++
+ 	void OpenThisGarage();
+ 	void CloseThisGarage();
+ 	bool IsOpen() { return m_eGarageState == GS_OPENED || m_eGarageState == GS_OPENEDCONTAINSCAR; }
+@@ -204,6 +209,9 @@ class CGarages
+ 		MESSAGE_LENGTH = 8,
+ 	};
+ public:
++	// Custom code
++	static void ToggleRespray();
++	//
+ 	static int32 BankVansCollected;
+ 	static bool BombsAreFree;
+ 	static bool RespraysAreFree;
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 2a5c77d8..fd448345 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -42,6 +42,10 @@
+ #include "CarCtrl.h"
+ #include "TrafficLights.h"
+ 
++#include "PlayerInfo.h"
++#include "Placeable.h"
++#include "Entity.h"
++
+ #ifdef GTA_PS2
+ #include "eetypes.h"
+ #include "libpad.h"
+@@ -91,6 +95,20 @@ extern bool gGravityCheat;
+ // Custom added by kelson8
+ // //////
+ //
++// 
++// 
++
++// Blank cheat, does nothing and is just here to play around with.
++void
++TestCheat1(int input)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++
++	pPed->SetWantedLevel(input);
++}
++
++
+ // Infinite health
+ // This works with a toggle.
+ void
+@@ -127,14 +145,48 @@ InfiniteHealthCheat()
+ }
+ 
+ 
++void
++ToggleNeverWanted()
++{
++	// Idk how I would use the toggle below.
++}
++
+ // Never wanted test
+ // This works but I still get the wanted stars and police radio talk.
+-// There doesn't seem to be an option to disable the cops easily.
++// There doesn't seem to be an option to disable the cops easily like in San Andreas with the never wanted cheat, hmm
++// I wonder if I could add that in to this and gta 3.
+ void
+ NeverWantedCheat()
+ {
++	// bool m_btoggle
+ 
++	//bool toggle = false;
+ 	CPlayerPed *pPed = FindPlayerPed();
++	
++
++	//if(!m_btoggle) 
++
++	//{
++	//	if(pPed->m_pWanted->m_bIgnoredByCops) 
++	//	{
++	//		pPed->m_pWanted->m_bIgnoredByCops = false;
++	//	}
++	//}
++
++	//else if(!pPed->m_pWanted->m_bIgnoredByCops)
++	//{
++	//	// Clear wanted level
++	//	pPed->SetWantedLevel(0);
++
++	//	// Set ignored by cops
++	//	pPed->m_pWanted->m_bIgnoredByCops = true;
++
++	//}
++
++	// pPed->m_pWanted->
++	// Possibly make a while loop that will keep going as long as the cheat is active once a second.
++	 bool cheatActive = false;
++	// Fix value
+ 
+ 	if(!pPed->m_pWanted->m_bIgnoredByCops) 
+ 	{
+@@ -143,10 +195,31 @@ NeverWantedCheat()
+ 
+ 		// Set ignored by cops
+ 		pPed->m_pWanted->m_bIgnoredByCops = true;
++
++		//////////
++		// 3-25-2024 @ 5:01AM
++		// Begin loop test for never wanted.
++		/////////
++		bool cheatActive = true;
++
++		// Will this work? I honestly have no idea. 
++		// No this just kills the game.
++		//while(cheatActive) 
++		//{ 
++		//	pPed->SetWantedLevel(0);
++		//}
++		//////////
++		// End loop test
++		/////////
++
++
+ 		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+ 
+ 	} else {
+ 		pPed->m_pWanted->m_bIgnoredByCops = false;
++
++		bool cheatActive = false;
++
+ 		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+ 	}
+ }
+@@ -188,6 +261,66 @@ InvincibleVehicleCheat()
+ 	}
+ }
+ 
++// Will this work?
++// I never did get this working.
++//void 
++////ToggleVehicleUpsideDownBlowUp()
++//{
++//	//CPlayerInfo::vehUpsidedownExplode != CPlayerInfo::vehUpsidedownExplode;
++//	//if(CPlayerInfo::vehUpsidedownExplode) 
++//	//{ 
++//	//	wchar w = *"Test";
++//	//	//CHud::SetBigMessage("S", "");
++//	//	CHud::SetMessage(&w);
++//	//}
++//}
++
++
++// I got this started on 3-26-2024 @ 2:50AM, it isn't confirmed to work yet.
++void
++NoUpsideDownBlowUpCheat(bool toggle)
++{
++	// Base for cheat that toggles cars blowing up when they are flipped over on/off.
++	// I'm not exactly sure how or if this would be possible.
++	//bool toggle = true;
++
++	// https://stackoverflow.com/questions/9818515/what-does-error-a-nonstatic-member-reference-must-be-relative-to-a-specific-o
++	CPlayerInfo playerInfo;
++
++
++
++	// Normal
++	if(!toggle) 
++	{
++		// Do nothing
++		return;
++		//playerInfo.m_nUpsideDownCounter += 2;
++
++		// This doesn't work, this is the code from PlayerInfo.cpp on lines 436-440
++		//if(FindPlayerVehicle()) { 
++		//	CVehicle *veh = FindPlayerVehicle();
++
++		//	if(veh->GetUp().z < -0.5f) {
++				//m_nUpsideDownCounter += 2;
++		//	} else {
++		//		CPlayerInfo::m_nUpsideDownCounter++;
++			//}
++			
++		//}
++	// No blow up test, will this work?
++	} else {
++		if(FindPlayerVehicle()) {
++			while(toggle) 
++			{ 
++				playerInfo.m_nUpsideDownCounter = 0; 
++			}
++		}
++
++	}
++
++
++}
++
+ // End custom added by kelson8
+ // //////
+ 
+@@ -196,6 +329,14 @@ void SpecialCarCheats()
+ {
+ 	if ( !CVehicle::bCheat9 )
+ 	{
++
++		// What exactly are these doing?
++		// I added this as a test, the ambulance should be very fast with this cheat on.
++		//mod_HandlingManager.GetHandlingData(HANDLING_AMBULAN)->Transmission.fEngineAcceleration *= 1000.0f;
++		//mod_HandlingManager.GetHandlingData(HANDLING_AMBULAN)->Transmission.fMaxVelocity *= 1000.0f;
++		//((CVehicleModelInfo *)CModelInfo::GetModelInfo(MI_AMBULAN))->m_wheelScale *= 3.0f;
++		//
++
+ 		((CVehicleModelInfo*)CModelInfo::GetModelInfo(MI_INFERNUS))->m_wheelScale *= 1.3f;
+ 		((CVehicleModelInfo*)CModelInfo::GetModelInfo(MI_CHEETAH))->m_wheelScale *= 1.3f;
+ 		((CVehicleModelInfo*)CModelInfo::GetModelInfo(MI_PHEONIX))->m_wheelScale *= 1.3f;
+diff --git a/src/core/Pad.h b/src/core/Pad.h
+index f141ed6c..3d030297 100644
+--- a/src/core/Pad.h
++++ b/src/core/Pad.h
+@@ -206,6 +206,11 @@ public:
+ 
+ 	static void UpdatePads(void);
+ 	void ProcessPCSpecificStuff(void);
++
++	// Custom added by kelson8 on 2-1-2024 @ 10:05PM
++	// I never did get this working yet.
++	//static void NeverWantedCheat();
++
+ 	void Update(int16 pad);
+ 	
+ 	static void DoCheats(void);
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index aa9431a5..d7a8d427 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -430,13 +430,36 @@ CPlayerInfo::Process(void)
+ 		if (veh && m_pPed->bInVehicle && veh->GetUp().z < 0.0f
+ 			&& veh->m_vecMoveSpeed.Magnitude() < 0.05f && (veh->IsCar() || veh->IsBoat()) && !veh->bIsInWater) {
+ 
+-			// If this below code is commented it, cars won't blow up when a player is in it and it is upside down.
++			// To make this work when the player is out of the vehicle, Comment out lines 4108-4115 in Automobile.cpp
++			// If this below code is commented, cars won't blow up when a player is in it and it is upside down.
+ 			// kelson8 1-2-2024 @ 8:56AM
++
++			// Hmm, I may change this code to use a toggle using a cheat instead of trying to change it a different way.
++			// This seems to work with a toggle, now to figure out how to add this in as a cheat.
++			// The boolean would need to be public somewhere
++			// 5-15-2024 @ 11:26PM
++// I added this preprocessor to config.h, it should stay enabled.
++//#define CUSTOM_CODE	
++#ifdef CUSTOM_CODE
++			 bool vehUpsidedownExplode = true;
++
++			if (vehUpsidedownExplode) {
++				if(veh->GetUp().z < -0.5f) {
++					m_nUpsideDownCounter += 2;
++			} else {
++				m_nUpsideDownCounter++;
++			}
++		}
++#else
++			// Original code
+ 			if (veh->GetUp().z < -0.5f) {
+ 				m_nUpsideDownCounter += 2;
+ 			} else {
+ 				m_nUpsideDownCounter++;
+ 			}
++#endif // CUSTOM_CODE
++
++
+ 		} else {
+ 			m_nUpsideDownCounter = 0;
+ 		}
+diff --git a/src/core/PlayerInfo.h b/src/core/PlayerInfo.h
+index fc12267d..6d63e027 100644
+--- a/src/core/PlayerInfo.h
++++ b/src/core/PlayerInfo.h
+@@ -84,6 +84,9 @@ public:
+ 	bool m_bDriveByAllowed;
+ 	uint8 m_nBustedAudioStatus;
+ 	int16 m_nCurrentBustedAudio;
++
++	// Custom code added by kelson8
++	static bool vehUpsidedownExplode;
+ #ifdef GTA_PC
+ 	char m_aSkinName[32];
+ 	RwTexture *m_pSkinTexture;
+diff --git a/src/core/config.h b/src/core/config.h
+index 8943223b..85a83a92 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -211,6 +211,9 @@ enum Config {
+ #define FINAL
+ #endif
+ 
++// Custom code
++#define CUSTOM_CODE
++
+ // these are placed here to work with VANILLA_DEFINES for compatibility
+ #define NO_CDCHECK // skip audio CD check
+ #define DEFAULT_NATIVE_RESOLUTION // Set default video mode to your native resolution (fixes Windows 10 launch)
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 5d96877c..5479db00 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -58,6 +58,10 @@
+ 
+ #include <list>
+ 
++// Extra
++#include "Garages.h"
++#include "extras/imgui_test.h"
++
+ #ifdef RWLIBS
+ extern "C" int vsprintf(char* const _Buffer, char const* const _Format, va_list  _ArgList);
+ #endif
+@@ -715,6 +719,15 @@ void PickUpChicksCheat();
+ void InfiniteHealthCheat();
+ void NeverWantedCheat();
+ void InvincibleVehicleCheat();
++// This one is accessing it from CGarages::ToggleRespray
++//void ToggleRespray();
++    // Oops, this killed it by being defined again :\
++//bool m_allowAllVehiclesRespray;
++    // 5-28-2024 @ 3:16AM
++// I never did get this working.
++//void ToggleVehicleUpsideDownBlowUp();
++    // 3-26-2024 @ 2:55AM
++//void NoUpsideDownBlowUpCheat();
+ 
+ DebugMenuEntry *carCol1;
+ DebugMenuEntry *carCol2;
+@@ -950,11 +963,28 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddVar("Time & Weather", "Extracolour", &CTimeCycle::m_ExtraColour, nil, 1, 0, 23, extracols);
+ 		DebugMenuAddVar("Time & Weather", "Time scale", (float*)&CTimer::GetTimeScale(), nil, 0.1f, 0.0f, 10.0f);
+ 
+-		// Custom added by kelson8
++		#ifdef CUSTOM_CODE
++		// Custom added by kelson8, these can be disabled by commenting out CUSTOM_CODE in config.h
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
+ 		DebugMenuAddCmd("Cheats", "Never wanted", NeverWantedCheat);
+ 		DebugMenuAddCmd("Cheats", "Invincible Vehicle", InvincibleVehicleCheat);
+ 
++		// Allow all cars to be repaired in the garages, incomplete.
++		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", ToggleRespray);
++		DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", CGarages::ToggleRespray);
++		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", m_allowAllVehiclesRespray);
++		//DebugMenuAddCmd("Cheats", "Toggle Vehicle upside down explode", ToggleVehicleUpsideDownBlowUp);
++		// TODO Add toggle for No burn cars on flipped upside down,
++		// So no cars will catch fire when upside down.
++		//DebugMenuAddCmd("Cheats", "No burn on flip", NoUpsideDownBlowUpCheat);
++
++		// This almost works, it fully freezes the game though.
++		#ifdef IMGUI_TEST
++		DebugMenuAddCmd("Cheats", "ImGui Test", ImGuiVCTest::CreateImGuiWindow);
++		#endif // IMGUI_TEST
++		// End custom added
++		#endif //CUSTOM_CODE
++
+ 		DebugMenuAddCmd("Cheats", "Weapon set 1", WeaponCheat1);
+ 		DebugMenuAddCmd("Cheats", "Weapon set 2", WeaponCheat2);
+ 		DebugMenuAddCmd("Cheats", "Weapon set 3", WeaponCheat3);
+diff --git a/src/extras/Imgui_test.cpp b/src/extras/Imgui_test.cpp
+new file mode 100644
+index 00000000..385b90ec
+--- /dev/null
++++ b/src/extras/Imgui_test.cpp
+@@ -0,0 +1,274 @@
++// This will contain a test for using imgui to interact with reVC, I'm not sure how I would set something like this up yet
++// 5-21-2024 @ 2:42PM
++
++// Dear ImGui: standalone example application for DirectX 9
++
++// Learn about Dear ImGui:
++// - FAQ                  https://dearimgui.com/faq
++// - Getting Started      https://dearimgui.com/getting-started
++// - Documentation        https://dearimgui.com/docs (same as your local docs/ folder).
++// - Introduction, links and more at the top of imgui.cpp
++
++#ifndef IMGUI_TEST
++#define IMGUI_TEST
++#endif
++
++#ifdef IMGUI_TEST
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++#include <d3d9.h>
++#include <tchar.h>
++
++#include "imgui_test.h"
++
++// This code is very incomplete, copied from the example on ImGui, it would need to be integrated into the main function of ReVC
++// But I can modify every little piece of the code using a menu like this.
++// 5-30-2024 @ 12:00AM
++// I fixed this from crashing by including the files but it still does nothing.
++
++// 5-30-2024 @ 6:47PM
++//
++// This almost works, freezes the entire game when opened though and I cannot see the mouse in the window.
++
++//
++
++// Data
++static LPDIRECT3D9 g_pD3D = nullptr;
++static LPDIRECT3DDEVICE9 g_pd3dDevice = nullptr;
++static UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
++static D3DPRESENT_PARAMETERS g_d3dpp = {};
++
++// Forward declarations of helper functions
++bool
++CreateDeviceD3D(HWND hWnd);
++void
++CleanupDeviceD3D();
++void
++ResetDevice();
++LRESULT WINAPI
++WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++
++void
++ImGuiVCTest::CreateImGuiWindow()
++{
++	// Create application window
++	// ImGui_ImplWin32_EnableDpiAwareness();
++	WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, L"ImGui Example", nullptr};
++	::RegisterClassExW(&wc);
++	HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"Dear ImGui DirectX9 Example", WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance,
++	                            nullptr);
++
++	// Initialize Direct3D
++	if(!CreateDeviceD3D(hwnd)) {
++		CleanupDeviceD3D();
++		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
++	}
++
++	// Show the window
++	::ShowWindow(hwnd, SW_SHOWDEFAULT);
++	::UpdateWindow(hwnd);
++
++	// Setup Dear ImGui context
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	(void)io;
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
++	// Setup Dear ImGui style
++	ImGui::StyleColorsDark();
++	// ImGui::StyleColorsLight();
++
++	// Setup Platform/Renderer backends
++	ImGui_ImplWin32_Init(hwnd);
++	ImGui_ImplDX9_Init(g_pd3dDevice);
++
++	// Load Fonts
++	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
++	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
++	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display
++	// an error and quit).
++	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(),
++	// which ImGui_ImplXXXX_NewFrame below will call.
++	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
++	// - Read 'docs/FONTS.md' for more instructions and details.
++	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
++	// io.Fonts->AddFontDefault();
++	// io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf", 18.0f);
++	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
++	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
++	// io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
++	// ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
++	// IM_ASSERT(font != nullptr);
++
++	// Our state
++	bool show_demo_window = true;
++	bool show_another_window = false;
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++
++	// Main loop
++	bool done = false;
++	while(!done) {
++		// Poll and handle messages (inputs, window resize, etc.)
++		// See the WndProc() function below for our to dispatch events to the Win32 backend.
++		MSG msg;
++		while(::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
++			::TranslateMessage(&msg);
++			::DispatchMessage(&msg);
++			if(msg.message == WM_QUIT) done = true;
++		}
++		if(done) break;
++
++		// Handle window resize (we don't resize directly in the WM_SIZE handler)
++		if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
++			g_d3dpp.BackBufferWidth = g_ResizeWidth;
++			g_d3dpp.BackBufferHeight = g_ResizeHeight;
++			g_ResizeWidth = g_ResizeHeight = 0;
++			ResetDevice();
++		}
++
++		// Start the Dear ImGui frame
++		ImGui_ImplDX9_NewFrame();
++		ImGui_ImplWin32_NewFrame();
++		ImGui::NewFrame();
++
++		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
++		if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
++
++		// 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
++		{
++			static float f = 0.0f;
++			static int counter = 0;
++
++			ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
++
++			ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
++			ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
++			ImGui::Checkbox("Another Window", &show_another_window);
++
++			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
++			ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
++
++			if(ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
++				counter++;
++			ImGui::SameLine();
++			ImGui::Text("counter = %d", counter);
++
++			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
++			ImGui::End();
++		}
++
++		// 3. Show another simple window.
++		if(show_another_window) {
++			ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++			                                                      // will clear the bool when clicked)
++			ImGui::Text("Hello from another window!");
++			if(ImGui::Button("Close Me")) show_another_window = false;
++			ImGui::End();
++		}
++
++		// Rendering
++		ImGui::EndFrame();
++		g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
++		g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++		g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
++		D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
++		                                      (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
++		g_pd3dDevice->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
++		if(g_pd3dDevice->BeginScene() >= 0) {
++			ImGui::Render();
++			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++			g_pd3dDevice->EndScene();
++		}
++		HRESULT result = g_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
++
++		// Handle loss of D3D9 device
++		if(result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) ResetDevice();
++	}
++
++	ImGui_ImplDX9_Shutdown();
++	ImGui_ImplWin32_Shutdown();
++	ImGui::DestroyContext();
++
++	CleanupDeviceD3D();
++	::DestroyWindow(hwnd);
++	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
++}
++
++
++// Helper functions
++
++bool
++CreateDeviceD3D(HWND hWnd)
++{
++	if((g_pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == nullptr) return false;
++
++	// Create the D3DDevice
++	ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
++	g_d3dpp.Windowed = TRUE;
++	g_d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
++	g_d3dpp.BackBufferFormat = D3DFMT_UNKNOWN; // Need to use an explicit format with alpha if needing per-pixel alpha composition.
++	g_d3dpp.EnableAutoDepthStencil = TRUE;
++	g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
++	g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE; // Present with vsync
++	// g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;   // Present without vsync, maximum unthrottled framerate
++	if(g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0) return false;
++
++	return true;
++}
++
++void
++CleanupDeviceD3D()
++{
++	if(g_pd3dDevice) {
++		g_pd3dDevice->Release();
++		g_pd3dDevice = nullptr;
++	}
++	if(g_pD3D) {
++		g_pD3D->Release();
++		g_pD3D = nullptr;
++	}
++}
++
++void
++ResetDevice()
++{
++	ImGui_ImplDX9_InvalidateDeviceObjects();
++	HRESULT hr = g_pd3dDevice->Reset(&g_d3dpp);
++	if(hr == D3DERR_INVALIDCALL) IM_ASSERT(0);
++	ImGui_ImplDX9_CreateDeviceObjects();
++}
++
++// Forward declare message handler from imgui_impl_win32.cpp
++extern IMGUI_IMPL_API LRESULT
++ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++
++// Win32 message handler
++// You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
++// - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
++// - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application, or clear/overwrite your copy of the keyboard data.
++// Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
++LRESULT WINAPI
++WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
++{
++	if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
++
++	switch(msg) {
++	case WM_SIZE:
++		if(wParam == SIZE_MINIMIZED) return 0;
++		g_ResizeWidth = (UINT)LOWORD(lParam); // Queue resize
++		g_ResizeHeight = (UINT)HIWORD(lParam);
++		return 0;
++	case WM_SYSCOMMAND:
++		if((wParam & 0xfff0) == SC_KEYMENU) // Disable ALT application menu
++			return 0;
++		break;
++	case WM_DESTROY: ::PostQuitMessage(0); return 0;
++	}
++	return ::DefWindowProcW(hWnd, msg, wParam, lParam);
++}
++
++#endif //IMGUI_TEST
++
+diff --git a/src/extras/imgui_test.h b/src/extras/imgui_test.h
+new file mode 100644
+index 00000000..b8179ff8
+--- /dev/null
++++ b/src/extras/imgui_test.h
+@@ -0,0 +1,6 @@
++#pragma once
++class ImGuiVCTest
++{
++public:
++	static void CreateImGuiWindow();
++};
+\ No newline at end of file
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index 815b2534..8856db4b 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -4105,14 +4105,41 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 			impulse = Max(impulse + ((CPed*)m_pDamageEntity)->m_fMass * speed, 0.0f);
+ 	}
+ 
++	// Disabling this makes it to where cars won't blow up when turned over.
++	// This also needs to be disabled in Playerinfo by commenting out lines 428-453.
++	// TODO Add check for this to be toggled in the debug menu, if the option is enabled then disable the below.
+ 	// damage flipped over car
+-	if(GetUp().z < 0.0f && this != FindPlayerVehicle()){
+-		if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater)
+-			return;
+-		if(GetStatus() != STATUS_WRECKED)
+-			m_fHealth = Max(m_fHealth - 4.0f*CTimer::GetTimeStep(), 0.0f);
++	#ifdef CUSTOM_CODE
++	bool vehUpsidedownExplode = false;
++	if(!vehUpsidedownExplode) {
++		if(GetUp().z < 0.0f && this != FindPlayerVehicle()) {
++
++			if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater) return;
++			if(GetStatus() != STATUS_WRECKED) m_fHealth = Max(m_fHealth - 4.0f * CTimer::GetTimeStep(), 0.0f);
++		}
+ 	}
+ 
++
++	#else
++	if(GetUp().z < 0.0f && this != FindPlayerVehicle()){
++
++	if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater)
++		return;
++	if(GetStatus() != STATUS_WRECKED)
++		m_fHealth = Max(m_fHealth - 4.0f*CTimer::GetTimeStep(), 0.0f);
++}
++	#endif //CUSTOM_CODE
++	// if(DisableCarBurnFlip) {
++
++	// Original code
++	//if(GetUp().z < 0.0f && this != FindPlayerVehicle()){
++	//
++	//	if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater)
++	//		return;
++	//	if(GetStatus() != STATUS_WRECKED)
++	//		m_fHealth = Max(m_fHealth - 4.0f*CTimer::GetTimeStep(), 0.0f);
++	//}
++
+ 	float minImpulse = GetModelIndex() == MI_RCRAIDER || GetModelIndex() == MI_RCGOBLIN ? 1.0f : 25.0f;
+ 	if(impulse > minImpulse && GetStatus() != STATUS_WRECKED){
+ 		if(bIsLawEnforcer &&
+diff --git a/src/vehicles/Vehicle.cpp b/src/vehicles/Vehicle.cpp
+index d1054191..f13dbb04 100644
+--- a/src/vehicles/Vehicle.cpp
++++ b/src/vehicles/Vehicle.cpp
+@@ -1708,15 +1708,30 @@ CVehicle::CanDoorsBeDamaged(void)
+ bool
+ CVehicle::CanPedEnterCar(void)
+ {
++
++// This should allow the player to enter the car on it's side.
++//#define CUSTOM_CODE
++#ifdef CUSTOM_CODE
++	bool enterUpsideDownVehicle = false;
++	if (!enterUpsideDownVehicle) {
++		// can't enter when car is on side
++		if(IsBike() || GetUp().z > 0.1f || GetUp().z < -0.1f) {
++			// also when car is moving too fast
++			if(m_vecMoveSpeed.MagnitudeSqr() > sq(0.2f)) return false;
++			if(m_vecTurnSpeed.MagnitudeSqr() > sq(0.2f)) return false;
++			return true;
++	}
++}
++#else
+ 	// can't enter when car is on side
+-	if(IsBike() || GetUp().z > 0.1f ||  GetUp().z < -0.1f){
++	if(IsBike() || GetUp().z > 0.1f || GetUp().z < -0.1f) {
+ 		// also when car is moving too fast
+-		if(m_vecMoveSpeed.MagnitudeSqr() > sq(0.2f))
+-			return false;
+-		if(m_vecTurnSpeed.MagnitudeSqr() > sq(0.2f))
+-			return false;
++		if(m_vecMoveSpeed.MagnitudeSqr() > sq(0.2f)) return false;
++		if(m_vecTurnSpeed.MagnitudeSqr() > sq(0.2f)) return false;
+ 		return true;
+ 	}
++#endif
++
+ 	return false;
+ }
+ 
+-- 
+2.45.1.windows.1
+

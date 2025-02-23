@@ -1,0 +1,220 @@
+From 5689ecd45494bc663a96db628113c30f421b6724 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Feb 2025 15:02:30 -0500
+Subject: [PATCH 29/42] Make some files load from ViceExtended\data instead of
+ data folder. Add modloader to win.cpp and main.cpp
+
+---
+ src/animation/AnimManager.cpp |  8 ++++++++
+ src/control/Script.cpp        | 12 +++++++++++-
+ src/control/Script6.cpp       |  9 +++++++++
+ src/control/ScriptDebug.cpp   |  9 +++++++++
+ src/core/Frontend.cpp         |  2 +-
+ src/core/main.cpp             | 12 ++++++++++++
+ src/skel/win/win.cpp          | 24 ++++++++++++++++++++++--
+ 7 files changed, 72 insertions(+), 4 deletions(-)
+
+diff --git a/src/animation/AnimManager.cpp b/src/animation/AnimManager.cpp
+index f6ac3eb5..39b429c8 100644
+--- a/src/animation/AnimManager.cpp
++++ b/src/animation/AnimManager.cpp
+@@ -1233,7 +1233,15 @@ CAnimManager::BlendAnimation(RpClump *clump, AssocGroupId groupId, AnimationId a
+ void
+ CAnimManager::LoadAnimFiles(void)
+ {
++#ifdef VICE_EXTENDED // ViceExtended folder - ped.ifp
++#ifdef MODLOADER // ped.ifp
++	LoadAnimFile(ModLoader_GetAnimFile_Unsafe("ViceExtended\\ANIM\\PED.IFP"));
++#else
++	LoadAnimFile("ViceExtended\\ANIM\\PED.IFP");
++#endif
++#else
+ 	LoadAnimFile("ANIM\\PED.IFP");
++	#endif
+ 	ms_aAnimAssocGroups = new CAnimBlendAssocGroup[NUM_ANIM_ASSOC_GROUPS];
+ 	CreateAnimAssocGroups();
+ }
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 0a46aee5..edf6b47f 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -739,7 +739,7 @@ int CTheScripts::OpenScript()
+ #ifdef MODLOADER // main.scm
+ 	case 0: return ModLoader_MainScm("test\\data\\main.scm", "rb");
+ #else
+-	case 0: return CFileMgr::OpenFile("data\\main.scm", "rb");
++	case 0: return CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
+ #endif // MODLOADER
+ 	case 1: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
+ 	case 2: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
+@@ -776,9 +776,19 @@ void CTheScripts::Init()
+ 	if(CPad::GetPad(0)->GetChar('D')) ScriptToLoad = 2;
+ 
+ 	int mainf = OpenScript();
++#else
++// TODO Test these sometime.
++#ifdef VICE_EXTENDED // ViceExtended folder - scm
++	CFileMgr::SetDir("ViceExtended");
++#ifdef MODLOADER // main.scm
++	int mainf = ModLoader_MainScm("data\\main.scm", "rb");
++#else
++	int mainf = CFileMgr::OpenFile("data\\main.scm", "rb");
++#endif
+ #else
+ 	CFileMgr::SetDir("data");
+ 	int mainf = CFileMgr::OpenFile("main.scm", "rb");
++#endif
+ #endif
+ 	CFileMgr::Read(mainf, (char*)ScriptSpace, SIZE_MAIN_SCRIPT);
+ 	CFileMgr::CloseFile(mainf);
+diff --git a/src/control/Script6.cpp b/src/control/Script6.cpp
+index 8af32f57..6c73e969 100644
+--- a/src/control/Script6.cpp
++++ b/src/control/Script6.cpp
+@@ -397,7 +397,16 @@ int8 CRunningScript::ProcessCommands1000To1099(int32 command)
+ 		int handle = CTheScripts::OpenScript();
+ #else
+ 		CFileMgr::ChangeDir("\\");
++		// TODO Test these later
++#ifdef VICE_EXTENDED // ViceExtended folder - scm
++#ifdef MODLOADER // main.scm
++		int handle = ModLoader_MainScm("ViceExtended\\data\\main.scm", "rb");
++#else
++		int handle = CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++#endif
++#else
+ 		int handle = CFileMgr::OpenFile("data\\main.scm", "rb");
++#endif
+ #endif
+ 		CFileMgr::Seek(handle, offset, 0);
+ 		CFileMgr::Read(handle, (const char*)&CTheScripts::ScriptSpace[SIZE_MAIN_SCRIPT], SIZE_MISSION_SCRIPT);
+diff --git a/src/control/ScriptDebug.cpp b/src/control/ScriptDebug.cpp
+index 1ca5f588..87774e58 100644
+--- a/src/control/ScriptDebug.cpp
++++ b/src/control/ScriptDebug.cpp
+@@ -1750,7 +1750,16 @@ CTheScripts::SwitchToMission(int32 mission)
+ 	int handle = OpenScript();
+ #else
+ 	CFileMgr::ChangeDir("\\");
++	// TODO Test these later
++#ifdef VICE_EXTENDED // ViceExtended folder - scm
++#ifdef MODLOADER // main.scm
++	int handle = ModLoader_MainScm("ViceExtended\\data\\main.scm", "rb");
++#else
++	int handle = CFileMgr::OpenFile("ViceExtended\\data\\main.scm", "rb");
++#endif
++#else
+ 	int handle = CFileMgr::OpenFile("data\\main.scm", "rb");
++#endif
+ #endif
+ 	CFileMgr::Seek(handle, offset, 0);
+ 	CFileMgr::Read(handle, (const char*)&CTheScripts::ScriptSpace[SIZE_MAIN_SCRIPT], SIZE_MISSION_SCRIPT);
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index c1e2894c..09e0e0b4 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -3122,7 +3122,7 @@ CMenuManager::LoadAllTextures()
+ 		radioFrontendTxdSlot = CTxdStore::AddTxdSlot("radio");
+ 
+ 	printf("LOAD radio\n");
+-#ifdef VICE_EXTENDED1 // ViceExtended folder - radio.txd
++#ifdef VICE_EXTENDED // ViceExtended folder - radio.txd
+ 	CTxdStore::LoadTxd(radioFrontendTxdSlot, "ViceExtended/MODELS/RADIO.TXD");
+ #else
+ 	CTxdStore::LoadTxd(radioFrontendTxdSlot, "MODELS/RADIO.TXD");
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index fd4975c2..06d242f0 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -79,6 +79,10 @@
+ #include "GitSHA1.h"
+ #endif
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ GlobalScene Scene;
+ 
+ uint8 work_buff[55000];
+@@ -1589,6 +1593,10 @@ Render2dStuffAfterFade(void)
+ void
+ Idle(void *arg)
+ {
++#ifdef MODLOADER
++	ModLoader_Tick();
++#endif
++
+ 	CTimer::Update();
+ 
+ 	tbInit();
+@@ -1756,6 +1764,10 @@ popret:	POP_MEMID();	// MEMID_RENDER
+ void
+ FrontendIdle(void)
+ {
++#ifdef MODLOADER
++	ModLoader_Tick();
++#endif
++
+ 	CDraw::CalculateAspectRatio();
+ 	CTimer::Update();
+ 	CSprite2d::SetRecipNearClip(); // this should be on InitialiseRenderWare according to PS2 asm. seems like a bug fix
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index d2f59c41..3101ec54 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -61,6 +61,10 @@
+ #include "GenericGameStorage.h"
+ #endif
+ 
++#ifdef MODLOADER
++#include "modloader.h"
++#endif
++
+ #define MAX_SUBSYSTEMS		(16)
+ 
+ static RwBool		  ForegroundApp = TRUE;
+@@ -2320,6 +2324,13 @@ CMenuManager cMenuManager = CMenuManager();
+ 	}
+ #endif
+ 
++#ifdef MODLOADER
++	struct ModLoaderContext {
++		ModLoaderContext() { ModLoader_Init(); }
++		~ModLoaderContext() { ModLoader_Shutdown(); }
++	} modloader_ctx;
++#endif
++
+ #ifdef USE_CUSTOM_ALLOCATOR
+ 	InitMemoryMgr();
+ #endif
+@@ -2859,7 +2870,11 @@ CMenuManager cMenuManager = CMenuManager();
+ 						if ( FrontEndMenuManager.m_bWantToLoad )
+ #endif
+ 						{
+-							InitialiseGame();
++#ifdef MODLOADER
++						        ModLoader_InitialiseGame();
++#else
++						        InitialiseGame();
++#endif
+ 							FrontEndMenuManager.m_bGameNotLoaded = false;
+ 							gGameState = GS_PLAYING_GAME;
+ 							TRACE("gGameState = GS_PLAYING_GAME;");
+@@ -2893,7 +2908,12 @@ CMenuManager cMenuManager = CMenuManager();
+ 							CGame::currLevel = (eLevelName)TheMemoryCard.GetLevelToLoad();
+ 						}
+ #else
+-						InitialiseGame();
++#ifdef MODLOADER
++					        ModLoader_InitialiseGame();
++#else
++					        InitialiseGame();
++#endif
++
+ 
+ 						FrontEndMenuManager.m_bGameNotLoaded = false;
+ #endif
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,513 @@
+From 4dbf9b226679e1e44540a59fe172a9649fc56463 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 26 Jun 2024 19:30:12 -0400
+Subject: [PATCH 05/42] Add my own car spawning cheat, modified from original,
+ spawns a PCJ 600. Add explosion cheat. Add test for never wanted. Add
+ model_ids enum which is incomplete. Add incomplete position message to the
+ american text file. Add area check test based on the Area3DCheckCommand.
+
+---
+ src/core/Pad.cpp                    | 146 +++++++++++++++++++++++++++-
+ src/core/re3.cpp                    |  11 +++
+ src/extras/test/area_check_test.cpp | 101 +++++++++++++++++++
+ src/extras/test/area_check_test.h   |   7 ++
+ src/extras/test/enums/model_ids.h   | 136 ++++++++++++++++++++++++++
+ utils/gxt/american.txt              |   7 +-
+ 6 files changed, 405 insertions(+), 3 deletions(-)
+ create mode 100644 src/extras/test/area_check_test.cpp
+ create mode 100644 src/extras/test/area_check_test.h
+ create mode 100644 src/extras/test/enums/model_ids.h
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 51c4c9a3..43d2598d 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -51,6 +51,16 @@
+ #include "libpad.h"
+ #endif
+ 
++// Extra
++#ifdef CUSTOM_CODE
++#include "Explosion.h"
++#include "Radar.h"
++#include "Bike.h"
++
++// My code
++#include "..\extras\test\enums\model_ids.h"
++#endif //CUSTOM_CODE
++
+ CPad Pads[MAX_PADS];
+ #ifdef GTA_PS2
+ u_long128 pad_dma_buf[scePadDmaBufferMax] __attribute__((aligned(64)));
+@@ -98,16 +108,128 @@ extern bool gGravityCheat;
+ // 
+ // 
+ 
++// TODO Move this one into a different class.
++void
++ClearItemsFromArea(float radius)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	CWorld::ClearExcitingStuffFromArea(pPedCoords, radius, true);
++}
++
+ // Blank cheat, does nothing and is just here to play around with.
+ void
+-TestCheat1(int input)
++//TestCheat1(int input)
++TestCheat1()
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	CVector pPedCoords = FindPlayerCoors();
++	CVector targetMarkerPos = CRadar::TargetMarkerPos;
+ 
+-	pPed->SetWantedLevel(input);
++	//pPed->SetWantedLevel(input);
++
++	// Will this work?
++	if(CRadar::TargetMarkerId != -1) 
++	{ 
++		pPed->SetPosition(targetMarkerPos); 
++	}
++
++	
+ }
+ 
++// Test spawning a random ped
++void
++SpawnPedCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	//CPed *customPed = PED
++}
++
++// Give the player a shotgun as a test
++void 
++GivePlayerWeapon()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 9999, true);
++}
++
++void
++SpawnPedTest()
++{
++	
++	CPlayerPed *pPed = FindPlayerPed();
++	CPed* randomPed1 = new CPed(ePedType::PEDTYPE_CIVMALE);
++}
++
++
++
++// Spawn a Car.
++// Adapted from Pad.cpp, VehicleCheat
++// This works but spawning the player on it seems to break it, they can't drive unless they get off and back on.
++// TODO Fix this to spawn the player in the vehicle
++void
++SpawnCarTestCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	// PCJ 600 bike https://gtamods.com/wiki/List_of_vehicles_(VC)
++	// Get the vehicle model from my enum
++	int vehicleModel = VehicleModels::PCJ_600;
++	// Adapted from my cleo test in javascript
++	// 
++	// This should remove everything around the area.
++	ClearItemsFromArea(10);
++	// Original code:
++	//CWorld::ClearExcitingStuffFromArea(pPedCoords, 10, true);
++	
++	// Spawn the vehicle
++	
++	//CVehicle newCar = CVehicle;
++	
++	CStreaming::RequestModel(vehicleModel, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(false);
++	
++	if(CStreaming::ms_aInfoForModel[vehicleModel].m_loadState & STREAMFLAGS_DONT_REMOVE) 
++	{ 
++		CStreaming::SetModelIsDeletable(vehicleModel);
++		CStreaming::SetModelTxdIsDeletable(vehicleModel);
++	}
++
++	// Don't attempt to use CAutoMobile for a Bike, it crashes it.
++	//CAutomobile *vehicle = new CAutomobile(vehicleModel, RANDOM_VEHICLE);
++	CBike *vehicle = new CBike(vehicleModel, RANDOM_VEHICLE);
++	if(vehicle != nil) 
++	{
++		// Add 2 to the z and y, so the vehicle doesn't crush the player.
++		//pPedCoords.z + 2;
++		//pPedCoords.y + 2;
++		vehicle->SetPosition(pPedCoords);
++
++		// Set the car to be able to be entered
++		vehicle->SetStatus(STATUS_ABANDONED);
++		vehicle->m_nDoorLock = CARLOCK_UNLOCKED;
++		// Possible fix for the engine not being on
++		vehicle->bEngineOn = true;
++
++		CWorld::Add(vehicle);
++
++		// Warp the player into the vehicle
++		// Taken from Script4.cpp
++		// Well this was needed, there must be a ton of these objectives.
++		pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, vehicle);
++		// Put the player in the vehicle
++		pPed->WarpPedIntoCar(vehicle);
++	}
++
++
++	// Check if the model has loaded
++	// if(!CStreaming::HasModelLoaded())
++	//{
++	//	CStreaming::RequestModel();
++	//	CStreaming::LoadAllRequestedModels(false);
++	//}
++}
+ 
+ // Infinite health
+ // This works with a toggle.
+@@ -321,6 +443,26 @@ NoUpsideDownBlowUpCheat(bool toggle)
+ 
+ }
+ 
++// Test adding a bomb around the player.
++// This works, inspired by some of the code in Pickups.cpp
++void
++ExplosionCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector playerPos = FindPlayerCoors();
++
++	// How would I convert these floats to a vector3?
++	float playerPosX = playerPos.x + 2;
++	float playerPosY = playerPos.y + 2;
++	float playerPosZ = playerPos.z;
++
++	//CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
++	CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
++}
++
++// Mess with this later.
++// FindPlayerPed()->SetMoveSpeed(CVector 2);
++
+ // End custom added by kelson8
+ // //////
+ 
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 07b6ce4e..62b47b7a 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -719,8 +719,12 @@ void PickUpChicksCheat();
+ void InfiniteHealthCheat();
+ void NeverWantedCheat();
+ void InvincibleVehicleCheat();
++// 6-26-2024 @ 3:55PM
++void SpawnCarTestCheat();
++
+ // 6-6-2024 @ 5:03PM
+ void SuicideCheat();
++void ExplosionCheat();
+     // This one is accessing it from CGarages::ToggleRespray
+ //void ToggleRespray();
+     // Oops, this killed it by being defined again :\
+@@ -975,6 +979,13 @@ DebugMenuPopulate(void)
+ 		// Allow all cars to be repaired in the garages, incomplete.
+ 		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", ToggleRespray);
+ 		DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", CGarages::ToggleRespray);
++
++		// Spawn a PCJ 600, test with my own code.
++		DebugMenuAddCmd("Cheats", "Spawn PCJ 600", SpawnCarTestCheat);
++
++		//
++		DebugMenuAddCmd("Cheats", "Drop a bomb", ExplosionCheat);
++
+ 		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", m_allowAllVehiclesRespray);
+ 		//DebugMenuAddCmd("Cheats", "Toggle Vehicle upside down explode", ToggleVehicleUpsideDownBlowUp);
+ 		// TODO Add toggle for No burn cars on flipped upside down,
+diff --git a/src/extras/test/area_check_test.cpp b/src/extras/test/area_check_test.cpp
+new file mode 100644
+index 00000000..0931d7f0
+--- /dev/null
++++ b/src/extras/test/area_check_test.cpp
+@@ -0,0 +1,101 @@
++// Disable below code, it is incomplete.
++//#define _TEST
++#ifdef _TEST
++
++// These are needed!
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++#ifdef XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++//
++
++#include "Script.h"
++#include "ScriptCommands.h"
++#include "Ped.h"
++#include "PlayerPed.h"
++
++// New
++#include "Placeable.h"
++#include "World.h"
++
++
++// Idk how I would use the commands in here like in plugin sdk
++// COMMAND_IS_PLAYER_IN_AREA_3D
++// I'm pretty much expanding out some of the commands so they can be used like this.
++
++/// <summary>
++/// Check your position in a 3d cube
++/// COMMAND_IS_PLAYER_IN_AREA_3D
++/// </summary>
++void
++// Area3DCheckCommand()
++Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2)
++{
++	// Original:
++	// CPlayerPed pPlayerPed = FindPlayerPed();
++	// Will this work?
++	CPlayerPed pPlayerPed = CPlayerPed::CPlayerPed();
++	// Copied from playerinfo.cpp, idk why it wouldn't let me use FindPlayerPed()
++	CPlayerPed *pedTest = CWorld::Players[CWorld::PlayerInFocus].m_pPed;
++	// Not sure how to use this one.
++	//CPlayerPed *ped = CWorld::Players[pPlayerPed.m_pPedAtSafePos];
++
++	//ScriptParams[2]
++	// Looks like the file in Script.cpp is using ScriptParams.
++	// This won't check where the coords are but its a start.
++
++	// Will this work?
++	// x1, y1, z1, x2, y2, z2
++	// I highly doubt this will work.
++	//if(COMMAND_IS_PLAYER_IN_AREA_3D, 2, 2, 2, 2, 2, 2)
++	//{
++	//	
++	//}
++	//pPlayerPed.
++
++	
++	x1 = 2;
++	y1 = 2;
++	z1 = 2;
++	CVector pos = CVector(x1, y1, z1); 
++	x2 = 22;
++	y2 = 22;
++	z2 = 22;
++	if(pPlayerPed.bInVehicle) {
++		// Area check inside of vehicle 
++		// // CPlaceable::IsWithinArea()
++		//pPlayerPed.m_pMyVehicle;
++
++		//if(pedTest->m_pMyVehicle->IsWithinArea())
++		
++		//UpdateCompareFlag(ped->m_pMyVehicle->IsWithinArea(x1, y1, z1, x2, y2, z2));
++	} else {
++		// Area check outside of vehicle
++		
++		// This might work for getting the position
++		//if(pPlayerPed.GetPosition() == pos) 
++		//{
++		//
++		//}
++		// 
++		// This looks like it should work, now to figure out how to add this to the debug menu in here.
++		if(pPlayerPed.IsWithinArea(x1, y1, x2, y2)) 
++		{
++		
++		}
++	}
++	
++	// 
++}
++
++
++
++#endif //_TEST
+\ No newline at end of file
+diff --git a/src/extras/test/area_check_test.h b/src/extras/test/area_check_test.h
+new file mode 100644
+index 00000000..6f23ea17
+--- /dev/null
++++ b/src/extras/test/area_check_test.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++class AreaCheckTest {
++public:
++	// Reimplemtation of COMMAND_IS_PLAYER_IN_AREA_3D as a helper function for C++.
++	void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
++};
+\ No newline at end of file
+diff --git a/src/extras/test/enums/model_ids.h b/src/extras/test/enums/model_ids.h
+new file mode 100644
+index 00000000..2e047171
+--- /dev/null
++++ b/src/extras/test/enums/model_ids.h
+@@ -0,0 +1,136 @@
++#pragma once
++class VehicleModels
++{
++public:
++	// https://gtamods.com/wiki/List_of_vehicles_(VC)
++	enum ModelIds { 
++		LANDSTALKER = 130,
++		IDAHO = 131,
++		STINGER = 132,
++		// 
++		LINERUN = 133,
++		PERENNIAL = 134,
++		SENTINEL = 135,
++		RIO = 136, // Cop car
++		FIRETRUCK = 137,
++		TRASHMASTER = 138,
++		STRECH = 139, // Limo
++		MANANA = 140,
++		INFERNUS = 141,
++		VOODOO = 142,
++		PONY = 143,
++		MULE = 144,
++		CHEETAH = 145,
++		AMBULANCE = 146,
++		FBI_WASHINGTON = 147,
++		MOONBEAM = 148,
++		ESPERANTO = 149,
++		TAXI = 150,
++		WASHINGTON = 151,
++		BOBCAT = 152,
++		MR_WHOOPEE = 153, // Ice cream van
++		BF_INJECTION = 154,
++		HUNTER = 155, // Helicopter
++		POLICE = 156, // Cop car
++		ENFORCER = 157,
++		SECURICAR = 158,
++		BANSHEE = 159,
++		PREDATOR = 160, // Boat
++		BUS = 161,
++		RHINO = 162,    // Tank
++		BARRACKS = 163, // Army truck
++		CUBAN = 164,
++		CHOPPER = 165, // Helicopter
++		ANGEL = 166,   // Motorcycyle
++		COACH = 167,
++		CABBIE = 168,
++		STALLION = 169,
++		RUMPO = 170,
++		RC_BANDIT = 171,
++		ROMERO = 172,
++		PACKER = 173,
++		SENTINEL_XS = 174,
++		ADMIRAL = 175,
++		SQUALO = 176,      // Boat
++		SEA_SPARROW = 177, // Helicopter
++		PIZZA_BOY = 178,   // Scooter
++		GANGBUR = 179,
++		// I'm quite sure this will crash it.
++		// AIRTRAIN = 180,
++		// DEADDODO = 181,
++		SPEEDER = 182, // Boat
++		REEFER = 183,  // Boat
++		TROPIC = 184,  // Boat
++		FLATBED = 185,
++		YANKEE = 186,
++
++		CADDY = 187,
++		ZEBRA = 188,
++		TOPFUN = 189,
++		SKIMMER = 190, // Plane
++		PCJ_600 = 191, // Bike
++		FAGGIO = 192,  // Scooter
++		FREEWAY = 193, // Bike
++		RCBARAON = 194,
++		RCRAIDER = 195,
++		GLENDALE = 196,
++		OCEANIC = 197,
++		SANCHEZ = 198,
++		SPARROW = 199, // Helicopter
++
++		PATRIOT = 200,
++		LOVE_FIST = 201,
++		COAST_GUARD = 202,     // Boat
++		DINGHY = 203,          // Boat
++		HERMES = 204,          // Sedan
++		SABRE = 205,           // Two door
++		SABRE_TURBO = 206,     // Two door
++		PHEONIX = 207,         // Sports car
++		WALTON = 208,          // Truck
++		REGINA = 209,          // Station wagon
++		COMET = 210,           // Sports Car
++		DELUXO = 211,          // Van
++		BURRITO = 212,         // van
++		SPAND_EXPRESS = 213,   // Van
++		MARQUIS = 214,         // Boat
++		BAGGAGE_HANDLER = 215, // Unsure what this one is.
++		KAUFMAN_CAB = 216,
++		MAVERICK = 217,     // Helicopter
++		VCN_MAVERICK = 218, // Helicopter
++		RANCHER = 219,      // Offroad
++		FBI_RANCHER = 220,  // Offroad
++		VIRGO = 221,        // Two door
++		GREENWOOD = 222,    // Sedan
++		JETMAX = 223,       // Boat
++		HOTRING = 224,      // Sports car
++		SANDKING = 225,     // Offroad
++		BLISTA_COMPACT = 226, //Two door
++		POLICE_MAVERICK = 227, // Police helicopter
++		BOXVILLE = 228, // Vam
++		BENSON = 229,
++		MESA = 230,
++		RCGOBLIN = 231,
++		HOTRING1 = 232,
++		HOTRING2 = 233, // Sports car
++		BLOODRING1 = 234, // Sports car
++		BLOODRING2 = 235, // Sports car
++		VICE_CHEETAH = 236, // Sports car, I think its the Miami cop car.
++
++	};
++};
++
++class PedModels
++{
++public:
++	enum ModelIds {
++
++	};
++};
++
++class WeaponModels
++{
++public:
++	enum ModelIds {
++	
++	};
++};
+\ No newline at end of file
+diff --git a/utils/gxt/american.txt b/utils/gxt/american.txt
+index 94ea95c4..be179c5b 100644
+--- a/utils/gxt/american.txt
++++ b/utils/gxt/american.txt
+@@ -1,4 +1,9 @@
+-﻿[IN_VEH]
++﻿# Idk if this'll work
++[CUST1]
++Your current position is
++#
++
++[IN_VEH]
+ ~g~Hey! Get back in the vehicle!
+ 
+ [HEY]
+-- 
+2.45.1.windows.1
+

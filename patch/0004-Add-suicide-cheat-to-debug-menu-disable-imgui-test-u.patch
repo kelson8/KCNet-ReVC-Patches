@@ -1,0 +1,63 @@
+From 281aace1601580a7c4d0015ff15dd89e47a8109f Mon Sep 17 00:00:00 2001
+From: kelson8 <chippy889@gmail.com>
+Date: Fri, 7 Jun 2024 13:02:41 -0400
+Subject: [PATCH 04/42] Add suicide cheat to debug menu, disable imgui test,
+ update premake exe.
+
+---
+ src/core/Pad.cpp          | 1 +
+ src/core/re3.cpp          | 5 ++++-
+ src/extras/Imgui_test.cpp | 2 +-
+ 3 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index fd448345..51c4c9a3 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -1499,6 +1499,7 @@ void CPad::AddToPCCheatString(char c)
+ 
+ 	KeyBoardCheatString[0] = c;
+ 
++// How are these generated?
+ #define _CHEATCMP(str) strncmp(str, KeyBoardCheatString, sizeof(str)-1)
+ 
+ 	// "THUGSTOOLS"
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 5479db00..07b6ce4e 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -719,7 +719,9 @@ void PickUpChicksCheat();
+ void InfiniteHealthCheat();
+ void NeverWantedCheat();
+ void InvincibleVehicleCheat();
+-// This one is accessing it from CGarages::ToggleRespray
++// 6-6-2024 @ 5:03PM
++void SuicideCheat();
++    // This one is accessing it from CGarages::ToggleRespray
+ //void ToggleRespray();
+     // Oops, this killed it by being defined again :\
+ //bool m_allowAllVehiclesRespray;
+@@ -968,6 +970,7 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
+ 		DebugMenuAddCmd("Cheats", "Never wanted", NeverWantedCheat);
+ 		DebugMenuAddCmd("Cheats", "Invincible Vehicle", InvincibleVehicleCheat);
++		DebugMenuAddCmd("Cheats", "Suicide", SuicideCheat);
+ 
+ 		// Allow all cars to be repaired in the garages, incomplete.
+ 		//DebugMenuAddCmd("Cheats", "Toggle all vehicle repair", ToggleRespray);
+diff --git a/src/extras/Imgui_test.cpp b/src/extras/Imgui_test.cpp
+index 385b90ec..c0016436 100644
+--- a/src/extras/Imgui_test.cpp
++++ b/src/extras/Imgui_test.cpp
+@@ -10,7 +10,7 @@
+ // - Introduction, links and more at the top of imgui.cpp
+ 
+ #ifndef IMGUI_TEST
+-#define IMGUI_TEST
++//#define IMGUI_TEST
+ #endif
+ 
+ #ifdef IMGUI_TEST
+-- 
+2.45.1.windows.1
+

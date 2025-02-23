@@ -1,0 +1,42 @@
+From 6b90e919e689543a7aa3ebf4588172e38c32efe3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 15 Jan 2025 02:35:50 -0500
+Subject: [PATCH 11/42] Oops, forgot to add the readme to the last commit
+
+---
+ README.md | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/README.md b/README.md
+index 1fcaea13..3599fb6f 100644
+--- a/README.md
++++ b/README.md
+@@ -1,8 +1,24 @@
+-<img src="https://github.com/GTAmodding/re3/blob/miami/res/images/logo_1024.png?raw=true" alt="reVC logo" width="200">
++<!-- <img src="https://github.com/GTAmodding/re3/blob/miami/res/images/logo_1024.png?raw=true" alt="reVC logo" width="200"> -->
++
++<img src="https://git.internal.kelsoncraft.net/kelson8/re3/raw/branch/miami/res/images/logo_1024.png" alt="reVC logo" width="200">
++
+ 
+ [![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2FGTAmodding%2Fre3%2Fbadge%3Fref%3Dmiami&style=flat)](https://actions-badge.atrox.dev/GTAmodding/re3/goto?ref=miami)
+ <a href="https://discord.gg/RFNbjsUMGg"><img src="https://img.shields.io/badge/discord-join-7289DA.svg?logo=discord&longCache=true&style=flat" /></a>
+ 
++## New features
++kelson8
++
++I have been working on getting ImGui working for a mod menu, so far I have a basic test with ImGui showing up, use the F9 key to open it.
++For now though there is no mouse showing on the screen for it, and it cannot be closed with the F9 keybind.
++I still need to work on it and make it right
++
++ImGui keybind and start code has been added to /skel/win/win.cpp [here](https://git.internal.kelsoncraft.net/kelson8/re3/src/branch/miami/src/skel/win/win.cpp)
++It is on GS_PLAYING_GAME in the main loop under the gGameState switch state, so it won't show up in the main menu or anything for now.
++
++
++ImGui initialization and everything has been added to /extras/imgui_test.cpp
++
+ ## Intro
+ 
+ In this repository you'll find the fully reversed source code for GTA III ([master](https://github.com/halpz/re3/tree/master/) branch) and GTA VC ([miami](https://github.com/halpz/re3/tree/miami/) branch).
+-- 
+2.45.1.windows.1
+
