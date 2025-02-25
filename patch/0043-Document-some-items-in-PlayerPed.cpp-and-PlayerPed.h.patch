@@ -1,0 +1,645 @@
+From 390b0984bc7570830f98998d34733f0f8e8652df Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 23 Feb 2025 15:40:22 -0500
+Subject: [PATCH 1/2] Document some items in PlayerPed.cpp, and PlayerPed.h.
+ Document some items in Population.cpp. Add more comments to
+ debug_functions.cpp, labeling what they do.
+
+---
+ src/core/Pad.cpp                     |   2 +-
+ src/extras/debug/debug_functions.cpp | 109 +++++++++++++++++++++++++++
+ src/peds/PlayerPed.cpp               | 100 +++++++++++++++++++++++-
+ src/peds/PlayerPed.h                 |  12 +++
+ src/peds/Population.cpp              |  24 ++++++
+ 5 files changed, 244 insertions(+), 3 deletions(-)
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index c8943ff5..9c2f295b 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -386,7 +386,7 @@ void VehicleCheat(int model)
+ 
+ 
+ /// <summary>
+-/// Blow up all cars
++/// Blow up all cars, this was the original debug menu function but I have moved it into custom_cheats.cpp to test.
+ /// </summary>
+ void BlowUpCarsCheat()
+ {
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 0a6d6490..f19246af 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -434,20 +434,44 @@ DebugMenuPopulate(void)
+ 		                                  "23",
+ 		                                  "24"};
+ 		DebugMenuEntry *e;
++
++		//*****************
++		// Begin time and weather
++		//*****************
++
++
++		// Current hour
+ 		e = DebugMenuAddVar("Time & Weather", "Current Hour", &CClock::GetHoursRef(), nil, 1, 0, 23, nil);
+ 		DebugMenuEntrySetWrap(e, true);
++		
++		// Current minute
+ 		e = DebugMenuAddVar(
+ 		    "Time & Weather", "Current Minute", &CClock::GetMinutesRef(), []() { CWeather::InterpolationValue = CClock::GetMinutes() / 60.0f; }, 1, 0,
+ 		    59, nil);
+ 		DebugMenuEntrySetWrap(e, true);
++
++		// Old weather
+ 		e = DebugMenuAddVar("Time & Weather", "Old Weather", (int16 *)&CWeather::OldWeatherType, switchWeather, 1, 0, 5, weathers);
+ 		DebugMenuEntrySetWrap(e, true);
++		
++		// New weather
+ 		e = DebugMenuAddVar("Time & Weather", "New Weather", (int16 *)&CWeather::NewWeatherType, switchWeather, 1, 0, 5, weathers);
+ 		DebugMenuEntrySetWrap(e, true);
++		// Extra colours
+ 		DebugMenuAddVarBool32("Time & Weather", "Extracolours On", &CTimeCycle::m_bExtraColourOn, nil);
+ 		DebugMenuAddVar("Time & Weather", "Extracolour", &CTimeCycle::m_ExtraColour, nil, 1, 0, 23, extracols);
++		
++		// Time scale
+ 		DebugMenuAddVar("Time & Weather", "Time scale", (float *)&CTimer::GetTimeScale(), nil, 0.1f, 0.0f, 10.0f);
+ 
++		//*****************
++		// End time and weather
++		//*****************
++
++		//*****************
++		// Begin Cheats
++		//*****************
++
+ // Extras from kelson8
+ #ifdef CUSTOM_CODE
+ #define _TEST1
+@@ -518,7 +542,12 @@ DebugMenuPopulate(void)
+ #else
+ 		DebugMenuAddCmd("Cheats", "Tank", []() { VehicleCheat(MI_TAXI); });
+ #endif //CUSTOM_CODE
++
++#ifdef CUSTOM_CODE
++		DebugMenuAddCmd("Cheats", "Blow up cars", CustomCheats::BlowUpAllCars);
++#else
+ 		DebugMenuAddCmd("Cheats", "Blow up cars", BlowUpCarsCheat);
++#endif
+ 		DebugMenuAddCmd("Cheats", "Change player", ChangePlayerCheat);
+ 		DebugMenuAddCmd("Cheats", "Mayhem", MayhemCheat);
+ 		DebugMenuAddCmd("Cheats", "Everybody attacks player", EverybodyAttacksPlayerCheat);
+@@ -537,6 +566,14 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Cheats", "Special car", SpecialCarCheats);
+ 		DebugMenuAddCmd("Cheats", "Pickup chicks", PickUpChicksCheat);
+ 
++		//*****************
++		// End Cheats
++		//*****************
++
++		//*****************
++		// Begin default Vehicle spawners
++		//*****************
++
+ 		static int spawnCarId = MI_LANDSTAL;
+ 		e = DebugMenuAddVar("Spawn", "Spawn Car ID", &spawnCarId, nil, 1, MI_LANDSTAL, MI_VICECHEE, carnames);
+ 		DebugMenuEntrySetWrap(e, true);
+@@ -545,8 +582,11 @@ DebugMenuPopulate(void)
+ 			SpawnCar(spawnCarId);
+ 		});
+ 		static uint8 dummy;
++		// Set car color 1
+ 		carCol1 = DebugMenuAddVar("Spawn", "First colour", &dummy, nil, 1, 0, 255, nil);
++		// Set car color 2
+ 		carCol2 = DebugMenuAddVar("Spawn", "Second colour", &dummy, nil, 1, 0, 255, nil);
++		// Spawners
+ 		DebugMenuAddCmd("Spawn", "Spawn Stinger", []() { SpawnCar(MI_STINGER); });
+ 		DebugMenuAddCmd("Spawn", "Spawn Infernus", []() { SpawnCar(MI_INFERNUS); });
+ 		DebugMenuAddCmd("Spawn", "Spawn Cheetah", []() { SpawnCar(MI_CHEETAH); });
+@@ -575,6 +615,15 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Spawn", "Spawn Freeway", []() { SpawnCar(MI_FREEWAY); });
+ 		DebugMenuAddCmd("Spawn", "Spawn Squalo", []() { SpawnCar(MI_SQUALO); });
+ 		DebugMenuAddCmd("Spawn", "Spawn Skimmer", []() { SpawnCar(MI_SKIMMER); });
++		//
++
++		//*****************
++		// End default Vehicle spawners
++		//*****************
++
++		//*****************
++		// Begin render functions
++		//*****************
+ 
+ 		DebugMenuAddVarBool8("Render", "Draw hud", &CHud::m_Wants_To_Draw_Hud, nil);
+ #ifdef PROPER_SCALING
+@@ -603,6 +652,7 @@ DebugMenuPopulate(void)
+ 		extern bool gbRenderWorld0;
+ 		extern bool gbRenderWorld1;
+ 		extern bool gbRenderWorld2;
++
+ 		DebugMenuAddVarBool8("Debug Render", "gbRenderRoads", &gbRenderRoads, nil);
+ 		DebugMenuAddVarBool8("Debug Render", "gbRenderEverythingBarRoads", &gbRenderEverythingBarRoads, nil);
+ 		DebugMenuAddVarBool8("Debug Render", "gbRenderFadingInUnderwaterEntities", &gbRenderFadingInUnderwaterEntities, nil);
+@@ -658,6 +708,14 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddVarBool8("Debug Render", "Don't render Objects", &gbDontRenderObjects, nil);
+ 		DebugMenuAddVarBool8("Debug Render", "Don't Render Water", &gbDontRenderWater, nil);
+ 
++		//*****************
++		// End render functions
++		//*****************
++
++		//*****************
++		// Begin debug functions
++		//*****************
++
+ #ifdef DRAW_GAME_VERSION_TEXT
+ 		DebugMenuAddVarBool8("Debug", "Version Text", &gbDrawVersionText, nil);
+ #endif
+@@ -680,11 +738,19 @@ DebugMenuPopulate(void)
+ 		// DebugMenuAddCmd("Debug", "Start Credits", CCredits::Start);
+ 		// DebugMenuAddCmd("Debug", "Stop Credits", CCredits::Stop);
+ 
++		//*****************
++		// End debug functions
++		//*****************
++
+ #ifdef RELOADABLES
+ // maybe put it back if we have more to reload
+ //		DebugMenuAddCmd("Reload", "HUD.TXD", CHud::ReloadTXD);
+ #endif
+ 
++		//*****************
++		// Begin Game functions
++		//*****************
++
+ #ifdef MAP_ENHANCEMENTS
+ 		DebugMenuAddCmd("Game", "Teleport to map waypoint", TeleportToWaypoint);
+ #endif
+@@ -724,6 +790,7 @@ DebugMenuPopulate(void)
+ 		DebugMenuEntrySetWrap(e, true);
+ #endif //CUSTOM_CODE
+ 
++		// Mission list
+ #ifdef MISSION_SWITCHER
+ 		DebugMenuEntry *missionEntry;
+ 		static const char *missions[] = {"Initial",
+@@ -824,10 +891,21 @@ DebugMenuPopulate(void)
+ 		                                 "RC Baron Race",
+ 		                                 "Checkpoint Charlie"};
+ 
++		// Select mission
+ 		missionEntry = DebugMenuAddVar("Game", "Select mission", &nextMissionToSwitch, nil, 1, 0, ARRAY_SIZE(missions) - 1, missions);
+ 		DebugMenuEntrySetWrap(missionEntry, true);
++		// Start the selected mission
+ 		DebugMenuAddCmd("Game", "Start selected mission ", SwitchToMission);
+ #endif
++
++		//*****************
++		// End Game functions
++		//*****************
++		
++		//*****************
++		// Begin Cam functions
++		//*****************
++
+ 		extern bool PrintDebugCode;
+ 		extern int16 DebugCamMode;
+ 		DebugMenuAddVarBool8("Cam", "Use mouse Cam", &CCamera::m_bUseMouse3rdPerson, nil);
+@@ -839,8 +917,16 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Cam", "Normal", []() { DebugCamMode = 0; });
+ 		DebugMenuAddCmd("Cam", "Reset Statics", ResetCamStatics);
+ 
++		//*****************
++		// End Cam functions
++		//*****************
++
+ #ifdef CUSTOM_CODE
+ 
++		//*****************
++		// Begin Custom Vehicle functions
++		//*****************
++
+ 		// Vehicle menu
+ 		// Spawn a vehicle that is set under the SpawnCarTestCheat function
+ 		// I have modified the original debug menu function for this.
+@@ -867,8 +953,31 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Vehicle", "Upside down explosions", VehicleFunctions::ToggleUpsideDownExplosions);
+ 		#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 
++		//*****************
++		// End Custom Vehicle functions
++		//*****************
++
++
++		//*****************
++		// Begin test functions
++		//*****************
++
++		// TODO Take idea from Infinite Health Cheat, combine toggles into one function..
++		// Oops.
++		DebugMenuAddCmd("Test", "Enable alt police wpns", CustomCheats::EnableChangePoliceWeapons);
++		DebugMenuAddCmd("Test", "Disable alt police wpns", CustomCheats::DisableChangePoliceWeapons);
++
++		// TODO Setup this
++#ifdef EX_COP_FUNCTIONS
++		DebugMenuAddCmd("Test", "Toggle police spike strips", CustomCheats::TogglePoliceSpikeStrips);
++#endif //EX_COP_FUNCTIONS
++
+ #endif //CUSTOM_CODE
+ 
++		//*****************
++		// End test functions
++		//*****************
++
+ 		CTweakVars::AddDBG("Debug");
+ 	}
+ }
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index 9ba42d7b..59054953 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -107,6 +107,9 @@ CPlayerPed::CPlayerPed(void) : CPed(PEDTYPE_PLAYER1)
+ #endif
+ }
+ 
++/// <summary>
++/// I think this clears the lock on target for the player.
++/// </summary>
+ void
+ CPlayerPed::ClearWeaponTarget()
+ {
+@@ -118,12 +121,20 @@ CPlayerPed::ClearWeaponTarget()
+  	ClearPointGunAt();
+ }
+ 
++/// <summary>
++/// Set the players wanted level
++/// </summary>
++/// <param name="level"></param>
+ void
+ CPlayerPed::SetWantedLevel(int32 level)
+ {
+ 	m_pWanted->SetWantedLevel(level);
+ }
+ 
++/// <summary>
++/// Set players wanted level, I think this is for the Pay N Sprays.
++/// </summary>
++/// <param name="level"></param>
+ void
+ CPlayerPed::SetWantedLevelNoDrop(int32 level)
+ {
+@@ -154,6 +165,10 @@ CPlayerPed::AnnoyPlayerPed(bool annoyedByPassingEntity)
+ 	}
+ }
+ 
++/// <summary>
++/// Reset the time scale back to 1.0f if m_bAdrenalineActive and the m_nAdrenalineTime != 0.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPlayerPed::ClearAdrenaline(void)
+ {
+@@ -172,6 +187,14 @@ CPlayerPed::GetPlayerInfoForThisPlayerPed()
+ 	return nil;
+ }
+ 
++/// <summary>
++/// Setup the player ped
++/// Register the Reference to the player ped.
++/// Set the player ped orientation to 0.0f, 0.0f, 0.0f.
++/// Add the player ped to the world.
++/// Set the player ped accuracy to 100, TODO What does this do?
++/// </summary>
++/// <param name="index"></param>
+ void
+ CPlayerPed::SetupPlayerPed(int32 index)
+ {
+@@ -192,12 +215,20 @@ CPlayerPed::SetupPlayerPed(int32 index)
+ #endif
+ }
+ 
++/// <summary>
++/// Remove the player ped from the world
++/// </summary>
++/// <param name="index"></param>
+ void
+ CPlayerPed::DeactivatePlayerPed(int32 index)
+ {
+ 	CWorld::Remove(CWorld::Players[index].m_pPed);
+ }
+ 
++/// <summary>
++/// Add the player ped back to the world.
++/// </summary>
++/// <param name="index"></param>
+ void
+ CPlayerPed::ReactivatePlayerPed(int32 index)
+ {
+@@ -327,8 +358,12 @@ void CPlayerPed::FinishRollCB(CAnimBlendAssociation* assoc, void* arg)
+ }
+ #endif
+ 
+-
+-// Hmm I could mess with this a bit for the stamina.
++/// <summary>
++/// Stamina, something in the scripts toggle this for a 100% bonus.
++/// Hmm I could mess with this a bit for the stamina.
++/// I think toggling "m_bInfiniteSprint" will disable this, TODO Test that later.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPlayerPed::UseSprintEnergy(void)
+ {
+@@ -395,45 +430,76 @@ CPlayerPed::ReApplyMoveAnims(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Set most player ped states to default.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPlayerPed::SetInitialState(void)
+ {
+ 	m_nDrunkenness = 0;
+ 	m_nFadeDrunkenness = 0;
+ 	CMBlur::ClearDrunkBlur();
++
+ 	m_nDrunkCountdown = 0;
++
++	// Set adrenaline to disabled
+ 	m_bAdrenalineActive = false;
++	// Reset adrenaline time
+ 	m_nAdrenalineTime = 0;
++	
++	// Set the time scale to 1.0f
+ 	CTimer::SetTimeScale(1.0f);
++	
+ 	m_pSeekTarget = nil;
+ 	m_vecSeekPos = CVector(0.0f, 0.0f, 0.0f);
+ 	m_fleeFromPos = CVector2D(0.0f, 0.0f);
+ 	m_fleeFrom = nil;
+ 	m_fleeTimer = 0;
++	
++	// Reset the objectives.
+ 	m_objective = OBJECTIVE_NONE;
+ 	m_prevObjective = OBJECTIVE_NONE;
++	
++	// Make the player use collision
+ 	bUsesCollision = true;
++	
+ 	ClearAimFlag();
+ 	ClearLookFlag();
++	
+ 	bIsPointingGunAt = false;
+ 	bRenderPedInCar = true;
++	
++	// Extinguish the fire for the player
+ 	if (m_pFire)
+ 		m_pFire->Extinguish();
+ 
+ 	RpAnimBlendClumpRemoveAllAssociations(GetClump());
++	
++	// Set the player ped state to idle
+ 	SetPedState(PED_IDLE);
+ 	SetMoveState(PEDMOVE_STILL);
++	
+ 	m_nLastPedState = PED_NONE;
+ 	m_animGroup = ASSOCGRP_PLAYER;
++	
+ 	m_fMoveSpeed = 0.0f;
++	
+ 	m_nSelectedWepSlot = WEAPONSLOT_UNARMED;
++	
+ 	m_nEvadeAmount = 0;
++	
+ 	m_pEvadingFrom = nil;
+ 	bIsPedDieAnimPlaying = false;
++	
+ 	SetRealMoveAnim();
++	
++	// Set the player ped to be able to be killed
+ 	m_bCanBeDamaged = true;
++	
+ 	m_pedStats->m_temper = 50;
+ 	m_fWalkAngle = 0.0f;
++	
+ 	if (m_attachedTo && !bUsesCollision)
+ 		bUsesCollision = true;
+ 
+@@ -693,6 +759,10 @@ CPlayerPed::SetRealMoveAnim(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Restore the player stamina back to normal
++/// </summary>
++/// <param name="restoreSpeed">The speed to restore the stamina.</param>
+ void
+ CPlayerPed::RestoreSprintEnergy(float restoreSpeed)
+ {
+@@ -1079,6 +1149,10 @@ CPlayerPed::PlayerControl1stPersonRunAround(CPad *padUsed)
+ #endif
+ }
+ 
++/// <summary>
++/// Keeps the area around the player clear.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPlayerPed::KeepAreaAroundPlayerClear(void)
+ {
+@@ -1377,6 +1451,10 @@ CPlayerPed::ProcessAnimGroups(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Process the weapon for the player
++/// </summary>
++/// <param name="padUsed"></param>
+ void
+ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ {
+@@ -2146,6 +2224,7 @@ bool
+ CPlayerPed::DoesPlayerWantNewWeapon(eWeaponType weapon, bool onlyIfSlotIsEmpty)
+ {
+ 	// GetPadFromPlayer(); // unused
++	// Get the players current weapon slot
+ 	uint32 slot = CWeaponInfo::GetWeaponInfo(weapon)->m_nWeaponSlot;
+ 
+ 	if (!HasWeaponSlot(slot) || GetWeapon(slot).m_eWeaponType == weapon)
+@@ -2158,6 +2237,10 @@ CPlayerPed::DoesPlayerWantNewWeapon(eWeaponType weapon, bool onlyIfSlotIsEmpty)
+ 	return m_nPedState != PED_ATTACK && m_nPedState != PED_AIM_GUN || slot != m_currentWeapon;
+ }
+ 
++/// <summary>
++/// Play idle animations for the player
++/// </summary>
++/// <param name="padUsed"></param>
+ void
+ CPlayerPed::PlayIdleAnimations(CPad *padUsed)
+ {
+@@ -2225,6 +2308,10 @@ CPlayerPed::PlayIdleAnimations(CPad *padUsed)
+ 	}
+ }
+ 
++/// <summary>
++/// 
++/// </summary>
++/// <param name=""></param>
+ void
+ CPlayerPed::SetNearbyPedsToInteractWithPlayer(void)
+ {
+@@ -2405,6 +2492,11 @@ CPlayerPed::FindMeleeAttackPoint(CPed *victim, CVector &dist, uint32 &endOfAttac
+ 	return dirToAttack;
+ }
+ 
++
++//************************
++// Saving and loading
++//************************
++
+ #ifdef COMPATIBLE_SAVES
+ #define CopyFromBuf(buf, data) memcpy(&data, buf, sizeof(data)); SkipSaveBuf(buf, sizeof(data));
+ #define CopyToBuf(buf, data) memcpy(buf, &data, sizeof(data)); SkipSaveBuf(buf, sizeof(data));
+@@ -2438,3 +2530,7 @@ CPlayerPed::Load(uint8*& buf)
+ #undef CopyFromBuf
+ #undef CopyToBuf
+ #endif
++
++//************************
++// End saving and loading
++//************************
+\ No newline at end of file
+diff --git a/src/peds/PlayerPed.h b/src/peds/PlayerPed.h
+index 64c66bba..a8574ef0 100644
+--- a/src/peds/PlayerPed.h
++++ b/src/peds/PlayerPed.h
+@@ -9,41 +9,53 @@ class CWanted;
+ class CPlayerPed : public CPed
+ {
+ public:
++	// Seems to be setting the wanted level, uses CWanted above.
+ 	CWanted *m_pWanted;
+ 	CCopPed *m_pArrestingCop;
++
++	// Move speed, and stamina
+ 	float m_fMoveSpeed;
+ 	float m_fCurrentStamina;
+ 	float m_fMaxStamina;
+ 	float m_fStaminaProgress;
++
++	// Current weapon slot
+ 	int8 m_nSelectedWepSlot;
++
+ 	bool m_bSpeedTimerFlag;
+ 	uint8 m_nEvadeAmount;
+ 	uint32 m_nSpeedTimer; // m_nStandStillTimer?
+ 	uint32 m_nHitAnimDelayTimer; // m_nShotDelay?
++
+ 	float m_fAttackButtonCounter;
+ 	bool m_bHaveTargetSelected;	// may have better name
+ 	CEntity *m_pEvadingFrom;	// is this CPhysical?
+ 	int32 m_nTargettableObjects[4];
++
+ 	uint32 m_nAdrenalineTime;
+ 	uint8 m_nDrunkenness;             // Needed to work out whether we lost target this frame
+ 	uint8 m_nFadeDrunkenness;
+ 	uint8 m_nDrunkCountdown; //countdown in frames when the drunk effect ends
++
+ 	bool m_bAdrenalineActive;
+ 	bool m_bHasLockOnTarget;
+ 	bool m_bCanBeDamaged;
+ 	bool m_bNoPosForMeleeAttack;
+ 	bool unk1;
++
+ 	CVector m_vecSafePos[6]; // safe places from the player, for example behind a tree
+ 	CPed *m_pPedAtSafePos[6];
+ 	CPed *m_pMeleeList[6]; // reachable peds at each direction(6)
+ 	int16 m_nAttackDirToCheck;
+ 	float m_fWalkAngle; //angle between heading and walking direction
+ 	float m_fFPSMoveHeading;
++
+ 	RpAtomic* m_pMinigunTopAtomic; //atomic for the spinning part of the minigun model
+ 	float m_fGunSpinSpeed; // for minigun
+ 	float m_fGunSpinAngle;
+ 	unsigned int m_nPadDownPressedInMilliseconds;
+ 	unsigned int m_nLastBusFareCollected;
++
+ #ifdef FREE_CAM
+ 	bool m_bFreeAimActive;
+ 	CVector m_cachedCamSource;
+diff --git a/src/peds/Population.cpp b/src/peds/Population.cpp
+index 61e3114a..a49fd528 100644
+--- a/src/peds/Population.cpp
++++ b/src/peds/Population.cpp
+@@ -178,6 +178,7 @@ CPopulation::LoadPedGroups()
+ 	// char unused[16]; // non-existence of that in mobile kinda verifies that
+ 	char modelName[256];
+ 
++	// TODO Move to Vice Extended folder
+ 	CFileMgr::ChangeDir("\\DATA\\");
+ #ifdef MODLOADER // pedgrp.dat
+ 	fd = ModLoader_PedGrpDat("PEDGRP.DAT", "r");
+@@ -738,7 +739,10 @@ CPopulation::AddToPopulation(float minDist, float maxDist, float minDistOffScree
+ 			}
+ 			if (!surfaceAndDistIsOk)
+ 				break;
++
+ 			CPed *newPed = AddPed((ePedType)pedTypeToAdd, modelToAdd, generatedCoors);
++			// Is this where the cop throws the spike traps? At least they are toggled here or something, not sure though.
++			// TODO Figure out what exactly this does.
+ 			if (forceAddingCop && newPed->m_nPedType == PEDTYPE_COP)
+ 				((CCopPed*)newPed)->m_bThrowsSpikeTrap = true;
+ 
+@@ -1358,6 +1362,11 @@ CPopulation::AddDeadPedInFrontOfCar(const CVector& pos, CVehicle* pCulprit)
+ 	return pPed;
+ }
+ 
++/// <summary>
++/// Determines if the surface is skateable
++/// </summary>
++/// <param name="pos">The position to check.</param>
++/// <returns>True if the surface is SURFACE_TARMAC or SURFACE_PAVEMENT</returns>
+ bool
+ CPopulation::IsSkateable(CVector const& pos)
+ {
+@@ -1401,6 +1410,11 @@ CPopulation::RemovePedsIfThePoolGetsFull(void)
+ 	}
+ }
+ 
++/// <summary>
++/// Male ped model ids
++/// </summary>
++/// <param name="model"></param>
++/// <returns></returns>
+ bool
+ CPopulation::IsMale(int32 model)
+ {
+@@ -1451,6 +1465,11 @@ CPopulation::IsMale(int32 model)
+ 	}
+ }
+ 
++/// <summary>
++/// Female ped model ids
++/// </summary>
++/// <param name="model"></param>
++/// <returns></returns>
+ bool
+ CPopulation::IsFemale(int32 model)
+ {
+@@ -1496,6 +1515,11 @@ CPopulation::IsFemale(int32 model)
+ 	}
+ }
+ 
++/// <summary>
++/// Sun bather ped model ids
++/// </summary>
++/// <param name="model"></param>
++/// <returns></returns>
+ bool
+ CPopulation::IsSunbather(int32 model)
+ {
+-- 
+2.45.1.windows.1
+

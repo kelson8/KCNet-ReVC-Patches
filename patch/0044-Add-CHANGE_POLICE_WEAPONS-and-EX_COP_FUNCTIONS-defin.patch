@@ -1,0 +1,201 @@
+From 9b45dfb1d0283e0eca83bb4acb2dcd7ec32b6388 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 23 Feb 2025 15:41:08 -0500
+Subject: [PATCH 2/2] Add CHANGE_POLICE_WEAPONS, and EX_COP_FUNCTIONS defines,
+ for CopPed. Toggle modifiable weapons for the cops.
+
+---
+ src/core/config.h   |  8 ++++++
+ src/peds/CopPed.cpp | 63 +++++++++++++++++++++++++++++++++++++++++++++
+ src/peds/CopPed.h   |  8 ++++++
+ 3 files changed, 79 insertions(+)
+
+diff --git a/src/core/config.h b/src/core/config.h
+index fe76e9fe..cc1698e4 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -34,6 +34,14 @@
+ // Enable the invincibility cheat.
+ #define INVINCIBLE_CHEAT
+ 
++// This adds a toggle into CCopPed that allows the police weapons to be changed.
++// Once I figure it out, I'll add all the weapon options to the debug menu.
++#define CHANGE_POLICE_WEAPONS
++
++// This will add more features to the cop ped, mostly with the debug menu.
++// So far I have a test for enabling/disabling the spike strips.
++#define EX_COP_FUNCTIONS
++
+ // Enable better crouching support
+ // #define CROUCH
+ 
+diff --git a/src/peds/CopPed.cpp b/src/peds/CopPed.cpp
+index 611bd9db..6576fb2d 100644
+--- a/src/peds/CopPed.cpp
++++ b/src/peds/CopPed.cpp
+@@ -20,21 +20,58 @@
+ #include "Ropes.h"
+ #include "Stinger.h"
+ 
++#ifdef CHANGE_POLICE_WEAPONS
++// This is hooked up to the debug menu, once toggled it changes the normal cop ped weapons.
++// TODO Add a list for the weapon selection and cop selection in the debug menu, to make this more useful.
++bool CCopPed::bChangePoliceWeapons = false;
++#endif	//CHANGE_POLICE_WEAPONS
++
++#ifdef EX_COP_FUNCTIONS
++bool CCopPed::bSpikeStripsEnabled = true;
++
++#endif //EX_COP_FUNCTIONS
++
+ // Hmm, I could add modifying the weapons cops spawn in with using the debug menu.
+ // TODO Add modifyable values to each cop ped to change their weapons in the debug menu.
++
+ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ {
+ 	m_nCopType = copType;
++	eWeaponType katanaWeapon = WEAPONTYPE_KATANA;
++	eWeaponType pythonWeapon = WEAPONTYPE_PYTHON;
++	eWeaponType chainsawWeapon = WEAPONTYPE_CHAINSAW;
++	eWeaponType shotgunWeapon = WEAPONTYPE_SHOTGUN;
++
++
+ 	switch (copType) {
++
++	// Regular cops
+ 	case COP_STREET:
+ 		SetModelIndex(MI_COP);
++		
++		// Give them a custom weapon if this is enabled, this is hooked up to the debug menu
++#ifdef CHANGE_POLICE_WEAPONS
++		if (CCopPed::bChangePoliceWeapons) { 
++			GiveDelayedWeapon(katanaWeapon, 1000);
++			// This is required.
++			SetCurrentWeapon(katanaWeapon);
++
++		} else {
++			GiveWeapon(WEAPONTYPE_NIGHTSTICK, 1000, true);
++			GiveDelayedWeapon(WEAPONTYPE_COLT45, 1000);
++		}
++		
++#else
+ 		GiveWeapon(WEAPONTYPE_NIGHTSTICK, 1000, true);
+ 		GiveDelayedWeapon(WEAPONTYPE_COLT45, 1000);
++#endif // CHANGE_POLICE_WEAPONS
+ 		m_currentWeapon = WEAPONTYPE_UNARMED;
+ 		m_fArmour = 0.0f;
+ 		m_wepSkills = 208; /* TODO: what is this? seems unused */
+ 		m_wepAccuracy = 60;
+ 		break;
++
++	// FBI rancher cops
+ 	case COP_FBI:
+ 		SetModelIndex(MI_FBI);
+ 		GiveDelayedWeapon(WEAPONTYPE_MP5, 1000);
+@@ -43,7 +80,10 @@ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ 		m_wepSkills = 176; /* TODO: what is this? seems unused */
+ 		m_wepAccuracy = 76;
+ 		break;
++
++	// Swat cops
+ 	case COP_SWAT:
++	// Swat Heli cops
+ 	case COP_HELI_SWAT:
+ 		SetModelIndex(MI_SWAT);
+ 		GiveDelayedWeapon(WEAPONTYPE_UZI, 1000);
+@@ -52,6 +92,8 @@ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ 		m_wepSkills = 32; /* TODO: what is this? seems unused */
+ 		m_wepAccuracy = 68;
+ 		break;
++
++	// Army cops
+ 	case COP_ARMY:
+ 		SetModelIndex(MI_ARMY);
+ 		GiveDelayedWeapon(WEAPONTYPE_MP5, 1000);
+@@ -60,6 +102,8 @@ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ 		m_wepSkills = 32; /* TODO: what is this? seems unused */
+ 		m_wepAccuracy = 84;
+ 		break;
++
++	// Miami Vice cops.
+ 	case COP_MIAMIVICE:
+ 		switch (modifier) {
+ 		case 0: SetModelIndex(MI_VICE1); break;
+@@ -79,16 +123,21 @@ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ 		m_wepAccuracy = 76;
+ 		break;
+ 	}
++	
++	// In pursuit
+ 	m_bIsInPursuit = false;
+ 	field_5FE = 1;
+ 	m_bIsDisabledCop = false;
++
+ 	m_attackTimer = 0;
+ 	m_bBeatingSuspect = false;
+ 	m_bStopAndShootDisabledZone = false;
+ 	m_bDragsPlayerFromCar = false;
++
+ 	m_bZoneDisabled = false;
+ 	field_628 = -1;
+ 	m_nRoadblockVeh = nil;
++
+ 	m_bThrowsSpikeTrap = false;
+ 	m_pRopeEntity = nil;
+ 	m_fAbseilPos = 0.0f;
+@@ -617,12 +666,25 @@ CCopPed::ProcessControl(void)
+ 
+ 	CPed::ProcessControl();
+ 
++#ifdef EX_COP_FUNCTIONS
++	// Toggle the spike strips being thrown or not
++	// TODO Fix this to work.
++	if(CCopPed::bSpikeStripsEnabled){
++		if (m_bThrowsSpikeTrap) {
++			if (CGame::currArea != AREA_MALL)
++				ProcessStingerCop();
++			return;
++		}
++	}
++#else
+ 	if (m_bThrowsSpikeTrap) {
+ 		if (CGame::currArea != AREA_MALL)
+ 			ProcessStingerCop();
+ 		return;
+ 	}
++#endif
+ 
++	// TODO Make toggle for this, it seems to be the spike strips.
+ 	if (m_pStinger && m_pStinger->bIsDeployed && m_pStinger->m_nSpikeState == STINGERSTATE_DEPLOYED && CGame::currArea != AREA_MALL)
+ 		m_pStinger->Process();
+ 
+@@ -876,6 +938,7 @@ CCopPed::ProcessHeliSwat(void)
+ void
+ CCopPed::ProcessStingerCop(void)
+ {
++
+ 	if (m_pStinger->bIsDeployed || FindPlayerVehicle() && (FindPlayerVehicle()->IsCar() || FindPlayerVehicle()->IsBike())) {
+ 		if (m_pStinger->bIsDeployed) {
+ 			m_pStinger->Process();
+diff --git a/src/peds/CopPed.h b/src/peds/CopPed.h
+index 3f5ae06d..57686462 100644
+--- a/src/peds/CopPed.h
++++ b/src/peds/CopPed.h
+@@ -46,6 +46,14 @@ public:
+ 	void CopAI(void);
+ 	void ProcessHeliSwat(void);
+ 	void ProcessStingerCop(void);
++
++#ifdef CHANGE_POLICE_WEAPONS
++	static bool bChangePoliceWeapons;
++#endif
++
++#ifdef EX_COP_FUNCTIONS
++	static bool bSpikeStripsEnabled;
++#endif //EX_COP_FUNCTIONS
+ };
+ 
+ VALIDATE_SIZE(CCopPed, 0x62C);
+-- 
+2.45.1.windows.1
+
