@@ -1,0 +1,1504 @@
+From 675e4bb20b7c106b72ba1ca89013c3ac6ce91b99 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 16:57:53 -0500
+Subject: [PATCH 09/13] Add some more ImGui test spots. Modify imgui_test.cpp
+ and imgui_test.h a bit. Document a few things, update settings.json for
+ vscode. Add code-places.md, contains useful spots in the code.
+
+Add some todos, modify area_check_test.
+
+Add ScriptCommands.cpp, a test for using commands in the C++ code like plugin sdk.
+---
+ .vscode/settings.json               |   5 +-
+ guides/code-places.md               | 118 ++++++++++
+ src/audio/AudioLogic.cpp            |  24 +++
+ src/control/SceneEdit.cpp           |   2 +
+ src/control/Script.cpp              |   2 +
+ src/control/Script.h                |  10 +
+ src/control/Script2.cpp             |   2 +
+ src/control/Script4.cpp             |   6 +
+ src/core/Game.cpp                   |  27 +++
+ src/core/config.h                   |  14 +-
+ src/core/main.cpp                   |  13 ++
+ src/extras/Imgui_test.cpp           | 221 +++++++++++++++++--
+ src/extras/debugmenu.cpp            |   8 +
+ src/extras/imgui_test.h             |   2 +-
+ src/extras/test/ScriptCommands.cpp  | 319 ++++++++++++++++++++++++++++
+ src/extras/test/area_check_test.cpp |   5 +-
+ src/extras/test/area_check_test.h   |   2 +-
+ src/peds/PedPlacement.cpp           |   1 +
+ src/skel/skeleton.cpp               |  35 +++
+ src/skel/win/win.cpp                | 112 +++++++---
+ src/vehicles/HandlingMgr.cpp        |   1 +
+ 21 files changed, 877 insertions(+), 52 deletions(-)
+ create mode 100644 guides/code-places.md
+ create mode 100644 src/extras/test/ScriptCommands.cpp
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index 624e08d9..bdfcbb79 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -32,5 +32,8 @@
+   "C_Cpp.vcFormat.space.pointerReferenceAlignment": "right",
+   "cSpell.enabled": false,
+   "files.trimFinalNewlines": false,
+-  "files.trimTrailingWhitespace": false
++  "files.trimTrailingWhitespace": false,
++  "files.associations": {
++    "*.rh": "cpp"
++  }
+ }
+diff --git a/guides/code-places.md b/guides/code-places.md
+new file mode 100644
+index 00000000..9c3a6881
+--- /dev/null
++++ b/guides/code-places.md
+@@ -0,0 +1,118 @@
++# Useful things in the code
++Here is a list of things that seem to constantly run and can be used for events:
++
++CGame::Process - This processes pretty much everything for the game, list of items it processes:
++* CCutsceneMgr
++* CTheZones
++* CStreaming
++* Set CWindModifiers to 0
++
++<details>
++<summary> If the game is not paused (!CTimer::GetIsPaused()) </summary>
++
++        CSprite2d::SetRecipNearClip
++        CSprite2d::InitPerFrame
++        CFont::InitPerFrame
++
++		// Run the cheats
++		CPad::DoCheats
++		// Update the clock
++		CClock::Update
++
++        // Update the weather
++		CWeather::Update
++		
++        CTheScripts::Process
++		CCollision::Update
++		CScriptPaths::Update
++		CTrain::UpdateTrains();
++		CPlane::UpdatePlanes();
++		CHeli::UpdateHelis();
++		CDarkel::Update();
++		CSkidmarks::Update();
++		CAntennas::Update();
++		CGlass::Update();
++		CSceneEdit::Update();
++		CSetPieces::Update();
++		CEventList::Update();
++		CParticle::Update();
++		gFireManager.Update();
++        
++        CPopulation::Update(false);
++        CWeapon::UpdateWeapons();
++
++		// Only if CCutsceneMgr or CReplay not running, process the car generators and cranes.
++		if (!CCutsceneMgr::IsRunning())
++			CTheCarGenerators::Process();
++		if (!CReplay::IsPlayingBack())
++			CCranes::UpdateCranes();
++
++		CClouds::Update();
++		CMovingThings::Update();
++		CWaterCannons::Update();
++		CUserDisplay::Process();
++		CReplay::Update();
++
++        CWorld::Process();
++
++		gAccidentManager.Update();
++		CPacManPickups::Update();
++		CPickups::Update();
++		CGarages::Update();
++		CRubbish::Update();
++		CSpecialFX::Update();
++		CRopes::Update();
++		CTimeCycle::Update();
++
++		if (CReplay::ShouldStandardCameraBeProcessed())
++			TheCamera.Process();
++		CCullZones::Update();
++		if (!CReplay::IsPlayingBack())
++			CGameLogic::Update();
++
++		CBridge::Update();
++		CCoronas::DoSunAndMoon();
++		CCoronas::Update();
++		CShadows::UpdateStaticShadows();
++		CShadows::UpdatePermanentShadows();
++		gPhoneInfo.Update();
++
++		if (!CReplay::IsPlayingBack())
++		{
++			if (processTime < 2)
++				CCarCtrl::GenerateRandomCars();
++			CRoadBlocks::GenerateRoadBlocks();
++			CCarCtrl::RemoveDistantCars();
++			CCarCtrl::RemoveCarsIfThePoolGetsFull();
++		}
++
++</details>
++
++<details>
++<summary> CPed </summary>
++
++</details>
++
++<details>
++<summary> CAutomobile </summary>
++
++* ProcessControl - This seems to process the control for all vehicles, possibly mostly for the ped vehicles.
++* Teleport - A teleport function for vehicles, TODO Use this in cleo redux.
++
++
++</details>
++
++<details>
++<summary> CVehicle </summary>
++
++* IsLawEnforcementVehicle - Check if the vehicle is a cop car, enforcer, predator, rhino, barracks, fbi rancher, or vice chee.
++
++
++</details>
++
++
++
++<details>
++<summary> CWanted </summary>
++
++</details>
+\ No newline at end of file
+diff --git a/src/audio/AudioLogic.cpp b/src/audio/AudioLogic.cpp
+index 35ca09cd..2d94c2f1 100644
+--- a/src/audio/AudioLogic.cpp
++++ b/src/audio/AudioLogic.cpp
+@@ -4364,6 +4364,7 @@ cAudioManager::ProcessPedOneShots(cPedParams &params)
+ 			SET_SOUND_REFLECTION(TRUE);
+ 			break;
+ 		}
++
+ 		case SOUND_FALL_LAND:
+ 		case SOUND_FALL_COLLAPSE:
+ 			if (ped->bIsInTheAir)
+@@ -5164,6 +5165,7 @@ cAudioManager::ProcessPedOneShots(cPedParams &params)
+ 				m_sQueueSample.m_nSampleIndex = SFX_GOLF_CLUB_SWING;
+ 				break;
+ 			}
++
+ 			m_sQueueSample.m_nBankIndex = SFX_BANK_0;
+ 			m_sQueueSample.m_nCounter = iSound++;
+ 			narrowSoundRange = TRUE;
+@@ -5185,6 +5187,28 @@ cAudioManager::ProcessPedOneShots(cPedParams &params)
+ 			SET_SOUND_REFLECTION(TRUE);
+ 			break;
+ 		}
++
++#ifdef SWIMMING
++		case SOUND_MOVING_IN_WATER:
++			m_sQueueSample.m_nCounter = 38;
++			m_sQueueSample.m_nSampleIndex = SFX_BOAT_WATER_LOOP;
++			m_sQueueSample.m_nBankIndex = SFX_BANK_0;
++			m_sQueueSample.m_bIs2D = FALSE;
++			m_sQueueSample.m_nPriority = 3;
++			m_sQueueSample.m_nFrequency = 22050;
++			m_sQueueSample.m_nLoopCount = 0;
++			Vol = 15;
++			SET_EMITTING_VOLUME(Vol);
++			SET_LOOP_OFFSETS(m_sQueueSample.m_nSampleIndex)
++				m_sQueueSample.m_fSpeedMultiplier = 2.0f;
++			maxDist = BOAT_MOVING_OVER_WATER_MAX_DIST;
++			m_sQueueSample.m_bStatic = FALSE;
++			m_sQueueSample.m_nFramesToPlay = 6;
++			SET_SOUND_REVERB(TRUE);
++			SET_SOUND_REFLECTION(FALSE);
++			break;
++#endif
++
+ 		default:
+ 			SetupPedComments(params, sound);
+ 			continue;
+diff --git a/src/control/SceneEdit.cpp b/src/control/SceneEdit.cpp
+index 74d81327..c1276429 100644
+--- a/src/control/SceneEdit.cpp
++++ b/src/control/SceneEdit.cpp
+@@ -60,6 +60,8 @@ CMovieCommand CSceneEdit::Movie[NUM_COMMANDS_IN_MOVIE];
+ 
+ #define NUM_COMMANDS_TO_DRAW (9)
+ 
++// TODO Figure out how to use this, it might be fun to mess around with.
++
+ static const char* pCommandStrings[] = {
+ 	"do-nothing", "New Actor", "Move Actor", "Select Actor", "Delete Actor",
+ 	"New Vehicle", "Move Vehicle", "Select Vehicle", "Delete Vehicle", "Give Weapon",
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index c7c1db4a..892cf27b 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -3113,6 +3113,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 		UpdateCompareFlag(CTheZones::PointLiesWithinZone(&pos, pZone));
+ 		return 0;
+ 	}
++
++	// TODO Look into using stuff like this for my custom cheats.
+ 	case COMMAND_IS_PLAYER_PRESSING_HORN:
+ 		CollectParameters(&m_nIp, 1);
+ 		UpdateCompareFlag(CWorld::Players[ScriptParams[0]].m_pPed->GetPedState() == PED_DRIVING &&
+diff --git a/src/control/Script.h b/src/control/Script.h
+index 7f9a7717..59b2b3d5 100644
+--- a/src/control/Script.h
++++ b/src/control/Script.h
+@@ -254,6 +254,16 @@ enum {
+ 	NUM_TIMERS = 2
+ };
+ 
++#ifdef PLUGIN_SDK_TEST
++union tScriptParam {
++	unsigned int uParam;
++	int iParam;
++	float fParam;
++	void *pParam;
++	char *szParam;
++};
++#endif
++
+ class CRunningScript
+ {
+ 	enum {
+diff --git a/src/control/Script2.cpp b/src/control/Script2.cpp
+index 4e7a1c3e..ea54f4fa 100644
+--- a/src/control/Script2.cpp
++++ b/src/control/Script2.cpp
+@@ -264,6 +264,8 @@ int8 CRunningScript::ProcessCommands300To399(int32 command)
+ 			TheCamera.TakeControl(pPed, ScriptParams[1], ScriptParams[2], CAMCONTROL_SCRIPT);
+ 		return 0;
+ 	}
++
++	// TODO This might be useful
+ 	case COMMAND_RESTORE_CAMERA:
+ 		TheCamera.Restore();
+ 		return 0;
+diff --git a/src/control/Script4.cpp b/src/control/Script4.cpp
+index 16a4ddae..11b7598b 100644
+--- a/src/control/Script4.cpp
++++ b/src/control/Script4.cpp
+@@ -772,6 +772,8 @@ int8 CRunningScript::ProcessCommands800To899(int32 command)
+ 		CGarages::CloseGarage(ScriptParams[0]);
+ 		return 0;
+ 	}
++
++	// TODO This could be useful in the debug menu
+ 	case COMMAND_WARP_CHAR_FROM_CAR_TO_COORD:
+ 	{
+ 		CollectParameters(&m_nIp, 4);
+@@ -1757,6 +1759,8 @@ int8 CRunningScript::ProcessCommands900To999(int32 command)
+ 		}
+ 		return 0;
+ 	}
++
++	// TODO Use this for something in my debug menu, to unlock the door of the last used vehicle.
+ 	case COMMAND_STORE_CAR_CHAR_IS_IN_NO_SAVE:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -2095,6 +2099,8 @@ int8 CRunningScript::ProcessCommands900To999(int32 command)
+ 		DMAudio.SetMissionAudioLocation(ScriptParams[0] - 1, pos.x, pos.y, pos.z);
+ 		return 0;
+ 	}
++
++	// This could possibly be used and added as a function in my cleo redux trainer.
+ 	case COMMAND_ACTIVATE_SAVE_MENU:
+ 	{
+ 		CStats::SafeHouseVisits++;
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 4ca88678..8aa890e2 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -100,6 +100,14 @@
+ #include "modloader.h"
+ #endif
+ 
++// TODO Test this.
++#define IMGUI_TEST
++#ifdef IMGUI_TEST
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++#endif
++
+ eLevelName CGame::currLevel;
+ int32 CGame::currArea;
+ bool CGame::bDemoMode = true;
+@@ -124,6 +132,14 @@ int gameTxdSlot;
+ uint8 gameProcessPirateCheck = 0;
+ #endif
+ 
++// #define IMGUI_TEST
++// #ifdef IMGUI_TEST
++// #include "imgui.h"
++// #include "imgui_impl_dx9.h"
++// #include "imgui_impl_win32.h"
++// #include <d3d9.h>
++// #endif //IMGUI_TEST
++
+ bool DoRWStuffStartOfFrame(int16 TopRed, int16 TopGreen, int16 TopBlue, int16 BottomRed, int16 BottomGreen, int16 BottomBlue, int16 Alpha);
+ void DoRWStuffEndOfFrame(void);
+ #ifdef PS2_MENU
+@@ -288,6 +304,14 @@ CGame::InitialiseRenderWare(void)
+ 	// TODO Possibly add ImGui init to this part, use librw imguitest.
+ 	// ImGui_ImplRW_Init();
+ 
++	//ImGui_ImplDX9_Init();
++
++	// Oh wait hwnd doesn't even exist in here...
++	//ImGui_ImplWin32_Init(hwnd);
++	//ImGui_ImplDX9_Init(g_pd3dDevice);
++	//
++
++
+ 	return (true);
+ }
+ 
+@@ -945,6 +969,7 @@ void CGame::Process(void)
+ 		CSkidmarks::Update();
+ 		CAntennas::Update();
+ 		CGlass::Update();
++
+ #ifdef GTA_SCENE_EDIT
+ 		CSceneEdit::Update();
+ #endif
+@@ -997,11 +1022,13 @@ void CGame::Process(void)
+ 		CSpecialFX::Update();
+ 		CRopes::Update();
+ 		CTimeCycle::Update();
++
+ 		if (CReplay::ShouldStandardCameraBeProcessed())
+ 			TheCamera.Process();
+ 		CCullZones::Update();
+ 		if (!CReplay::IsPlayingBack())
+ 			CGameLogic::Update();
++
+ 		CBridge::Update();
+ 		CCoronas::DoSunAndMoon();
+ 		CCoronas::Update();
+diff --git a/src/core/config.h b/src/core/config.h
+index 66d2a7e2..bece6b11 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -70,11 +70,17 @@
+ // // Enable better climbing
+ // #define CLIMBING
+ 
++// Test for third person aim using the rocket launcher, from Extended Vice project
++// I will still need to add these defines to make this work.
+ // // This seems to also need the first person define.
+ // #define FIRING_AND_AIMING 
+ // // I think I mostly got this one completed also.
+ // #define FIRST_PERSON
+ 
++
++// I will need to add this to PlayerPed.cpp and Hud.cpp
++// #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++
+ // // I got the code for this implemented into here
+ // // TODO Test this
+ // #define SWIMMING
+@@ -102,14 +108,6 @@
+ #undef FLUSHABLE_STREAMING
+ #endif //MODLOADER
+ 
+-// Test for third person aim using the rocket launcher, from Extended Vice project
+-// I will still need to add these defines to make this work.
+-// #define FIRST_PERSON
+-// #define FIRING_AND_AIMING
+-
+-// I will need to add this to PlayerPed.cpp and Hud.cpp
+-// #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+-
+ // Enable the features.ini
+ // #define FEATURES_INI
+ 
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 497fca8e..42535327 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -524,6 +524,12 @@ PreAllocateRwObjects(void)
+ }
+ #endif
+ 
++/// <summary>
++/// This initalizes the debug menu.
++/// TODO Possibly add ImGui init into here.
++/// </summary>
++/// <param name="param"></param>
++/// <returns></returns>
+ static RwBool 
+ Initialise3D(void *param)
+ {
+@@ -549,6 +555,13 @@ Initialise3D(void *param)
+ 	return (FALSE);
+ }
+ 
++
++
++/// <summary>
++/// Shutdown CGame renderware, the debug menu, and RsRw Renderware.
++/// TODO Add ImGui shutdown into here.
++/// </summary>
++/// <param name=""></param>
+ static void 
+ Terminate3D(void)
+ {
+diff --git a/src/extras/Imgui_test.cpp b/src/extras/Imgui_test.cpp
+index 713ba8a6..aab5fcd0 100644
+--- a/src/extras/Imgui_test.cpp
++++ b/src/extras/Imgui_test.cpp
+@@ -12,9 +12,13 @@
+ #ifndef IMGUI_TEST
+ // I somewhat got this working so I have enabled it for now.
+ // This is most likely Windows only for now like this.
++
++// TODO Fix this to work again, and make a proper menu for it that
++// overlays the game instead of making another window.
+ //#define IMGUI_TEST
+ #endif
+ 
++// I still need to learn how to do this, and where to put it.
+ #ifdef IMGUI_TEST
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+@@ -24,6 +28,19 @@
+ 
+ #include "imgui_test.h"
+ 
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++#ifdef XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++
+ // New, ReVC functions
+ // These don't work
+ #ifdef _TEST1
+@@ -32,7 +49,7 @@
+ #include "skeleton.h"
+ #endif //_TEST1
+ 
+-#include "platform.h"
++#include "ControllerConfig.h"
+ //
+ 
+ // This code is very incomplete, copied from the example on ImGui, it would need to be integrated into the main function of ReVC
+@@ -49,6 +66,9 @@
+ // It doesn't have a mouse and the F9 keybind doesn't close it yet
+ // I'm getting close on figuring this out.
+ 
++
++// This crashes if it's open more then once.
++// TODO Figure out where exactly to hook this into here.
+ //
+ 
+ // Data
+@@ -57,18 +77,140 @@ static LPDIRECT3DDEVICE9 g_pd3dDevice = nullptr;
+ static UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
+ static D3DPRESENT_PARAMETERS g_d3dpp = {};
+ 
++// Set this as hidden by default
++bool ImGuiVCTest::done = false;
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
+ // Forward declarations of helper functions
++// TODO Disable these once I figure out how the hell to obtain the IDirect3DDevice9
++// These seem to break this.
+ bool
+ CreateDeviceD3D(HWND hWnd);
+ void
+ CleanupDeviceD3D();
+ void
+ ResetDevice();
++
++// TODO Move into win.cpp.
+ LRESULT WINAPI
+ WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ 
+ 
+-// TODO Test these
++// TODO Figure out how to get the D3D device for ReVC
++//
++void
++getD3dDevice()
++{
++
++}
++
++void
++shutdownImGui()
++{
++	ImGui_ImplDX9_Shutdown();
++	ImGui_ImplWin32_Shutdown();
++	ImGui::DestroyContext();
++
++	CleanupDeviceD3D();
++}
++
++/// <summary>
++/// This looks like it draws the mouse on the screen with the debug menu, this is from debugmenu.cpp
++/// TODO Possibly use for ImGui mouse.
++/// TODO Possibly use something to do with RwRaster for ImGui, it complains when trying to open with this.
++/// </summary>
++/// <param name=""></param>
++#ifdef DRAW_MOUSE_IMGUI
++void
++drawMouseNew(void)
++{
++	static int screenWidth, screenHeight;
++	RwRenderStateSet(rwRENDERSTATEZTESTENABLE, 0);
++	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, 0);
++	RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void *)TRUE);
++	RwRenderStateSet(rwRENDERSTATESRCBLEND, (void *)rwBLENDSRCALPHA);
++	RwRenderStateSet(rwRENDERSTATEDESTBLEND, (void *)rwBLENDINVSRCALPHA);
++	RwRenderStateSet(rwRENDERSTATEFOGENABLE, 0);
++	RwRenderStateSet(rwRENDERSTATECULLMODE, (void *)rwCULLMODECULLNONE);
++
++	RwCamera *cam = RwCameraGetCurrentCamera();
++	screenWidth = RwRasterGetWidth(RwCameraGetRaster(cam));
++	screenHeight = RwRasterGetHeight(RwCameraGetRaster(cam));
++
++	static float mouseX, mouseY;
++	static RwRaster *cursor, *arrow;
++
++	static RwImVertexIndex indices[] = { 0, 1, 2, 2, 1, 3 };
++	static RwIm2DVertex vertices[4];
++	RwIm2DVertex *vert;
++	//RwCamera *cam;
++	//cam = RwCameraGetCurrentCamera();
++	float x = mouseX;
++	float y = mouseY;
++	float w = RwRasterGetWidth(cursor);
++	float h = RwRasterGetHeight(cursor);
++	float recipz = 1.0f/RwCameraGetNearClipPlane(cam);
++
++	float umin = HALFPX / w;
++	float vmin = HALFPX / h;
++	float umax = (w + HALFPX) / w;
++	float vmax = (h + HALFPX) / h;
++
++	vert = vertices;
++	RwIm2DVertexSetScreenX(vert, x);
++	RwIm2DVertexSetScreenY(vert, y);
++	RwIm2DVertexSetScreenZ(vert, RwIm2DGetNearScreenZ());
++	RwIm2DVertexSetCameraZ(vert, RwCameraGetNearClipPlane(cam));
++	RwIm2DVertexSetRecipCameraZ(vert, recipz);
++	RwIm2DVertexSetIntRGBA(vert, 255, 255, 255, 255);
++	RwIm2DVertexSetU(vert, umin, recipz);
++	RwIm2DVertexSetV(vert, vmin, recipz);
++	vert++;
++
++	RwIm2DVertexSetScreenX(vert, x+w);
++	RwIm2DVertexSetScreenY(vert, y);
++	RwIm2DVertexSetScreenZ(vert, RwIm2DGetNearScreenZ());
++	RwIm2DVertexSetCameraZ(vert, RwCameraGetNearClipPlane(cam));
++	RwIm2DVertexSetRecipCameraZ(vert, recipz);
++	RwIm2DVertexSetIntRGBA(vert, 255, 255, 255, 255);
++	RwIm2DVertexSetU(vert, umax, recipz);
++	RwIm2DVertexSetV(vert, vmin, recipz);
++	vert++;
++
++	RwIm2DVertexSetScreenX(vert, x);
++	RwIm2DVertexSetScreenY(vert, y+h);
++	RwIm2DVertexSetScreenZ(vert, RwIm2DGetNearScreenZ());
++	RwIm2DVertexSetCameraZ(vert, RwCameraGetNearClipPlane(cam));
++	RwIm2DVertexSetRecipCameraZ(vert, recipz);
++	RwIm2DVertexSetIntRGBA(vert, 255, 255, 255, 255);
++	RwIm2DVertexSetU(vert, umin, recipz);
++	RwIm2DVertexSetV(vert, vmax, recipz);
++	vert++;
++
++	RwIm2DVertexSetScreenX(vert, x+w);
++	RwIm2DVertexSetScreenY(vert, y+h);
++	RwIm2DVertexSetScreenZ(vert, RwIm2DGetNearScreenZ());
++	RwIm2DVertexSetCameraZ(vert, RwCameraGetNearClipPlane(cam));
++	RwIm2DVertexSetRecipCameraZ(vert, recipz);
++	RwIm2DVertexSetIntRGBA(vert, 255, 255, 255, 255);
++	RwIm2DVertexSetU(vert, umax, recipz);
++	RwIm2DVertexSetV(vert, vmax, recipz);
++	vert++;
++
++	RwRenderStateSet(rwRENDERSTATETEXTURERASTER, cursor);
++	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
++	RwIm2DRenderIndexedPrimitive(rwPRIMTYPETRILIST, vertices, 4, indices, 6);
++}
++#endif //DRAW_MOUSE_IMGUI
++
++
++
++/// <summary>
++/// This should get the io and set it for ImGui, although this is probably best done in the other functions.
++/// TODO Test these
++/// </summary>
++/// <returns></returns>
+ ImGuiIO
+ getImGuiIo()
+ {
+@@ -83,6 +225,12 @@ getImGuiIo()
+ 	return io;
+ }
+ 
++/// <summary>
++/// This is the test window that shows up.
++/// </summary>
++/// <param name="show_demo_window">Shows the demo window</param>
++/// <param name="show_another_window">Shows the test window</param>
++/// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
+ void
+ Window1(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
+ {
+@@ -143,7 +291,10 @@ KeyboardButtonTest()
+ }
+ #endif //_TEST1
+ 
+-
++/// <summary>
++/// TODO Fix this to work, it crashes if opened multiple times.
++/// TODO Fix the mouse to work in this, override the ReVC mouse code and kill it until this keybind is pressed.
++/// </summary>
+ void
+ ImGuiMainLoop()
+ {
+@@ -155,23 +306,40 @@ ImGuiMainLoop()
+ 
+ 	// Main loop
+ 	// TODO Possibly make boolean public, and pressing f9 on ImGui press will set this back to false
+-	bool done = false;
++	// bool done = false;
++
++	while(!ImGuiVCTest::done) {
+ 
+-	while(!done) {
++		// This works for closing it! It kills the game but it closes the window..
++		// TODO Fix this to not kill the game.
++		if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
++			ImGuiVCTest::done = !ImGuiVCTest::done;
++			//shutdownImGui();
++			//return;
++		}
++
++		// This just crashes it if the keybind is the same as in win.cpp.
++		//if(KEYDOWN(rsF9))
++		//{ 
++		//	ImGuiVCTest::done = !ImGuiVCTest::done;
++		//	return;
++		//}
+ #ifdef _TEST1
+ 		// Run this to possibly stop the menu
+ 		KeyboardButtonTest();
+ #endif //_TEST1
+ 
++		//if(ImGuiVCTest::done) return;
++
+ 		// Poll and handle messages (inputs, window resize, etc.)
+ 		// See the WndProc() function below for our to dispatch events to the Win32 backend.
+ 		MSG msg;
+ 		while(::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
+ 			::TranslateMessage(&msg);
+ 			::DispatchMessage(&msg);
+-			if(msg.message == WM_QUIT) done = true;
++			if(msg.message == WM_QUIT) ImGuiVCTest::done = true;
+ 		}
+-		if(done) break;
++		
+ 
+ 		// Handle window resize (we don't resize directly in the WM_SIZE handler)
+ 		if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
+@@ -207,8 +375,16 @@ ImGuiMainLoop()
+ 			Window1(true, true, clear_color);
+ 		}
+ 
++		
++
+ 		// Rendering
+ 		ImGui::EndFrame();
++
++		// Test for drawing the mouse, this is from the debug menu and crashes it.
++#ifdef DRAW_MOUSE_IMGUI
++		drawMouseNew();
++#endif //DRAW_MOUSE_IMGUI
++		
+ 		g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+ 		g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+ 		g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+@@ -227,10 +403,16 @@ ImGuiMainLoop()
+ 	}
+ }
+ 
++/// <summary>
++/// This creates a test ImGui window
++/// TODO Make this cleanup, I think it's crashing because it isn't cleaning up the window.
++/// </summary>
+ void
+ ImGuiVCTest::CreateImGuiWindow()
+ {
+ 	// Test, what will this do?
++	// Hmm, I found this in win.cpp, under UINT GetBestRefreshRate(UINT width, UINT height, UINT depth)
++	LPDIRECT3D9 d3d = Direct3DCreate9(D3D_SDK_VERSION);
+ 	//_InputShutdownMouse();
+ 	// 
+ 	//
+@@ -266,6 +448,7 @@ ImGuiVCTest::CreateImGuiWindow()
+ 	// Setup Platform/Renderer backends
+ 	ImGui_ImplWin32_Init(hwnd);
+ 	ImGui_ImplDX9_Init(g_pd3dDevice);
++	//ImGui_ImplDX9_Init(d3d);
+ 
+ 	// Load Fonts
+ 	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
+@@ -292,20 +475,24 @@ ImGuiVCTest::CreateImGuiWindow()
+ 
+ 	// Main loop
+ 	// TODO Move loop code into another function.
+-	bool done = false;
++	// bool done = false;
+ 	// Run the main loop for ImGui.
+ 	ImGuiMainLoop();
+ 	//
+ 
+-	// Shutdown DX9 for this and cleanup
+-	ImGui_ImplDX9_Shutdown();
+-	ImGui_ImplWin32_Shutdown();
+-	ImGui::DestroyContext();
++	if(ImGuiVCTest::done) { 
++		shutdownImGui();
++	}
+ 
+-	CleanupDeviceD3D();
++	//// Shutdown DX9 for this and cleanup
++	//ImGui_ImplDX9_Shutdown();
++	//ImGui_ImplWin32_Shutdown();
++	//ImGui::DestroyContext();
++
++	//CleanupDeviceD3D();
+ 	::DestroyWindow(hwnd);
+ 	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+-	//
++	////
+ 
+ }
+ 
+@@ -357,6 +544,9 @@ ResetDevice()
+ extern IMGUI_IMPL_API LRESULT
+ ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ 
++// TODO Move this into win.cpp or somewhere with WinMain or MainWndProc, I think it's just creating its own window from this anyways.
++// There is an InitApplication under win.cpp that could possibly be useful.
++// 
+ // Win32 message handler
+ // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
+ // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of the mouse data.
+@@ -365,7 +555,8 @@ ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
+ LRESULT WINAPI
+ WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+ {
+-	if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
++	// TODO Test moving into win.cpp
++	//if(ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam)) return true;
+ 
+ 	switch(msg) {
+ 	case WM_SIZE:
+diff --git a/src/extras/debugmenu.cpp b/src/extras/debugmenu.cpp
+index 533b97f5..810e8afe 100644
+--- a/src/extras/debugmenu.cpp
++++ b/src/extras/debugmenu.cpp
+@@ -1020,7 +1020,9 @@ DebugMenuProcess(void)
+ 	if(!menuOn)
+ 		return;
+ 
++	// TODO Look into this, I could use this for something else later.
+ 	pad->DisablePlayerControls = 1;
++
+ 	// TODO: this could happen earlier
+ 	if(!menuInitialized)
+ 		DebugMenuInit();
+@@ -1170,6 +1172,11 @@ drawArrow(RwRect r, int direction, int style)
+ 	RwIm2DRenderIndexedPrimitive(rwPRIMTYPETRILIST, arrowVerts, 4, indices, 6);
+ }
+ 
++/// <summary>
++/// This looks like it draws the mouse on the screen with the debug menu.
++/// TODO Possibly use for ImGui mouse.
++/// </summary>
++/// <param name=""></param>
+ void
+ drawMouse(void)
+ {
+@@ -1242,6 +1249,7 @@ drawMouse(void)
+  * Generate interfaces
+  */
+ 
++// TODO Figure out how exactly these are working
+ 
+ #define X(NAME, TYPE, unused1, unused2) \
+ MenuEntry*																			\
+diff --git a/src/extras/imgui_test.h b/src/extras/imgui_test.h
+index 32fd382c..3bbe0773 100644
+--- a/src/extras/imgui_test.h
++++ b/src/extras/imgui_test.h
+@@ -4,5 +4,5 @@ class ImGuiVCTest
+ public:
+ 	static void CreateImGuiWindow();
+ 	// If this is true, then ImGui should hide.
+-	bool done;
++	static bool done;
+ };
+\ No newline at end of file
+diff --git a/src/extras/test/ScriptCommands.cpp b/src/extras/test/ScriptCommands.cpp
+new file mode 100644
+index 00000000..0f9f1d30
+--- /dev/null
++++ b/src/extras/test/ScriptCommands.cpp
+@@ -0,0 +1,319 @@
++/*
++    Plugin-SDK (Grand Theft Auto) SHARED source file
++    Authors: GTA Community. See more here
++    https://github.com/DK22Pac/plugin-sdk
++    Do not delete this comment block. Respect others' work!
++*/
++
++
++
++// I got this to build by adding something from the plugin-sdk into the script.h
++// It still doesn't work though.
++// This now crashes to the error under Read2BytesFromScript in Script.h, instead of refusing to build
++#ifdef PLUGIN_SDK_TEST
++
++#define GTAVC
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++#ifdef XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++
++#if defined(GTA3) || defined(GTAVC) || defined(GTASA) || defined(GTASA_UNREAL)
++//#include "ScriptCommands.h"
++#include "scriptcommands_test.h"
++#include "Pools.h"
++//#include "Error.h"
++//#include "CPools.h"
++
++using namespace plugin;
++
++#ifdef GTASA
++#define SCRIPT_COMMANDS_LVAR_MAX_INDEX 31
++#else
++#define SCRIPT_COMMANDS_LVAR_MAX_INDEX 15
++#endif
++
++scripting::ScriptCode::VarToSet::VarToSet(unsigned int _varIndex, void *_pVar, ScriptResultVarType _varType) {
++    varIndex = _varIndex;
++    pVar = _pVar;
++    varType = _varType;
++}
++
++scripting::ScriptCode::ScriptCode(short commandId) {
++    capacity = 32;
++    data = new unsigned char[32];
++    size = 0;
++    varIndexCounter = 0;
++    if (commandId != -1) {
++        AddBytes(reinterpret_cast<unsigned char *>(&commandId), 2);
++    }
++}
++
++scripting::ScriptCode::~ScriptCode() {
++    delete[] data;
++}
++
++void scripting::ScriptCode::AddParameterDescription(unsigned char paramType) {
++    AddBytes(&paramType, 1);
++}
++
++void scripting::ScriptCode::AddBytes(unsigned char *bytes, unsigned int count) {
++    unsigned int newSize = size + count;
++    if (newSize > capacity) {
++        while (newSize > capacity)
++            capacity += 32;
++        unsigned char *newData = new unsigned char[capacity];
++        memcpy(newData, data, size);
++        delete[] data;
++        data = newData;
++    }
++    memcpy(&data[size], bytes, count);
++    size = newSize;
++}
++
++unsigned char *scripting::ScriptCode::GetData() { return data; };
++
++// TODO Fix this, this looks like the final piece to possibly getting a beta build of the plugin-sdk working in ReVC!
++// 
++#ifndef RAGE
++void scripting::ScriptCode::SaveResultVariables(CRunningScript *script) {
++//#define LocalVar (*(tScriptParam*)&script->m_aLocalVars[varToSet.varIndex])
++#define LocalVar (*(tScriptParam *)&script->m_anLocalVariables[varToSet.varIndex])
++    for (auto &varToSet : varsToSet) {
++        if (varToSet.varType == SCRIPT_RESULT_VAR_NUMBER) {
++            *reinterpret_cast<unsigned int *>(varToSet.pVar) = LocalVar.uParam;
++        }
++        else if (varToSet.varType == SCRIPT_RESULT_VAR_STRING) {
++            char *pStr = reinterpret_cast<char *>(varToSet.pVar);
++            strncpy(pStr, reinterpret_cast<char *>(&LocalVar.iParam), 15);
++            pStr[15] = '\0';
++        }
++        else if (varToSet.varType == SCRIPT_RESULT_VAR_PED) {
++            CPed *result = nullptr;
++            if (LocalVar.iParam != -1)
++                result = CPools::GetPed(LocalVar.iParam);
++            *reinterpret_cast<CPed **>(varToSet.pVar) = result;
++        }
++        else if (varToSet.varType == SCRIPT_RESULT_VAR_VEHICLE) {
++            CVehicle *result = nullptr;
++            if (LocalVar.iParam != -1)
++                result = CPools::GetVehicle(LocalVar.iParam);
++            *reinterpret_cast<CVehicle **>(varToSet.pVar) = result;
++        }
++        // It breaks with this
++        //else if (varToSet.varType == SCRIPT_RESULT_VAR_OBJECT) {
++        //    CObject *result = nullptr;
++        //    if (LocalVar.iParam != -1)
++        //        result = CPools::GetObject(LocalVar.iParam);
++        //    *reinterpret_cast<CObject **>(varToSet.pVar) = result;
++        //}
++    }
++}
++#endif
++
++/*
++
++        ARGUMENT_END = 0,
++        ARGUMENT_INT32,
++        ARGUMENT_GLOBALVAR,
++        ARGUMENT_LOCALVAR,
++        ARGUMENT_INT8,
++        ARGUMENT_INT16,
++        ARGUMENT_FLOAT
++*/
++
++void
++scripting::ScriptCode::operator<<(char n)
++{
++	AddParameterDescription(ARGUMENT_INT8);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 1);
++}
++void
++scripting::ScriptCode::operator<<(unsigned char n)
++{
++	AddParameterDescription(ARGUMENT_INT8);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 1);
++}
++void
++scripting::ScriptCode::operator<<(short n)
++{
++	AddParameterDescription(ARGUMENT_INT16);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 2);
++}
++void
++scripting::ScriptCode::operator<<(unsigned short n)
++{
++	AddParameterDescription(ARGUMENT_INT16);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 2);
++}
++void
++scripting::ScriptCode::operator<<(int n)
++{
++	AddParameterDescription(ARGUMENT_INT32);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 4);
++}
++void
++scripting::ScriptCode::operator<<(unsigned int n)
++{
++	AddParameterDescription(ARGUMENT_INT32);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 4);
++}
++#ifdef GTA3
++void scripting::ScriptCode::operator<<(float n) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_FLOAT);
++    short s = static_cast<short>(n * 16);
++    AddBytes(reinterpret_cast<unsigned char *>(&s), 2);
++}
++
++void scripting::ScriptCode::operator<<(double n) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_FLOAT);
++    short s = static_cast<short>(static_cast<float>(n) * 16);
++    AddBytes(reinterpret_cast<unsigned char *>(&s), 2);
++}
++#else
++void
++scripting::ScriptCode::operator<<(float n)
++{
++	AddParameterDescription(ARGUMENT_FLOAT);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 4);
++}
++void
++scripting::ScriptCode::operator<<(double n)
++{
++	AddParameterDescription(ARGUMENT_FLOAT);
++	float f = static_cast<float>(n);
++	AddBytes(reinterpret_cast<unsigned char *>(&f), 4);
++}
++#endif
++void
++scripting::ScriptCode::operator<<(ScriptCommandEndParameter)
++{
++	AddParameterDescription(ARGUMENT_END);
++}
++
++#ifdef GTASA
++void scripting::ScriptCode::operator<<(char *str) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_PASCAL_STRING);
++    unsigned int length = strlen(str);
++    AddParameterDescription(length);
++    AddBytes(reinterpret_cast<unsigned char *>(str), length);
++}
++
++void scripting::ScriptCode::operator<<(const char *str) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_PASCAL_STRING);
++    unsigned int length = strlen(str);
++    AddParameterDescription(length);
++    AddBytes(reinterpret_cast<unsigned char *>(const_cast<char *>(str)), length);
++}
++
++void scripting::ScriptCode::operator<<(char(*p)[16]) {
++    AddParameterDescription(SCRIPTPARAM_LOCAL_LONG_STRING_VARIABLE);
++    if (varIndexCounter >= 28)
++        Error("ScriptCode::operator<<(char **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(*p), SCRIPT_RESULT_VAR_STRING);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    varIndexCounter += 4;
++}
++#else
++void scripting::ScriptCode::operator<<(char *str) {
++    static char tmpString[8];
++    strncpy(tmpString, str, 7);
++    tmpString[7] = '\0';
++    AddBytes(reinterpret_cast<unsigned char *>(tmpString), 8);
++}
++
++void scripting::ScriptCode::operator<<(const char *str) {
++    static char tmpString[8];
++    strncpy(tmpString, str, 7);
++    tmpString[7] = '\0';
++    AddBytes(reinterpret_cast<unsigned char *>(const_cast<char *>(tmpString)), 8);
++}
++#endif
++
++void scripting::ScriptCode::operator<<(float *p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        //Error("ScriptCode::operator<<(float *p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_NUMBER);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(int *p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        //Error("ScriptCode::operator<<(int *p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_NUMBER);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(unsigned int *p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++    //    Error("ScriptCode::operator<<(unsigned int *p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_NUMBER);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(CPed *n) {
++    if (!n)
++        operator<<(-1);
++    else
++        operator<<(CPools::GetPedRef(n));
++}
++
++void scripting::ScriptCode::operator<<(CVehicle *n) {
++    if (!n)
++        operator<<(-1);
++    else
++        operator<<(CPools::GetVehicleRef(n));
++}
++
++void scripting::ScriptCode::operator<<(CObject *n) {
++    if (!n)
++        operator<<(-1);
++    else
++        operator<<(CPools::GetObjectRef(n));
++}
++
++void scripting::ScriptCode::operator<<(CPed **p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++    //    Error("ScriptCode::operator<<(CPed **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_PED);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(CVehicle **p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        Error("ScriptCode::operator<<(CVehicle **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_VEHICLE);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(CObject **p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        Error("ScriptCode::operator<<(CObject **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_OBJECT);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++#endif
++
++#endif //PLUGIN_SDK_TEST
+\ No newline at end of file
+diff --git a/src/extras/test/area_check_test.cpp b/src/extras/test/area_check_test.cpp
+index 0931d7f0..d3ffa0b5 100644
+--- a/src/extras/test/area_check_test.cpp
++++ b/src/extras/test/area_check_test.cpp
+@@ -26,6 +26,8 @@
+ #include "Placeable.h"
+ #include "World.h"
+ 
++#include "area_check_test.h"
++
+ 
+ // Idk how I would use the commands in here like in plugin sdk
+ // COMMAND_IS_PLAYER_IN_AREA_3D
+@@ -36,8 +38,7 @@
+ /// COMMAND_IS_PLAYER_IN_AREA_3D
+ /// </summary>
+ void
+-// Area3DCheckCommand()
+-Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2)
++AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2)
+ {
+ 	// Original:
+ 	// CPlayerPed pPlayerPed = FindPlayerPed();
+diff --git a/src/extras/test/area_check_test.h b/src/extras/test/area_check_test.h
+index 6f23ea17..8c6e835b 100644
+--- a/src/extras/test/area_check_test.h
++++ b/src/extras/test/area_check_test.h
+@@ -3,5 +3,5 @@
+ class AreaCheckTest {
+ public:
+ 	// Reimplemtation of COMMAND_IS_PLAYER_IN_AREA_3D as a helper function for C++.
+-	void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
++	static void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
+ };
+\ No newline at end of file
+diff --git a/src/peds/PedPlacement.cpp b/src/peds/PedPlacement.cpp
+index 840d33fc..8ffe250c 100644
+--- a/src/peds/PedPlacement.cpp
++++ b/src/peds/PedPlacement.cpp
+@@ -4,6 +4,7 @@
+ #include "PedPlacement.h"
+ #include "World.h"
+ 
++// TODO Possibly use this for something in custom_cheats.cpp
+ bool
+ CPedPlacement::FindZCoorForPed(CVector* pos)
+ {
+diff --git a/src/skel/skeleton.cpp b/src/skel/skeleton.cpp
+index 2bb23460..aa16a4c8 100644
+--- a/src/skel/skeleton.cpp
++++ b/src/skel/skeleton.cpp
+@@ -13,6 +13,28 @@
+ #include "main.h"
+ #include "MemoryHeap.h"
+ 
++#ifdef _TEST3
++#ifdef _WIN32
++#include <Windows.h>
++
++#include <d3d9.h>
++#include <ddraw.h>
++#include <DShow.h>
++
++#endif //_WIN32
++
++#endif //_TEST3
++
++#ifdef _TEST3
++#ifdef _WIN32
++#define IMGUI_TEST
++#ifdef IMGUI_TEST
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#endif //IMGUI_TEST
++#endif //_WIN32
++#endif //_TEST3
++
+ static RwBool               DefaultVideoMode = TRUE;
+ 
+ RsGlobalType                RsGlobal;
+@@ -362,6 +384,19 @@ RsRwInitialize(void *displayID)
+ 		return (FALSE);
+ 	}
+ 
++	/*
++	 * ImGui Test
++	 * TODO Figure out how to implement this
++	 */
++
++#ifdef _WIN32
++#ifdef IMGUI_TEST
++	//LPDIRECT3D9 d3d = Direct3DCreate9(D3D_SDK_VERSION);
++	//IDirect3DDevice9 d3d = Direct3DCreate9Ex(D3D_SDK_VERSION);
++	//ImGui_ImplDX9_Init(d3d);
++#endif //IMGUI_TEST
++#endif
++
+ 	/*
+ 	 * Register loaders for an image with a particular file extension...
+ 	 */
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index c87f6643..63c9b311 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -1,3 +1,5 @@
++// TODO Split up this file, it's too big to go through all at once.
++
+ #if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
+ 
+ #define _WIN32_WINDOWS 0x0500
+@@ -71,6 +73,19 @@
+ // #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ #include "imgui_test.h"
++
++// #include "imgui.h"
++// #include "imgui_impl_dx9.h"
++ #include "imgui_impl_win32.h"
++
++// Forward declare message handler from imgui_impl_win32.cpp
++// Well this pisses off the MainWndProc..
++// This finally builds like this... Still crashes though
++extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++LRESULT WINAPI
++MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++
++
+ // #include "imgui.h"
+ // #include "imgui_impl_dx9.h"
+ // #include "imgui_impl_win32.h"
+@@ -1015,15 +1030,41 @@ void HandleGraphEvent(void)
+ /*
+  *****************************************************************************
+  */ 
++//#define _IMGUI_TEST
+ LRESULT CALLBACK
+ MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+ 	POINTS points;
+ 	static BOOL noMemory = FALSE;
+ 
++
++	// TODO Figure out why this is _IMGUI_TEST instead of IMGUI_TEST
++	
++	// #define _IMGUI_TEST
+ 	#ifdef _IMGUI_TEST
+-	if(ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam)) { return true; }
++	if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
++	#endif
++	#undef _IMGUI_TEST
++
++	#ifdef _IMGUI_TEST
++
++		// Setup Dear ImGui context
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	(void)io;
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++	                                                      // Setup Dear ImGui style
++	ImGui::StyleColorsDark();
++	// ImGui::StyleColorsLight();
++
++	// Setup Platform/Renderer backends
++	ImGui_ImplWin32_Init(window);
++	// TODO Figure out how to get this, I want to hook this into the games d3d device, not create my own
++	//ImGui_ImplDX9_Init(g_pd3dDevice);
+ 	#endif //_IMGUI_TEST
++	#undef _IMGUI_TEST
+ 	
+ 	switch( message )
+ 	{
+@@ -2073,7 +2114,7 @@ void HandleExit()
+ // I have a better test of this in the imgui_test.cpp, this just complains that stuff is already defined.
+ //#define _IMGUI_TEST
+ 
+-// #define _IMGUI_TEST
++ //#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+@@ -2212,6 +2253,12 @@ InitializeD3D(HWND hwnd, WNDCLASSEXW wc)
+  *****************************************************************************
+  * Main Thread (Possibly for the dll or exe?)
+  */
++
++///////
++// Test moving into win_new.cpp in src/extras/test
++
++#ifndef _SPLIT_WIN_FILE
++////
+ int PASCAL
+ WinMain(HINSTANCE instance, 
+ 		HINSTANCE prevInstance	__RWUNUSED__, 
+@@ -2817,31 +2864,40 @@ CMenuManager cMenuManager = CMenuManager();
+ 					{
+ 						GetWindowPlacement(PSGLOBAL(window), &wp);
+ 						
+-						// Quick ImGui test
+-						// This shows up if I don't have a keybind, cannot be toggled back off though.
+-					        //ImGuiVCTest::CreateImGuiWindow();
+-						 //#define _TEST1
+-						#ifdef _TEST1
++						if (wp.showCmd != SW_SHOWMINIMIZED)
++							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
+-						#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-						if (KEYDOWN(rsF9))
+ 
+-						{
+-						//ImGuiVCTest::CreateImGuiWindow();
++													//
++					        // Quick ImGui test
++					        // This shows up if I don't have a keybind, cannot be toggled back off though.
++					         //ImGuiVCTest::CreateImGuiWindow();
++//#define _TEST1
++#ifdef _TEST1
+ 
+-							//if (ImGuiVCTest::done) 
+-							//{ 
+-							//	ImGuiVCTest::CreateImGuiWindow();
+-							//}
+-							//ImGuiVCTest::done = !ImGuiVCTest::done;
+-						}
+-						#endif
+-						#undef _TEST1
+-						//
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++					        // if (KEYDOWN(rsF9))
+ 
+-						if (wp.showCmd != SW_SHOWMINIMIZED)
+-							RsEventHandler(rsFRONTENDIDLE, nil);
++					        if(ControlsManager.GetIsKeyboardKeyDown(rsF9))
++
++					        {
++						        ImGuiVCTest::done = !ImGuiVCTest::done;
++						        ImGuiVCTest::CreateImGuiWindow();
++
++						        // if (ImGuiVCTest::done)
++						        //{
++						        //	ImGuiVCTest::CreateImGuiWindow();
++						        // }
++						        //
++					        }
++#endif
++#undef _TEST1
++					        //
++					        //
+ 
++						//************ 
++						// Begin Fast Loader 
++						// ************/
+ 						// This seems to work as a fast loader, copied from Extended Vice project.
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP 
+ 
+@@ -2883,7 +2939,10 @@ CMenuManager cMenuManager = CMenuManager();
+ 							        FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 						        //}
+ 					        }
+-#endif
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP 
++						//***************** 
++						// End Fast Loader 
++						// ************/
+ 
+ 						//
+ 
+@@ -2963,6 +3022,8 @@ CMenuManager cMenuManager = CMenuManager();
+ 							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
+ 						
++
++
+ 						//********************
+ 						// Begin my new ImGui test
+ 						//********************
+@@ -2982,7 +3043,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 							// New ImGui test, somewhat works I just need to figure out how to hook into the game itself,
+ 							// instead of freezing it.
+-							// #define _TEST1
++							 //#define _TEST1
+ 							#ifdef _TEST1
+ 							#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 						        CControllerConfigManager configManager = CControllerConfigManager();
+@@ -3557,6 +3618,7 @@ void _InputShutdownMouse()
+ 	SAFE_RELEASE(PSGLOBAL(mouse));
+ }
+ 
++// TODO Possibly use this for unlocking the mouse for ImGui.
+ bool _InputMouseNeedsExclusive(void)
+ {
+ 	// FIX: I don't know why R* needed that, but it causes infamous mouse bug on modern systems.
+@@ -4045,3 +4107,5 @@ int strncasecmp(const char *str1, const char *str2, size_t len)
+ }
+ #endif
+ #endif
++
++#endif //!_SPLIT_WIN_FILE
+diff --git a/src/vehicles/HandlingMgr.cpp b/src/vehicles/HandlingMgr.cpp
+index 8dcb4074..34375b97 100644
+--- a/src/vehicles/HandlingMgr.cpp
++++ b/src/vehicles/HandlingMgr.cpp
+@@ -156,6 +156,7 @@ cHandlingDataMgr::LoadHandlingData(void)
+ 	tBoatHandlingData *boatHandling;
+ 	tBikeHandlingData *bikeHandling;
+ 
++	// TODO Move into ViceExtended\data
+ 	CFileMgr::SetDir("DATA");
+ #ifdef MODLOADER // handling.cfg
+ 	ModLoader_HandlingCfg(HandlingFilename, work_buff, sizeof(work_buff), "r");
+-- 
+2.45.1.windows.1
+

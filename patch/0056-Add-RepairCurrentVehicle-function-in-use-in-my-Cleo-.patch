@@ -1,0 +1,72 @@
+From 83ef792960e3e06a389def4906b83e58183d306d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 18:33:31 -0500
+Subject: [PATCH 12/13] Add RepairCurrentVehicle function, in use in my Cleo
+ Redux menu.
+
+---
+ src/extras/functions/vehicle_functions.cpp | 33 ++++++++++++++++++++++
+ src/extras/functions/vehicle_functions.h   |  3 ++
+ 2 files changed, 36 insertions(+)
+
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 6d269f69..803abb3f 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -76,6 +76,39 @@
+ 
+ //
+ 
++/// <summary>
++/// Repair the current players vehicle.
++/// I added this mostly for use in my Cleo Redux menu.
++/// Took the idea from Garages.cpp
++/// </summary>
++void
++VehicleFunctions::RepairCurrentVehicle()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	CVehicle *playerVeh = pPed->m_pMyVehicle;
++
++	// Copied this part from vehicleTest in custom_cheats.cpp
++	// Check if player is in a vehicle and not currently entering a vehicle.
++	if(!pPed->EnteringCar() && pPed->bInVehicle) 
++	{
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++		currentVeh->m_fHealth = 1000;
++
++		// Determine if the vehicle is a car or bike.
++		if(currentVeh->IsCar()) {
++			((CAutomobile*)currentVeh)->Fix();
++		} else {
++			((CBike *)currentVeh)->Fix();
++		}
++		
++		CHud::SetHelpMessage(TheText.Get("CHEAT1"), false, false);
++	// Possibly add a not in a vehicle message.
++	//} else {
++		//CHud::SetHelpMessage()
++	}
++
++}
+ 
+ // TODO Replicate this from the Scripts:
+ /*
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index d76f652b..a6a7df3f 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -34,6 +34,9 @@ public:
+ 	// TODO Test this
+ 	static void UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY);
+ 
++	// Repair vehicle
++	static void RepairCurrentVehicle();
++
+ 	#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 	static void EnableUpsideDownExplosions();
+ 	static void DisableUpsideDownExplosions();
+-- 
+2.45.1.windows.1
+

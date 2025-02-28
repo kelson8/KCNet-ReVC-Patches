@@ -1,0 +1,781 @@
+From 62133da2c587a2f26c0e0c98d798bc727cde184a Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 04:28:50 -0500
+Subject: [PATCH 02/13] Document some stuff, add some spacing. Add
+ PLUGIN_SDK_TEST to debug_functions and a couple other spots. Add
+ UnlockAllCarDoorsInArea test in vehicle_functions. Add modifying cop weapons
+ using the debug menu.
+
+Add test for giving player the rc car.
+Add test for enabling/disabling police spike strips.
+Add patches folder to gitignore.
+---
+ .gitignore                                 |   3 +
+ src/control/GameLogic.cpp                  |   3 +
+ src/control/Garages.cpp                    |  33 +++-
+ src/extras/debug/debug_functions.cpp       |  12 ++
+ src/extras/functions/vehicle_functions.cpp |  72 ++++++++
+ src/extras/functions/vehicle_functions.h   |   9 +
+ src/extras/test/cheats/custom_cheats.cpp   | 184 +++++++++++++++++++--
+ src/extras/test/cheats/custom_cheats.h     |  33 +++-
+ src/vehicles/Automobile.cpp                |  61 ++++++-
+ 9 files changed, 395 insertions(+), 15 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index 26670b0d..9138c6f5 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,6 +3,9 @@
+ ##
+ ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
+ 
++# Patch files
++patches/
++
+ # User-specific files
+ *.rsuser
+ *.suo
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 63c685d1..5926a879 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -96,6 +96,9 @@ CGameLogic::SortOutStreamingAndMemory(const CVector &pos)
+ 	CTimer::Update();
+ }
+ 
++/// <summary>
++/// Main game logic updating
++/// </summary>
+ void
+ CGameLogic::Update()
+ {
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index c2428c7c..496410cf 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -235,30 +235,40 @@ int16 CGarages::AddOne(float X1, float Y1, float Z1, float X2, float Y2, float X
+ 		assert(0);
+ 		return NumGarages++;
+ 	}
++
+ 	CGarage* pGarage = &aGarages[NumGarages];
+ 	pGarage->m_fInfX = Min(Min(Min(X1, X2), X3), X2 + X3 - X1);
+ 	pGarage->m_fSupX = Max(Max(X1, X2), X3);
++
+ 	pGarage->m_fInfY = Min(Min(Min(Y1, Y2), Y3), Y2 + Y3 - Y1);
+ 	pGarage->m_fSupY = Max(Max(Y1, Y2), Y3);
++
+ 	pGarage->m_vecCorner1 = CVector(X1, Y1, Z1);
+ 	pGarage->m_fInfZ = Z1;
++
+ 	pGarage->m_vDir1 = CVector2D(X2 - X1, Y2 - Y1);
+ 	pGarage->m_vDir2 = CVector2D(X3 - X1, Y3 - Y1);
+ 	pGarage->m_fSupZ = Z2;
++
+ 	pGarage->m_nMaxStoredCars = NUM_GARAGE_STORED_CARS;
++
+ 	pGarage->m_fDir1Len = pGarage->m_vDir1.Magnitude();
+ 	pGarage->m_fDir2Len = pGarage->m_vDir2.Magnitude();
++
+ 	pGarage->m_vDir1 /= pGarage->m_fDir1Len;
+ 	pGarage->m_vDir2 /= pGarage->m_fDir2Len;
++
+ 	pGarage->m_pDoor1 = nil;
+ 	pGarage->m_pDoor2 = nil;
+ 	pGarage->m_fDoor1Z = Z1;
+ 	pGarage->m_fDoor2Z = Z1;
+ 	pGarage->m_eGarageType = type;
++
+ 	pGarage->m_bRecreateDoorOnNextRefresh = false;
+ 	pGarage->m_bRotatedDoor = false;
+ 	pGarage->m_bCameraFollowsPlayer = false;
+ 	pGarage->RefreshDoorPointers(true);
++
+ 	if (pGarage->m_pDoor1) {
+ 		pGarage->m_fDoor1Z = pGarage->m_pDoor1->GetPosition().z;
+ 		pGarage->m_fDoor1X = pGarage->m_pDoor1->GetPosition().x;
+@@ -269,14 +279,19 @@ int16 CGarages::AddOne(float X1, float Y1, float Z1, float X2, float Y2, float X
+ 		pGarage->m_fDoor2X = pGarage->m_pDoor2->GetPosition().x;
+ 		pGarage->m_fDoor2Y = pGarage->m_pDoor2->GetPosition().y;
+ 	}
++
+ 	pGarage->m_fDoorHeight = pGarage->m_pDoor1 ? FindDoorHeightForMI(pGarage->m_pDoor1->GetModelIndex()) : 4.0f;
+ 	pGarage->m_fDoorPos = 0.0f;
+ 	pGarage->m_eGarageState = GS_FULLYCLOSED;
+ 	pGarage->m_nTimeToStartAction = 0;
+ 	pGarage->field_2 = false;
++	
+ 	pGarage->m_nTargetModelIndex = targetId;
+ 	pGarage->m_bCollectedCarsState = 0;
++
++	// Set the garage to not be deactivated by default.
+ 	pGarage->m_bDeactivated = false;
++
+ 	pGarage->m_bResprayHappened = false;
+ 	switch (type) {
+ 	case GARAGE_MISSION:
+@@ -499,7 +514,7 @@ void CGarage::Update()
+ 					FindPlayerVehicle()->m_fHealth = 1000.0f;
+ 					if (FindPlayerVehicle()->IsCar()) {
+ 						((CAutomobile*)(FindPlayerVehicle()))->m_fFireBlowUpTimer = 0.0f;
+-						// TODO Check if commenting this out makes it to where the car doesn't get repaired when going in a safe house on here and gta 3
++						// This makes it to where the car doesn't get repaired when going in a safe house on here and gta 3.
+ 						((CAutomobile*)(FindPlayerVehicle()))->Fix();
+ 					}
+ 					else {
+@@ -1004,6 +1019,8 @@ void CGarage::Update()
+ 			break;
+ 		}
+ 		break;
++
++	// Hideout garages
+ 	case GARAGE_HIDEOUT_ONE:
+ 	case GARAGE_HIDEOUT_TWO:
+ 	case GARAGE_HIDEOUT_THREE:
+@@ -1050,6 +1067,9 @@ void CGarage::Update()
+ 			break;
+ 		case GS_FULLYCLOSED:
+ 		{
++
++			// It looks like the check for the garage not being able to store too many cars is here.
++			
+ 			float distance = CalcDistToGarageRectangleSquared(FindPlayerCoors().x, FindPlayerCoors().y);
+ 			if (distance < SQR(DISTANCE_TO_OPEN_HIDEOUT_GARAGE_ON_FOOT) ||
+ 				distance < SQR(DISTANCE_TO_OPEN_HIDEOUT_GARAGE_IN_CAR) && FindPlayerVehicle()) {
+@@ -1084,6 +1104,7 @@ void CGarage::Update()
+ 			break;
+ 		}
+ 		break;
++
+ 	case GARAGE_KEEPS_OPENING_FOR_SPECIFIC_CAR:
+ 		switch (m_eGarageState) {
+ 		case GS_OPENED:
+@@ -1094,6 +1115,7 @@ void CGarage::Update()
+ 				}
+ 			}
+ 			break;
++
+ 		case GS_CLOSING:
+ 			if (m_pTarget)
+ 				ThrowCarsNearDoorOutOfGarage(m_pTarget);
+@@ -1104,6 +1126,7 @@ void CGarage::Update()
+ 			}
+ 			UpdateDoorsHeight();
+ 			break;
++
+ 		case GS_FULLYCLOSED:
+ 			if (FindPlayerVehicle() == m_pTarget && m_pTarget &&
+ 				CalcDistToGarageRectangleSquared(
+@@ -1112,6 +1135,7 @@ void CGarage::Update()
+ 					) < SQR(DISTANCE_TO_ACTIVATE_GARAGE))
+ 				m_eGarageState = GS_OPENING;
+ 			break;
++
+ 		case GS_OPENING:
+ 			m_fDoorPos = Min(m_fDoorHeight, m_fDoorPos + (m_bRotatedDoor ? ROTATED_DOOR_OPEN_SPEED : DEFAULT_DOOR_OPEN_SPEED) * CTimer::GetTimeStep());
+ 			if (m_fDoorPos == m_fDoorHeight) {
+@@ -1479,6 +1503,9 @@ void CGarage::RemoveCarsBlockingDoorNotInside()
+ 	}
+ }
+ 
++/// <summary>
++/// Print the messages for the garages
++/// </summary>
+ void CGarages::PrintMessages()
+ {
+ 	if (CTimer::GetTimeInMilliseconds() > MessageStartTime && CTimer::GetTimeInMilliseconds() < MessageEndTime) {
+@@ -1518,6 +1545,7 @@ void CGarages::PrintMessages()
+ /// 5-29-2024 11:11AM
+ /// This works!! This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
+ /// </summary>
++/// TODO Setup preprocessor for this and ToggleRespray if it's not in original code.
+ bool CGarage::m_allowAllVehiclesRespray = false;
+ 
+ void
+@@ -1547,7 +1575,8 @@ CGarages::ToggleRespray()
+ 
+ 
+ /// <summary>
+-/// Code customized to allow repairing all vehicles, I need to set a toggle for this in the debug menu.
++/// Code customized to allow repairing all vehicles.
++/// I have a toggle for this in the debug menu and my Cleo Redux menu.
+ /// </summary>
+ /// <param name="pVehicle">The vehicle to check for.</param>
+ /// <returns>If the car is resprayable at a Pay N Spray</returns>
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index f19246af..361f18af 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -398,6 +398,9 @@ switchWeather(void)
+ 
+ /// <summary>
+ /// This is where everything is defined in the debug menu.
++/// TODO Figure out how to make the text wrap.
++/// So if i scroll up at the top it goes to the bottom option and the other way around.
++/// TODO Figure out how this is ordered, see if I can reorganize the menus.
+ /// </summary>
+ void
+ DebugMenuPopulate(void)
+@@ -792,6 +795,7 @@ DebugMenuPopulate(void)
+ 
+ 		// Mission list
+ #ifdef MISSION_SWITCHER
++		// Hmm, this is how these are added.
+ 		DebugMenuEntry *missionEntry;
+ 		static const char *missions[] = {"Initial",
+ 		                                 "Intro",
+@@ -967,10 +971,18 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Test", "Enable alt police wpns", CustomCheats::EnableChangePoliceWeapons);
+ 		DebugMenuAddCmd("Test", "Disable alt police wpns", CustomCheats::DisableChangePoliceWeapons);
+ 
++		// This now crashes to the error under Read2BytesFromScript in Script.h
++		#ifdef PLUGIN_SDK_TEST
++		DebugMenuAddCmd("Test", "Plugin sdk command test", CustomCheats::CommandTest1);
++		#endif //PLUGIN_SDK_TEST
++
+ 		// TODO Setup this
+ #ifdef EX_COP_FUNCTIONS
+ 		DebugMenuAddCmd("Test", "Toggle police spike strips", CustomCheats::TogglePoliceSpikeStrips);
+ #endif //EX_COP_FUNCTIONS
++		// TODO Fix this to work right.
++		//DebugMenuAddCmd("Test", "Give RC Car", CustomCheats::GiveRcCar);
++
+ 
+ #endif //CUSTOM_CODE
+ 
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 261fcbaa..6d269f69 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -77,6 +77,78 @@
+ //
+ 
+ 
++// TODO Replicate this from the Scripts:
++/*
++        case COMMAND_UNLOCK_ALL_CAR_DOORS_IN_AREA:
++        {
++                CollectParameters(&m_nIp, 4);
++                uint32 i = CPools::GetVehiclePool()->GetSize();
++                float infX = *(float*)&ScriptParams[0];
++                float infY = *(float*)&ScriptParams[1];
++                float supX = *(float*)&ScriptParams[2];
++                float supY = *(float*)&ScriptParams[3];
++                while (i--) {
++                        CVehicle* pVehicle = CPools::GetVehiclePool()->GetSlot(i);
++                        if (!pVehicle)
++                                continue;
++                        if (pVehicle->IsWithinArea(infX, infY, supX, supY))
++                                pVehicle->m_nDoorLock = CARLOCK_UNLOCKED;
++                }
++                return 0;
++        }
++
++*/
++
++
++/// <summary>
++/// TODO Fix this to work in cleo redux
++/// TODO Figure out how to log values to a file.
++/// https://library.sannybuilder.com/#/vc/script/extensions/default/0591
++/// </summary>
++/// <param name="leftBottomX"></param>
++/// <param name="leftBottomY"></param>
++/// <param name="topRightX"></param>
++/// <param name="topRightY"></param>
++void
++VehicleFunctions::UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY)
++{
++	uint32 i = CPools::GetVehiclePool()->GetSize();
++	//while(i--) 
++	while(i-- > 0) 
++	{ 
++		CVehicle *pVehicle = CPools::GetVehiclePool()->GetSlot(i);
++		if(!pVehicle) 
++		{
++			// Well this message prints, I guess the code gets stuck here.
++			//CHud::SetHelpMessage(TheText.Get("KCCARUK"), false, false);
++			continue; 
++		}
++
++		// Wait, this is being called, why doesn't my function run?
++		// It seems like something I'm doing is wrong for this.
++		if (pVehicle->IsWithinArea(leftBottomX, leftBottomY, topRightX, topRightY)) 
++		{ 
++			pVehicle->m_nDoorLock = CARLOCK_UNLOCKED;
++			// This message doesn't seem to print in the game using cleo redux
++			CHud::SetHelpMessage(TheText.Get("KCCARUK"), false, false);
++		}
++	}
++}
++
++// TODO Replicate this function, I might be able to use it for unlocking the players vehicle.
++/*
++        case COMMAND_STORE_CAR_PLAYER_IS_IN_NO_SAVE:
++        {
++                CollectParameters(&m_nIp, 1);
++                CPed* pPed = CWorld::Players[ScriptParams[0]].m_pPed;
++                script_assert(pPed);
++                CVehicle* pVehicle = pPed->bInVehicle ? pPed->m_pMyVehicle : nil;
++                ScriptParams[0] = CPools::GetVehiclePool()->GetIndex(pVehicle);
++                StoreParameters(&m_nIp, 1);
++                return 0;
++        }
++
++*/
+ 
+ /// <summary>
+ /// Enable the vehicles blowing up when upside down.
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 7df9684a..d76f652b 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -30,4 +30,13 @@ public:
+ 	#endif //VEHICLE_SPAWN_TEST
+ 	// TODO Setup this later
+ 	//static void SpawnVehicle(int id, CPlayerPed *pPed, bool clearFromArea, bool deleteCurrentVehicle, bool warpIntoVehicle);
++
++	// TODO Test this
++	static void UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY);
++
++	#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	static void EnableUpsideDownExplosions();
++	static void DisableUpsideDownExplosions();
++	static void ToggleUpsideDownExplosions();
++	#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ };
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+index 6bbfec2d..a7fc2721 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -46,10 +46,14 @@
+ #include "World.h"
+ #include "platform.h"
+ 
++#include "Remote.h"
++
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerInfo.h"
+ 
++#include "CopPed.h"
++
+ #define CUSTOM_CODE1
+ 
+ // Extra
+@@ -98,6 +102,8 @@ bool chaosMode = false;
+ //
+ // TODO Figure out how to implement lua scripting into this.
+ 
++// TODO Split up this file into multiple parts, ped_cheats.cpp, vehicle_cheats.cpp, command_test.cpp, and more.
++
+ 
+ // 
+ // Says assertion failed: src/audio/sampman_oal.cpp
+@@ -126,6 +132,100 @@ commandTest1()
+ 
+ #endif //_TEST1
+ 
++// This just does the same thing, replicating what the debug menu uses.
++//void
++//BlowUpCarsCheat();
++
++/// <summary>
++/// I have switched the debug menu function to using this.
++/// Taken from Blowup cars cheat, I figured I would put a version in here to mess with
++/// Umm, why the hell doesn't cleo redux call this? It says cheat activated but does nothing.
++/// </summary>
++void
++CustomCheats::BlowUpAllCars()
++{
++	//BlowUpCarsCheat();
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++
++	int i = CPools::GetVehiclePool()->GetSize();
++	while(i-- > 0) {
++		if(CVehicle *veh = CPools::GetVehiclePool()->GetSlot(i)) 
++			veh->BlowUpCar(nil);
++	}
++}
++
++#ifdef EX_COP_FUNCTIONS
++/// <summary>
++/// Enable the police spike strips.
++/// </summary>
++void
++CustomCheats::EnablePoliceSpikeStrips()
++{
++	CCopPed::bSpikeStripsEnabled = true;
++	// Police Spike strips Enable
++	// Says: Police spike strips enabled
++	CHud::SetHelpMessage(TheText.Get("PLSPKEN"), false, false);
++}
++
++/// <summary>
++/// Disable the police spike strips.
++/// </summary>
++void
++CustomCheats::DisablePoliceSpikeStrips()
++{
++	CCopPed::bSpikeStripsEnabled = false;
++	// Police Spike strips Disable
++	// Says: Police spike strips disabled
++	CHud::SetHelpMessage(TheText.Get("PLSPKDS"), false, false);
++}
++
++/// <summary>
++/// Toggle the police spike strips.
++/// </summary>
++void
++CustomCheats::TogglePoliceSpikeStrips()
++{
++	//wchar *string;
++	if (CCopPed::bSpikeStripsEnabled) { 
++		//string = TheText.Get("PLSPKDS");
++		CustomCheats::DisablePoliceSpikeStrips();
++	} else {
++		//string = TheText.Get("PLSPKEN");
++		CustomCheats::EnablePoliceSpikeStrips();
++	}
++}
++
++#endif //EX_COP_FUNCTIONS
++
++#ifdef CHANGE_POLICE_WEAPONS
++/// <summary>
++/// Enable the police weapons being changed, so far it replaces the weapons for the regular cops with Katanas
++/// TODO Test this
++/// </summary>
++void
++CustomCheats::EnableChangePoliceWeapons()
++{
++	CCopPed::bChangePoliceWeapons = true;
++	// Police Weapons Enable
++	// Says: Custom police weapons enabled.
++	CHud::SetHelpMessage(TheText.Get("POLWEN"), false, false);
++}
++
++/// <summary>
++/// Disable the police weapons being changed
++/// /// TODO Test this
++/// </summary>
++void
++CustomCheats::DisableChangePoliceWeapons()
++{
++	CCopPed::bChangePoliceWeapons = false;
++	// Police Weapons Disable
++	// Says: Custom police weapons disabled.
++	CHud::SetHelpMessage(TheText.Get("POLWDIS"), false, false);
++}
++
++#endif //CHANGE_POLICE_WEAPONS
++
+ void
+ vehicleTest()
+ {
+@@ -190,8 +290,7 @@ CustomCheats::ExplodePed()
+ 	explosion.AddExplosion(nil, nil, eExplosionType::EXPLOSION_CAR, pPedCoords, 32, true);
+ }
+ 
+-#undef _TEST1
+-#ifdef _TEST1
++#ifdef PLUGIN_SDK_TEST
+ using namespace plugin;
+ 
+ // I highly doubt this will work.
+@@ -203,9 +302,11 @@ CustomCheats::CommandTest1()
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	CVector pPedCoords = FindPlayerCoors();
+ 	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
+-	Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++	//Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++
++	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
+ }
+-#endif //_TEST1
++#endif //PLUGIN_SDK_TEST
+ #define _TEST1
+ 
+ #ifdef CUSTOM_CODE1
+@@ -236,6 +337,40 @@ CustomCheats::CommandTest1()
+ 
+ CustomCheats::CustomCheats() {}
+ 
++/// <summary>
++/// Give the player an RC Car, this doesn't work yet and just breaks the game until blown up.
++/// The player will respawn and control will be enabled if it blows up.
++/// TODO Fix this to work right, I have disabled it in the debug menu.
++/// </summary>
++void CustomCheats::GiveRcCar() { 
++
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++
++	int rcBanditModel = MI_RCBANDIT;
++
++	// TODO Load the model in
++	VehicleFunctions::RequestVehicleModel(rcBanditModel);
++
++	//if (pPedCoords.z <= MAP_Z_LOW_LIMIT) { 
++	// Well they spawn in but the damn things can't be driven, I can spam this and lag it like hell lol.
++	// The explosion sound effect with like 50 of them was amazing lol.
++	CRemote::GivePlayerRemoteControlledCar(pPedCoords.x, pPedCoords.y, pPedCoords.z, 20, rcBanditModel);
++	//}
++	/*
++	* 	case COMMAND_GIVE_REMOTE_CONTROLLED_CAR_TO_PLAYER:
++	{
++		CollectParameters(&m_nIp, 5);
++		CVector pos = *(CVector*)&ScriptParams[1];
++		if (pos.z <= MAP_Z_LOW_LIMIT)
++			pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++		CRemote::GivePlayerRemoteControlledCar(pos.x, pos.y, pos.z, DEGTORAD(*(float*)&ScriptParams[4]), MI_RCBANDIT);
++		return 0;
++	}
++	*/ 
++
++}
++
+ // This works for having the doors lock, I can't unlock them outside of the vehicle though
+ void
+ CustomCheats::LockDoors()
+@@ -457,8 +592,35 @@ TankRapidFireToggle()
+ }
+ 
+ ////////////////////
+-// I made these two functions to use in my cleo redux menu.
+-//
++// These are for cleo redux
++// I guess the cheats in pad.cpp won't work with Memory.Translate.
++// TODO Reorganize these sometime.
++
++/// <summary>
++/// This originally gave the player two wanted stars, I changed it to give one at a time..
++/// </summary>
++void
++CustomCheats::RaiseWantedLevel()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
++
++#ifdef CUSTOM_CODE
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 1, 6));
++#else
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 2, 6));
++#endif // CUSTOM_CODE
++}
++
++/// <summary>
++/// Clear the players wanted level.
++/// </summary>
++void
++CustomCheats::LowerWantedLevel()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(0);
++}
++
+ /// <summary>
+ /// This should turn infinite health on, and show the cheat activated message.
+ /// </summary>
+@@ -466,7 +628,8 @@ void CustomCheats::EnableInfiniteHealth()
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	pPed->bInvincibleCheat = true;
+-	CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
++	//CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), false);
+ }
+ 
+ /// <summary>
+@@ -479,7 +642,7 @@ void CustomCheats::DisableInfiniteHealth()
+ 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
+ }
+ 
+-
++///
+ 
+ // Infinite health
+ // This works with a toggle.
+@@ -498,7 +661,8 @@ CustomCheats::InfiniteHealthCheat()
+ 		string = TheText.Get("CHEATOF");
+ 
+ 	else 
+-		string = TheText.Get("CHEAT1");
++		//string = TheText.Get("CHEAT1");
++		string = TheText.Get("CHEATON");
+ 	
+ 
+ 	CHud::SetHelpMessage(string, true);
+@@ -515,7 +679,7 @@ CustomCheats::InfiniteHealthCheat()
+ 		pPed->bOnlyDamagedByPlayer = true;
+ 		pPed->bExplosionProof = true;
+ 		pPed->m_bCanBeDamaged = false;
+-		CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+ 
+ 	} else {
+ 		pPed->bBulletProof = false;
+diff --git a/src/extras/test/cheats/custom_cheats.h b/src/extras/test/cheats/custom_cheats.h
+index 11ee57fe..ce9ccf00 100644
+--- a/src/extras/test/cheats/custom_cheats.h
++++ b/src/extras/test/cheats/custom_cheats.h
+@@ -6,6 +6,13 @@ class CVehicle;
+ 
+ class CustomCheats
+ {
++private:
++#ifdef EX_COP_FUNCTIONS
++	// These are set by the toggle in the public function.
++	static void EnablePoliceSpikeStrips();
++	static void DisablePoliceSpikeStrips();
++#endif //EX_COP_FUNCTIONS
++
+ public:
+ 	CustomCheats();
+ 	void ClearItemsFromArea(float radius);
+@@ -50,7 +57,13 @@ public:
+ 
+ 	static void ExplodePed();
+ 
+-	// Toggles
++	static void BlowUpAllCars();
++
++
++	// Rc Car test
++	static void GiveRcCar();
++
++	// Toggles, TODO Move these into private function, I only want the Toggle functions down here if they work.
+ 	void EnableInfiniteHealth();
+ 	void DisableInfiniteHealth();
+ 
+@@ -59,5 +72,23 @@ public:
+ 
+ 	static void EnableVehicleInvincibility(CVehicle *veh);
+ 	static void DisableVehicleInvincibility(CVehicle *veh);
++
++	static void RaiseWantedLevel();
++	static void LowerWantedLevel();
++
++
++	#ifdef CHANGE_POLICE_WEAPONS
++	static void EnableChangePoliceWeapons();
++	static void DisableChangePoliceWeapons();
++	#endif //CHANGE_POLICE_WEAPONS
++
++	#ifdef EX_COP_FUNCTIONS
++
++
++	static void TogglePoliceSpikeStrips();
++	#endif //EX_COP_FUNCTIONS
++
++
++
+ 	#endif //_TEST
+ };
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index a6e7e768..115672cd 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -261,6 +261,9 @@ CVector vecDAMAGE_ENGINE_POS_BIG(-0.5f, -0.3f, 0.0f);
+ 
+ #pragma optimize("", off) // a workaround for another compiler bug
+ 
++/// <summary>
++/// Process control for all vehicles, quite sure this is mostly for the ped vehicles
++/// </summary>
+ void
+ CAutomobile::ProcessControl(void)
+ {
+@@ -1755,6 +1758,11 @@ CAutomobile::ProcessControl(void)
+ 
+ #pragma optimize("", on)
+ 
++/// <summary>
++/// Teleport for vehicles, I could use this..
++/// I didn't know this was here.
++/// </summary>
++/// <param name="pos"></param>
+ void
+ CAutomobile::Teleport(CVector pos)
+ {
+@@ -3132,10 +3140,15 @@ CAutomobile::ProcessControlInputs(uint8 pad)
+ 
+ 	if(!CPad::GetPad(pad)->GetExitVehicle() ||
+ 	   pDriver && pDriver->m_pVehicleAnim && (pDriver->m_pVehicleAnim->animId == ANIM_STD_ROLLOUT_LHS ||
+-	                                          pDriver->m_pVehicleAnim->animId == ANIM_STD_ROLLOUT_RHS))
++	                                          pDriver->m_pVehicleAnim->animId == ANIM_STD_ROLLOUT_RHS)) {
++#ifdef FIRING_AND_AIMING // we can't use handbrake during driveby
++		bIsHandbrakeOn = FindPlayerPed()->bIsPlayerAiming ? false : !!CPad::GetPad(pad)->GetHandBrake();
++#else
+ 		bIsHandbrakeOn = !!CPad::GetPad(pad)->GetHandBrake();
+-	else
++#endif
++	} else {
+ 		bIsHandbrakeOn = true;
++	}
+ 
+ 	// Steer left/right
+ 	if(CCamera::m_bUseMouse3rdPerson && !CVehicle::m_bDisableMouseSteering){
+@@ -3913,9 +3926,23 @@ CAutomobile::DoDriveByShootings(void)
+ 		return;
+ 
+ 	CWeapon *weapon = pDriver->GetWeapon();
++
++#ifdef FIRING_AND_AIMING
++	if(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_SUBMACHINEGUN &&
++		CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_HANDGUN)
++#else
+ 	if(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_SUBMACHINEGUN)
++#endif
++
+ 		return;
+ 
++#ifdef FIRING_AND_AIMING // turn on/off driveby
++		if (CPad::GetPad(0)->GetTarget() && !FindPlayerPed()->bIsPlayerAiming && FindPlayerPed()->CanUseDriveBy())
++			FindPlayerPed()->SetPointGunAt(nil);
++		else if (!CPad::GetPad(0)->GetTarget() && FindPlayerPed()->bIsPlayerAiming || !FindPlayerPed()->CanUseDriveBy())
++			FindPlayerPed()->ClearWeaponTarget();
++#endif
++
+ 	weapon->Update(pDriver->m_audioEntityId, nil);
+ 
+ 	bool lookingLeft = false;
+@@ -3940,6 +3967,36 @@ CAutomobile::DoDriveByShootings(void)
+ 		leftAnim = ANIM_STD_CAR_DRIVEBY_LEFT_LO;
+ 	}
+ 
++#ifdef FIRING_AND_AIMING // hide/show weapon in vehicle
++	if (!FindPlayerPed()->m_pWeaponModel && (FindPlayerPed()->bIsPlayerAiming || (lookingLeft || lookingRight)))
++		pDriver->AddWeaponModel(weapon->GetInfo()->m_nModelId);
++	else if (FindPlayerPed()->m_pWeaponModel && !FindPlayerPed()->bIsPlayerAiming && !lookingLeft && !lookingRight)
++		pDriver->RemoveWeaponModel(weapon->GetInfo()->m_nModelId);
++#endif
++
++#if defined FIRING_AND_AIMING && defined IMPROVED_VEHICLES_2 // remove driver window during driveby
++	if (FindPlayerPed()->bIsPlayerAiming) {
++		float angle = DotProduct(GetRight(), TheCamera.GetForward());
++		if (angle < -0.1f) {
++			if (m_aCarNodes[CAR_DOOR_LF]) {
++				RpAtomic* windowAtomic = nil;
++				RwFrameForAllObjects(m_aCarNodes[CAR_DOOR_LF], GetWindowAtomicObjectCB, &windowAtomic);
++				if (windowAtomic) 
++					RpAtomicSetFlags(windowAtomic, 0);
++			}
++		}
++	}
++#endif
++
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON // reloading weapon during driveby/first person/use pistol
++	if (FindPlayerPed()->bIsPlayerAiming || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON ||
++		(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot == WEAPONSLOT_HANDGUN && !FindPlayerPed()->bIsPlayerAiming)) {
++
++		weapon->Reload();
++		return;
++	}
++#endif
++
+ 	if(lookingLeft || lookingRight){
+ 		if(lookingLeft){
+ 			anim = RpAnimBlendClumpGetAssociation(pDriver->GetClump(), rightAnim);
+-- 
+2.45.1.windows.1
+

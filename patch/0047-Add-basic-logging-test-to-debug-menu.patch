@@ -1,0 +1,199 @@
+From fba34161189a24b31043a979723b2645250a3714 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 05:29:44 -0500
+Subject: [PATCH 03/13] Add basic logging test to debug menu. Add
+ log_functions.cpp and log_functions.h.
+
+---
+ src/extras/debug/debug_functions.cpp   |   4 +
+ src/extras/functions/log_functions.cpp | 137 +++++++++++++++++++++++++
+ src/extras/functions/log_functions.h   |  10 ++
+ 3 files changed, 151 insertions(+)
+ create mode 100644 src/extras/functions/log_functions.cpp
+ create mode 100644 src/extras/functions/log_functions.h
+
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 361f18af..be7fdd01 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -64,6 +64,8 @@
+ #include "extras/test/cheats/custom_cheats.h"
+ 
+ #include "extras/functions/vehicle_functions.h"
++
++#include "extras/functions/log_functions.h"
+ //
+ 
+ /////////////////////
+@@ -982,6 +984,8 @@ DebugMenuPopulate(void)
+ #endif //EX_COP_FUNCTIONS
+ 		// TODO Fix this to work right.
+ 		//DebugMenuAddCmd("Test", "Give RC Car", CustomCheats::GiveRcCar);
++		// 
++		DebugMenuAddCmd("Test", "Log test", LogFunctions::LogText);
+ 
+ 
+ #endif //CUSTOM_CODE
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+new file mode 100644
+index 00000000..fd9aef0f
+--- /dev/null
++++ b/src/extras/functions/log_functions.cpp
+@@ -0,0 +1,137 @@
++#include "log_functions.h"
++
++#include "common.h"
++
++#include <iostream>
++#include <fstream>
++#include <string>
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif //_WIN32
++
++// This is what I'm currently using for this test.
++// https://stackoverflow.com/questions/7400418/writing-a-log-file-in-c-c
++#include <cstdio>
++
++
++
++// https://stackoverflow.com/questions/143174/how-do-i-get-the-directory-that-a-program-is-running-from
++
++
++char pBuf[256];
++size_t len = sizeof(pBuf);
++//
++
++// This may be very useful:
++// https://www.geeksforgeeks.org/logging-system-in-cpp/
++
++// TODO Setup this to set the file extension seperately.
++
++/// <summary>
++/// This should log text to a file.
++/// This creates a file!
++/// I wonder how to write to it.
++/// I used something from Google AI to figure out this basic logging test.
++/// </summary>
++/// <param name="fileName">The file to log to.</param>
++void
++//LogFunctions::LogText(std::string fileName)
++LogFunctions::LogText(const char *fileName)
++{
++	//freopen(fileName + ".log", "w", stdout);
++	//freopen(fileName, "w", stdout);
++
++	// From Google AI
++	// Open the log file in append mode
++	
++	// Set the file directory to ViceExtended
++	//const char *filePath = "\\ViceExtended\\";
++	// I had to remove the extra '\\' at the beginning of this to fix the log file path
++	std::string filePath = "ViceExtended\\";
++	std::string logFilePath = filePath + fileName;
++
++
++	// Changed this to have the new path in it.
++	//std::ofstream logFile(fileName, std::ios::app);
++	std::ofstream logFile(logFilePath, std::ios::app);
++
++	// Check if the file was opened successfully
++	if(logFile.is_open()) 
++	{
++	
++	    // Log some values
++		//int myInt = 42;
++		//double myDouble = 3.14;
++
++		
++		// logFile << "Integer: " << myInt << std::endl;
++		// logFile << "Double: " << myDouble << std::endl;
++
++		// This is Windows file directory specific stuff.
++		#ifdef _WIN32
++		//int bytes = GetModuleFileName(NULL, pBuf, len);
++
++		// https://stackoverflow.com/a/19535628
++		// This gets the current file name
++		char result[MAX_PATH];
++		//std::string myString(result, GetModuleFileName(NULL, result, MAX_PATH));
++
++		//if(GetCurrentDirectoryA(MAX_PATH, result) == 0) 
++		//{ 
++		//	return ""; 
++		//}
++		if (!GetCurrentDirectoryA(MAX_PATH, result) == 0) { 
++			// This gets the current directory with the filename
++			//std::string exePath(result, GetModuleFileName(NULL, result, MAX_PATH));
++			// logFile << "File path: " << exePath << std::endl;
++			// https://cplusplus.com/forum/windows/187372/
++			
++			// This gets the current directory, seems to work for my needs
++			std::string currentDirectory(result, GetCurrentDirectoryA(MAX_PATH, result));
++			
++			// TODO Add the ViceExtended folder to this, this doesn't seem to set it.
++			currentDirectory = currentDirectory + "\\ViceExtended\\";
++			std::string logFilePath = currentDirectory + fileName;
++			
++			//logFile << "File path: " << result << std::endl;
++			logFile << "Folder path: " << currentDirectory << std::endl;
++
++			logFile << "File path: " << logFilePath << std::endl;
++		}
++		#endif //_WIN32
++
++		// This didn't work
++		//fs::path currentPath = fs::current_path();
++		//std::string myString = "Current program path: " << currentPath.string() << std::endl;
++
++		
++
++		// Close the log file
++		logFile.close();
++
++		std::cout << "Values logged to " << fileName << std::endl;
++		// This seems to work, output to Visual Studio console but I've disabled it.
++		// TRACE("Values logged to %s", fileName);
++	} else {
++		std::cerr << "Error opening log file: " << fileName << std::endl;
++	}
++
++	//
++
++	//std::cout << ""
++}
++
++/// <summary>
++/// This should output logs to a test.log file
++/// This test is added to the debug menu, it is an easier way to log in ReVC.
++/// </summary>
++void
++LogFunctions::LogText()
++{
++
++	// TODO Setup a date for this in the file name
++	//const char *logFile = "test.log";
++	const char *logFile = "KCNet-ReVC.log";
++	LogFunctions::LogText(logFile);
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+new file mode 100644
+index 00000000..27fe3bd6
+--- /dev/null
++++ b/src/extras/functions/log_functions.h
+@@ -0,0 +1,10 @@
++#pragma once
++#include <iostream>
++
++class LogFunctions
++{
++public:
++	//static void LogText(std::string fileName);
++	static void LogText(const char *fileName);
++	static void LogText();
++};
+-- 
+2.45.1.windows.1
+

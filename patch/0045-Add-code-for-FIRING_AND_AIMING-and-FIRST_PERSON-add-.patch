@@ -1,0 +1,4025 @@
+From c3d04e688cf0339bcc76e633f52d602ce3ed4d24 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 04:20:14 -0500
+Subject: [PATCH 01/13] Add code for FIRING_AND_AIMING, and FIRST_PERSON, add
+ partial swimming code. Add PLUGIN_SDK_TEST.
+
+---
+ src/animation/AnimManager.cpp  | 144 +++++++-
+ src/animation/AnimManager.h    |   7 +
+ src/animation/AnimationId.h    |  45 +++
+ src/audio/MusicManager.cpp     |   4 +
+ src/control/Darkel.cpp         |  21 ++
+ src/core/Cam.cpp               | 646 ++++++++++++++++++++++++++++++++-
+ src/core/Camera.cpp            | 176 ++++++++-
+ src/core/Camera.h              |  28 ++
+ src/core/ControllerConfig.cpp  |  18 +
+ src/core/Frontend.cpp          | 109 +++++-
+ src/core/Frontend.h            |   9 +
+ src/core/MenuScreensCustom.cpp |   5 +
+ src/core/Streaming.cpp         |   7 +
+ src/core/config.h              |  18 +
+ src/extras/screendroplets.cpp  |  15 +-
+ src/peds/Ped.cpp               | 118 +++++-
+ src/peds/PedAI.cpp             |   7 +
+ src/peds/PedFight.cpp          | 542 ++++++++++++++++++++++-----
+ src/peds/PedIK.cpp             |  23 ++
+ src/peds/PlayerPed.cpp         | 411 ++++++++++++++++++++-
+ src/peds/PlayerPed.h           |  11 +
+ src/renderer/Hud.cpp           |  10 +
+ src/renderer/Particle.cpp      |  18 +-
+ src/renderer/Sprite.cpp        |  19 +-
+ src/renderer/Weather.cpp       |  37 ++
+ src/vehicles/Bike.cpp          |  62 +++-
+ src/vehicles/Boat.cpp          |  34 +-
+ src/vehicles/Vehicle.cpp       |  14 +
+ src/weapons/Weapon.cpp         |  59 +++
+ 29 files changed, 2493 insertions(+), 124 deletions(-)
+
+diff --git a/src/animation/AnimManager.cpp b/src/animation/AnimManager.cpp
+index 605c8d74..f74d6a72 100644
+--- a/src/animation/AnimManager.cpp
++++ b/src/animation/AnimManager.cpp
+@@ -198,7 +198,7 @@ AnimAssocDesc aStdAnimDescs[] = {
+ 	{ ANIM_STD_ATM, ASSOC_DELETEFADEDOUT | ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
+ 	{ ANIM_STD_ABSEIL, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL },
+ 
+-	// Extended Vice
++// Extended Vice
+ #ifdef CROUCH // add anims
+ 	{ ANIM_STD_CROUCH_IDLE, ASSOC_REPEAT | ASSOC_DELETEFADEDOUT },
+ 	{ ANIM_STD_CROUCH_FORWARD, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_WALK },
+@@ -206,6 +206,40 @@ AnimAssocDesc aStdAnimDescs[] = {
+ 	{ ANIM_STD_CROUCH_ROLL_L, ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_FRONTAL },
+ 	{ ANIM_STD_CROUCH_ROLL_R, ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_FRONTAL },
+ #endif
++
++#ifdef SWIMMING // add anims
++	{ ANIM_STD_SWIM_BREAST, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION },
++	{ ANIM_STD_SWIM_CRAWL, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION },
++	{ ANIM_STD_SWIM_JUMPOUT, ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
++	{ ANIM_STD_SWIM_TREAD, ASSOC_REPEAT },
++#endif
++#ifdef FIRING_AND_AIMING // add anims
++	{ ANIM_STD_GUNMOVE_BWD, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION | ASSOC_WALK },
++	{ ANIM_STD_GUNMOVE_FWD, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION | ASSOC_WALK },
++	{ ANIM_STD_GUNMOVE_L, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION | ASSOC_WALK },
++	{ ANIM_STD_GUNMOVE_R, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION | ASSOC_WALK },
++	{ ANIM_STD_GUN_STAND, ASSOC_REPEAT | ASSOC_MOVEMENT | ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION | ASSOC_WALK },
++
++	{ ANIM_STD_CAR_SIT_DB, ASSOC_DELETEFADEDOUT },
++	{ ANIM_STD_CAR_SIT_LO_DB, ASSOC_DELETEFADEDOUT },
++	{ ANIM_STD_CAR_SIT_P_DB, ASSOC_DELETEFADEDOUT },
++	{ ANIM_STD_CAR_SIT_P_LO_DB, ASSOC_DELETEFADEDOUT },
++	{ ANIM_STD_CAR_DRIVE_LEFT_DB, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_STD_CAR_DRIVE_RIGHT_DB, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_STD_CAR_DRIVE_LEFT_LO_DB, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_STD_CAR_DRIVE_RIGHT_LO_DB, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_STD_BOAT_DRIVE_DB, ASSOC_DELETEFADEDOUT | ASSOC_DRIVING },
++	{ ANIM_STD_BOAT_DRIVE_LEFT_DB, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_STD_BOAT_DRIVE_RIGHT_DB, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++#endif
++#ifdef EX_PED_ANIMS_IN_CAR
++	{ ANIM_STD_CAR_DIE_HORN_DS, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL },
++	{ ANIM_STD_CAR_DIE_DS, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL },
++	{ ANIM_STD_CAR_DIE_PS, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL },
++#endif
++
++// End Extended Vice
++
+ };
+ AnimAssocDesc aVanAnimDescs[] = {
+ 	{ ANIM_STD_VAN_OPEN_DOOR_REAR_LHS, ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
+@@ -243,6 +277,17 @@ AnimAssocDesc aBikeAnimDescs[] = {
+ 	{ ANIM_BIKE_DRIVEBY_RHS, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
+ 	{ ANIM_BIKE_DRIVEBY_FORWARD, ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
+ 	{ ANIM_BIKE_RIDE_P, ASSOC_DELETEFADEDOUT | ASSOC_DRIVING },
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // add anims
++	{ ANIM_BIKE_RIDE_DB, ASSOC_DELETEFADEDOUT },
++	{ ANIM_BIKE_READY_DB, ASSOC_DELETEFADEDOUT },
++	{ ANIM_BIKE_LEFT_DB, ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_BIKE_RIGHT_DB, ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_BIKE_WALKBACK_DB, ASSOC_REPEAT | ASSOC_DELETEFADEDOUT | ASSOC_PARTIAL | ASSOC_DRIVING },
++	{ ANIM_BIKE_RIDE_P_DB, ASSOC_DELETEFADEDOUT | ASSOC_DRIVING },
++#endif
++// End Extended Vice
++
+ };
+ AnimAssocDesc aMeleeAnimDescs[] = {
+ 	{ ANIM_MELEE_ATTACK, ASSOC_FADEOUTWHENDONE | ASSOC_PARTIAL },
+@@ -482,7 +527,7 @@ char const* aStdAnimations[] = {
+ 	"ATM",
+ 	"abseil",
+ 
+-	// Extended Vice
++// Begin Extended Vice
+ #ifdef CROUCH // add anims
+ 	"Crouch_Idle",
+ 	"Crouch_Forward",
+@@ -490,6 +535,39 @@ char const* aStdAnimations[] = {
+ 	"Crouch_Roll_L",
+ 	"Crouch_Roll_R",
+ #endif
++
++#ifdef SWIMMING // add anims
++	"Swim_Breast",
++	"Swim_Crawl",
++	"Swim_jumpout",
++	"Swim_Tread",
++#endif
++#ifdef FIRING_AND_AIMING // add anims
++	"GunMove_BWD",
++	"GunMove_FWD",
++	"GunMove_L",
++	"GunMove_R",
++	"Gun_stand",
++
++	"CAR_sit_DB",
++	"CAR_Lsit_DB",
++	"CAR_sitp_DB",
++	"CAR_sitpLO_DB",
++	"Drive_L_DB",
++	"Drive_R_DB",
++	"Drive_LO_L_DB",
++	"Drive_LO_R_DB",
++	"DRIVE_BOAT_DB",
++	"DRIVE_BOAT_L_DB",
++	"DRIVE_BOAT_R_DB",
++#endif
++#ifdef EX_PED_ANIMS_IN_CAR
++	"CAR_die_horn_ds",
++	"CAR_die_ds",
++	"CAR_die_ps",
++#endif
++// End Extended Vice
++
+ };
+ char const* aVanAnimations[] = {
+ 	"VAN_openL",
+@@ -527,6 +605,17 @@ char const* aBikesAnimations[] = {
+ 	"BIKEs_drivebyRHS",
+ 	"BIKEs_drivebyFT",
+ 	"BIKEs_passenger",
++
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // add anims
++	"BIKEs_Ride_DB",
++	"BIKEs_Still_DB",
++	"BIKEs_Left_DB",
++	"BIKEs_Right_DB",
++	"BIKEs_pushes_DB",
++	"BIKEs_passenger_DB",
++#endif
++// End Extended Vice
+ };
+ char const* aBikevAnimations[] = {
+ 	"BIKEv_Ride",
+@@ -547,6 +636,18 @@ char const* aBikevAnimations[] = {
+ 	"BIKEv_drivebyRHS",
+ 	"BIKEv_drivebyFT",
+ 	"BIKEv_passenger",
++
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // add anims
++	"BIKEv_Ride_DB",
++	"BIKEv_Still_DB",
++	"BIKEv_Left_DB",
++	"BIKEv_Right_DB",
++	"BIKEv_pushes_DB",
++	"BIKEv_passenger_DB",
++#endif
++
++// End Extended Vice
+ };
+ char const* aBikehAnimations[] = {
+ 	"BIKEh_Ride",
+@@ -567,6 +668,17 @@ char const* aBikehAnimations[] = {
+ 	"BIKEh_drivebyRHS",
+ 	"BIKEh_drivebyFT",
+ 	"BIKEh_passenger",
++
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // add anims
++	"BIKEh_Ride_DB",
++	"BIKEh_Still_DB",
++	"BIKEh_Left_DB",
++	"BIKEh_Right_DB",
++	"BIKEh_pushes_DB",
++	"BIKEh_passenger_DB",
++#endif
++// End Extended Vice
+ };
+ char const* aBikedAnimations[] = {
+ 	"BIKEd_Ride",
+@@ -587,6 +699,16 @@ char const* aBikedAnimations[] = {
+ 	"BIKEd_drivebyRHS",
+ 	"BIKEd_drivebyFT",
+ 	"BIKEd_passenger",
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // add anims
++	"BIKEd_Ride_DB",
++	"BIKEd_Still_DB",
++	"BIKEd_Left_DB",
++	"BIKEd_Right_DB",
++	"BIKEd_pushes_DB",
++	"BIKEd_passenger_DB",
++#endif
++// End Extended Vice
+ };
+ char const* aUnarmedAnimations[] = {
+ 	"punchR",
+@@ -759,6 +881,18 @@ char const* aPlayerChainsawAnimations[] = {
+ 	"IDLE_csaw",
+ 	"walk_start_csaw",
+ };
++
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // Rocket animations
++char const* aRocketAnimations[] = {
++	"ROCKET_fire",
++	"ROCKET_crouchfire",
++	"ROCKET_load",
++	"ROCKET_crouchload",
++};
++#endif
++// End Extended Vice
++
+ char const* aShuffleAnimations[] = {
+ 	"WALK_shuffle",
+ 	"RUN_civi",
+@@ -947,6 +1081,12 @@ const AnimAssocDefinition CAnimManager::ms_aAnimAssocDefinitions[NUM_ANIM_ASSOC_
+ 	{ "sniper", "sniper", MI_COP, awc(aSniperAnimations), aWeaponAnimDescs },
+ 	{ "grenade", "grenade", MI_COP, awc(aThrowAnimations), aWeaponAnimDescs },
+ 	{ "flame", "flame", MI_COP, awc(aFlamethrowerAnimations), aWeaponAnimDescs },
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // Rocket animations
++	{ "rocket", "rocket", MI_COP, awc(aRocketAnimations), aWeaponAnimDescs },
++#endif
++// End Extended Vice
++
+ 	{ "medic", "medic", MI_COP, awc(aMedicAnimations), aMedicAnimDescs },
+ 	{ "sunbathe", "sunbathe", MI_COP, 1, aSunbatheAnimations, aSunbatheAnimDescs },	// NB: not using awc here!
+ 	{ "playidles", "playidles", MI_COP, awc(aPlayerIdleAnimations), aPlayerIdleAnimDescs },
+diff --git a/src/animation/AnimManager.h b/src/animation/AnimManager.h
+index 213326b6..e4c9e5e5 100644
+--- a/src/animation/AnimManager.h
++++ b/src/animation/AnimManager.h
+@@ -29,6 +29,13 @@ enum AssocGroupId
+ 	ASSOCGRP_SNIPER,
+ 	ASSOCGRP_THROW,
+ 	ASSOCGRP_FLAMETHROWER,
++
++// Begin Extended Vice
++#ifdef FIRING_AND_AIMING // Rocket animations
++	ASSOCGRP_ROCKET,
++#endif
++// End Extended Vice
++
+ 	ASSOCGRP_MEDIC,
+ 	ASSOCGRP_SUNBATHE,
+ 	ASSOCGRP_PLAYER_IDLE,
+diff --git a/src/animation/AnimationId.h b/src/animation/AnimationId.h
+index c4ef8651..2cd9974c 100644
+--- a/src/animation/AnimationId.h
++++ b/src/animation/AnimationId.h
+@@ -208,6 +208,40 @@ enum AnimationId
+ 	ANIM_STD_CROUCH_ROLL_R,
+ #endif
+ 
++#ifdef SWIMMING // add anims
++	ANIM_STD_SWIM_BREAST,
++	ANIM_STD_SWIM_CRAWL,
++	ANIM_STD_SWIM_JUMPOUT,
++	ANIM_STD_SWIM_TREAD,
++#endif
++
++#ifdef FIRING_AND_AIMING // add anims
++	ANIM_STD_GUNMOVE_BWD,
++	ANIM_STD_GUNMOVE_FWD,
++	ANIM_STD_GUNMOVE_L,
++	ANIM_STD_GUNMOVE_R,
++	ANIM_STD_GUN_STAND,
++
++	ANIM_STD_CAR_SIT_DB,
++	ANIM_STD_CAR_SIT_LO_DB,
++	ANIM_STD_CAR_SIT_P_DB,
++	ANIM_STD_CAR_SIT_P_LO_DB,
++	ANIM_STD_CAR_DRIVE_LEFT_DB,
++	ANIM_STD_CAR_DRIVE_RIGHT_DB,
++	ANIM_STD_CAR_DRIVE_LEFT_LO_DB,
++	ANIM_STD_CAR_DRIVE_RIGHT_LO_DB,
++	ANIM_STD_BOAT_DRIVE_DB,
++	ANIM_STD_BOAT_DRIVE_LEFT_DB,
++	ANIM_STD_BOAT_DRIVE_RIGHT_DB,
++#endif
++
++#ifdef EX_PED_ANIMS_IN_CAR
++	ANIM_STD_CAR_DIE_HORN_DS,
++	ANIM_STD_CAR_DIE_DS,
++	ANIM_STD_CAR_DIE_PS,
++#endif
++// End Extended Vice
++
+ 	ANIM_STD_NUM,
+ 
+ 	ANIM_STD_VAN_OPEN_DOOR_REAR_LHS,
+@@ -244,6 +278,17 @@ enum AnimationId
+ 	ANIM_BIKE_DRIVEBY_FORWARD,
+ 	ANIM_BIKE_RIDE_P,
+ 
++// Begin Extended Vice
++	#ifdef FIRING_AND_AIMING // add anims
++	ANIM_BIKE_RIDE_DB,
++	ANIM_BIKE_READY_DB,
++	ANIM_BIKE_LEFT_DB,
++	ANIM_BIKE_RIGHT_DB,
++	ANIM_BIKE_WALKBACK_DB,
++	ANIM_BIKE_RIDE_P_DB,
++#endif
++// End Extended Vice
++
+ 	ANIM_ATTACK_1,
+ 	ANIM_ATTACK_2,
+ 	ANIM_ATTACK_EXTRA1,
+diff --git a/src/audio/MusicManager.cpp b/src/audio/MusicManager.cpp
+index 06dfc968..828a4a39 100644
+--- a/src/audio/MusicManager.cpp
++++ b/src/audio/MusicManager.cpp
+@@ -537,7 +537,11 @@ cMusicManager::ServiceGameMode()
+ 		gRetuneCounter = 0;
+ 		m_bSetNextStation = FALSE;
+ 	} else if (ped) {
++#ifdef FIRING_AND_AIMING // can't change radio during driveby
++		if(!ped->DyingOrDead() && vehicle && !FindPlayerPed()->bIsPlayerAiming) {
++#else
+ 		if(!ped->DyingOrDead() && vehicle) {
++#endif
+ #ifdef GTA_PC
+ 			if (SampleManager.IsMP3RadioChannelAvailable()
+ 				&& vehicle->m_nRadioStation < USERTRACK
+diff --git a/src/control/Darkel.cpp b/src/control/Darkel.cpp
+index a6aca57e..a6437eb3 100644
+--- a/src/control/Darkel.cpp
++++ b/src/control/Darkel.cpp
+@@ -16,6 +16,10 @@
+ #include "Vehicle.h"
+ #include "GameLogic.h"
+ 
++#ifdef FIRING_AND_AIMING // fixing the game crash at the beginning of a rampage
++#include "Streaming.h"
++#endif
++
+ #define FRENZY_ANY_PED -1
+ #define FRENZY_ANY_CAR -2
+ 
+@@ -234,6 +238,11 @@ CDarkel::RegisterKillByPlayer(CPed *victim, eWeaponType weapon, bool headshot)
+ 	if (CReplay::IsPlayingBack())
+ 		return;
+ #endif
++#ifdef FIRING_AND_AIMING // Drive-by during the rampage
++	if (FindPlayerVehicle() && weapon == WEAPONTYPE_UZI)
++		weapon = WEAPONTYPE_UZI_DRIVEBY;
++#endif
++
+ 	if (FrenzyOnGoing() && (weapon == WeaponType
+ 			|| weapon == WEAPONTYPE_EXPLOSION
+ 			|| weapon == WEAPONTYPE_UZI_DRIVEBY && WeaponType == WEAPONTYPE_UZI
+@@ -318,6 +327,13 @@ CDarkel::StartFrenzy(eWeaponType weaponType, int32 time, uint16 kill, int32 mode
+ 	TimeLimit = time;
+ 	PreviousTime = time / 1000;
+ 
++#ifdef FIRING_AND_AIMING // fixing the game crash at the beginning of a rampage
++	if (weaponType == WEAPONTYPE_SNIPERRIFLE || weaponType == WEAPONTYPE_LASERSCOPE || weaponType == WEAPONTYPE_ROCKETLAUNCHER) {
++		CStreaming::RequestModel(MI_M4, STREAMFLAGS_DONT_REMOVE); // yeah, it's not right
++		CStreaming::LoadAllRequestedModels(false);
++	}
++#endif
++
+ 	CPlayerPed *player = FindPlayerPed();
+ 	if (fixedWeapon < WEAPONTYPE_TOTALWEAPONS) {
+ 		InterruptedWeaponSelected = player->GetWeapon()->m_eWeaponType;
+@@ -343,6 +359,11 @@ CDarkel::StartFrenzy(eWeaponType weaponType, int32 time, uint16 kill, int32 mode
+ 	}
+ 	if (CDarkel::bStandardSoundAndMessages)
+ 		DMAudio.PlayFrontEndSound(SOUND_RAMPAGE_START, 0);
++
++#ifdef FIRING_AND_AIMING // fixing the game crash at the beginning of a rampage
++	if (weaponType == WEAPONTYPE_SNIPERRIFLE || weaponType == WEAPONTYPE_LASERSCOPE || weaponType == WEAPONTYPE_ROCKETLAUNCHER)
++		CStreaming::SetModelIsDeletable(MI_M4);
++#endif
+ }
+ 
+ void
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index 8487a0e9..c9d6d07c 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -30,6 +30,10 @@
+ #include "Bike.h"
+ #include "Pickups.h"
+ 
++#ifdef FIRST_PERSON
++#include "PedIK.h"
++#endif
++
+ bool PrintDebugCode = false;
+ int16 DebugCamMode;
+ 
+@@ -112,6 +116,38 @@ CCam::Process(void)
+ 	static CVector SmoothedPos(0.0f, 0.0f, 10000.0f);
+ 	static CVector SmoothedSpeed(0.0f, 0.0f, 0.0f);
+ 
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++	CPlayerPed *ped = FindPlayerPed();
++	if(ped) {
++		float curSenseX;
++		float curSenseY;
++
++		// make more precise movements during aiming
++		if(ped->bIsPlayerAiming || ped->m_nPedState == PED_SNIPER_MODE) {
++			if(CPad::GetPad(0)->IsAffectedByController) {
++				curSenseX = FrontEndMenuManager.m_PrefsPadAimSensX / 2;
++				curSenseY = FrontEndMenuManager.m_PrefsPadAimSensY / 2;
++			} else {
++				curSenseX = FrontEndMenuManager.m_PrefsMouseAimSensX / 6;
++				curSenseY = FrontEndMenuManager.m_PrefsMouseAimSensY / 6;
++			}
++		} else {
++			if(CPad::GetPad(0)->IsAffectedByController) {
++				curSenseX = FrontEndMenuManager.m_PrefsPadLookSensX;
++				curSenseY = FrontEndMenuManager.m_PrefsPadLookSensY;
++			} else {
++				curSenseX = FrontEndMenuManager.m_PrefsMouseLookSensX / 2;
++				curSenseY = FrontEndMenuManager.m_PrefsMouseLookSensY / 2;
++			}
++		}
++
++		if(FrontEndMenuManager.m_PrefsInvertVertically) curSenseY = -curSenseY;
++
++		TheCamera.m_fMouseAccelHorzntl = curSenseX;
++		TheCamera.m_fMouseAccelVertical = curSenseY;
++	}
++#endif
++
+ 	if(CamTargetEntity == nil)
+ 		CamTargetEntity = TheCamera.pTargetEntity;
+ 
+@@ -301,6 +337,12 @@ CCam::Process(void)
+ 		Process_Editor(CameraTarget, TargetOrientation, SpeedVar, TargetSpeedVar);
+ 		break;
+ #endif
++
++#ifdef FIRST_PERSON
++	case MODE_REAL_1ST_PERSON:
++		Process_Real_1st_Person(CameraTarget, TargetOrientation, SpeedVar, TargetSpeedVar);
++		break;
++#endif
+ 	default:
+ 		Source = CVector(0.0f, 0.0f, 0.0f);
+ 		Front = CVector(0.0f, 1.0f, 0.0f);
+@@ -327,39 +369,84 @@ CCam::Process(void)
+ 		   CamTargetEntity->IsVehicle()){
+ 			bool bDisableLR = CamTargetEntity &&
+ 				(((CVehicle*)CamTargetEntity)->GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI || CamTargetEntity->GetModelIndex() == MI_RCBARON);
++			
+ 			if(CPad::GetPad(0)->GetLookBehindForCar()){
+ 				LookBehind();
++
+ 				if(DirectionWasLooking != LOOKING_BEHIND)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_BEHIND;
++
+ 			}else if(bDisableLR){
++
+ 				if(DirectionWasLooking != LOOKING_FORWARD)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_FORWARD;
++
++#ifdef FIRING_AND_AIMING
++			}else if(CPad::GetPad(0)->GetLookLeft() && (!CPad::GetPad(0)->IsAffectedByController || 
++					(CPad::GetPad(0)->IsAffectedByController &&
++					CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_SUBMACHINEGUN &&
++					(CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_HANDGUN || 
++					CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot == WEAPONSLOT_HANDGUN && ped->GetWeapon()->m_eWeaponType == WEAPONTYPE_PYTHON)))){
++#else
+ 			}else if(CPad::GetPad(0)->GetLookLeft()){
++#endif
+ 				LookLeft();
++
+ 				if(DirectionWasLooking != LOOKING_LEFT)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_LEFT;
++
+ 			}else if(CPad::GetPad(0)->GetLookRight()){
+ 				LookRight();
++
+ 				if(DirectionWasLooking != LOOKING_RIGHT)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_RIGHT;
++
+ 			}else{
+ 				if(DirectionWasLooking != LOOKING_FORWARD)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_FORWARD;
+ 			}
+ 		}
++
+ 		if(Mode == MODE_FOLLOWPED && CamTargetEntity->IsPed()){
++			#ifdef FIRING_AND_AIMING // make it possible to turn back when looking back and pressing the aim button
++			if(CPad::GetPad(0)->GetLookBehindForPed() && !m_bAimingWhileLookBehind && (!ped->bIsPlayerAiming || DirectionWasLooking != LOOKING_FORWARD)){
++				if (CPad::GetPad(0)->GetTarget()) {
++					m_bAimingWhileLookBehind = true;
++
++					Beta = TheCamera.GetForward().Heading() + DEGTORAD(CPad::GetPad(0)->IsAffectedByController ? 90.0f : -90.0f);
++					Alpha = 0.0f;
++
++					if (CCamera::m_bUseMouse3rdPerson)
++						Process_FollowPedWithMouse(CameraTarget, TargetOrientation, SpeedVar, TargetSpeedVar);
++					else
++						Process_FollowPed_Rotation(CameraTarget, TargetOrientation, SpeedVar, TargetSpeedVar);
++
++					return;
++				}
++				LookBehind();
++				if(DirectionWasLooking != LOOKING_BEHIND)
++					TheCamera.m_bJust_Switched = true;
++				DirectionWasLooking = LOOKING_BEHIND;
++			} else {
++				DirectionWasLooking = LOOKING_FORWARD;
++				if (!CPad::GetPad(0)->GetLookBehindForPed() && m_bAimingWhileLookBehind)
++					m_bAimingWhileLookBehind = false;
++			}
++#else
+ 			if(CPad::GetPad(0)->GetLookBehindForPed()){
+ 				LookBehind();
+ 				if(DirectionWasLooking != LOOKING_BEHIND)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_BEHIND;
+-			}else
++			} else {
+ 				DirectionWasLooking = LOOKING_FORWARD;
++			}
++#endif
+ 		}
+ 	}
+ 
+@@ -881,7 +968,11 @@ CCam::KeepTrackOfTheSpeed(const CVector &source, const CVector &target, const CV
+ bool
+ CCam::Using3rdPersonMouseCam(void) 
+ {
+-	return CCamera::m_bUseMouse3rdPerson && Mode == MODE_FOLLOWPED;
++#ifdef FIRST_PERSON
++	return CCamera::m_bUseMouse3rdPerson && (Mode == MODE_FOLLOWPED || Mode == MODE_REAL_1ST_PERSON);
++#else
++	return CCamera::m_bUseMouse3rdPerson && (Mode == MODE_FOLLOWPED);
++#endif
+ }
+ 
+ bool
+@@ -935,7 +1026,11 @@ CCam::PrintMode(void)
+ 			"Top Down Ped", "Lighthouse",
+ 			"Sniper run about", "Rocket run about",
+ 			"1st Person run about", "M16 run about", "Fight run about",
++#ifdef FIRST_PERSON
++			"Editor", "Helicannon", "Camera", "Real 1st Person"
++#else
+ 			"Editor", "Helicannon", "Camera"
++#endif
+ 		};
+ 		sprintf(buf, "Cam: %s", modes[TheCamera.Cams[TheCamera.ActiveCam].Mode]);
+ 		CDebug::PrintAt(buf, 2, 5);
+@@ -1366,7 +1461,26 @@ float fMouseAvoidGeomReturnRate = 0.92f;
+ void
+ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrientation, float, float)
+ {
++#ifdef FIRING_AND_AIMING
++	bool bChangeAimFOV = TheCamera.Cams[TheCamera.ActiveCam].FOV < DefaultFOV - 0.01f;
++
++	if (!bChangeAimFOV)
++		FOV = DefaultFOV;
++
++	CPlayerPed* ped = (CPlayerPed*)CamTargetEntity;
++	if (ped) {
++		// smoothly change FOV during aiming
++		if (ped->bIsPlayerAiming) {
++			float newFOV = InterpFloat(FOV, AimingFOV, 5.0f);
++			FOV = Clamp(newFOV, AimingFOV, DefaultFOV);
++		} else {
++			float newFOV = InterpFloat(FOV, DefaultFOV, 5.0f);
++			FOV = Clamp(newFOV, FOV, DefaultFOV);
++		}
++	}
++#else
+ 	FOV = DefaultFOV;
++#endif
+ 
+ 	if(!CamTargetEntity->IsPed())
+ 		return;
+@@ -1376,6 +1490,10 @@ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrient
+ 	CColPoint colPoint;
+ 	CEntity *entity;
+ 
++#ifdef FIRING_AND_AIMING // smoothly move the camera while aiming
++	static CVector CurrentAimOffset = { 0.0f, 0.0f, 0.0f };
++#endif
++
+ 	if(ResetStatics){
+ 		Rotating = false;
+ 		m_bCollisionChecksOn = true;
+@@ -1474,6 +1592,28 @@ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrient
+ 	Front.x = Cos(Alpha) * -Cos(Beta);
+ 	Front.y = Cos(Alpha) * -Sin(Beta);
+ 	Front.z = Sin(Alpha);
++
++#ifdef FIRING_AND_AIMING // smoothly move the camera while aiming
++	if (FindPlayerPed()->bIsPlayerAiming && ped->m_nPedState != PED_ROLL) {
++		CVector cameraOffset = ped->GetRight() * 0.25f;
++		if (CurrentAimOffset.Magnitude() < 0.22f) {
++			CurrentAimOffset = InterpVector(CurrentAimOffset, cameraOffset, 0.9f);
++			TargetCoors += CurrentAimOffset;
++		} else {
++			CurrentAimOffset = cameraOffset;
++			TargetCoors += CurrentAimOffset;
++		}
++	} else {
++		if (CurrentAimOffset.Magnitude() > 0.05f) {
++			CurrentAimOffset = InterpVector(CurrentAimOffset, CVector(0.0f, 0.0f, 0.0f), 0.9f);
++			TargetCoors += CurrentAimOffset;
++		} else {
++			CurrentAimOffset = CVector(0.0f, 0.0f, 0.0f);
++			TargetCoors += CurrentAimOffset;
++		}
++	}
++#endif
++
+ 	Source = TargetCoors - Front*CamDist;
+ 	m_cvecTargetCoorsForFudgeInter = TargetCoors;
+ 
+@@ -4150,6 +4290,431 @@ CCam::Process_Editor(const CVector&, float, float, float)
+ }
+ #endif
+ 
++#ifdef FIRST_PERSON
++void
++CCam::Process_Real_1st_Person(const CVector& CameraTarget, float TargetOrientation, float, float)
++{
++	CPlayerPed* ped;
++	CVehicle* vehicle = nullptr;
++	if (CamTargetEntity->IsPed()) {
++		ped = (CPlayerPed*)CamTargetEntity;
++	} else {
++		vehicle = (CVehicle*)CamTargetEntity;
++		ped = (CPlayerPed*)vehicle->pDriver;
++	}
++
++	if (!ped && !vehicle)
++		return;
++
++	static float stepsLeftToChangeBetaByInput;
++	static bool bNeedTurnBetaAngleRelativeWorld = false;
++	static bool bNeedTurnBetaAngleRelativeVehicle = false;
++
++	FOV = FrontEndMenuManager.m_PrefsFOV_FP;
++
++	CVector TargetCoors;
++	float CamDist;
++	CColPoint colPoint;
++
++	if(ResetStatics){
++		Rotating = false;
++		m_bCollisionChecksOn = true;
++		ResetStatics = false;
++	}
++
++	TargetCoors = CameraTarget;
++	TargetCoors.z += fTranslateCamUp;
++
++	float newZ = InterpFloat(m_fCurrentCameraOffsetZ, m_fTargetCameraPosZ, 8.0f);
++	m_fCurrentCameraOffsetZ = newZ;
++	TargetCoors.z -= m_fCurrentCameraOffsetZ;
++
++	float AlphaOffset, BetaOffset;
++	bool UseMouse = false;
++	float MouseX = CPad::GetPad(0)->GetMouseX();
++	float MouseY = CPad::GetPad(0)->GetMouseY();
++	float LookLeftRight = 0.0f, LookUpDown = 0.0f;
++	if((MouseX != 0.0f || MouseY != 0.0f) && !CPad::GetPad(0)->ArePlayerControlsDisabled()){
++		UseMouse = true;
++		LookLeftRight = -2.5f*MouseX;
++		LookUpDown = 4.0f*MouseY;
++	}else if (CPad::GetPad(0)->IsAffectedByController){
++		LookLeftRight = -CPad::GetPad(0)->LookAroundLeftRight();
++		LookUpDown = CPad::GetPad(0)->LookAroundUpDown();
++	}
++
++	BetaOffset = LookLeftRight * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f;
++	AlphaOffset = LookUpDown * TheCamera.m_fMouseAccelVertical * FOV / 80.0f;
++
++	if (CPad::GetPad(0)->IsAffectedByController) {
++		BetaOffset *= CTimer::GetTimeStep();
++		AlphaOffset *= CTimer::GetTimeStep();
++	}
++
++	if (vehicle && !FrontEndMenuManager.m_PrefsRelativeCamInVeh_DB_FP && ped->bIsPlayerAiming) {
++		BetaOffset += AlphaOffset * vehicle->GetRight().z;
++		AlphaOffset -= BetaOffset * vehicle->GetRight().z;
++	}
++
++	if(TheCamera.GetFading() && TheCamera.GetFadingDirection() == FADE_IN && nFadeControlThreshhold < CDraw::FadeValue ||
++	   CDraw::FadeValue > 200 ||
++	   CPad::GetPad(0)->IsPlayerControlsDisabledBy(PLAYERCONTROL_PLAYERINFO)){
++		if(Alpha < fDefaultAlphaOrient-0.05f)
++			AlphaOffset = 0.05f;
++		else if(Alpha < fDefaultAlphaOrient)
++			AlphaOffset = fDefaultAlphaOrient - Alpha;
++		else if(Alpha > fDefaultAlphaOrient+0.05f)
++			AlphaOffset = -0.05f;
++		else if(Alpha > fDefaultAlphaOrient)
++			AlphaOffset = fDefaultAlphaOrient - Alpha;
++		else
++			AlphaOffset = 0.0f;
++	}
++	
++	Alpha += AlphaOffset;
++	Beta += BetaOffset;
++	while(Beta >= PI) Beta -= 2*PI;
++	while(Beta < -PI) Beta += 2*PI;
++
++	if (ped->bIsSwimming) {
++		if (Alpha > DEGTORAD(89.0f)) Alpha = DEGTORAD(89.0f);
++		else if (Alpha < -DEGTORAD(30.0f)) Alpha = -DEGTORAD(30.0f);
++	} else {
++		if (ped->bIsPlayerAiming) {
++			if (vehicle) {
++				float vehPitchAngle = vehicle->GetForward().z;
++				float angleRelativeVehAndCam = DotProduct(vehicle->GetRight(), TheCamera.Cams[TheCamera.ActiveCam].Front) * vehicle->GetRight().z;
++
++				if (vehicle->IsBoat()) {
++					if (Alpha > DEGTORAD(30.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(30.0f) + vehPitchAngle + angleRelativeVehAndCam;
++					else if (Alpha < -DEGTORAD(5.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = -DEGTORAD(5.0f) + vehPitchAngle + angleRelativeVehAndCam;
++				} else if (vehicle->IsBike()) {
++					if (Alpha > DEGTORAD(30.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(30.0f) + vehPitchAngle + angleRelativeVehAndCam;
++					else if (Alpha < -DEGTORAD(10.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = -DEGTORAD(10.0f) + vehPitchAngle + angleRelativeVehAndCam;
++				} else {
++					if (Alpha > DEGTORAD(10.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(10.0f) + vehPitchAngle + angleRelativeVehAndCam;
++					else if (Alpha < -DEGTORAD(10.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = -DEGTORAD(10.0f) + vehPitchAngle + angleRelativeVehAndCam;
++				}
++			} else {
++				if (Alpha > DEGTORAD(44.0f)) Alpha = DEGTORAD(44.0f);
++				else if (Alpha < -DEGTORAD(65.0f)) Alpha = -DEGTORAD(65.0f);
++			}
++		} else if (vehicle) {
++			if (Alpha > DEGTORAD(30.0f)) Alpha = DEGTORAD(30.0f);
++			else if (Alpha < -DEGTORAD(20.0f)) Alpha = -DEGTORAD(20.0f);
++		} else {
++			if (Alpha > DEGTORAD(60.0f)) Alpha = DEGTORAD(60.0f);
++			else if (Alpha < -DEGTORAD(60.0f)) Alpha = -DEGTORAD(60.0f);
++		}
++	}
++
++	CamDist = TheCamera.m_fPedZoomValue + fAngleDist;
++
++	if(TheCamera.m_bUseTransitionBeta)
++		Beta = m_fTransitionBeta;
++
++	if(TheCamera.m_bCamDirectlyInFront)
++		Beta = TheCamera.m_PedOrientForBehindOrInFront;
++
++	if (ped->CanStrafeOrMouseControl() || (ped->m_nMoveState == PEDMOVE_SPRINT && MouseX != 0.0f)) {
++		float Heading = Front.Heading();
++		ped->m_fRotationCur = Heading;
++		ped->m_fRotationDest = Heading;
++		ped->SetHeading(Heading);
++		ped->GetMatrix().UpdateRW();
++	} else if (ped->m_nMoveState == PEDMOVE_SPRINT) {
++		int16 padLeftRight = CPad::GetPad(0)->GetPedWalkLeftRight();
++		if (Abs(padLeftRight) > 5) {
++			float rotDest = ped->m_fRotationCur - DEGTORAD(90.0f);
++			while (rotDest >= PI) rotDest -= 2 * PI;
++			while (rotDest < -PI) rotDest += 2 * PI;
++			Beta = rotDest;
++		}
++	}
++
++	ped->PositionAttachedPed();
++	ped->GetMatrix().UpdateRW();
++	ped->UpdateRwFrame();
++	ped->UpdateRpHAnim();
++	
++	RwV3d HeadPos;
++
++	HeadPos.x = 0.0f;
++	HeadPos.y = 0.0f;
++	HeadPos.z = 0.0f;
++	ped->m_pedIK.GetComponentPosition(HeadPos, PED_HEAD);
++
++	Source = HeadPos;
++	Source += 0.12f * TheCamera.GetUp();
++	m_cvecTargetCoorsForFudgeInter = TargetCoors;
++
++	if (vehicle) {
++		bool mouseChangesInput = false;
++
++		if (ped->bIsPlayerAiming) {
++			mouseChangesInput = true;
++			m_bFixed1stPersonCamInVeh = false;
++
++			stepsLeftToChangeBetaByInput = 35.0f;
++		}
++
++		if (FrontEndMenuManager.m_PrefsAutocenterCamInVeh_FP && !CPad::GetPad(0)->ArePlayerControlsDisabled()) {
++			if ((MouseX != 0.0 || MouseY != 0.0) && CVehicle::m_bDisableMouseSteering || 
++				CPad::GetPad(0)->IsAffectedByController && (LookLeftRight != 0.0f || LookUpDown != 0.0f)) {
++
++				if (stepsLeftToChangeBetaByInput == 0.0f) {
++					Beta = -HALFPI;
++					Alpha = vehicle->GetRight().z;
++				}
++
++				stepsLeftToChangeBetaByInput = 35.0f;
++
++				mouseChangesInput = true;
++				m_bFixed1stPersonCamInVeh = false;
++			} else if (stepsLeftToChangeBetaByInput > 0.0f) {
++				stepsLeftToChangeBetaByInput = Max(0.0f, stepsLeftToChangeBetaByInput - CTimer::GetTimeStep());
++
++				if (stepsLeftToChangeBetaByInput == 0.0f) {
++					Beta = CrossProduct(Front, Up).Heading();
++					Alpha += vehicle->GetRight().z;
++				}
++
++				mouseChangesInput = true;
++				m_bFixed1stPersonCamInVeh = false;
++			}
++		}
++
++		if (vehicle->m_vecMoveSpeed.Magnitude2D() <= 0.02f && !m_bFixed1stPersonCamInVeh) {
++			if (stepsLeftToChangeBetaByInput == 0.0f) {
++				Beta = -HALFPI;
++				Alpha = vehicle->GetRight().z;
++			}
++			
++			stepsLeftToChangeBetaByInput = 35.0f;
++		}
++
++		if (FrontEndMenuManager.m_PrefsRelativeCamInVeh_DB_FP) {
++			if (ped->bIsPlayerAiming && !bNeedTurnBetaAngleRelativeVehicle) {
++				bNeedTurnBetaAngleRelativeVehicle = true;
++
++				Beta = -HALFPI - (vehicle->GetRight().Heading() - CrossProduct(Front, Up).Heading());
++			} else if (!ped->bIsPlayerAiming && bNeedTurnBetaAngleRelativeVehicle) {
++				bNeedTurnBetaAngleRelativeVehicle = false;
++			}
++		} else {
++			if (ped->bIsPlayerAiming && !bNeedTurnBetaAngleRelativeWorld) {
++				bNeedTurnBetaAngleRelativeWorld = true;
++
++				Beta = CrossProduct(Front, Up).Heading();
++				Alpha += vehicle->GetForward().z;
++			} else if (!ped->bIsPlayerAiming && bNeedTurnBetaAngleRelativeWorld) {
++				bNeedTurnBetaAngleRelativeWorld = false;
++
++				Beta = -HALFPI - (vehicle->GetRight().Heading() - CrossProduct(Front, Up).Heading());
++			}
++		}
++
++		CMatrix* matrix = &vehicle->GetMatrix();
++
++		float vehicleHeading = vehicle->GetRight().Heading();
++
++		if (FrontEndMenuManager.m_PrefsAutocenterCamInVeh_FP && !mouseChangesInput && vehicle->m_vecMoveSpeed.Magnitude2D() > 0.02f) {
++			if (Abs(Beta - vehicleHeading) < 0.01 && Abs(Alpha - vehicle->GetForward().z) < 0.01)
++				m_bFixed1stPersonCamInVeh = true;
++
++			if (m_bFixed1stPersonCamInVeh)
++				Beta = vehicleHeading;
++			else {
++				// from Process_FollowCar_SA, but modified
++
++				float camRightHeading = Front.Heading() - HALFPI;
++				if (camRightHeading < -PI)
++					camRightHeading = camRightHeading + TWOPI;
++
++				float velocityRightHeading = vehicle->GetForward().Heading() - HALFPI;
++
++				if (velocityRightHeading < camRightHeading - PI)
++					velocityRightHeading = velocityRightHeading + TWOPI;
++				else if (velocityRightHeading > camRightHeading + PI)
++					velocityRightHeading = velocityRightHeading - TWOPI;
++
++				float betaChangeMult1 = CTimer::GetTimeStep() * 0.25f;
++				float betaChangeLimit = CTimer::GetTimeStep() * 0.25f;
++
++				float betaChangeMult2 = (vehicle->GetRight() - DotProduct(vehicle->GetRight(), Front) * Front).Magnitude();
++
++				float betaChange = Min(1.0f, betaChangeMult1 * betaChangeMult2) * (velocityRightHeading - camRightHeading);
++				if (betaChange <= betaChangeLimit) {
++					if (betaChange < -betaChangeLimit)
++						betaChange = -betaChangeLimit;
++				} else {
++					betaChange = betaChangeLimit;
++				}
++
++				float targetBeta = camRightHeading + betaChange;
++				if (targetBeta < Beta - HALFPI)
++					targetBeta += TWOPI;
++				else if (targetBeta > Beta + PI)
++					targetBeta -= TWOPI;
++
++				float newAngleSpeedMaxBlendAmount = 0.85f;
++				float angleChangeStep = Pow(0.1f, CTimer::GetTimeStep());
++				float targetBetaWithStickBlendAmount = (targetBeta - Beta) / Max(CTimer::GetTimeStep(), 1.0f);
++				
++				if (targetBetaWithStickBlendAmount < -newAngleSpeedMaxBlendAmount)
++					targetBetaWithStickBlendAmount = -newAngleSpeedMaxBlendAmount;
++				else if (targetBetaWithStickBlendAmount > newAngleSpeedMaxBlendAmount)
++					targetBetaWithStickBlendAmount = newAngleSpeedMaxBlendAmount;
++
++				float angleChangeStepLeft = 1.0f - angleChangeStep;
++				BetaSpeed = targetBetaWithStickBlendAmount * angleChangeStepLeft + angleChangeStep * BetaSpeed;
++				if (Abs(BetaSpeed) < 0.0001f)
++					BetaSpeed = 0.0f;
++				
++				float betaChangePerFrame = CTimer::GetTimeStep() * BetaSpeed;
++				Beta = betaChangePerFrame + Beta;
++			}
++
++			if (vehicle->m_vecMoveSpeed.Magnitude2D() > 0.02f)
++				Alpha = InterpFloat(Alpha, vehicle->GetForward().z, m_bFixed1stPersonCamInVeh ? 4.0f : 5.0f);
++		}
++
++		if (!ped->bIsPlayerAiming && (stepsLeftToChangeBetaByInput > 0.0f || !FrontEndMenuManager.m_PrefsAutocenterCamInVeh_FP) ||
++			ped->bIsPlayerAiming && FrontEndMenuManager.m_PrefsRelativeCamInVeh_DB_FP) {
++			
++			if (ped->bIsPlayerAiming) {
++				if (Beta >= DEGTORAD(5.0f) && Beta < HALFPI) Beta = DEGTORAD(5.0f);
++				else if (Beta >= HALFPI && Beta <= DEGTORAD(175.0f)) Beta = DEGTORAD(175.0f);
++			} else {
++				if (Beta >= DEGTORAD(45.0f) && Beta < HALFPI) Beta = DEGTORAD(45.0f);
++				else if (Beta >= HALFPI && Beta <= DEGTORAD(135.0f)) Beta = DEGTORAD(135.0f);
++			}
++
++			CMatrix mat, rot;
++			mat = vehicle->GetMatrix();
++			rot.SetRotateX(Alpha);
++			rot.RotateZ(Beta + HALFPI);
++			mat = mat * rot;
++			Front = mat.GetForward();
++			Up = mat.GetUp();
++		} else {
++			if (!ped->bIsPlayerAiming)
++				LimitAngleBetaRelativelyTwoAngles(vehicle->GetRight(), DEGTORAD(130.0f), DEGTORAD(130.0f));
++			else
++				LimitAngleBetaRelativelyTwoAngles(vehicle->GetRight(), DEGTORAD(95.0f), DEGTORAD(95.0f));
++		}
++
++		if (!ped->bIsPlayerAiming && stepsLeftToChangeBetaByInput == 0.0f && FrontEndMenuManager.m_PrefsAutocenterCamInVeh_FP ||
++			!FrontEndMenuManager.m_PrefsRelativeCamInVeh_DB_FP && ped->bIsPlayerAiming) {
++
++			if (vehicle->GetUp().z > 0.05f) {
++				Front.x = Cos(Alpha) * -Cos(Beta);
++				Front.y = Cos(Alpha) * -Sin(Beta);
++				Front.z = Sin(Alpha);
++			} else {
++				Front = vehicle->GetForward();
++			}
++
++			Up = matrix->GetUp();
++			Up.Normalise();
++			CVector Right = CrossProduct(Front, Up);
++			Right.Normalise();
++			Up = CrossProduct(Right, Front);
++			Up.Normalise();
++		}
++	} else if (ped) {
++		if (ped->m_nPedState == PED_SEEK_CAR || ped->m_nPedState == PED_SEEK_IN_BOAT || ped->m_nPedState == PED_ENTER_CAR || ped->m_nPedState == PED_EXIT_CAR)
++			Beta = ped->m_fRotationCur - HALFPI;
++		else if (!ped->IsPedInControl())
++			LimitAngleBetaRelativelyTwoAngles(ped->GetRight(), DEGTORAD(70.0f), DEGTORAD(70.0f));
++
++		Front.x = Cos(Alpha) * -Cos(Beta);
++		Front.y = Cos(Alpha) * -Sin(Beta);
++		Front.z = Sin(Alpha);
++
++		GetVectorsReadyForRW();
++
++		float waterLevel;
++		if (CWaterLevel::GetWaterLevel(Source, &waterLevel, false) && Source.z < waterLevel + 0.75f)
++			Source.z = waterLevel + 0.25f;
++	}
++
++	// from Process_Fixed
++	float WaterZ = 0.0f;
++	if(CWaterLevel::GetWaterLevel(Source, &WaterZ, true) && Source.z < WaterZ){
++		float WaterLum = Sqrt(SQR(CTimeCycle::GetWaterRed()) + SQR(CTimeCycle::GetWaterGreen()) + SQR(CTimeCycle::GetWaterBlue()));
++		if(WaterLum > BOAT_UNDERWATER_CAM_COLORMAG_LIMIT){
++			float f = BOAT_UNDERWATER_CAM_COLORMAG_LIMIT/WaterLum;
++			TheCamera.SetMotionBlur(CTimeCycle::GetWaterRed()*f,
++				CTimeCycle::GetWaterGreen()*f,
++				CTimeCycle::GetWaterBlue()*f, BOAT_UNDERWATER_CAM_BLUR, MOTION_BLUR_LIGHT_SCENE);
++		}else{
++			TheCamera.SetMotionBlur(CTimeCycle::GetWaterRed(),
++				CTimeCycle::GetWaterGreen(),
++				CTimeCycle::GetWaterBlue(), BOAT_UNDERWATER_CAM_BLUR, MOTION_BLUR_LIGHT_SCENE);
++		}
++	}
++
++	float nearClipValue = 0.04f;
++	if (vehicle)
++		nearClipValue = m_bFixed1stPersonCamInVeh ? 0.05f : 0.02f;
++	RwCameraSetNearClipPlane(Scene.camera, nearClipValue);
++
++	TheCamera.m_bCamDirectlyInFront = false;
++	TheCamera.m_bCamDirectlyBehind = false;
++}
++
++void CCam::LimitAngleBetaRelativelyTwoAngles(CVector normalizedRelativeVector, float leftLimitingAngle, float rightLimitingAngle)
++{
++	float maxLeftAngle = normalizedRelativeVector.Heading() + leftLimitingAngle;
++	if (maxLeftAngle > PI) {
++		maxLeftAngle = -maxLeftAngle;
++		float increasingValue = -PI - maxLeftAngle;
++		maxLeftAngle = -PI + increasingValue;
++	}
++
++	float maxRightAngle = normalizedRelativeVector.Heading() - rightLimitingAngle;
++	if (maxRightAngle < -PI) {
++		maxRightAngle = -maxRightAngle;
++		float decreasingValue = PI - maxRightAngle;
++		maxRightAngle = PI + decreasingValue;
++	}
++
++	float diffLeftAngle = Beta - maxLeftAngle;
++	if (diffLeftAngle > PI) {
++		diffLeftAngle = -diffLeftAngle;
++		float increasingValue = -PI - diffLeftAngle;
++		diffLeftAngle = -PI + increasingValue;
++	}
++	else if (diffLeftAngle < -PI) {
++		diffLeftAngle = -diffLeftAngle;
++		float decreasingValue = PI - diffLeftAngle;
++		diffLeftAngle = PI + decreasingValue;
++	}
++
++	float diffRightAngle = Beta - maxRightAngle;
++	if (diffRightAngle > PI) {
++		diffRightAngle = -diffRightAngle;
++		float increasingValue = -PI - diffRightAngle;
++		diffRightAngle = -PI + increasingValue;
++	}
++	else if (diffRightAngle < -PI) {
++		diffRightAngle = -diffRightAngle;
++		float decreasingValue = PI - diffRightAngle;
++		diffRightAngle = PI + decreasingValue;
++	}
++
++	bool bLookLeft = DotProduct(normalizedRelativeVector, Front) < 0.0f;
++	bool bLookRight = DotProduct(normalizedRelativeVector, Front) > 0.0f;
++
++	if (bLookLeft)
++		if (diffLeftAngle >= 0.0f) Beta = maxLeftAngle;
++
++	if (bLookRight)
++		if (diffRightAngle <= 0.0f) Beta = maxRightAngle;
++}
++#endif
++
+ void
+ CCam::Process_ModelView(const CVector &CameraTarget, float, float, float)
+ {
+@@ -4820,6 +5385,10 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 	static bool alphaCorrected;
+ 	static float heightIncreaseMult;
+ 
++#ifdef FIRING_AND_AIMING // smoothly move the camera while aiming
++	static CVector CurrentAimOffset = { 0.0f, 0.0f, 0.0f };
++#endif
++
+ 	if (!CamTargetEntity->IsVehicle())
+ 		return;
+ 
+@@ -4950,7 +5519,17 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 			// 0.98f: CAR_FOV_FADE_MULT
+ 			FOV = Pow(0.98f, CTimer::GetTimeStep()) * (FOV - DefaultFOV) + DefaultFOV;
+ 
+-		FOV = Clamp(FOV, DefaultFOV, DefaultFOV + 30.0f);
++#ifdef FIRING_AND_AIMING// smoothly change FOV during aiming
++			if (FindPlayerPed()->bIsPlayerAiming) {
++				float newFOV = InterpFloat(FOV, AimingFOV, 5.0f);
++				FOV = Clamp(newFOV, AimingFOV, DefaultFOV + 30.0f);
++			} else {
++				float newFOV = InterpFloat(FOV, DefaultFOV, 5.0f);
++				FOV = Clamp(newFOV, FOV, DefaultFOV + 30.0f);
++			}
++#else
++			FOV = Clamp(FOV, DefaultFOV, DefaultFOV + 30.0f);
++#endif
+ 	}
+ 
+ 	// WORKAROUND: I still don't know how looking behind works (m_bCamDirectlyInFront is unused in III, they seem to use m_bUseTransitionBeta)
+@@ -5159,6 +5738,14 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 		}
+ 	}
+ 
++#ifdef FIRING_AND_AIMING
++	if (CurrentAimOffset != CVector(0.0f, 0.0f, 0.0f)) {
++		stepsLeftToChangeBetaByInput = 50.0f;
++		targetAlpha = Alpha;
++		mouseChangesInput = true;
++	}
++#endif
++
+ 	if (correctAlpha) {
+ 		if (nPreviousMode != MODE_CAM_ON_A_STRING)
+ 			alphaCorrected = false;
+@@ -5241,7 +5828,11 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 			Alpha = minAlphaAllowed;
+ 			AlphaSpeed = 0.0f;
+ 		}
++#ifdef FIRING_AND_AIMING
++	} else if (!car->IsBoat()) {
++#else
+ 	} else {
++#endif
+ 		Alpha = maxAlphaAllowed;
+ 		AlphaSpeed = 0.0f;
+ 	}
+@@ -5257,6 +5848,22 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 
+ 	lastBeta = Beta;
+ 
++#ifdef FIRING_AND_AIMING // limit the vertical angle of the camera relative to the vehicle
++	if (FindPlayerPed()->bIsPlayerAiming) {
++		float vehPitchAngle = car->GetForward().z;
++		float angleRelativeVehAndCam = DotProduct(car->GetRight(), TheCamera.Cams[TheCamera.ActiveCam].Front) * car->GetRight().z;
++
++		if (car->IsBoat()) {
++			if (Alpha > DEGTORAD(5.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(5.0f) + vehPitchAngle + angleRelativeVehAndCam;
++			if (Alpha < DEGTORAD(-20.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(-20.0f) + vehPitchAngle + angleRelativeVehAndCam;
++		} else {
++			if (Alpha > DEGTORAD(20.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(20.0f) + vehPitchAngle + angleRelativeVehAndCam;
++			if (Alpha < DEGTORAD(-20.0f) + vehPitchAngle + angleRelativeVehAndCam) Alpha = DEGTORAD(-20.0f) + vehPitchAngle + angleRelativeVehAndCam;
++		}
++	} else if (car->IsBoat())
++		if (Alpha > DEGTORAD(0.0f)) Alpha = DEGTORAD(0.0f);
++#endif
++
+ 	Front.x = -(Cos(Beta) * Cos(Alpha));
+ 	Front.y = -(Sin(Beta) * Cos(Alpha));
+ 	Front.z = Sin(Alpha);
+@@ -5264,8 +5871,41 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 	TheCamera.m_bCamDirectlyBehind = false;
+ 	TheCamera.m_bCamDirectlyInFront = false;
+ 
++#ifdef FIRING_AND_AIMING // smoothly move the camera while aiming
++	if (FindPlayerPed()->bIsPlayerAiming) {
++		CVector cameraOffset;
++
++		if (car->IsBike())
++			cameraOffset = car->GetRight() * 0.4f + car->GetUp() * 0.4f;
++		else
++			cameraOffset = -car->GetRight() * 0.8f + car->GetUp() * 0.4f;
++
++		if (car->IsBike() && CurrentAimOffset.Magnitude() < 0.4f || !car->IsBike() && CurrentAimOffset.Magnitude() < 0.8f) {
++			CurrentAimOffset = InterpVector(CurrentAimOffset, cameraOffset, 3.0f);
++			TargetCoors += CurrentAimOffset;
++		} else {
++			CurrentAimOffset = cameraOffset;
++			TargetCoors += CurrentAimOffset;
++		}
++	} else {
++		if (CurrentAimOffset.Magnitude() > 0.05f) {
++			CurrentAimOffset = InterpVector(CurrentAimOffset, CVector(0.0f, 0.0f, 0.0f), 2.0f);
++			TargetCoors += CurrentAimOffset;
++		} else {
++			CurrentAimOffset = CVector(0.0f, 0.0f, 0.0f);
++			TargetCoors += CurrentAimOffset;
++		}
++	}
++#endif
++
+ 	Source = TargetCoors - newDistance * Front;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	float waterLevel;
++	if (CWaterLevel::GetWaterLevel(Source, &waterLevel, false) && Source.z < waterLevel + 0.75f)
++		Source.z = waterLevel + 0.75f;
++#endif
++
+ 	m_cvecTargetCoorsForFudgeInter = TargetCoors;
+ 	m_aTargetHistoryPosThree = m_aTargetHistoryPosOne;
+ 	float nextAlpha = alphaWithSpeedAccounted + zoomModeAlphaOffset;
+diff --git a/src/core/Camera.cpp b/src/core/Camera.cpp
+index 3447747c..2044c742 100644
+--- a/src/core/Camera.cpp
++++ b/src/core/Camera.cpp
+@@ -245,8 +245,13 @@ CCamera::Init(void)
+ 	m_uiTransitionState = 0;
+ 	m_uiTimeTransitionStart = 0;
+ 	m_bLookingAtPlayer = true;
++#ifdef FIRING_AND_AIMING
++	m_f3rdPersonCHairMultX = 0.51f;
++	m_f3rdPersonCHairMultY = 0.49f;
++#else
+ 	m_f3rdPersonCHairMultX = 0.53f;
+ 	m_f3rdPersonCHairMultY = 0.4f;
++#endif
+ 	m_fAvoidTheGeometryProbsTimer = 0.0f;
+ 	m_nAvoidTheGeometryProbsDirn = 0;
+ }
+@@ -751,18 +756,51 @@ CCamera::CamControl(void)
+ 				if(CPad::GetPad(0)->CycleCameraModeUpJustDown() && !CReplay::IsPlayingBack() &&
+ 				   (m_bLookingAtPlayer || WhoIsInControlOfTheCamera == CAMCONTROL_OBBE) &&
+ 				   !m_WideScreenOn){
++
++#ifdef FIRST_PERSON
++					if (CarZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++						PedZoomIndicator = CAM_ZOOM_2;
++#endif
++
+ 					CarZoomIndicator--;
+ 					// disable topdown here
+ 					if(CarZoomIndicator == CAM_ZOOM_TOPDOWN)
+ 						CarZoomIndicator--;
++
++
++#ifdef FIRST_PERSON
++					if (CarZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++						PedZoomIndicator = CAM_ZOOM_REAL_1ST_PERSON;
++#endif
+ 				}
+ 				if(CPad::GetPad(0)->CycleCameraModeDownJustDown() && !CReplay::IsPlayingBack() &&
+ 				   (m_bLookingAtPlayer || WhoIsInControlOfTheCamera == CAMCONTROL_OBBE) &&
+ 				   !m_WideScreenOn){
++
++#ifdef FIRST_PERSON
++					if (CarZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++						PedZoomIndicator = CAM_ZOOM_2;
++#endif
++
+ 					CarZoomIndicator++;
+ 					if(CarZoomIndicator == CAM_ZOOM_TOPDOWN)
+ 						CarZoomIndicator++;
+-				}
++
++						
++#ifdef FIRST_PERSON
++					if (CarZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++						PedZoomIndicator = CAM_ZOOM_REAL_1ST_PERSON;
++#endif
++					}
++
++#ifdef FIRST_PERSON
++					if (Cams[ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON && CarZoomIndicator != CAM_ZOOM_3)
++						CarZoomIndicator = CAM_ZOOM_REAL_1ST_PERSON;
++
++					if (CarZoomIndicator == CAM_ZOOM_3 || PedZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++						switchByJumpCut = true;
++#endif
++
+ 				if(!m_bFailedCullZoneTestPreviously){
+ 					if(CarZoomIndicator < CAM_ZOOM_1STPRS) CarZoomIndicator = CAM_ZOOM_CINEMATIC;
+ 					else if(CarZoomIndicator > CAM_ZOOM_CINEMATIC) CarZoomIndicator = CAM_ZOOM_1STPRS;
+@@ -785,7 +823,11 @@ CCamera::CamControl(void)
+ 						if(stairsZone)
+ 							stairs = true;
+ 					}
++#ifdef FIRST_PERSON
++					if((CGarages::IsPointInAGarageCameraZone(pTargetEntity->GetPosition()) || stairs) && Cams[ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON){
++#else
+ 					if(CGarages::IsPointInAGarageCameraZone(pTargetEntity->GetPosition()) || stairs){
++#endif
+ 						if(!m_bGarageFixedCamPositionSet && m_bLookingAtPlayer ||
+ 						   WhoIsInControlOfTheCamera == CAMCONTROL_OBBE){
+ 							if(pToGarageWeAreIn || stairsZone){
+@@ -893,6 +935,19 @@ CCamera::CamControl(void)
+ 							}
+ 							ReqMode = CCam::MODE_CAM_ON_A_STRING;
+ 						}
++
++						#ifdef FIRST_PERSON
++					}else if (CarZoomIndicator != CAM_ZOOM_REAL_1ST_PERSON){
++						if(m_bPlayerIsInGarage){
++							m_bJustCameOutOfGarage = true;
++							m_bPlayerIsInGarage = false;
++						}
++						m_bGarageFixedCamPositionSet = false;
++						ReqMode = CCam::MODE_CAM_ON_A_STRING;
++					}else{
++						ReqMode = CCam::MODE_REAL_1ST_PERSON;
++					}
++#else
+ 					}else{
+ 						if(m_bPlayerIsInGarage){
+ 							m_bJustCameOutOfGarage = true;
+@@ -901,10 +956,18 @@ CCamera::CamControl(void)
+ 						m_bGarageFixedCamPositionSet = false;
+ 						ReqMode = CCam::MODE_CAM_ON_A_STRING;
+ 					}
++#endif
+ 					break;
+ 				}
+ 				case VEHICLE_TYPE_BOAT:
++#ifdef FIRST_PERSON
++				if (CarZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++					ReqMode = CCam::MODE_REAL_1ST_PERSON;
++				else
+ 					ReqMode = CCam::MODE_BEHINDBOAT;
++#else
++				ReqMode = CCam::MODE_BEHINDBOAT;
++#endif
+ 					break;
+ 				default: break;
+ 				}
+@@ -941,7 +1004,11 @@ CCamera::CamControl(void)
+ 				}
+ 
+ 				// Check if we have to go into first person
++#ifdef FIRST_PERSON
++				if(vehType == VEHICLE_TYPE_CAR && !m_bPlayerIsInGarage && Cams[ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON){
++#else
+ 				if(vehType == VEHICLE_TYPE_CAR && !m_bPlayerIsInGarage){
++#endif
+ 					if(CCullZones::Cam1stPersonForPlayer() && 
+ 					   pTargetEntity->GetColModel()->boundingBox.GetSize().z >= 3.026f &&
+ 					   pToGarageWeAreInForHackAvoidFirstPerson == nil){
+@@ -984,7 +1051,11 @@ CCamera::CamControl(void)
+ 				WellBufferMe(CloseInCarHeightTarget, &Cams[ActiveCam].m_fCloseInCarHeightOffset, &Cams[ActiveCam].m_fCloseInCarHeightOffsetSpeed, 0.1f, 0.25f, false);
+ 
+ 				// Fallen into water
++#ifdef FIRST_PERSON
++				if(Cams[ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON && Cams[ActiveCam].IsTargetInWater(Cams[ActiveCam].Source) && !boatTarget &&
++#else
+ 				if(Cams[ActiveCam].IsTargetInWater(Cams[ActiveCam].Source) && !boatTarget &&
++#endif
+ 				   !Cams[ActiveCam].CamTargetEntity->IsPed() &&
+ 				   pTargetEntity->GetModelIndex() != MI_SKIMMER && pTargetEntity->GetModelIndex() != MI_SEASPAR)
+ 					ReqMode = CCam::MODE_PLAYER_FALLEN_WATER;
+@@ -997,18 +1068,45 @@ CCamera::CamControl(void)
+ 			if(CPad::GetPad(0)->CycleCameraModeUpJustDown() && !CReplay::IsPlayingBack() &&
+ 			   (m_bLookingAtPlayer || WhoIsInControlOfTheCamera == CAMCONTROL_OBBE) &&
+ 			   !m_WideScreenOn && !m_bFailedCullZoneTestPreviously && !m_bFirstPersonBeingUsed){
+-				if(FrontEndMenuManager.m_ControlMethod == CONTROL_STANDARD){
+-					if(PedZoomIndicator == CAM_ZOOM_3)
++
++#if defined FIRST_PERSON && defined IMPROVED_MENU_AND_INPUT
++				if (PedZoomIndicator == CAM_ZOOM_3) {
++					PedZoomIndicator = CAM_ZOOM_REAL_1ST_PERSON;
++					CarZoomIndicator = CAM_ZOOM_REAL_1ST_PERSON;
++				} else if (PedZoomIndicator == CAM_ZOOM_1) {
++					PedZoomIndicator = CAM_ZOOM_2;
++					CarZoomIndicator = CAM_ZOOM_2;
++				} else if (PedZoomIndicator == CAM_ZOOM_2) {
++					PedZoomIndicator = CAM_ZOOM_3;
++					CarZoomIndicator = CAM_ZOOM_2;
++				} else {
++					PedZoomIndicator = CAM_ZOOM_1;
++					CarZoomIndicator = CAM_ZOOM_2;
++				}
++#else
++				if (FrontEndMenuManager.m_ControlMethod == CONTROL_STANDARD) {
++					if (PedZoomIndicator == CAM_ZOOM_3)
+ 						PedZoomIndicator = CAM_ZOOM_1;
+ 					else
+ 						PedZoomIndicator = CAM_ZOOM_3;
+ 				}else
+ 					PedZoomIndicator--;
++#endif
++
++#ifdef FIRST_PERSON
++				if (PedZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON) {
++					ReqMode = CCam::MODE_REAL_1ST_PERSON;
++					switchByJumpCut = true;
++				}
++#endif
+ 			}
++
+ 			if(CPad::GetPad(0)->CycleCameraModeDownJustDown() && !CReplay::IsPlayingBack() &&
+ 			   (m_bLookingAtPlayer || WhoIsInControlOfTheCamera == CAMCONTROL_OBBE) &&
+ 			   !m_WideScreenOn && !m_bFailedCullZoneTestPreviously && !m_bFirstPersonBeingUsed){
++
+ 				if(FrontEndMenuManager.m_ControlMethod == CONTROL_STANDARD){
++
+ 					if(PedZoomIndicator == CAM_ZOOM_3)
+ 						PedZoomIndicator = CAM_ZOOM_1;
+ 					else
+@@ -1018,9 +1116,22 @@ CCamera::CamControl(void)
+ 			}
+ 			// disabled top down and obbe's cam here
+ 			if(PedZoomIndicator < CAM_ZOOM_1) PedZoomIndicator = CAM_ZOOM_3;
++
++#ifdef FIRST_PERSON
++			else if(PedZoomIndicator > CAM_ZOOM_REAL_1ST_PERSON) PedZoomIndicator = CAM_ZOOM_1;
++#else
+ 			else if(PedZoomIndicator > CAM_ZOOM_3) PedZoomIndicator = CAM_ZOOM_1;
++#endif
++
+ 
++#ifdef FIRST_PERSON
++			if (PedZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++				ReqMode = CCam::MODE_REAL_1ST_PERSON;
++			else
++				ReqMode = CCam::MODE_FOLLOWPED;
++#else
+ 			ReqMode = CCam::MODE_FOLLOWPED;
++#endif
+ 
+ 			// Check 1st person mode
+ 			if((m_bLookingAtPlayer || m_bEnable1rstPersonCamCntrlsScript) && pTargetEntity->IsPed() &&
+@@ -1113,7 +1224,13 @@ CCamera::CamControl(void)
+ 				if(stairsZone)
+ 					stairs = true;
+ 			}
+-			if(CGarages::IsPointInAGarageCameraZone(pTargetEntity->GetPosition()) && !m_bUseMouse3rdPerson || stairs){
++
++#ifdef FIRST_PERSON
++			if ((CGarages::IsPointInAGarageCameraZone(pTargetEntity->GetPosition()) && !m_bUseMouse3rdPerson || stairs) && Cams[ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON) {
++#else
++			if (CGarages::IsPointInAGarageCameraZone(pTargetEntity->GetPosition()) && !m_bUseMouse3rdPerson || stairs) {
++#endif
++
+ 				if(!m_bGarageFixedCamPositionSet && m_bLookingAtPlayer){
+ 					if(pToGarageWeAreIn || stairs){
+ 						float ground;
+@@ -1222,7 +1339,13 @@ CCamera::CamControl(void)
+ 				}
+ 
+ 				if((CGarages::CameraShouldBeOutside() || stairs) && m_bLookingAtPlayer && m_bGarageFixedCamPositionSet){
++
++#ifdef FIRST_PERSON
++					if((pToGarageWeAreIn || stairs) && ReqMode != CCam::MODE_REAL_1ST_PERSON){
++#else
+ 					if(pToGarageWeAreIn || stairs){
++#endif
++
+ 						ReqMode = CCam::MODE_FIXED;
+ 						m_bPlayerIsInGarage = true;
+ 					}
+@@ -1262,9 +1385,20 @@ CCamera::CamControl(void)
+ 			   !m_bPlayerIsInGarage)
+ 				ReqMode = CCam::MODE_TOP_DOWN_PED;
+ 
++
++			//
++
+ 			// Weapon mode
+-			if(!CPad::GetPad(0)->GetTarget() && PlayerWeaponMode.Mode != CCam::MODE_HELICANNON_1STPERSON)
+-				ClearPlayerWeaponMode();
++			if(!CPad::GetPad(0)->GetTarget() && PlayerWeaponMode.Mode != CCam::MODE_HELICANNON_1STPERSON) {
++#ifdef FIRST_PERSON
++				if ((Cams[ActiveCam].Mode == CCam::MODE_SNIPER || 
++						Cams[ActiveCam].Mode == CCam::MODE_ROCKETLAUNCHER) &&
++						PedZoomIndicator == CAM_ZOOM_REAL_1ST_PERSON)
++						ReqMode = CCam::MODE_REAL_1ST_PERSON;
++#endif
++			ClearPlayerWeaponMode();
++							}
++
+ 			if(m_PlayerMode.Mode != CCam::MODE_NONE)
+ 				ReqMode = m_PlayerMode.Mode;
+ 			if(PlayerWeaponMode.Mode != CCam::MODE_NONE && !stairs){
+@@ -1486,7 +1620,13 @@ CCamera::CamControl(void)
+ 	// Start the transition or do a jump cut
+ 	if(m_bLookingAtPlayer){
+ 		// Going into top down modes normally needs a jump cut (but see below)
++#ifdef FIRST_PERSON
++		if(ReqMode == CCam::MODE_TOPDOWN || ReqMode == CCam::MODE_1STPERSON || ReqMode == CCam::MODE_TOP_DOWN_PED || ReqMode == CCam::MODE_REAL_1ST_PERSON || PedZoomIndicator == CAM_ZOOM_1){
++#else
+ 		if(ReqMode == CCam::MODE_TOPDOWN || ReqMode == CCam::MODE_1STPERSON || ReqMode == CCam::MODE_TOP_DOWN_PED){
++#endif
++
++
+ 			switchByJumpCut = true;
+ 		}
+ 		// Going from top down to vehicle
+@@ -1541,7 +1681,11 @@ CCamera::CamControl(void)
+ 				if(pTargetEntity && pTargetEntity->IsVehicle())
+ 					switchByJumpCut = true;
+ 			}
++#ifdef FIRST_PERSON
++		}else if(ReqMode == CCam::MODE_FOLLOWPED || ReqMode == CCam::MODE_REAL_1ST_PERSON){
++#else
+ 		}else if(ReqMode == CCam::MODE_FOLLOWPED){
++#endif
+ 			bool syphonJumpCut = false;
+ 			if(Cams[ActiveCam].Mode == CCam::MODE_SYPHON || Cams[ActiveCam].Mode == CCam::MODE_SYPHON_CRIM_IN_FRONT)
+ 				if(!((CPed*)pTargetEntity)->CanWeRunAndFireWithWeapon())
+@@ -1626,7 +1770,11 @@ CCamera::CamControl(void)
+ 			ReqMode = CCam::MODE_EDITOR;
+ #endif
+ 
+-		if((m_uiTransitionState == 0 || switchByJumpCut) && ReqMode != Cams[ActiveCam].Mode){
++#ifdef FIRST_PERSON
++		if((m_uiTransitionState == 0 || switchByJumpCut) && ReqMode != Cams[ActiveCam].Mode || ReqMode == CCam::MODE_REAL_1ST_PERSON) {
++#else
++		if((m_uiTransitionState == 0 || switchByJumpCut) && ReqMode != Cams[ActiveCam].Mode) {
++#endif
+ 			if(switchByJumpCut){
+ 				if(!m_bPlayerIsInGarage || m_bJustCameOutOfGarage){
+ 					if(ReqMode != CCam::MODE_FOLLOWPED &&
+@@ -1919,6 +2067,11 @@ CCamera::InitialiseCameraForDebugMode(void)
+ void
+ CCamera::CamShake(float strength, float x, float y, float z)
+ {
++#ifdef FIRST_PERSON
++	if (strength > 0.15f && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON)
++		strength = 0.15f;
++#endif
++
+ 	CVector Dist = Cams[ActiveCam].Source - CVector(x, y, z);
+ 	// a bit complicated...
+ 	float dist2d = Sqrt(SQR(Dist.x) + SQR(Dist.y));
+@@ -2219,7 +2372,16 @@ CCamera::RestoreWithJumpCut(void)
+ 	m_bAllow1rstPersonWeaponsCamera = false;
+ 
+ 	if(FindPlayerVehicle()){
++		
++#ifdef FIRST_PERSON
++		if (m_iModeToGoTo == CCam::MODE_WHEELCAM)
++			m_iModeToGoTo = CCam::MODE_REAL_1ST_PERSON;
++		else
++			m_iModeToGoTo = CCam::MODE_CAM_ON_A_STRING;
++#else
+ 		m_iModeToGoTo = CCam::MODE_CAM_ON_A_STRING;
++#endif
++
+ 		pTargetEntity = FindPlayerVehicle();
+ 	}else{
+ 		m_iModeToGoTo = CCam::MODE_FOLLOWPED;
+diff --git a/src/core/Camera.h b/src/core/Camera.h
+index 84afdd23..bf1eced2 100644
+--- a/src/core/Camera.h
++++ b/src/core/Camera.h
+@@ -22,6 +22,9 @@ enum
+ 	CAM_ZOOM_1,
+ 	CAM_ZOOM_2,
+ 	CAM_ZOOM_3,
++#ifdef FIRST_PERSON
++	CAM_ZOOM_REAL_1ST_PERSON,
++#endif
+ 	CAM_ZOOM_TOPDOWN,
+ 	CAM_ZOOM_CINEMATIC,
+ };
+@@ -80,6 +83,9 @@ public:
+ 		MODE_EDITOR,
+ 		MODE_HELICANNON_1STPERSON,
+ 		MODE_CAMERA,
++#ifdef FIRST_PERSON
++		MODE_REAL_1ST_PERSON,
++#endif
+ 	};
+ 
+ 	bool    bBelowMinDist; //used for follow ped mode
+@@ -95,6 +101,10 @@ public:
+ 	bool    ResetStatics; //for interpolation type stuff to work
+ 	bool    Rotating;
+ 
++#ifdef FIRST_PERSON
++	bool	m_bFixed1stPersonCamInVeh;
++#endif
++
+ 	int16   Mode;                   // CameraMode
+ 	uint32  m_uiFinishTime;
+ 
+@@ -150,6 +160,14 @@ public:
+ 	float   CA_MAX_DISTANCE;
+ 	float   SpeedVar;
+ 
++#ifdef FIRING_AND_AIMING
++	float AimingFOV;
++#endif
++
++#ifdef FIRING_AND_AIMING
++	bool m_bAimingWhileLookBehind;
++#endif
++
+ #ifdef CROUCH
+ 	float m_fCurrentCameraOffsetZ;
+ 	float m_fTargetCameraPosZ;
+@@ -242,6 +260,12 @@ public:
+ 	void ProcessPedsDeadBaby(void);
+ 	bool ProcessArrestCamOne(void);
+ 	bool ProcessArrestCamTwo(void);
++
++#ifdef FIRST_PERSON
++	void Process_Real_1st_Person(const CVector& CameraTarget, float, float, float);
++	void LimitAngleBetaRelativelyTwoAngles(CVector normalizedRelativeVector, float leftLimitingAngle, float rightLimitingAngle);
++#endif
++
+ 	bool GetLookAlongGroundPos(CEntity *Target, CPed *Cop, CVector &TargetCoors, CVector &SourceOut);
+ 	bool GetLookFromLampPostPos(CEntity *Target, CPed *Cop, CVector &TargetCoors, CVector &SourceOut);
+ 	bool GetLookOverShoulderPos(CEntity *Target, CPed *Cop, CVector &TargetCoors, CVector &SourceOut);
+@@ -444,6 +468,10 @@ public:
+ 	float m_fOldBetaDiff;
+ 	float m_fPedZoomValue;
+ 
++#ifdef FIRING_AND_AIMING
++	float AimingFOV;
++#endif
++
+ 	float m_fPedZoomValueScript;
+ 	float m_fPedZoomValueSmooth;
+ 	float m_fPositionAlongSpline;
+diff --git a/src/core/ControllerConfig.cpp b/src/core/ControllerConfig.cpp
+index 54518ae2..5f757b62 100644
+--- a/src/core/ControllerConfig.cpp
++++ b/src/core/ControllerConfig.cpp
+@@ -665,6 +665,10 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown(int32 button,
+ 		bool firstPerson = false;
+ 		bool playerDriving = false;
+ 
++#ifdef FIRING_AND_AIMING
++		bool playerDriveby = false;
++#endif
++
+ 		if (FindPlayerVehicle() != NULL)
+ 		{
+ 			CPlayerPed *plr = FindPlayerPed();
+@@ -672,6 +676,11 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown(int32 button,
+ 			{
+ 				if (plr->m_nPedState == PED_DRIVING)
+ 					playerDriving = true;
++
++#ifdef FIRING_AND_AIMING
++				if (plr->m_nPedState == PED_AIM_GUN || plr->m_nPedState == PED_ATTACK)
++					playerDriveby = true;
++#endif
+ 			}
+ 		}
+ 
+@@ -704,7 +713,11 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown(int32 button,
+ 
+ 		if (pad != NULL)
+ 		{
++#ifdef FIRING_AND_AIMING
++			if (playerDriving || playerDriveby)
++#else
+ 			if (playerDriving)
++#endif
+ 			{
+ 				AffectControllerStateOn_ButtonDown_Driving(button, type, *state);
+ 				AffectControllerStateOn_ButtonDown_VehicleAndThirdPersonOnly(button, type, *state);
+@@ -759,6 +772,11 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_Driving(int32
+ 		state.Square = 255;
+ 	if (button == GetControllerKeyAssociatedWithAction(TOGGLE_SUBMISSIONS, type))
+ 		state.RightShock = 255;
++
++#ifdef FIRING_AND_AIMING // vehicle lock target button
++	if (button == GetControllerKeyAssociatedWithAction(PED_LOCK_TARGET, type))
++		state.DPadDown = 255;
++#endif
+ 	
+ 	if (button == GetControllerKeyAssociatedWithAction(VEHICLE_TURRETLEFT, type))
+ 	{
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 44adea5c..b3aed6f7 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -812,7 +812,22 @@ CMenuManager::CheckSliderMovement(int value)
+ #ifdef FIX_BUGS
+ 		TheCamera.m_fMouseAccelVertical = TheCamera.m_fMouseAccelHorzntl + 0.0005f;
+ #endif
++
+ 		break;
++//
++#ifdef FIRST_PERSON
++	case MENUACTION_FOV_FP:
++		if (value > 0)
++			m_PrefsFOV_FP += ((100 - 80) / MENUSLIDER_LOGICAL_BARS);
++		else
++			m_PrefsFOV_FP -= ((100 - 80) / MENUSLIDER_LOGICAL_BARS);
++
++		m_PrefsFOV_FP = Clamp(m_PrefsFOV_FP, 80, 100);
++
++		break;
++#endif
++//
++		
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	case MENUACTION_CFO_SLIDER:
+ 	{
+@@ -1189,6 +1204,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					break;
+ #endif
+ 
++// TODO Rename define to MENU_TEST, to be more in line with Re3.
+ #ifdef _FAST_LOADER
+ 				// Ohh, this is where the texts go.
+ 					// New test
+@@ -1205,6 +1221,29 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ // #endif //_TEST1
+ #endif
+ 
++//
++#ifdef FIRST_PERSON
++				case MENUACTION_AUTOCENTER_IN_VEHICLE_FP:
++					if (m_PrefsAutocenterCamInVeh_FP)
++						rightText = TheText.Get("FEM_ON");
++					else
++						rightText = TheText.Get("FEM_OFF");
++					break;
++				case MENUACTION_RELATIVE_CAM_IN_VEHICLE_DB_FP:
++					if (m_PrefsRelativeCamInVeh_DB_FP)
++						rightText = TheText.Get("FEM_ON");
++					else
++						rightText = TheText.Get("FEM_OFF");
++					break;
++				case MENUACTION_DOOM_MODE_FP:
++					if (m_PrefsDoomMode_FP)
++						rightText = TheText.Get("FEM_ON");
++					else
++						rightText = TheText.Get("FEM_OFF");
++					break;
++#endif
++//
++
+ 				case MENUACTION_CTRLVIBRATION:
+ 					if (m_PrefsUseVibration)
+ 						rightText = TheText.Get("FEM_ON");
+@@ -1490,7 +1529,12 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					int saveSlot = aScreens[m_nCurrScreen].m_aEntries[i].m_SaveSlot;
+ 					if (rightText || action == MENUACTION_DRAWDIST || action == MENUACTION_BRIGHTNESS || action == MENUACTION_MUSICVOLUME ||
+ 						action == MENUACTION_SFXVOLUME || action == MENUACTION_MP3VOLUMEBOOST || action == MENUACTION_MOUSESENS ||
++						// TODO Is this extra?
+ 						saveSlot >= SAVESLOT_1 && saveSlot <= SAVESLOT_8
++
++#ifdef FIRST_PERSON
++						|| action == MENUACTION_FOV_FP ||
++#endif
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 						|| action == MENUACTION_CFO_SLIDER
+ #endif
+@@ -1650,6 +1694,13 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 							if(m_nPrefsAudio3DProviderIndex != NO_AUDIO_PROVIDER && DMAudio.IsMP3RadioChannelAvailable())
+ 								ProcessSlider(m_PrefsMP3BoostVolume / 64.f, SLIDER_Y(128.0f), HOVEROPTION_INCREASE_MP3BOOST, HOVEROPTION_DECREASE_MP3BOOST, SCREEN_WIDTH, true);
+ 							break;
++
++#ifdef FIRST_PERSON
++						case MENUACTION_FOV_FP:
++							ProcessSlider((m_PrefsFOV_FP - 80.0f) / (100 - 80), SLIDER_Y(99.0f), HOVEROPTION_INCREASE_FOV_FP, HOVEROPTION_DECREASE_FOV_FP, SCREEN_WIDTH, false);
++							break;
++#endif
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 						case MENUACTION_CFO_SLIDER:
+ 							CMenuScreenCustom::CMenuEntry &option = aScreens[m_nCurrScreen].m_aEntries[i];
+@@ -4487,6 +4538,11 @@ CMenuManager::UserInput(void)
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 				&& action != MENUACTION_CFO_SLIDER
+ #endif
++
++#ifdef FIRST_PERSON
++				&& action != MENUACTION_FOV_FP
++#endif
++
+ 				)
+ 				m_nHoverOption = HOVEROPTION_RANDOM_ITEM;
+ 
+@@ -4570,6 +4626,10 @@ CMenuManager::UserInput(void)
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 			case HOVEROPTION_INCREASE_CFO_SLIDER:
+ #endif
++
++#ifdef FIRST_PERSON
++			case HOVEROPTION_INCREASE_FOV_FP:
++#endif
+ 				CheckSliderMovement(1);
+ 				break;
+ 			case HOVEROPTION_DECREASE_BRIGHTNESS:
+@@ -4581,6 +4641,10 @@ CMenuManager::UserInput(void)
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 			case HOVEROPTION_DECREASE_CFO_SLIDER:
+ #endif
++
++#ifdef FIRST_PERSON
++			case HOVEROPTION_DECREASE_FOV_FP:
++#endif
+ 				CheckSliderMovement(-1);
+ 				break;
+ 			}
+@@ -4655,6 +4719,10 @@ CMenuManager::UserInput(void)
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 				|| curAction == MENUACTION_CFO_SLIDER
+ #endif
++
++#ifdef FIRST_PERSON
++				|| curAction == MENUACTION_FOV_FP
++#endif
+ 				)
+ 				changeValueBy = -1;
+ 
+@@ -4670,6 +4738,10 @@ CMenuManager::UserInput(void)
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 				|| curAction == MENUACTION_CFO_SLIDER
+ #endif
++
++#ifdef FIRST_PERSON
++				|| curAction == MENUACTION_FOV_FP
++#endif
+ 				)
+ 				changeValueBy = 1;
+ 			lastSliderIncrease = CTimer::GetTimeInMillisecondsPauseMode();
+@@ -4712,9 +4784,16 @@ CMenuManager::UserInput(void)
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_RESTOREDEF
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_DRAWDIST
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MOUSESENS
+-			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MP3VOLUMEBOOST) {
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MP3VOLUMEBOOST
++		
++#ifdef FIRST_PERSON
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_FOV_FP
++#endif
++		) 
++			
++			{
+ 			DMAudio.PlayFrontEndSound(SOUND_FRONTEND_ENTER_OR_ADJUST, 0);
+-		}
++			}
+ 	}
+ 	ProcessUserInput(goDown, goUp, optionSelected, goBack, changeValueBy);
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+@@ -5387,6 +5466,21 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 		SaveSettings();
+ 		break;
+ 
++#ifdef FIRST_PERSON
++	case MENUACTION_AUTOCENTER_IN_VEHICLE_FP:
++		m_PrefsAutocenterCamInVeh_FP = !m_PrefsAutocenterCamInVeh_FP;
++		SaveSettings();
++		break;
++	case MENUACTION_RELATIVE_CAM_IN_VEHICLE_DB_FP:
++		m_PrefsRelativeCamInVeh_DB_FP = !m_PrefsRelativeCamInVeh_DB_FP;
++		SaveSettings();
++		break;
++	case MENUACTION_DOOM_MODE_FP:
++		m_PrefsDoomMode_FP = !m_PrefsDoomMode_FP;
++		SaveSettings();
++		break;
++#endif
++
+ #ifdef EX_GPS
+ 	case MENUACTION_GPS:
+ 		m_PrefsGPS = !m_PrefsGPS;
+@@ -5394,6 +5488,7 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 		break;
+ #endif // EX_GPS
+ 
++// TODO Rename define to MENU_TEST, to be more in line with Re3.
+ // This is where the toggles go, I think I messed up in the beginning.
+ #ifdef _FAST_LOADER
+ 	case MENUACTION_FASTLOADER:
+@@ -6212,6 +6307,7 @@ uint8 CMenuManager::GetNumberOfMenuOptions()
+ #endif
+ 
+ #ifdef GAMEPAD_MENU
++// More controller types can be added here.
+ const char* controllerTypesPaths[] = {
+ 	"MODELS/FRONTEND_DS2.TXD",
+ 	"MODELS/FRONTEND_DS3.TXD",
+@@ -6221,6 +6317,11 @@ const char* controllerTypesPaths[] = {
+ 	"MODELS/FRONTEND_NSW.TXD",
+ };
+ 
++/// <summary>
++/// This is interesting, it prints the buttons for the controller.
++/// Although I have no idea how in the hell any of this is set.
++/// </summary>
++/// <param name=""></param>
+ void
+ CMenuManager::PrintController(void)
+ {
+@@ -6920,6 +7021,10 @@ CMenuManager::PrintController(void)
+ }
+ 
+ 
++/// <summary>
++/// Load the controller buttons, doens't print them like the PrintController function.
++/// </summary>
++/// <param name="type"></param>
+ void
+ CMenuManager::LoadController(int8 type)
+ {
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index fb936483..b5c27a21 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -252,6 +252,10 @@ enum eMenuScreen
+ #ifdef MENU_TEST
+ 	MENUPAGE_GENERAL_SETTINGS,
+ #endif // MENU_TEST
++
++#ifdef FIRST_PERSON
++	MENUPAGE_FIRST_PERSON,
++#endif
+ 	MENUPAGES
+ };
+ 
+@@ -388,6 +392,11 @@ enum eCheckHover
+ 	HOVEROPTION_DECREASE_CFO_SLIDER,
+ #endif
+ 	HOVEROPTION_NOT_HOVERING,
++
++#ifdef FIRST_PERSON
++	HOVEROPTION_INCREASE_FOV_FP,
++	HOVEROPTION_DECREASE_FOV_FP,
++#endif
+ };
+ 
+ enum
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index b81e5677..7e7df013 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -652,6 +652,11 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_CHANGEMENU,	"FEC_JOD", {nil, SAVESLOT_NONE, MENUPAGE_DETECT_JOYSTICK}, 0, 0, MENUALIGN_CENTER,
+ #endif
+ 		MENUACTION_CHANGEMENU,	"FEC_MOU", {nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS}, 0, 0, MENUALIGN_CENTER,
++
++#ifdef FIRST_PERSON
++		MENUACTION_CHANGEMENU,	"FEC_FPC", {nil, SAVESLOT_NONE, MENUPAGE_FIRST_PERSON}, 0, 0, MENUALIGN_CENTER,
++#endif
++
+ 		MENUACTION_RESTOREDEF,	"FET_DEF", {nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_PC}, 320, 0, MENUALIGN_CENTER,
+ 		MENUACTION_GOBACK,		"FEDS_TB", {nil, SAVESLOT_NONE, 0}, 320, 0, MENUALIGN_CENTER,
+    },
+diff --git a/src/core/Streaming.cpp b/src/core/Streaming.cpp
+index 1ab65870..4a3f7097 100644
+--- a/src/core/Streaming.cpp
++++ b/src/core/Streaming.cpp
+@@ -907,6 +907,13 @@ CStreaming::RequestModel(int32 id, int32 flags)
+ 		ms_aInfoForModel[id].m_loadState = STREAMSTATE_INQUEUE;
+ 		ms_aInfoForModel[id].m_flags = flags;
+ 	}
++
++#ifdef FIRING_AND_AIMING // fixing the game crash when near the Ammunation
++	// alternative solution: put the modified player animation files with weapons 
++	// to gta3.img (instead of ViceEx.img)
++	//if (id >= MI_BRASS_KNUCKLES && id <= MI_MINIGUN2)
++		//LoadAllRequestedModels(false);
++#endif
+ }
+ 
+ #define BIGBUILDINGFLAGS STREAMFLAGS_DONT_REMOVE
+diff --git a/src/core/config.h b/src/core/config.h
+index cc1698e4..37f95083 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -11,6 +11,11 @@
+ // It changes the value in the reVC.ini file.
+ #define MENU_TEST
+ 
++// Enable my early plugin sdk test.
++// I am attemping to use the script commands directly in the C++ code like plugin sdk, without needing the
++// memory addresses, this needs a lot of work to be done on here.
++// #define PLUGIN_SDK_TEST
++
+ // Enable mod loader test
+ // TODO Copy in more from the Extended Vice project until I get this modloader working.
+ // It should allow me to edit files without replacing them like in GTA SA
+@@ -50,9 +55,22 @@
+ 
+ // TODO Add these for crouch features and other stuff from Extended Vice.
+ // This will take a little bit.
++// I think I got everything for this implemented, time to test it.
++// Well I missed something, it doesn't build with this..
++// Also I may need this too.
++
++
++// This seems to also need the first person define.
+ // #define FIRING_AND_AIMING 
++// I think I mostly got this one completed also.
+ // #define FIRST_PERSON
++
++// TODO Implement these into my mod.
++// #define IMPROVED_MENU_AND_INPUT
++// This is required for something above
+ // #define SWIMMING
++// #define IMPROVED_TECH_PART
++// #define WANTED_PATHS
+ //
+ 
+ // Enable util functions
+diff --git a/src/extras/screendroplets.cpp b/src/extras/screendroplets.cpp
+index cc86808f..89f53b43 100644
+--- a/src/extras/screendroplets.cpp
++++ b/src/extras/screendroplets.cpp
+@@ -419,8 +419,19 @@ ScreenDroplets::ProcessCameraMovement(void)
+ 	bool isTopDown = mode == CCam::MODE_TOPDOWN || mode == CCam::MODE_GTACLASSIC || mode == CCam::MODE_TOP_DOWN_PED;
+ 	bool isLookingInDirection = FindPlayerVehicle() && mode == CCam::MODE_1STPERSON &&
+ 		(CPad::GetPad(0)->GetLookBehindForCar() || CPad::GetPad(0)->GetLookLeft() || CPad::GetPad(0)->GetLookRight());
+-	ms_enabled = !isTopDown && !isLookingInDirection;
+-	ms_movingEnabled = !isTopDown && !isLookingInDirection;
++
++#ifdef FIRST_PERSON // show/hide screen droplets in vehicle
++		if (FindPlayerVehicle() && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++			ms_enabled = FindPlayerVehicle()->IsOpenTopVehicle();
++			ms_movingEnabled = FindPlayerVehicle()->IsOpenTopVehicle();
++		} else {
++			ms_enabled = !isTopDown && !isLookingInDirection;
++			ms_movingEnabled = !isTopDown && !isLookingInDirection;
++		}
++	#else
++		ms_enabled = !isTopDown && !isLookingInDirection;
++		ms_movingEnabled = !isTopDown && !isLookingInDirection;
++	#endif
+ 
+ 	// 0 when looking stright up, 180 when looking up or down
+ 	ms_camUpAngle = RADTODEG(Acos(Clamp(camUp.z, -1.0f, 1.0f)));
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index ca9c119f..9a392116 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -41,6 +41,17 @@
+ #include "Wanted.h"
+ #include "SaveBuf.h"
+ 
++#ifdef FIRING_AND_AIMING
++#include "Darkel.h"
++#endif
++#ifdef EX_PED_VARIATIONS
++#include "TxdStore.h"
++#endif
++#ifdef EX_PHOTO_MODE
++#include "PhotoMode.h"
++#endif
++
++
+ CPed *gapTempPedList[50];
+ uint16 gnNumTempPedList;
+ 
+@@ -430,11 +441,17 @@ CPed::~CPed(void)
+ #endif
+ }
+ 
++/// <summary>
++/// Initialise ped data, from PED.DAT, load fistfite.dat.
++/// </summary>
++/// <param name=""></param>
+ void
+ CPed::Initialise(void)
+ {
+ 	debug("Initialising CPed...\n");
++	// Initialise ped data, from PED.DAT
+ 	CPedType::Initialise();
++	// load fistfite.dat
+ 	LoadFightData();
+ 	SetAnimOffsetForEnterOrExitVehicle();
+ 	debug("CPed ready\n");
+@@ -1258,7 +1275,11 @@ CPed::SetAimFlag(float angle)
+ 	if (bIsDucking)
+ 		m_pedIK.m_flags &= ~CPedIK::AIMS_WITH_ARM;
+ 
++#ifdef FIRING_AND_AIMING
++	if (CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) || InVehicle())
++#else
+ 	if (CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM))
++#endif
+ 		m_pedIK.m_flags |= CPedIK::AIMS_WITH_ARM;
+ 	else
+ 		m_pedIK.m_flags &= ~CPedIK::AIMS_WITH_ARM;
+@@ -1323,7 +1344,36 @@ CPed::AimGun(void)
+ 
+ 	} else {
+ 		if (IsPlayer()) {
++#ifdef FIRING_AND_AIMING // change hand position while aiming
++			if (FindPlayerVehicle() && FindPlayerPed()->bIsPlayerAiming) {
++				CVehicle* veh = FindPlayerVehicle();
++				float diff;
++				float multiplier;
++
++				if (veh->GetModelIndex() == MI_DINGHY) {
++					bool bLookLeft = DotProduct(veh->GetRight(), TheCamera.Cams[TheCamera.ActiveCam].Front) < 0.0f;
++					multiplier = bLookLeft ? 2.0f : 8.0f;
++					diff = 1.0f - DotProduct(veh->GetForward(), TheCamera.Cams[TheCamera.ActiveCam].Front);
++					bCanPointGunAtTarget = m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading + (diff / multiplier));
++				} else if (veh->IsBike()) {
++					bool bLookLeft = DotProduct(veh->GetRight(), TheCamera.Cams[TheCamera.ActiveCam].Front) < 0.0f;
++					if (veh->GetModelIndex() == MI_PCJ600)
++						multiplier = bLookLeft ? 1.0f : 3.0f;
++					else
++						multiplier = bLookLeft ? 2.0f : 3.0f;
++					diff = 1.0f - DotProduct(veh->GetForward(), TheCamera.Cams[TheCamera.ActiveCam].Front);
++					bCanPointGunAtTarget = m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading + (diff / multiplier));
++				} else {
++					diff = 1.0f - DotProduct(veh->GetForward(), TheCamera.Cams[TheCamera.ActiveCam].Front);
++					multiplier = TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON ? 3.0f : 2.0f;
++					bCanPointGunAtTarget = m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading - (diff / multiplier));
++				}
++			} else {
++				bCanPointGunAtTarget = m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading);
++			}
++#else
+ 			bCanPointGunAtTarget = m_pedIK.PointGunInDirection(m_fLookDirection, ((CPlayerPed*)this)->m_fFPSMoveHeading);
++#endif
+ 		} else {
+ 			bCanPointGunAtTarget = m_pedIK.PointGunInDirection(m_fLookDirection, 0.0f);
+ 		}
+@@ -1564,6 +1614,16 @@ CPed::CalculateNewVelocity(void)
+ 			newUpperLegs.pitch = 0.1f;
+ 			RwV3d Xaxis = { 1.0f, 0.0f, 0.0f };
+ 			RwV3d Zaxis = { 0.0f, 0.0f, 1.0f };
++
++#ifdef FIRING_AND_AIMING
++			if (FindPlayerPed() == this && !FindPlayerPed()->bIsDucking && FindPlayerPed()->bIsPlayerAiming && 
++				Abs(CPad::GetPad(0)->GetPedWalkLeftRight()) > 64 && !CanWeRunAndFireWithWeapon()) {
++
++				newUpperLegs.pitch = -newUpperLegs.pitch;
++				newUpperLegs.yaw = -newUpperLegs.yaw;
++			}
++#endif
++
+ 			RtQuatRotate(&m_pFrames[PED_UPPERLEGL]->hanimFrame->q, &Zaxis, RADTODEG(newUpperLegs.pitch), rwCOMBINEPOSTCONCAT);
+ 			RtQuatRotate(&m_pFrames[PED_UPPERLEGL]->hanimFrame->q, &Xaxis, RADTODEG(newUpperLegs.yaw), rwCOMBINEPOSTCONCAT);
+ 			RtQuatRotate(&m_pFrames[PED_UPPERLEGR]->hanimFrame->q, &Zaxis, RADTODEG(newUpperLegs.pitch), rwCOMBINEPOSTCONCAT);
+@@ -2788,6 +2848,11 @@ CPed::ProcessControl(void)
+ 					break;
+ 				case PED_ATTACK:
+ 					Attack();
++
++#ifdef FIRING_AND_AIMING
++					if (InVehicle())
++						DriveVehicle();
++#endif
+ 					break;
+ 				case PED_FIGHT:
+ 					Fight();
+@@ -2804,6 +2869,10 @@ CPed::ProcessControl(void)
+ 						((CPed*)m_pPointGunAt)->ReactToPointGun(this);
+ 					}
+ 					PointGunAt();
++#ifdef FIRING_AND_AIMING
++					if (InVehicle())
++						DriveVehicle();
++#endif
+ 					break;
+ 				case PED_SEEK_CAR:
+ 					SeekCar();
+@@ -4019,10 +4088,34 @@ CPed::CanSetPedState(void)
+ bool
+ CPed::CanStrafeOrMouseControl(void)
+ {
+-#ifdef FREE_CAM
+-	if (CCamera::bFreeCam)
++#ifdef FIRING_AND_AIMING
++	if (InVehicle())
++		return false;
++#endif
++
++#ifdef FIRST_PERSON
++	if (IsPedInControl() && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON && m_nPedState != PED_SEEK_CAR && m_nPedState != PED_SEEK_IN_BOAT && 
++		(m_nMoveState != PEDMOVE_SPRINT || !CPad::GetPad(0)->IsAffectedByController))
++		return true;
++#endif
++
++#ifdef SWIMMING
++	if (m_nPedState == PED_SWIM)
+ 		return false;
+ #endif
++
++#ifdef FREE_CAM
++
++#ifdef FIRING_AND_AIMING
++	CPlayerPed* playerPed = (CPlayerPed*)this;
++	if (CCamera::bFreeCam && !playerPed->bIsPlayerAiming)
++#else
++	if(CCamera::bFreeCam)
++#endif
++	return false;
++#endif
++
++
+ 	return m_nPedState == PED_NONE || m_nPedState == PED_IDLE || m_nPedState == PED_FLEE_POS || m_nPedState == PED_FLEE_ENTITY ||
+ 		m_nPedState == PED_ATTACK || m_nPedState == PED_FIGHT || m_nPedState == PED_AIM_GUN || m_nPedState == PED_JUMP || m_nPedState == PED_ANSWER_MOBILE;
+ }
+@@ -4449,6 +4542,14 @@ CPed::PedSetInCarCB(CAnimBlendAssociation *animAssoc, void *arg)
+ 		veh->m_nAlarmState = 15000;
+ 
+ 	if (ped->IsPlayer()) {
++
++#ifdef FIRST_PERSON
++		if (TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++			TheCamera.Cams[TheCamera.ActiveCam].Beta = -HALFPI;
++			TheCamera.Cams[TheCamera.ActiveCam].m_bFixed1stPersonCamInVeh = false;
++		}
++#endif
++
+ 		if (ped->m_objective == OBJECTIVE_ENTER_CAR_AS_DRIVER || veh->IsBike()) {
+ 			if (veh->GetStatus() == STATUS_SIMPLE) {
+ 				veh->m_vecMoveSpeed = CVector(0.0f, 0.0f, 0.0f);
+@@ -4995,7 +5096,18 @@ CPed::PreRender(void)
+ 		RwMatrixScale(upperArmR, &scale, rwCOMBINEPRECONCAT);
+ 	}
+ 
+-	if (bBodyPartJustCameOff && m_bodyPartBleeding == PED_HEAD) {
++
++
++#ifdef FIRST_PERSON
++#ifdef EX_PHOTO_MODE // Don't remove the player's head during photo mode (first person)
++		if (bBodyPartJustCameOff && m_bodyPartBleeding == PED_HEAD || IsPlayer() && !CPhotoMode::IsPhotoModeEnabled() && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++#else
++		if (bBodyPartJustCameOff && m_bodyPartBleeding == PED_HEAD || IsPlayer() && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++#endif
++#else
++		if (bBodyPartJustCameOff && m_bodyPartBleeding == PED_HEAD) {
++#endif
++
+ 		// scale head to 0 if shot off
+ 		RpHAnimHierarchy* hier = GetAnimHierarchyFromSkinClump(GetClump());
+ 		int32 idx = RpHAnimIDGetIndex(hier, ConvertPedNode2BoneTag(PED_HEAD));
+diff --git a/src/peds/PedAI.cpp b/src/peds/PedAI.cpp
+index fa67cb6b..681a9ae4 100644
+--- a/src/peds/PedAI.cpp
++++ b/src/peds/PedAI.cpp
+@@ -2227,8 +2227,15 @@ CPed::ReactToAttack(CEntity *attacker)
+ {
+ 	if (IsPlayer() && attacker->IsPed()) {
+ 		InformMyGangOfAttack(attacker);
++#ifdef FIRST_PERSON
++		if (TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON) {
++			SetLookFlag(attacker, true);
++			SetLookTimer(700);
++		}
++#else
+ 		SetLookFlag(attacker, true);
+ 		SetLookTimer(700);
++#endif
+ 		return;
+ 	}
+ 	
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index 1b8e3354..84248b40 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -179,7 +179,12 @@ CPed::SetPointGunAt(CEntity *to)
+ 
+ 	SetPedState(PED_AIM_GUN);
+ 	bIsPointingGunAt = true;
++#ifdef FIRING_AND_AIMING
++	if (!InVehicle())
++		SetMoveState(PEDMOVE_STILL);
++#else
+ 	SetMoveState(PEDMOVE_STILL);
++#endif
+ 
+ 	CAnimBlendAssociation *aimAssoc;
+ 
+@@ -216,14 +221,27 @@ CPed::PointGunAt(void)
+ 		}
+ 	}
+ 
++#ifdef FIRING_AND_AIMING // correct animation position when aiming a MP5/UZI in vehicle
++	if (InVehicle() && (GetWeapon()->m_eWeaponType == WEAPONTYPE_MP5 || GetWeapon()->m_eWeaponType == WEAPONTYPE_UZI))
++		animLoopStart += 0.05f;
++#endif
++
++#ifdef FIRING_AND_AIMING // Smooth animation at the start of aiming
++	if (weaponAssoc && (!IsPlayer() && weaponAssoc->currentTime > animLoopStart * 0.4f || IsPlayer() && weaponAssoc->currentTime > animLoopStart)) {
++#else
+ 	if (weaponAssoc && weaponAssoc->currentTime > animLoopStart * 0.4f) {
++#endif
+ 		weaponAssoc->SetCurrentTime(animLoopStart);
+ 		weaponAssoc->flags &= ~ASSOC_RUNNING;
+ 
+ 		if (bIsDucking)
+ 			m_pedIK.m_flags &= ~CPedIK::AIMS_WITH_ARM;
+ 
+-		if (weaponInfo->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM))
++#ifdef FIRING_AND_AIMING
++			if (weaponInfo->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) || InVehicle())
++#else
++			if (weaponInfo->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM))
++#endif
+ 			m_pedIK.m_flags |= CPedIK::AIMS_WITH_ARM;
+ 		else
+ 			m_pedIK.m_flags &= ~CPedIK::AIMS_WITH_ARM;
+@@ -259,6 +277,11 @@ CPed::ClearPointGunAt(void)
+ void
+ CPed::SetAttack(CEntity *victim)
+ {
++#ifdef FIRING_AND_AIMING
++	if (InVehicle() && GetWeapon()->m_nAmmoTotal <= 0)
++		return;
++#endif
++
+ 	CPed *victimPed = nil;
+ 	CWeaponInfo *curWeapon = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
+ 	CAnimBlendAssociation *animAssoc;
+@@ -406,6 +429,13 @@ CPed::SetAttack(CEntity *victim)
+ 
+ 			SetPedState(PED_ATTACK);
+ 			SetMoveState(PEDMOVE_NONE);
++
++#ifdef FIRING_AND_AIMING // reduced hand shaking while driveby
++			if (InVehicle())
++				return;
++#endif
++
++
+ 			if (bCrouchWhenShooting && bIsDucking && curWeapon->IsFlagSet(WEAPONFLAG_CROUCHFIRE)) {
+ 				CAnimBlendAssociation* curMoveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), GetCrouchFireAnim(curWeapon));
+ 				if (curMoveAssoc) {
+@@ -464,6 +494,11 @@ CPed::ClearAttack(void)
+ 	if (m_nPedState != PED_ATTACK || (bIsDucking && !IsPlayer()) || m_nWaitState == WAITSTATE_PLAYANIM_DUCK)
+ 		return;
+ 
++#ifdef FIRING_AND_AIMING
++		if (FindPlayerPed() == this && !FindPlayerPed()->bIsPlayerAiming)
++			FindPlayerPed()->StopAimingAnims();
++#endif
++
+ 	if (FindPlayerPed() == this && TheCamera.Using1stPersonWeaponMode()) {
+ 		SetPointGunAt(nil);
+ 	} else if (bIsPointingGunAt) {
+@@ -836,6 +871,13 @@ CPed::Attack(void)
+ 		return;
+ 	}
+ 
++#ifdef FIRING_AND_AIMING
++	if (!IsPlayer() && !ourWeapon->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) && ourWeapon->IsFlagSet(WEAPONFLAG_CANAIM)) {
++		if (!RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUN_STAND))
++			CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUN_STAND, 4.0f);
++	}
++#endif
++
+ 	if (meleeAttackStarted && IsPlayer()) {
+ 		if (((CPlayerPed*)this)->m_bHaveTargetSelected || ((CPlayerPed*)this)->m_fMoveSpeed < 0.5f) {
+ 			weaponAnimAssoc->SetRun();
+@@ -999,11 +1041,28 @@ CPed::Attack(void)
+ 		if (GetWeapon()->m_eWeaponState == WEAPONSTATE_RELOADING) {
+ 			if (GetReloadAnim(ourWeapon) && !reloadAnimAssoc) {
+ 				if (!CWorld::Players[CWorld::PlayerInFocus].m_bFastReload) {
++
++#ifdef FIRING_AND_AIMING // shotgun sound
++					if (GetWeapon()->m_eWeaponType == WEAPONTYPE_SHOTGUN) {
++						CAnimBlendAssociation* newReloadAssoc = CAnimManager::BlendAnimation(
++							GetClump(), ourWeapon->m_AnimToPlay,
++							bIsDucking ? ANIM_WEAPON_CROUCHFIRE : ANIM_WEAPON_FIRE,
++							8.0f);
++						newReloadAssoc->SetFinishCallback(FinishedReloadCB, this);
++					} else {
++						CAnimBlendAssociation* newReloadAssoc = CAnimManager::BlendAnimation(
++							GetClump(), ourWeapon->m_AnimToPlay,
++							bIsDucking && GetCrouchReloadAnim(ourWeapon) ? GetCrouchReloadAnim(ourWeapon) : GetReloadAnim(ourWeapon),
++							8.0f);
++						newReloadAssoc->SetFinishCallback(FinishedReloadCB, this);
++					}
++#else
+ 					CAnimBlendAssociation *newReloadAssoc = CAnimManager::BlendAnimation(
+ 						GetClump(), ourWeapon->m_AnimToPlay,
+ 						bIsDucking && GetCrouchReloadAnim(ourWeapon) ? GetCrouchReloadAnim(ourWeapon) : GetReloadAnim(ourWeapon),
+ 						8.0f);
+ 					newReloadAssoc->SetFinishCallback(FinishedReloadCB, this);
++#endif
+ 				}
+ 				ClearLookFlag();
+ 				ClearAimFlag();
+@@ -1046,10 +1105,21 @@ CPed::Attack(void)
+ 				weaponAnimAssoc->SetCurrentTime(animLoopStart);
+ 				weaponAnimAssoc->SetRun();
+ 			}
++
++#ifdef FIRING_AND_AIMING
++		} else if (IsPlayer() && (m_pPointGunAt || FindPlayerPed()->bIsPlayerAiming) && bIsAimingGun && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING) {
++			if (IsPlayer() && FindPlayerPed()->bIsPlayerAiming) {
++				if (weaponAnimAssoc->currentTime - weaponAnimAssoc->timeStep < animLoopEnd)
++					DMAudio.PlayOneShot(m_audioEntityId, SOUND_WEAPON_AK47_BULLET_ECHO, GetWeapon()->m_eWeaponType);
++			}
++#else
+ 		} else if (IsPlayer() && m_pPointGunAt && bIsAimingGun && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING) {
++#endif
+ 			weaponAnimAssoc->SetCurrentTime(animLoopEnd);
+ 			weaponAnimAssoc->flags &= ~ASSOC_RUNNING;
+ 			SetPointGunAt(m_pPointGunAt);
++
++
+ #ifdef FREE_CAM
+ 		} else if (IsPlayer() && ((CPlayerPed*)this)->m_bFreeAimActive && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING) {
+ 			float limitedCam = CGeneral::LimitRadianAngle(-TheCamera.Orientation);
+@@ -1084,6 +1154,11 @@ CPed::Attack(void)
+ void
+ CPed::StartFightAttack(uint8 buttonPressure)
+ {
++#ifdef FIRING_AND_AIMING
++	if (IsPlayer() && InVehicle() && FindPlayerPed()->bIsPlayerAiming)
++		return;
++#endif
++
+ 	if (!IsPedInControl() || (m_attackTimer > CTimer::GetTimeInMilliseconds() && buttonPressure != 0))
+ 		return;
+ 
+@@ -3908,12 +3983,63 @@ CPed::DriveVehicle(void)
+ 
+ 	CVehicle *veh = m_pMyVehicle;
+ 	if (veh->IsBike()) {
++		#ifdef FIRING_AND_AIMING
++		if (IsPlayer() && FindPlayerPed()->bIsPlayerAiming) {
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIDE))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIDE);
++
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY);
++
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT);
++
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT);
++
++			SetPointGunAt(nil);
++
++			m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ((CBike*)veh)->m_bikeAnimType, ANIM_BIKE_RIDE_DB, 100.0f);
++		} else if (IsPlayer() && !FindPlayerPed()->bIsPlayerAiming) {
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIDE_DB))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIDE_DB);
++
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY_DB))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY_DB);
++
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT_DB))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT_DB);
++
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT_DB))
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT_DB);
++
++			m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ((CBike*)veh)->m_bikeAnimType, ANIM_BIKE_RIDE, 100.0f);
++		}
++#endif
++
++
+ 		CBike *bike = (CBike*)veh;
+ 		float blendDelta = 1.0f;
+ 		float targetUDLean = 0.0f;
++
++#ifdef FIRING_AND_AIMING
++		CAnimBlendAssociation* leftAssoc;
++		CAnimBlendAssociation* rightAssoc;
++		CAnimBlendAssociation* stillAssoc;
++		if (IsPlayer() && FindPlayerPed()->bIsPlayerAiming) {
++			leftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT_DB);
++			rightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT_DB);
++			stillAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY_DB);
++		} else {
++			leftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT);
++			rightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT);
++			stillAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY);
++		}
++#else
+ 		CAnimBlendAssociation *leftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEFT);
+ 		CAnimBlendAssociation *rightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_RIGHT);
+ 		CAnimBlendAssociation *stillAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_READY);
++#endif
+ 		CAnimBlendAssociation *fwdAssoc, *backAssoc;
+ 		if (IsPlayer()) {
+ 			fwdAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_BIKE_LEANF);
+@@ -3935,7 +4061,15 @@ CPed::DriveVehicle(void)
+ 		}
+ 		if (!drivebyAssoc && Abs(velocityFwdDotProd) < 0.02f) {
+ 			if (!stillAssoc || stillAssoc->blendAmount < 1.0 && stillAssoc->blendDelta <= 0.0) {
++
++#ifdef FIRING_AND_AIMING
++				if (IsPlayer() && FindPlayerPed()->bIsPlayerAiming)
++					stillAssoc = CAnimManager::BlendAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_READY_DB, 2.0f);
++				else
++					stillAssoc = CAnimManager::BlendAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_READY, 2.0f);
++#else
+ 				stillAssoc = CAnimManager::BlendAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_READY, 2.0f);
++#endif
+ 			}
+ 		} else {
+ 			if (velocityFwdDotProd >= 0.0f) {
+@@ -3962,7 +4096,15 @@ CPed::DriveVehicle(void)
+ 						walkbackAssoc->blendDelta = -4.0f;
+ 					}
+ 				} else if (!walkbackAssoc || walkbackAssoc->blendAmount < 1.0f && walkbackAssoc->blendDelta <= 0.0f) {
++
++#ifdef FIRING_AND_AIMING
++					if (!IsPlayer() || (!FindPlayerPed()->bIsPlayerAiming && TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON))
++						walkbackAssoc = CAnimManager::BlendAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_WALKBACK, 4.0f);
++#else
+ 					walkbackAssoc = CAnimManager::BlendAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_WALKBACK, 4.0f);
++#endif
++
++
+ 				}
+ 			}
+ 		}
+@@ -3988,7 +4130,11 @@ CPed::DriveVehicle(void)
+ 
+ 		bike->m_fPedLeanAmountLR = bike->m_fPedLeanAmountLR * timeBlend + (1.0 - timeBlend) * targetLRLean;
+ 
++#ifdef FIRING_AND_AIMING
++		if (!IsPlayer() || IsPlayer() && FindPlayerPed()->bIsPlayerAiming) {
++#else
+ 		if (!IsPlayer()) {
++#endif
+ 			targetUDLean = 0.0f;
+ 
+ 		} else if (targetUDLean > -1.0f) {
+@@ -4076,10 +4222,25 @@ CPed::DriveVehicle(void)
+ 				backAssoc->blendAmount = 0.0f;
+ 			}
+ 		}
++#ifdef FIRING_AND_AIMING
++		if (!leftAssoc) {
++			if (IsPlayer() && FindPlayerPed()->bIsPlayerAiming)
++				leftAssoc = CAnimManager::AddAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_LEFT_DB);
++			else
++				leftAssoc = CAnimManager::AddAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_LEFT);
++		} 
++		if (!rightAssoc) {
++			if (IsPlayer() && FindPlayerPed()->bIsPlayerAiming)
++				rightAssoc = CAnimManager::AddAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_RIGHT_DB);
++			else
++				rightAssoc = CAnimManager::AddAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_RIGHT);
++		}
++#else
+ 		if (!leftAssoc)
+ 			leftAssoc = CAnimManager::AddAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_LEFT);
+ 		if (!rightAssoc)
+ 			rightAssoc = CAnimManager::AddAnimation(GetClump(), bike->m_bikeAnimType, ANIM_BIKE_RIGHT);
++#endif
+ 
+ 		if (bike->m_fPedLeanAmountLR < 0.0f) {
+ 			leftAssoc->blendAmount = leftRightBlend;
+@@ -4105,106 +4266,297 @@ CPed::DriveVehicle(void)
+ 	if (!IsPlayer())
+ 		return;
+ 
+-	float steerAngle = m_pMyVehicle->m_fSteerAngle;
+-	CAnimBlendAssociation* lDriveAssoc;
+-	CAnimBlendAssociation* rDriveAssoc;
+-	CAnimBlendAssociation* lbAssoc;
+-	CAnimBlendAssociation* sitAssoc;
+-	if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT)) {
+-		sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE);
+-
+-		if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
+-			return;
+-		}
+-
+-		lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_LEFT);
+-		rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_RIGHT);
+-		lbAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_LOOKBEHIND);
+-	} else if (m_pMyVehicle->bLowVehicle) {
+-		sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO);
+-
+-		if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
+-			return;
+-		}
+-
+-		lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_LO);
+-		lbAssoc = nil;
+-		rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_LO);
+-	} else {
+-		sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT);
+-
+-		if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
+-			return;
++#ifdef FIRING_AND_AIMING
++		if (FindPlayerPed()->bIsPlayerAiming) {
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT)) {
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT);
++	
++				m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_SIT_DB, 100.0f);
++			} else if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO)) {
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_LO);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_LO);
++	
++				m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_SIT_LO_DB, 100.0f);
++			} else if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE)) {
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_LEFT);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_RIGHT);
++	
++				m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_DB, 100.0f);
++			}
++		} else if (!FindPlayerPed()->bIsPlayerAiming) {
++			if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_DB)) {
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_DB);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_DB);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_DB);
++	
++				m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_SIT, 100.0f);
++			} else if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO_DB)) {
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO_DB);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_LO_DB);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_LO_DB);
++	
++				m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_SIT_LO, 100.0f);
++			} else if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_DB)) {
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_DB);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_LEFT_DB);
++				delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_RIGHT_DB);
++	
++				m_pVehicleAnim = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE, 100.0f);
++			}
+ 		}
+-
+-		lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT);
+-		rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT);
+-		lbAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_LOOKBEHIND);
+-	}
+-
+-	if (lbAssoc &&
+-		TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_1STPERSON
+-		&& TheCamera.Cams[TheCamera.ActiveCam].DirectionWasLooking == LOOKING_LEFT) {
+-		lbAssoc->blendDelta = -1000.0f;
+-	}
+-
+-	CAnimBlendAssociation* driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_LEFT);
+-	if (!driveByAssoc)
+-		driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT);
+-	if (!driveByAssoc)
+-		driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_LEFT_LO);
+-	if (!driveByAssoc)
+-		driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT_LO);
+-
+-	if (m_pMyVehicle->bLowVehicle || m_pMyVehicle->m_fGasPedal >= 0.0f || driveByAssoc ||
+-		m_pMyVehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI || m_pMyVehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_PLANE) {
+-		if (steerAngle == 0.0f || driveByAssoc) {
+-			if (lDriveAssoc)
+-				lDriveAssoc->blendAmount = 0.0f;
+-			if (rDriveAssoc)
+-				rDriveAssoc->blendAmount = 0.0f;
+-
+-		} else if (steerAngle <= 0.0f) {
+-			if (lDriveAssoc)
+-				lDriveAssoc->blendAmount = 0.0f;
+-
+-			if (rDriveAssoc)
+-				rDriveAssoc->blendAmount = Clamp(steerAngle * -100.0f / 61.0f, 0.0f, 1.0f);
+-			else if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
+-				CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_RIGHT);
+-			else if (m_pMyVehicle->bLowVehicle)
+-				CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT_LO);
++	
++		float steerAngle = m_pMyVehicle->m_fSteerAngle;
++		CAnimBlendAssociation* lDriveAssoc;
++		CAnimBlendAssociation* rDriveAssoc;
++		CAnimBlendAssociation* lbAssoc;
++		CAnimBlendAssociation* sitAssoc;
++		if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT)) {
++			if (FindPlayerPed()->bIsPlayerAiming)
++				sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_DB);
+ 			else
+-				CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT);
+-
++				sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE);
++	
++			if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
++				return;
++			}
++	
++			if (FindPlayerPed()->bIsPlayerAiming) {
++				lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_LEFT_DB);
++				rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_RIGHT_DB);
++			} else {
++				lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_LEFT);
++				rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_RIGHT);
++			}
++	
++			lbAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_LOOKBEHIND);
++		} else if (m_pMyVehicle->bLowVehicle) {
++			if (FindPlayerPed()->bIsPlayerAiming)
++				sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO_DB);
++			else
++				sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO);
++			
++			if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
++				return;
++			}
++	
++			if (FindPlayerPed()->bIsPlayerAiming) {
++				lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_LO_DB);
++				rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_LO_DB);
++			} else {
++				lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_LO);
++				rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_LO);
++			}
++			
++			lbAssoc = nil;
+ 		} else {
+-			if (rDriveAssoc)
+-				rDriveAssoc->blendAmount = 0.0f;
+-
+-			if (lDriveAssoc)
+-				lDriveAssoc->blendAmount = Clamp(steerAngle * 100.0f / 61.0f, 0.0f, 1.0f);
+-			else if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
+-				CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_LEFT);
+-			else if (m_pMyVehicle->bLowVehicle)
+-				CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT_LO);
++			if (FindPlayerPed()->bIsPlayerAiming)
++				sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_DB);
+ 			else
+-				CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT);
++				sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT);
++	
++			if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
++				return;
++			}
++	
++			if (FindPlayerPed()->bIsPlayerAiming) {
++				lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_DB);
++				rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_DB);
++			} else {
++				lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT);
++				rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT);
++			}
++	
++			lbAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_LOOKBEHIND);
+ 		}
+-
+-		if (lbAssoc)
+-			lbAssoc->blendDelta = -4.0f;
+-	} else {
+-
+-		if ((TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_1STPERSON
+-			|| TheCamera.Cams[TheCamera.ActiveCam].DirectionWasLooking != LOOKING_LEFT)
+-			&& (!lbAssoc || lbAssoc->blendAmount < 1.0f && lbAssoc->blendDelta <= 0.0f)) {
+-
+-			if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
+-				CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_LOOKBEHIND, 4.0f);
+-			else
+-				CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_LOOKBEHIND, 4.0f);
++	
++		if (lbAssoc && (TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON || FindPlayerPed()->bIsPlayerAiming)) {
++			lbAssoc->blendDelta = -1000.0f;
+ 		}
+-	}
++	
++		CAnimBlendAssociation* driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_LEFT);
++		if (!driveByAssoc)
++			driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT);
++		if (!driveByAssoc)
++			driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_LEFT_LO);
++		if (!driveByAssoc)
++			driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT_LO);
++	
++		if (m_pMyVehicle->bLowVehicle || m_pMyVehicle->m_fGasPedal >= 0.0f || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON || driveByAssoc ||
++			m_pMyVehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI || m_pMyVehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_PLANE) {
++			if (steerAngle == 0.0f || driveByAssoc) {
++				if (lDriveAssoc)
++					lDriveAssoc->blendAmount = 0.0f;
++				if (rDriveAssoc)
++					rDriveAssoc->blendAmount = 0.0f;
++	
++			} else if (steerAngle <= 0.0f) {
++				if (lDriveAssoc)
++					lDriveAssoc->blendAmount = 0.0f;
++	
++				if (rDriveAssoc)
++					rDriveAssoc->blendAmount = Clamp(steerAngle * -100.0f / 61.0f, 0.0f, 1.0f);
++				else if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT)) {
++					if (FindPlayerPed()->bIsPlayerAiming)
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_RIGHT_DB);
++					else
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_RIGHT);
++				} else if (m_pMyVehicle->bLowVehicle) {
++					if (FindPlayerPed()->bIsPlayerAiming)
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT_LO_DB);
++					else
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT_LO);
++				} else {
++					if (FindPlayerPed()->bIsPlayerAiming)
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT_DB);
++					else
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT);
++				}
++			} else {
++				if (rDriveAssoc)
++					rDriveAssoc->blendAmount = 0.0f;
++	
++				if (lDriveAssoc)
++					lDriveAssoc->blendAmount = Clamp(steerAngle * 100.0f / 61.0f, 0.0f, 1.0f);
++				else if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT)) {
++					if (FindPlayerPed()->bIsPlayerAiming)
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_LEFT_DB);
++					else
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_LEFT);
++				} else if (m_pMyVehicle->bLowVehicle) {
++					if (FindPlayerPed()->bIsPlayerAiming)
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT_LO_DB);
++					else
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT_LO);
++				} else {
++					if (FindPlayerPed()->bIsPlayerAiming)
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT_DB);
++					else
++						CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT);
++				}
++			}
++	
++			if (lbAssoc)
++				lbAssoc->blendDelta = -4.0f;
++		} else {
++			if ((TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON
++				&& TheCamera.Cams[TheCamera.ActiveCam].DirectionWasLooking != LOOKING_LEFT)
++				&& (!lbAssoc || lbAssoc->blendAmount < 1.0f && lbAssoc->blendDelta <= 0.0f) && !FindPlayerPed()->bIsPlayerAiming) {
++	
++				if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
++					CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_LOOKBEHIND, 4.0f);
++				else
++					CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_LOOKBEHIND, 4.0f);
++			}
++		}
++#else
++	
++		float steerAngle = m_pMyVehicle->m_fSteerAngle;
++		CAnimBlendAssociation* lDriveAssoc;
++		CAnimBlendAssociation* rDriveAssoc;
++		CAnimBlendAssociation* lbAssoc;
++		CAnimBlendAssociation* sitAssoc;
++		if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT)) {
++			sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE);
++	
++			if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
++				return;
++			}
++	
++			lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_LEFT);
++			rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_DRIVE_RIGHT);
++			lbAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_BOAT_LOOKBEHIND);
++		} else if (m_pMyVehicle->bLowVehicle) {
++			sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT_LO);
++	
++			if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
++				return;
++			}
++	
++			lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT_LO);
++			lbAssoc = nil;
++			rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT_LO);
++		}
++		else {
++			sitAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_SIT);
++	
++			if (!sitAssoc || sitAssoc->blendAmount < 1.0f) {
++				return;
++			}
++	
++			lDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_LEFT);
++			rDriveAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVE_RIGHT);
++	
++			lbAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_LOOKBEHIND);
++		}
++	
++		if (lbAssoc &&
++			TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_1STPERSON
++			&& TheCamera.Cams[TheCamera.ActiveCam].DirectionWasLooking == LOOKING_LEFT) {
++			lbAssoc->blendDelta = -1000.0f;
++		}
++	
++		CAnimBlendAssociation* driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_LEFT);
++		if (!driveByAssoc)
++			driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT);
++		if (!driveByAssoc)
++			driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_LEFT_LO);
++		if (!driveByAssoc)
++			driveByAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT_LO);
++	
++		if (m_pMyVehicle->bLowVehicle || m_pMyVehicle->m_fGasPedal >= 0.0f || driveByAssoc ||
++			m_pMyVehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI || m_pMyVehicle->GetVehicleAppearance() == VEHICLE_APPEARANCE_PLANE) {
++			if (steerAngle == 0.0f || driveByAssoc) {
++				if (lDriveAssoc)
++					lDriveAssoc->blendAmount = 0.0f;
++				if (rDriveAssoc)
++					rDriveAssoc->blendAmount = 0.0f;
++	
++			} else if (steerAngle <= 0.0f) {
++				if (lDriveAssoc)
++					lDriveAssoc->blendAmount = 0.0f;
++	
++				if (rDriveAssoc)
++					rDriveAssoc->blendAmount = Clamp(steerAngle * -100.0f / 61.0f, 0.0f, 1.0f);
++				else if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
++					CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_RIGHT);
++				else if (m_pMyVehicle->bLowVehicle)
++					CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT_LO);
++				else
++					CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_RIGHT);
++	
++			} else {
++				if (rDriveAssoc)
++					rDriveAssoc->blendAmount = 0.0f;
++	
++				if (lDriveAssoc)
++					lDriveAssoc->blendAmount = Clamp(steerAngle * 100.0f / 61.0f, 0.0f, 1.0f);
++				else if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
++					CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_DRIVE_LEFT);
++				else if (m_pMyVehicle->bLowVehicle)
++					CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT_LO);
++				else {
++					CAnimManager::AddAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_DRIVE_LEFT);
++				}
++			}
++	
++			if (lbAssoc)
++				lbAssoc->blendDelta = -4.0f;
++		} else {
++			if ((TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_1STPERSON
++				|| TheCamera.Cams[TheCamera.ActiveCam].DirectionWasLooking != LOOKING_LEFT)
++				&& (!lbAssoc || lbAssoc->blendAmount < 1.0f && lbAssoc->blendDelta <= 0.0f)) {
++	
++				if (m_pMyVehicle->IsBoat() && !(m_pMyVehicle->pHandling->Flags & HANDLING_SIT_IN_BOAT))
++					CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_BOAT_LOOKBEHIND, 4.0f);
++				else
++					CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CAR_LOOKBEHIND, 4.0f);
++			}
++		}
++#endif
+ }
+ 
+ void
+diff --git a/src/peds/PedIK.cpp b/src/peds/PedIK.cpp
+index ea3cf1aa..01b92b83 100644
+--- a/src/peds/PedIK.cpp
++++ b/src/peds/PedIK.cpp
+@@ -7,7 +7,17 @@
+ #include "General.h"
+ #include "RwHelper.h"
+ 
++#ifdef FIRING_AND_AIMING
++#include "PlayerPed.h"
++#include "Automobile.h"
++#endif
++
++#ifdef FIRING_AND_AIMING
++LimbMovementInfo CPedIK::ms_torsoInfo = { DEGTORAD(50.0f), DEGTORAD(-50.0f), DEGTORAD(8.0f), DEGTORAD(65.0f), DEGTORAD(-45.0f), DEGTORAD(5.0f) };
++#else
+ LimbMovementInfo CPedIK::ms_torsoInfo = { DEGTORAD(50.0f), DEGTORAD(-50.0f), DEGTORAD(8.0f), DEGTORAD(45.0f), DEGTORAD(-45.0f), DEGTORAD(5.0f) };
++#endif
++
+ LimbMovementInfo CPedIK::ms_headInfo = { DEGTORAD(90.0f), DEGTORAD(-90.0f), DEGTORAD(15.0f), DEGTORAD(45.0f), DEGTORAD(-45.0f), DEGTORAD(8.0f) };
+ LimbMovementInfo CPedIK::ms_headRestoreInfo = { DEGTORAD(90.0f), DEGTORAD(-90.0f), DEGTORAD(10.0f), DEGTORAD(45.0f), DEGTORAD(-45.0f), DEGTORAD(5.0f) };
+ LimbMovementInfo CPedIK::ms_upperArmInfo = { DEGTORAD(5.0f), DEGTORAD(-120.0f), DEGTORAD(20.0f), DEGTORAD(70.0f), DEGTORAD(-70.0f), DEGTORAD(20.0f) };
+@@ -178,6 +188,11 @@ CPedIK::PointGunInDirection(float targetYaw, float targetPitch)
+ 	m_flags &= ~GUN_POINTED_SUCCESSFULLY;
+ 	m_flags |= LOOKAROUND_HEAD_ONLY;
+ 	if (m_flags & AIMS_WITH_ARM) {
++#ifdef FIRING_AND_AIMING // change hand position while aiming relative to the vehicle
++		if (m_ped->InVehicle() && m_ped->IsPlayer())
++			targetPitch += DotProduct(m_ped->m_pMyVehicle->GetRight(), TheCamera.Cams[TheCamera.ActiveCam].Front) * m_ped->m_pMyVehicle->GetRight().z;
++#endif
++
+ 		armPointedToGun = PointGunInDirectionUsingArm(targetYaw, targetPitch);
+ 		targetYaw = CGeneral::LimitRadianAngle(targetYaw - (m_upperArmOrient.yaw + m_lowerArmOrient.yaw));
+ 	}
+@@ -246,6 +261,14 @@ CPedIK::PointGunInDirectionUsingArm(float targetYaw, float targetPitch)
+ 	uaYaw = CGeneral::LimitRadianAngle(targetYaw - yaw - DEGTORAD(15.0f));
+ 	uaPitch = CGeneral::LimitRadianAngle(targetPitch - pitch + DEGTORAD(10.0f));
+ 	LimbMoveStatus uaStatus = MoveLimb(m_upperArmOrient, uaYaw, uaPitch, ms_upperArmInfo);
++
++#ifdef FIRING_AND_AIMING // correct hand position when aiming a MP5/UZI in vehicle
++	if (m_ped->InVehicle() && (m_ped->GetWeapon()->m_eWeaponType == WEAPONTYPE_MP5 || m_ped->GetWeapon()->m_eWeaponType == WEAPONTYPE_UZI)) {
++		m_upperArmOrient.yaw += DEGTORAD(5.0f);
++		m_upperArmOrient.pitch += DEGTORAD(7.0f);
++	}
++#endif
++
+ 	if (uaStatus == ANGLES_SET_EXACTLY) {
+ 		m_flags |= GUN_POINTED_SUCCESSFULLY;
+ 		result = true;
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index 59054953..4fb3b348 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -105,6 +105,26 @@ CPlayerPed::CPlayerPed(void) : CPed(PEDTYPE_PLAYER1)
+ #ifdef FREE_CAM
+ 	m_bFreeAimActive = false;
+ #endif
++
++#ifdef FIRING_AND_AIMING
++	bIsPlayerAiming = false;
++#endif
++
++#ifdef TRIANGLE_FOR_MOUSE_RECRUIT
++	m_pThirdPersonMouseTarget = nullptr;
++#endif
++
++#ifdef SWIMMING
++	bIsTiredSwimmingFast = false;
++#endif
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	bIsAutoAiming = false;
++#endif
++
++#ifdef IMPROVED_TECH_PART // skiped phone calls
++	m_bSkipPhoneCall = false;
++#endif
+ }
+ 
+ /// <summary>
+@@ -358,6 +378,105 @@ void CPlayerPed::FinishRollCB(CAnimBlendAssociation* assoc, void* arg)
+ }
+ #endif
+ 
++#ifdef FIRING_AND_AIMING
++void CPlayerPed::ProcessAiming(void)
++{
++	if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_STARTWALK))
++		delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_STARTWALK);
++
++	CAnimBlendAssociation* curGunMoveBackwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_BWD);
++	CAnimBlendAssociation* curGunMoveForwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_FWD);
++	CAnimBlendAssociation* curGunMoveLeftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_L);
++	CAnimBlendAssociation* curGunMoveRightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_R);
++	CAnimBlendAssociation* curGunStandAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUN_STAND);
++
++	CPad* pad = GetPadFromPlayer(this);
++	int16 padUpDown = pad->GetPedWalkUpDown();
++	int16 padLeftRight = pad->GetPedWalkLeftRight();
++
++	if (padLeftRight == 0 && padUpDown == 0 && !curGunStandAssoc)
++		curGunStandAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUN_STAND, 4.0f);
++
++	float animSpeed;
++
++	if (pad->GetSprint() && (padLeftRight != 0 || padUpDown != 0))
++		animSpeed = 1.4f;
++	else if (IsDoomMode())
++		animSpeed = Clamp((m_fMoveSpeed * 3.5f) - 0.1f, 0.1f, 3.5f);
++	else
++		animSpeed = Clamp(m_fMoveSpeed - 0.1f, 0.1f, 1.0f);
++
++	if (curGunMoveBackwardAssoc)
++		curGunMoveBackwardAssoc->speed = animSpeed;
++
++	if (curGunMoveForwardAssoc)
++		curGunMoveForwardAssoc->speed = animSpeed;
++
++	if (curGunMoveLeftAssoc)
++		curGunMoveLeftAssoc->speed = animSpeed;
++
++	if (curGunMoveRightAssoc)
++		curGunMoveRightAssoc->speed = animSpeed;
++
++	if (padLeftRight < 0 && (Abs(padLeftRight) > 64 || Abs(padUpDown) < 64))
++		curGunMoveLeftAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUNMOVE_L, 16.0f);
++	else if (padLeftRight > 0 && (Abs(padLeftRight) > 64 || Abs(padUpDown) < 64))
++		curGunMoveRightAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUNMOVE_R, 16.0f);
++
++	if (padUpDown != 0) {
++		if (padUpDown < 0) {
++			if (!curGunMoveForwardAssoc)
++				curGunMoveForwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUNMOVE_FWD, 16.0f);
++		} else if (padUpDown > 0) {
++			if (!curGunMoveBackwardAssoc)
++				curGunMoveBackwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUNMOVE_BWD, 16.0f);
++		}
++	}
++}
++
++void CPlayerPed::StopAimingAnims(void)
++{
++	AnimationId gunAnims[] = { ANIM_STD_GUNMOVE_BWD, ANIM_STD_GUNMOVE_FWD, ANIM_STD_GUNMOVE_L, ANIM_STD_GUNMOVE_R };
++	for (int i = 0; i < ARRAY_SIZE(gunAnims); i++) {
++		CAnimBlendAssociation* curGunAnimAssoc = RpAnimBlendClumpGetAssociation(GetClump(), gunAnims[i]);
++		if (curGunAnimAssoc) {
++			curGunAnimAssoc->flags |= ASSOC_DELETEFADEDOUT;
++			curGunAnimAssoc->blendDelta = -4.0f;
++		}
++	}
++}
++
++bool CPlayerPed::CanUseDriveBy(void)
++{
++	if (!FindPlayerVehicle())
++		return false;
++
++	CVehicle* vehicle = FindPlayerVehicle();
++
++	bool bSuitableVehicle = !vehicle->IsRealHeli() && !vehicle->IsRealPlane() &&
++		vehicle->GetModelIndex() != MI_RHINO && vehicle->GetModelIndex() != MI_FIRETRUCK;
++
++	CCam currentCam = TheCamera.Cams[TheCamera.ActiveCam];
++	bool bSuitableCamera = currentCam.DirectionWasLooking == LOOKING_FORWARD &&
++		(currentCam.Mode == CCam::MODE_REAL_1ST_PERSON || currentCam.Mode == CCam::MODE_CAM_ON_A_STRING || currentCam.Mode == CCam::MODE_BEHINDBOAT);
++
++	int8 currentWeaponSlot = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->m_nWeaponSlot;
++	bool bHaveWeapon = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->m_nWeaponSlot > 2 &&
++#ifdef EX_WEAPON_BERETTA // CanUseDriveBy
++		(GetWeapon()->m_eWeaponType == WEAPONTYPE_COLT45 || GetWeapon()->m_eWeaponType == WEAPONTYPE_BERETTA || currentWeaponSlot == WEAPONSLOT_SUBMACHINEGUN);
++#else
++		(GetWeapon()->m_eWeaponType == WEAPONTYPE_COLT45 || currentWeaponSlot == WEAPONSLOT_SUBMACHINEGUN);
++#endif
++
++	return bSuitableVehicle && bHaveWeapon && GetUp().z >= 0.2f && bSuitableCamera;
++}
++
++bool CPlayerPed::IsDoomMode(void)
++{
++	return TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON && FrontEndMenuManager.m_PrefsDoomMode_FP && !InVehicle();
++}
++#endif
++
+ /// <summary>
+ /// Stamina, something in the scripts toggle this for a 100% bonus.
+ /// Hmm I could mess with this a bit for the stamina.
+@@ -519,6 +638,14 @@ CPlayerPed::SetRealMoveAnim(void)
+ 	}
+ #endif
+ 
++#ifdef FIRING_AND_AIMING
++	if ((m_nPedState == PED_ATTACK || m_nPedState == PED_AIM_GUN || bIsPlayerAiming) && GetWeapon()->GetInfo()->m_nWeaponSlot > 2 && !CanWeRunAndFireWithWeapon()) {
++		ProcessAiming();
++		
++		return;
++	}
++#endif
++
+ 	CAnimBlendAssociation *curWalkAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_WALK);
+ 	CAnimBlendAssociation *curRunAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_RUN);
+ 	CAnimBlendAssociation *curSprintAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_RUNFAST);
+@@ -773,6 +900,10 @@ CPlayerPed::RestoreSprintEnergy(float restoreSpeed)
+ float
+ CPlayerPed::DoWeaponSmoothSpray(void)
+ {
++#ifdef FIRING_AND_AIMING // it's need for right movement during shooting
++	return -1.0f;
++#endif
++
+ 	if (m_nPedState == PED_ATTACK && !m_pPointGunAt) {
+ 		CWeaponInfo *weaponInfo = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
+ 		switch (GetWeapon()->m_eWeaponType) {
+@@ -907,6 +1038,12 @@ CPlayerPed::PlayerControlSniper(CPad *padUsed)
+ 		firePos = GetMatrix() * firePos;
+ 		GetWeapon()->Fire(this, &firePos);
+ 		m_nPadDownPressedInMilliseconds = CTimer::GetTimeInMilliseconds();
++
++#ifdef FIRING_AND_AIMING // sniper rifle echo
++		if (GetWeapon()->m_nAmmoTotal > 0)
++			DMAudio.PlayOneShot(m_audioEntityId, SOUND_WEAPON_AK47_BULLET_ECHO, GetWeapon()->m_eWeaponType);
++#endif
++
+ 	} else if (CTimer::GetTimeInMilliseconds() > m_nPadDownPressedInMilliseconds + firingRate &&
+ 		CTimer::GetTimeInMilliseconds() - CTimer::GetTimeStepInMilliseconds() < m_nPadDownPressedInMilliseconds + firingRate && padUsed->GetWeapon()) {
+ 		
+@@ -915,6 +1052,10 @@ CPlayerPed::PlayerControlSniper(CPad *padUsed)
+ 		}
+ 	}
+ 	GetWeapon()->Update(m_audioEntityId, nil);
++
++#ifdef FIRING_AND_AIMING
++	PlayerControlZelda(padUsed);
++#endif
+ }
+ 
+ // I think R* also used goto in here.
+@@ -1012,7 +1153,11 @@ spentAmmoCheck:
+ 
+ switchDetectDone:
+ 	if (m_nSelectedWepSlot != m_currentWeapon) {
++#ifdef FIRST_PERSON
++		if (m_nPedState != PED_ATTACK && (m_nPedState != PED_AIM_GUN || IsDoomMode()) && m_nPedState != PED_FIGHT) {
++#else
+ 		if (m_nPedState != PED_ATTACK && m_nPedState != PED_AIM_GUN && m_nPedState != PED_FIGHT) {
++#endif
+ 			RemoveWeaponAnims(m_currentWeapon, -1000.0f);
+ 			MakeChangesForNewWeapon(m_nSelectedWepSlot);
+ 		}
+@@ -1258,7 +1403,11 @@ CPlayerPed::CanIKReachThisTarget(CVector target, CWeapon* weapon, bool zRotImpor
+ 	float angleToFace = CGeneral::GetRadianAngleBetweenPoints(target.x, target.y, GetPosition().x, GetPosition().y);
+ 	float angleDiff = CGeneral::LimitRadianAngle(angleToFace - m_fRotationCur);
+ 
++#ifdef FIRING_AND_AIMING // decrease the auto-aim angle
++	return (!zRotImportant || CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) || Abs(angleDiff) <= HALFPI) && TheCamera.IsSphereVisible(target, 1.0f) &&
++#else
+ 	return (!zRotImportant || CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) || Abs(angleDiff) <= HALFPI) &&
++#endif
+ 		(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) || Abs(target.z - GetPosition().z) <= (target - GetPosition()).Magnitude2D());
+ }
+ 
+@@ -1466,20 +1615,28 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 	}
+ 
+ 	if (padUsed->DuckJustDown() && !bIsDucking && m_nMoveState != PEDMOVE_SPRINT) {
++#ifdef FIRING_AND_AIMING
++		ClearPointGunAt();
++#else
+ #ifdef FIX_BUGS
+ 		// fix tommy being locked into looking at the same spot if you duck just after starting to shoot
+ 		if(!m_pPointGunAt)
+ 			ClearPointGunAt();
++#endif
+ #endif
+ 		bCrouchWhenShooting = true;
+ 		SetDuck(60000, true);
+ 	} else if (bIsDucking && (padUsed->DuckJustDown() || m_nMoveState == PEDMOVE_SPRINT ||
+ 		padUsed->GetSprint() || padUsed->JumpJustDown() || padUsed->ExitVehicleJustDown())) {
+ 
+-#ifdef FIX_BUGS
+-		// same fix as above except for standing up
+-		if(!m_pPointGunAt)
++#ifdef FIRING_AND_AIMING
+ 			ClearPointGunAt();
++#else
++#ifdef FIX_BUGS
++			// same fix as above except for standing up
++			if(!m_pPointGunAt)
++				ClearPointGunAt();
++#endif
+ #endif
+ 		ClearDuck(true);
+ 		bCrouchWhenShooting = false;
+@@ -1490,20 +1647,201 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 	else
+ 		m_wepAccuracy = 100;
+ 
++
++#ifdef FIRING_AND_AIMING // make it possible to switch between a pistol and a submachine gun while aiming in vehicle
++		if (InVehicle() && bIsPlayerAiming && (padUsed->CycleWeaponLeftJustDown() || padUsed->CycleWeaponRightJustDown())) {
++			int currentWeaponSlot = GetWeaponSlot(GetWeapon()->m_eWeaponType);
++			if (currentWeaponSlot == WEAPONSLOT_HANDGUN && HasWeaponSlot(5) && GetWeapon(5).m_nAmmoTotal > 0) {
++				if (m_storedWeapon == WEAPONTYPE_UNIDENTIFIED)
++					m_storedWeapon = GetWeapon()->m_eWeaponType;
++				SetCurrentWeapon(GetWeapon(5).m_eWeaponType);
++			}
++#ifdef EX_WEAPON_BERETTA // make it possible to switch between a pistol and a submachine gun while aiming in vehicle
++			else if (currentWeaponSlot == WEAPONSLOT_SUBMACHINEGUN && HasWeaponSlot(3) && GetWeapon(3).m_nAmmoTotal > 0 &&
++					(GetWeapon(3).m_eWeaponType == WEAPONTYPE_COLT45 || GetWeapon(3).m_eWeaponType == WEAPONTYPE_BERETTA)) {
++#else
++			else if (currentWeaponSlot == WEAPONSLOT_SUBMACHINEGUN && HasWeaponSlot(3) && GetWeapon(3).m_nAmmoTotal > 0 && GetWeapon(3).m_eWeaponType == WEAPONTYPE_COLT45) {
++#endif
++				if (m_storedWeapon == WEAPONTYPE_UNIDENTIFIED)
++					m_storedWeapon = GetWeapon()->m_eWeaponType;
++				SetCurrentWeapon(GetWeapon(3).m_eWeaponType);
++			}
++		}
++#endif
++
++
+ 	if (!m_pFire) {
+ 		eWeaponType weapon = GetWeapon()->m_eWeaponType;
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++		bool bSniperCamera = weapon == WEAPONTYPE_SNIPERRIFLE || weapon == WEAPONTYPE_LASERSCOPE || weapon == WEAPONTYPE_CAMERA;
++
++		uint32 slot = CWeaponInfo::GetWeaponInfo(weapon)->m_nWeaponSlot;
++		if ((slot == WEAPONSLOT_SHOTGUN || slot == WEAPONSLOT_HANDGUN ||
++			slot == WEAPONSLOT_RIFLE || slot == WEAPONSLOT_SUBMACHINEGUN ||
++			weapon == WEAPONTYPE_M60 || weapon == WEAPONTYPE_MINIGUN ||
++			weapon == WEAPONTYPE_FLAMETHROWER || weapon == WEAPONTYPE_ROCKETLAUNCHER || bSniperCamera) &&
++			m_nMoveState != PEDMOVE_SPRINT) {
++
++			bool isFrontObstacle = false;
++			if (padUsed->GetTarget()) {
++				// from CPed::SetAttack
++				CVector aimPos = GetRight() * 0.1f + GetForward() * 0.2f + GetPosition();
++				aimPos += GetUp() * 0.35f;
++				CEntity* obstacle = CWorld::TestSphereAgainstWorld(aimPos, 0.2f, nil, true, false, false, true, false, false);
++				if (obstacle) {
++					if (gaTempSphereColPoints[0].surfaceB != SURFACE_TRANSPARENT_CLOTH && gaTempSphereColPoints[0].surfaceB != SURFACE_METAL_CHAIN_FENCE &&
++						gaTempSphereColPoints[0].surfaceB != SURFACE_WOOD_BENCH && gaTempSphereColPoints[0].surfaceB != SURFACE_SCAFFOLD_POLE) {
++
++						isFrontObstacle = true;
++					}
++				}
++			}
++
++			bool cantFire = isFrontObstacle || m_fMoveSpeed != 0.0f && bIsDucking;
++
++			if (cantFire) {
++				ClearAimFlag();
++				ClearWeaponTarget();
++			}
++
++			if (padUsed->GetWeapon() && bIsPlayerAiming && weapon != WEAPONTYPE_CAMERA && (weapon != WEAPONTYPE_LASERSCOPE || IsDoomMode())) {
++				if (m_nPedState == PED_ATTACK) {
++					m_fAttackButtonCounter *= Pow(0.94f, CTimer::GetTimeStep());
++				}
++				else {
++					m_fAttackButtonCounter = 0.0f;
++				}
++				SetAttack(nil);
++			}
++
++			if ((padUsed->GetTarget() || IsDoomMode()) && bIsPlayerAiming && !cantFire && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING && !bIsAutoAiming) {
++				if (!IsDoomMode()) {
++#ifdef EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++					if (weapon == WEAPONTYPE_ROCKETLAUNCHER && !bRocketLauncherThirdPersonAiming)
++						TheCamera.SetNewPlayerWeaponMode(CCam::MODE_ROCKETLAUNCHER, 0, 0);
++					else
++#endif
++					if (weapon == WEAPONTYPE_SNIPERRIFLE || weapon == WEAPONTYPE_LASERSCOPE)
++						TheCamera.SetNewPlayerWeaponMode(CCam::MODE_SNIPER, 0, 0);
++					else if (weapon == WEAPONTYPE_CAMERA)
++						TheCamera.SetNewPlayerWeaponMode(CCam::MODE_CAMERA, 0, 0);
++				}
++
++				bDontAllowWeaponChange = !IsDoomMode();
++
++				SetAimFlag(m_fRotationCur);
++				m_fFPSMoveHeading = TheCamera.Find3rdPersonQuickAimPitch();
++
++				if (m_nPedState != PED_ATTACK && weapon != WEAPONTYPE_CAMERA) {
++					SetPointGunAt(nil);
++
++					// ped reaction to aiming
++					float multiplier = 1.0f;
++					for (int i = 1; i < 60; i++) {
++						// first check
++						CWorld::pIgnoreEntity = this;
++						CEntity* hitEntityRaycast;
++						if (CWorld::ProcessLineOfSight(TheCamera.GetPosition(), TheCamera.GetPosition() + TheCamera.GetForward() * 20.0f, CColPoint{}, hitEntityRaycast, true, false, true, false, false, true)) {
++							if (hitEntityRaycast->IsPed()) {
++								CPed* hitPed = (CPed*)hitEntityRaycast;
++								if ((hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType != PEDTYPE_COP) ||
++									(hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType == PEDTYPE_COP && !FindPlayerPed()->m_pWanted->IsPlayerHides())) {
++									m_pPointGunAt = hitPed;
++
++									Say(SOUND_PED_AIMING);
++
++									break;
++								}
++							}
++						}
++						CWorld::pIgnoreEntity = NULL;
++
++						// second check
++						CVector spherePos = GetPosition() + CVector(0.0f, 0.0f, 0.6f) + (TheCamera.GetForward() * 0.5f) * multiplier;
++						CEntity* hitEntityShapecast = CWorld::TestSphereAgainstWorld(spherePos, 0.25f, this, true, false, true, false, false, false);
++						if (!hitEntityShapecast) {
++							if (i == 59 && m_pPointGunAt)
++								m_pPointGunAt = nullptr;
++
++							multiplier++;
++							continue;
++						}
++
++						if (hitEntityShapecast->IsPed()) {
++							CPed* hitPed = (CPed*)hitEntityShapecast;
++							if ((hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType != PEDTYPE_COP) ||
++								(hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType == PEDTYPE_COP && !FindPlayerPed()->m_pWanted->IsPlayerHides())) {
++								m_pPointGunAt = hitPed;
++
++								Say(SOUND_PED_AIMING);
++
++								break;
++							}
++						} else if (m_pPointGunAt) {
++							m_pPointGunAt = nullptr;
++
++							break;
++						}
++					}
++				}
++			}
++
++			if ((padUsed->GetTarget() || IsDoomMode()) && m_nPedState != PED_FIGHT) {
++				bIsPlayerAiming = true;
++			} else if ((!padUsed->GetTarget() || IsDoomMode()) && bIsPlayerAiming) {
++				bIsPlayerAiming = false;
++
++				if (GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING)
++					ClearWeaponTarget();
++
++				StopAimingAnims();
++
++				if (bIsDucking) {
++					TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.55f;
++				} else if (weapon != WEAPONTYPE_COLT45 && weapon != WEAPONTYPE_TEC9 && weapon != WEAPONTYPE_SILENCED_INGRAM
++#ifdef EX_WEAPON_UZIOLD // Aiming
++						  && weapon != WEAPONTYPE_UZIOLD
++#endif
++#ifdef EX_WEAPON_BERETTA // Aiming
++						  && weapon != WEAPONTYPE_BERETTA
++#endif
++						   ) {
++					if (m_fMoveSpeed > 0.0f)
++						CAnimManager::BlendAnimation(GetClump(), m_animGroup, ANIM_STD_RUN, 4.0f);
++					else
++						CAnimManager::BlendAnimation(GetClump(), m_animGroup, ANIM_STD_IDLE, 4.0f);
++				}
++			}
++
++			if (weapon == WEAPONTYPE_CAMERA || (weapon == WEAPONTYPE_LASERSCOPE && bIsPlayerAiming))
++				return;
++
++			float diff = DefaultFOV - TheCamera.Cams[TheCamera.ActiveCam].AimingFOV;
++
++			if (bIsPlayerAiming) {
++				if (slot == WEAPONSLOT_RIFLE || weapon == WEAPONTYPE_M60)
++					TheCamera.Cams[TheCamera.ActiveCam].AimingFOV = 40.0f;
++				else
++					TheCamera.Cams[TheCamera.ActiveCam].AimingFOV = 55.0f;
++			}
++		} else {
++			bIsPlayerAiming = false;
++
++			StopAimingAnims();
++		}
++#else
+ 		if (weapon == WEAPONTYPE_ROCKETLAUNCHER || weapon == WEAPONTYPE_SNIPERRIFLE ||
+ 			weapon == WEAPONTYPE_LASERSCOPE || weapon == WEAPONTYPE_M4 ||
+ 			weapon == WEAPONTYPE_RUGER || weapon == WEAPONTYPE_M60 ||
+ 			weapon == WEAPONTYPE_CAMERA) {
+ 
+ 			if (padUsed->TargetJustDown() || TheCamera.m_bJustJumpedOutOf1stPersonBecauseOfTarget) {
+-#ifdef FREE_CAM
++		#ifdef FREE_CAM
+ 				if (CCamera::bFreeCam && TheCamera.Cams[0].Using3rdPersonMouseCam()) {
+ 					m_fRotationCur = CGeneral::LimitRadianAngle(-TheCamera.Orientation);
+ 					SetHeading(m_fRotationCur);
+ 				}
+-#endif
++		#endif
+ 				if (weapon == WEAPONTYPE_ROCKETLAUNCHER)
+ 					TheCamera.SetNewPlayerWeaponMode(CCam::MODE_ROCKETLAUNCHER, 0, 0);
+ 				else if (weapon == WEAPONTYPE_SNIPERRIFLE || weapon == WEAPONTYPE_LASERSCOPE)
+@@ -1514,6 +1852,7 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 					TheCamera.SetNewPlayerWeaponMode(CCam::MODE_M16_1STPERSON, 0, 0);
+ 
+ 				m_fMoveSpeed = 0.0f;
++
+ 				CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_IDLE, 1000.0f);
+ 				SetPedState(PED_SNIPER_MODE);
+ 				return;
+@@ -1522,6 +1861,7 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 				if (weapon == WEAPONTYPE_ROCKETLAUNCHER || weapon == WEAPONTYPE_SNIPERRIFLE || weapon == WEAPONTYPE_LASERSCOPE || weapon == WEAPONTYPE_CAMERA)
+ 					return;
+ 		}
++#endif
+ 	}
+ 
+ 	if (padUsed->GetWeapon() && m_nMoveState != PEDMOVE_SPRINT) {
+@@ -1575,12 +1915,24 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 
+ 	// Rotate player/arm when shooting. We don't have auto-rotation anymore
+ 	if (CCamera::m_bUseMouse3rdPerson && CCamera::bFreeCam &&
++#ifdef FIRING_AND_AIMING // change hand position while driveby
++		(m_nSelectedWepSlot == m_currentWeapon || InVehicle()) && m_nMoveState != PEDMOVE_SPRINT) {
++#else
+ 		m_nSelectedWepSlot == m_currentWeapon && m_nMoveState != PEDMOVE_SPRINT) {
++#endif
+ 
++#ifdef FIRING_AND_AIMING // change hand position while driveby
++#define CAN_AIM_WITH_ARM ((weaponInfo->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) || InVehicle()) && !bIsDucking && !bCrouchWhenShooting)
++#else
+ #define CAN_AIM_WITH_ARM (weaponInfo->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM) && !bIsDucking && !bCrouchWhenShooting)
++#endif
+ 		// Weapons except throwable and melee ones
+ 		if (weaponInfo->m_nWeaponSlot > 2) {
++#ifdef FIRING_AND_AIMING
++			if ((padUsed->GetTarget() && CAN_AIM_WITH_ARM) || padUsed->GetWeapon() || (m_nPedState == PED_ATTACK && weaponInfo->m_nWeaponSlot > WEAPONSLOT_PROJECTILE)) {
++#else
+ 			if ((padUsed->GetTarget() && CAN_AIM_WITH_ARM) || padUsed->GetWeapon()) {
++#endif
+ 				float limitedCam = CGeneral::LimitRadianAngle(-TheCamera.Orientation);
+ 
+ 				m_cachedCamSource = TheCamera.Cams[TheCamera.ActiveCam].Source;
+@@ -1785,10 +2137,22 @@ CPlayerPed::PlayerControlZelda(CPad *padUsed)
+ 	if (m_nPedState != PED_FIGHT)
+ 		SetRealMoveAnim();
+ 
++#ifdef FIRING_AND_AIMING
++		if (bIsPlayerAiming)
++			return;
++#endif
++
+ 	if (!bIsInTheAir && !CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->IsFlagSet(WEAPONFLAG_HEAVY)
+ 		&& padUsed->JumpJustDown() && m_nPedState != PED_JUMP) {
+ 		ClearAttack();
+ 		ClearWeaponTarget();
++#ifdef CROUCH
++		if (bIsDucking) {
++			ClearDuck();
++
++			return;
++		}
++#endif
+ 		if (m_nEvadeAmount != 0 && m_pEvadingFrom) {
+ 			SetEvasiveDive((CPhysical*)m_pEvadingFrom, 1);
+ 			m_nEvadeAmount = 0;
+@@ -1889,6 +2253,13 @@ CPlayerPed::FindNewAttackPoints(void)
+ void
+ CPlayerPed::ProcessControl(void)
+ {
++#ifdef FIRING_AND_AIMING
++	if (bIsPlayerAiming && (!IsPedInControl() && m_nPedState != PED_ROLL || m_nPedState == PED_FIGHT)) {
++		bIsPlayerAiming = false;
++		ClearWeaponTarget();
++	}
++#endif
++
+ #ifdef CROUCH
+ 	if (!bIsDucking && TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ != 0.0f)
+ 		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.0f;
+@@ -2026,6 +2397,29 @@ CPlayerPed::ProcessControl(void)
+ 	}
+ #endif
+ 
++#ifdef FIRING_AND_AIMING
++	if (InVehicle() && bIsPlayerAiming && m_pMyVehicle->GetUp().z < 0.2f)
++		ClearWeaponTarget();
++#endif
++
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++	if (IsDoomMode() && (!IsPedInControl() || m_nPedState == PED_ANSWER_MOBILE || m_nPedState == PED_SEEK_CAR || m_nPedState == PED_SEEK_IN_BOAT)) {
++		bIsPlayerAiming = false;
++		ClearWeaponTarget();
++
++		StopAimingAnims();
++	}
++#endif
++
++#ifdef IMPROVED_TECH_PART // skip a phone call
++	if (m_nPedState == PED_ANSWER_MOBILE && m_bSkipPhoneCall) {
++		for (int slot = 0; slot < MISSION_AUDIO_SLOTS; slot++)
++			AudioManager.FinishMissionAudioPhoneDialogue(slot);
++	} else if (m_nPedState == PED_ANSWER_MOBILE && !m_bSkipPhoneCall && CPad::GetPad(0)->ExitVehicleJustDown()) {
++		m_bSkipPhoneCall = true;
++	}
++#endif
++
+ 
+ 	if (padUsed && padUsed->WeaponJustDown() && !TheCamera.Using1stPersonWeaponMode()) {
+ 		// ...Really?
+@@ -2048,7 +2442,14 @@ CPlayerPed::ProcessControl(void)
+ 		case PED_FIGHT:
+ 		case PED_AIM_GUN:
+ 		case PED_ANSWER_MOBILE:
++#ifdef SWIMMING
++		case PED_SWIM:
++#endif
++#ifdef FIRING_AND_AIMING
++			if (!RpAnimBlendClumpGetFirstAssociation(GetClump(), ASSOC_BLOCK) && !m_attachedTo && !InVehicle()) {
++#else
+ 			if (!RpAnimBlendClumpGetFirstAssociation(GetClump(), ASSOC_BLOCK) && !m_attachedTo) {
++#endif
+ 				if (TheCamera.Using1stPersonWeaponMode()) {
+ 					if (padUsed)
+ 						PlayerControlSniper(padUsed);
+diff --git a/src/peds/PlayerPed.h b/src/peds/PlayerPed.h
+index a8574ef0..5a471776 100644
+--- a/src/peds/PlayerPed.h
++++ b/src/peds/PlayerPed.h
+@@ -68,6 +68,10 @@ public:
+ 	static bool bDebugPlayerInfo;
+ #endif
+ 
++#ifdef FIRING_AND_AIMING
++	bool bIsPlayerAiming;
++#endif
++
+ 	CPlayerPed();
+ 	~CPlayerPed();
+ 	void SetMoveAnim() { };
+@@ -123,6 +127,13 @@ public:
+ 	static void FinishRollCB(CAnimBlendAssociation* assoc, void* arg);
+ #endif
+ 
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++	void ProcessAiming(void);
++	void StopAimingAnims(void);
++	bool CanUseDriveBy(void);
++	bool IsDoomMode(void);
++#endif
++
+ 	static void SetupPlayerPed(int32);
+ 	static void DeactivatePlayerPed(int32);
+ 	static void ReactivatePlayerPed(int32);
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index 2927cea2..900f1b4c 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -254,9 +254,19 @@ void CHud::Draw()
+ 			&& playerPed && !playerPed->GetWeapon()->IsTypeMelee())
+ 			DrawCrossHair = true;
+ 
++#ifdef FIRING_AND_AIMING
++		if (playerPed->bIsPlayerAiming && (Mode == CCam::MODE_M16_1STPERSON_RUNABOUT || Mode == CCam::MODE_ROCKETLAUNCHER_RUNABOUT || Mode == CCam::MODE_SNIPER_RUNABOUT))
++#else
+ 		if (Mode == CCam::MODE_M16_1STPERSON_RUNABOUT || Mode == CCam::MODE_ROCKETLAUNCHER_RUNABOUT || Mode == CCam::MODE_SNIPER_RUNABOUT)
++#endif
++
++
+ 			DrawCrossHairPC = true;
++#if defined FIRING_AND_AIMING && defined IMPROVED_MENU_AND_INPUT
++		if (playerPed->bIsPlayerAiming && !playerPed->bIsAutoAiming
++#else
+ 		if (TheCamera.Cams[TheCamera.ActiveCam].Using3rdPersonMouseCam() && (!CPad::GetPad(0)->GetLookBehindForPed() || TheCamera.m_bPlayerIsInGarage)
++#endif
+ 			|| Mode == CCam::MODE_1STPERSON_RUNABOUT) {
+ 			if (playerPed) {
+ 				if (playerPed->m_nPedState != PED_ENTER_CAR && playerPed->m_nPedState != PED_CARJACK) {
+diff --git a/src/renderer/Particle.cpp b/src/renderer/Particle.cpp
+index 461a10a6..87a73fe5 100644
+--- a/src/renderer/Particle.cpp
++++ b/src/renderer/Particle.cpp
+@@ -2103,7 +2103,23 @@ void CParticle::Render()
+ 					
+ 					if ( i == PARTICLE_WATER_HYDRANT
+ 							|| (!particleBanned || SCREEN_WIDTH * fParticleScaleLimit >= w)
+-							&& SCREEN_HEIGHT * fParticleScaleLimit >= h )
++#ifdef EX_PHOTO_MODE // Near clip plane of sprites reduced during photo mode
++#ifdef FIRST_PERSON // Near clip plane of sprites reduced during first person
++														&& (SCREEN_HEIGHT * fParticleScaleLimit >= h || CPhotoMode::IsPhotoModeEnabled() || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON))
++#else
++														&& (SCREEN_HEIGHT * fParticleScaleLimit >= h || CPhotoMode::IsPhotoModeEnabled()))
++#endif
++#else
++#ifdef FIRST_PERSON // Near clip plane of sprites reduced during first person
++														&& SCREEN_HEIGHT * fParticleScaleLimit >= h || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON )
++#else
++														&& SCREEN_HEIGHT * fParticleScaleLimit >= h )
++#endif
++#endif
++
++
++
++
+ 					{
+ 						if ( i == PARTICLE_WATER_HYDRANT )
+ 						{
+diff --git a/src/renderer/Sprite.cpp b/src/renderer/Sprite.cpp
+index ecfd3fdc..10582030 100644
+--- a/src/renderer/Sprite.cpp
++++ b/src/renderer/Sprite.cpp
+@@ -28,7 +28,24 @@ CSprite::CalcScreenCoors(const RwV3d &in, RwV3d *out, float *outw, float *outh,
+ {
+ 	CVector viewvec = TheCamera.m_viewMatrix * in;
+ 	*out = viewvec;
+-	if(out->z <= CDraw::GetNearClipZ() + 1.0f) return false;
++
++
++#ifdef EX_PHOTO_MODE // Near clip plane of sprites reduced during photo mode
++#ifdef FIRST_PERSON // Near clip plane of sprites reduced during first person
++		if(!CPhotoMode::IsPhotoModeEnabled() && TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON && (out->z <= CDraw::GetNearClipZ() + 1.0f)) return false;
++#else
++		if(!CPhotoMode::IsPhotoModeEnabled() && (out->z <= CDraw::GetNearClipZ() + 1.0f)) return false;
++#endif
++#else
++#ifdef FIRST_PERSON // Near clip plane of sprites reduced during first person
++		if(TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON && (out->z <= CDraw::GetNearClipZ() + 1.0f)) return false;
++#else
++		if(out->z <= CDraw::GetNearClipZ() + 1.0f) return false;
++#endif
++#endif
++
++
++
+ 	if(out->z >= CDraw::GetFarClipZ() && farclip) return false;
+ 	float recip = 1.0f/out->z;
+ 	out->x *= SCREEN_WIDTH * recip;
+diff --git a/src/renderer/Weather.cpp b/src/renderer/Weather.cpp
+index f075bea2..904135fe 100644
+--- a/src/renderer/Weather.cpp
++++ b/src/renderer/Weather.cpp
+@@ -478,6 +478,40 @@ void CWeather::AddRain()
+ 	int numSplashes = 2.0f * Rain;
+ 	CVector pos, dir;
+ 	for(int i = 0; i < numDrops; i++){
++
++//
++		#ifdef FIRST_PERSON
++		bool bShowNearDroplets = true;
++
++		if (FindPlayerVehicle() && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON)
++			bShowNearDroplets = FindPlayerVehicle()->IsOpenTopVehicle();
++
++		if (bShowNearDroplets) {
++			pos.x = CGeneral::GetRandomNumberInRange(0, (int)SCREEN_WIDTH);
++			pos.y = CGeneral::GetRandomNumberInRange(0, (int)SCREEN_HEIGHT / 5);
++			pos.z = 0.0f;
++			dir.x = 0.0f;
++			dir.y = CGeneral::GetRandomNumberInRange(30.0f, 40.0f);
++			dir.z = 0.0f;
++			CParticle::AddParticle(PARTICLE_RAINDROP_2D, pos, dir, nil, CGeneral::GetRandomNumberInRange(0.1f, 0.75f), 0, 0, (int)Rain & 3, 0);
++
++			pos.x = CGeneral::GetRandomNumberInRange(0, (int)SCREEN_WIDTH);
++			pos.y = CGeneral::GetRandomNumberInRange((int)SCREEN_HEIGHT / 5, (int)SCREEN_HEIGHT / 2);
++			pos.z = 0.0f;
++			dir.x = 0.0f;
++			dir.y = CGeneral::GetRandomNumberInRange(30.0f, 40.0f);
++			dir.z = 0.0f;
++			CParticle::AddParticle(PARTICLE_RAINDROP_2D, pos, dir, nil, CGeneral::GetRandomNumberInRange(0.1f, 0.75f), 0, 0, (int)Rain & 3, 0);
++
++			pos.x = CGeneral::GetRandomNumberInRange(0, (int)SCREEN_WIDTH);
++			pos.y = 0.0f;
++			pos.z = 0.0f;
++			dir.x = 0.0f;
++			dir.y = CGeneral::GetRandomNumberInRange(30.0f, 40.0f);
++			dir.z = 0.0f;
++			CParticle::AddParticle(PARTICLE_RAINDROP_2D, pos, dir, nil, CGeneral::GetRandomNumberInRange(0.1f, 0.75f), 0, 0, (int)Rain & 3, 0);
++		}
++#else
+ 		pos.x = CGeneral::GetRandomNumberInRange(0, (int)SCREEN_WIDTH);
+ 		pos.y = CGeneral::GetRandomNumberInRange(0, (int)SCREEN_HEIGHT/5);
+ 		pos.z = 0.0f;
+@@ -501,6 +535,9 @@ void CWeather::AddRain()
+ 		dir.y = CGeneral::GetRandomNumberInRange(30.0f, 40.0f);
+ 		dir.z = 0.0f;
+ 		CParticle::AddParticle(PARTICLE_RAINDROP_2D, pos, dir, nil, CGeneral::GetRandomNumberInRange(0.1f, 0.75f), 0, 0, (int)Rain&3, 0);
++#endif
++
++		//
+ 
+ 		float dist = CGeneral::GetRandomNumberInRange(0.0f, Max(10.0f*Rain, 40.0f)/2.0f);
+ 		float angle;
+diff --git a/src/vehicles/Bike.cpp b/src/vehicles/Bike.cpp
+index a65b64d2..1139306d 100644
+--- a/src/vehicles/Bike.cpp
++++ b/src/vehicles/Bike.cpp
+@@ -1817,7 +1817,11 @@ CBike::ProcessControlInputs(uint8 pad)
+ 	if(CPad::GetPad(pad)->GetExitVehicle())
+ 		bIsHandbrakeOn = true;
+ 	else
++#ifdef FIRING_AND_AIMING // we can't use handbrake during driveby
++		bIsHandbrakeOn = FindPlayerPed()->bIsPlayerAiming ? false : !!CPad::GetPad(pad)->GetHandBrake();
++#else
+ 		bIsHandbrakeOn = !!CPad::GetPad(pad)->GetHandBrake();
++#endif
+ 
+ 	// Steer left/right
+ #ifdef FIX_BUGS
+@@ -2013,9 +2017,24 @@ CBike::DoDriveByShootings(void)
+ 		return;
+ 
+ 	CWeapon *weapon = pDriver->GetWeapon();
+-	if(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != 5)
++
++#ifdef FIRING_AND_AIMING
++	if (CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_SUBMACHINEGUN &&
++		CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_HANDGUN)
++#else
++	if (CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != 5)
++#endif
++
++
+ 		return;
+ 
++#ifdef FIRING_AND_AIMING // turn on/off driveby
++		if (CPad::GetPad(0)->GetTarget() && !FindPlayerPed()->bIsPlayerAiming && FindPlayerPed()->CanUseDriveBy())
++			FindPlayerPed()->SetPointGunAt(nil);
++		else if (!CPad::GetPad(0)->GetTarget() && FindPlayerPed()->bIsPlayerAiming || !FindPlayerPed()->CanUseDriveBy())
++			FindPlayerPed()->ClearWeaponTarget();
++#endif
++
+ 	weapon->Update(pDriver->m_audioEntityId, nil);
+ 
+ 	bool lookingLeft = false;
+@@ -2033,7 +2052,30 @@ CBike::DoDriveByShootings(void)
+ 			lookingRight = true;
+ 	}
+ 
++	//
++
++#ifdef FIRING_AND_AIMING // hide/show weapon in vehicle
++	if (!FindPlayerPed()->m_pWeaponModel && (FindPlayerPed()->bIsPlayerAiming || (lookingLeft || lookingRight || CPad::GetPad(0)->GetCarGunFired())))
++		pDriver->AddWeaponModel(weapon->GetInfo()->m_nModelId);
++	else if (FindPlayerPed()->m_pWeaponModel && !FindPlayerPed()->bIsPlayerAiming && !lookingLeft && !lookingRight && !CPad::GetPad(0)->GetCarGunFired())
++		pDriver->RemoveWeaponModel(weapon->GetInfo()->m_nModelId);
++#endif
++
++	#if defined FIRING_AND_AIMING && defined FIRST_PERSON // reloading weapon during driveby/first person/use pistol
++	if (FindPlayerPed()->bIsPlayerAiming || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON || 
++		(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot == WEAPONSLOT_HANDGUN && !FindPlayerPed()->bIsPlayerAiming)) {
++
++		weapon->Reload();
++		return;
++	}
++#endif
++	//
++
++#ifdef FIRING_AND_AIMING
++	if(lookingLeft || lookingRight || (CPad::GetPad(0)->GetCarGunFired() && !FindPlayerPed()->bIsPlayerAiming)){
++#else
+ 	if(lookingLeft || lookingRight || CPad::GetPad(0)->GetCarGunFired()){
++#endif
+ 		if(lookingLeft){
+ 			anim = RpAnimBlendClumpGetAssociation(pDriver->GetClump(), ANIM_BIKE_DRIVEBY_RHS);
+ 			if(anim)
+@@ -2106,7 +2148,14 @@ CBike::VehicleDamage(void)
+ 		bIsStanding = false;
+ 
+ 	// Inflict damage on the driver and passenger
++#ifdef FIRING_AND_AIMING // make it possible to fall off the bike during driveby
++	bool bDriverUsesDriveBy = pDriver && (pDriver->GetPedState() == PED_AIM_GUN || pDriver->GetPedState() == PED_ATTACK);
++	bool bPassengerUsesDriveBy = pPassengers[0] && (pPassengers[0]->GetPedState() == PED_AIM_GUN || pPassengers[0]->GetPedState() == PED_ATTACK);
++
++	if(pDriver && (pDriver->GetPedState() == PED_DRIVING || bDriverUsesDriveBy) && colSpeed > 10.0f){
++#else
+ 	if(pDriver && pDriver->GetPedState() == PED_DRIVING && colSpeed > 10.0f){
++#endif
+ 		float fwd = 0.6f;
+ 		if(Abs(DotProduct(m_vecDamageNormal, GetForward())) > 0.85f){
+ 			float u = Max(DotProduct(m_vecDamageNormal, CVector(0.0f, 0.0f, 1.0f)), 0.0f);
+@@ -2135,14 +2184,23 @@ CBike::VehicleDamage(void)
+ 				dir = pDriver->GetLocalDirection(-m_vecDamageNormal);
+ 				if(pDriver->m_fHealth > 0.0f)
+ 					pDriver->InflictDamage(m_pDamageEntity, WEAPONTYPE_RAMMEDBYCAR, 0.05f*damage, PEDPIECE_TORSO, dir);
+-				if(pDriver && pDriver->GetPedState() == PED_DRIVING)
++#ifdef FIRING_AND_AIMING // make it possible to fall off the bike during driveby
++					if(pDriver && (pDriver->GetPedState() == PED_DRIVING || bDriverUsesDriveBy))
++#else
++					if(pDriver && pDriver->GetPedState() == PED_DRIVING)
++#endif
+ 					KnockOffRider(WEAPONTYPE_RAMMEDBYCAR, dir, pDriver, false);
+ 			}
+ 			if(pPassengers[0]){
+ 				dir = pPassengers[0]->GetLocalDirection(-m_vecDamageNormal);
+ 				if(pPassengers[0]->m_fHealth > 0.0f)
+ 					pPassengers[0]->InflictDamage(m_pDamageEntity, WEAPONTYPE_RAMMEDBYCAR, 0.05f*damage, PEDPIECE_TORSO, dir);
++#ifdef FIRING_AND_AIMING // make it possible to fall off the bike during driveby
++				if(pPassengers[0] && (pPassengers[0]->GetPedState() == PED_DRIVING || bPassengerUsesDriveBy))
++#else
+ 				if(pPassengers[0] && pPassengers[0]->GetPedState() == PED_DRIVING)
++#endif
++
+ 					KnockOffRider(WEAPONTYPE_RAMMEDBYCAR, dir, pPassengers[0], false);
+ 			}
+ 		}
+diff --git a/src/vehicles/Boat.cpp b/src/vehicles/Boat.cpp
+index 5da8e1cc..7c5a1e30 100644
+--- a/src/vehicles/Boat.cpp
++++ b/src/vehicles/Boat.cpp
+@@ -1418,9 +1418,23 @@ CBoat::DoDriveByShootings(void)
+ 		return;
+ 
+ 	CWeapon *weapon = pDriver->GetWeapon();
+-	if(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != 5)
++
++#ifdef FIRING_AND_AIMING
++	if (CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_SUBMACHINEGUN &&
++		CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_HANDGUN)
++#else
++	if (CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot != 5)
++#endif
++
+ 		return;
+ 
++#ifdef FIRING_AND_AIMING // turn on/off driveby
++	if (CPad::GetPad(0)->GetTarget() && !FindPlayerPed()->bIsPlayerAiming && FindPlayerPed()->CanUseDriveBy())
++		FindPlayerPed()->SetPointGunAt(nil);
++	else if (!CPad::GetPad(0)->GetTarget() && FindPlayerPed()->bIsPlayerAiming || !FindPlayerPed()->CanUseDriveBy())
++		FindPlayerPed()->ClearWeaponTarget();
++#endif
++
+ 	weapon->Update(pDriver->m_audioEntityId, nil);
+ 
+ 	bool lookingLeft = false;
+@@ -1438,6 +1452,24 @@ CBoat::DoDriveByShootings(void)
+ 			lookingRight = true;
+ 	}
+ 
++	//
++#ifdef FIRING_AND_AIMING // hide/show weapon in vehicle
++	if (!FindPlayerPed()->m_pWeaponModel && (FindPlayerPed()->bIsPlayerAiming || (lookingLeft || lookingRight)))
++		pDriver->AddWeaponModel(weapon->GetInfo()->m_nModelId);
++	else if (FindPlayerPed()->m_pWeaponModel && !FindPlayerPed()->bIsPlayerAiming && !lookingLeft && !lookingRight)
++		pDriver->RemoveWeaponModel(weapon->GetInfo()->m_nModelId);
++#endif
++
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON // reloading weapon during driveby/first person/use pistol
++	if (FindPlayerPed()->bIsPlayerAiming || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON ||
++		(CWeaponInfo::GetWeaponInfo(weapon->m_eWeaponType)->m_nWeaponSlot == WEAPONSLOT_HANDGUN && !FindPlayerPed()->bIsPlayerAiming)) {
++
++		weapon->Reload();
++		return;
++	}
++#endif
++	//
++
+ 	if(lookingLeft || lookingRight){
+ 		if(lookingLeft){
+ 			anim = RpAnimBlendClumpGetAssociation(pDriver->GetClump(), ANIM_STD_CAR_DRIVEBY_RIGHT);
+diff --git a/src/vehicles/Vehicle.cpp b/src/vehicles/Vehicle.cpp
+index 56b95958..c68bd1a6 100644
+--- a/src/vehicles/Vehicle.cpp
++++ b/src/vehicles/Vehicle.cpp
+@@ -2637,6 +2637,20 @@ CVehicle::KillPedsInVehicle(void)
+ 	}
+ }
+ 
++#ifdef FIRST_PERSON
++bool CVehicle::IsOpenTopVehicle(void)
++{
++	if (IsBike())
++		return true;
++	else if (IsBoat())
++		return !(GetModelIndex() == MI_PREDATOR || GetModelIndex() == MI_TROPIC || GetModelIndex() == MI_REEFER);
++	else if (IsCar())
++		return IsOpenTopCar();
++	else
++		return false;
++}
++#endif
++
+ /// <summary>
+ /// Destroy the vehicle and kill the peds in it also.
+ /// </summary>
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 2d219e2d..6184eeb2 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -995,11 +995,37 @@ CWeapon::FireInstantHit(CEntity *shooter, CVector *fireSource)
+ 		CWorld::bIncludeBikers = true;
+ 		CWorld::bIncludeDeadPeds = true;
+ 		CWorld::bIncludeCarTyres = true;
++
++#ifdef FIRING_AND_AIMING // we can't hit our vehicle while driveby
++		CWorld::pIgnoreEntity = FindPlayerVehicle();
++		ProcessLineOfSight(source, target, point, victim, m_eWeaponType, shooter, true, true, true, true, true, false, false);
++		CWorld::pIgnoreEntity = NULL;
++#else
+ 		ProcessLineOfSight(source, target, point, victim, m_eWeaponType, shooter, true, true, true, true, true, false, false);
++#endif
++
++
++
+ 		CWorld::bIncludeBikers = false;
+ 		CWorld::bIncludeDeadPeds = false;
+ 		CWorld::bIncludeCarTyres = false;
+ 
++#ifdef FIRING_AND_AIMING // make it possible to break the windshield during driveby
++		if (FindPlayerVehicle() && FindPlayerPed()->bIsPlayerAiming && FindPlayerVehicle()->IsCar()) {
++			if (DotProduct(FindPlayerVehicle()->GetForward(), TheCamera.Cams[TheCamera.ActiveCam].Front) > 0.9f) {
++				// from CheckForShootingVehicleOccupant
++				CAutomobile* car = (CAutomobile*)FindPlayerVehicle();
++				if (car->Damage.ProgressPanelDamage(VEHPANEL_WINDSCREEN)) {
++					if (car->Damage.GetPanelStatus(VEHPANEL_WINDSCREEN) == PANEL_STATUS_SMASHED2)
++						car->Damage.ProgressPanelDamage(VEHPANEL_WINDSCREEN);
++
++					car->SetPanelDamage(CAR_WINDSCREEN, VEHPANEL_WINDSCREEN, true);
++					DMAudio.PlayOneShot(FindPlayerVehicle()->m_audioEntityId, SOUND_CAR_WINDSHIELD_CRACK, 0.f);
++				}
++			}
++		}
++#endif
++
+ 		if (victim)
+ 			CheckForShootingVehicleOccupant(&victim, &point, m_eWeaponType, source, target);
+ 
+@@ -1420,7 +1446,15 @@ CWeapon::DoBulletImpact(CEntity *shooter, CEntity *victim,
+ 						if ( victimPed->IsPlayer() )
+ 						{
+ 							CPlayerPed *victimPlayer = (CPlayerPed *)victimPed;
++
++
++#ifdef FIRST_PERSON
++							if ( victimPlayer->m_nHitAnimDelayTimer < CTimer::GetTimeInMilliseconds() && victimPed->m_nPedState != PED_DRIVING &&
++								 TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON)
++#else
+ 							if ( victimPlayer->m_nHitAnimDelayTimer < CTimer::GetTimeInMilliseconds() && victimPed->m_nPedState != PED_DRIVING )
++#endif
++							
+ 							{
+ 								victimPed->ClearAttackByRemovingAnim();
+ 
+@@ -2322,6 +2356,9 @@ CWeapon::FireSniper(CEntity *shooter)
+ 			FindPlayerPed()->GetPosition().z);
+ 			
+ 		CParticle::HandleShootableBirdsStuff(shooter, source);
++#ifdef FIRING_AND_AIMING
++		if (TheCamera.Using1stPersonWeaponMode())
++#endif
+ 
+ 		CamShakeNoPos(&TheCamera, 0.2f);
+ 	}
+@@ -2964,10 +3001,22 @@ CWeapon::Update(int32 audioEntity, CPed *pedToAdjustSound)
+ 				CAnimBlendAssociation *reloadAssoc = nil;
+ 				if (pedToAdjustSound) {
+ 					if (CPed::GetReloadAnim(info) && (!CWorld::Players[CWorld::PlayerInFocus].m_bFastReload || !pedToAdjustSound->IsPlayer())) {
++#ifdef FIRING_AND_AIMING // shotgun sound
++						if (m_eWeaponType == WEAPONTYPE_SHOTGUN) {
++							reloadAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->GetClump(), ANIM_WEAPON_FIRE);
++							if (!reloadAssoc)
++								reloadAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->GetClump(), ANIM_WEAPON_CROUCHFIRE);
++						} else {
++							reloadAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->GetClump(), CPed::GetReloadAnim(info));
++							if (!reloadAssoc)
++								reloadAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->GetClump(), CPed::GetCrouchReloadAnim(info));
++						}
++#else
+ 						reloadAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->GetClump(), CPed::GetReloadAnim(info));
+ 						if (!reloadAssoc) {
+ 							reloadAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->GetClump(), CPed::GetCrouchReloadAnim(info));
+ 						}
++#endif
+ 					}
+ 				}
+ 				if (reloadAssoc && reloadAssoc->IsRunning() && reloadAssoc->blendAmount > 0.2f) {
+@@ -3008,6 +3057,16 @@ CWeapon::Update(int32 audioEntity, CPed *pedToAdjustSound)
+ 			{
+ 				Reload();
+ 				m_eWeaponState = WEAPONSTATE_READY;
++
++#ifdef FIRING_AND_AIMING // After reloading
++				if (pedToAdjustSound && pedToAdjustSound->IsPlayer()) {
++					CPlayerPed* playerPed = (CPlayerPed*)pedToAdjustSound;
++					if (!playerPed->bIsPlayerAiming && !CPad::GetPad(0)->GetWeapon()) {
++						playerPed->ClearWeaponTarget();
++						playerPed->StopAimingAnims();
++					}
++				}
++#endif
+ 			}
+ 
+ 			break;
+-- 
+2.45.1.windows.1
+

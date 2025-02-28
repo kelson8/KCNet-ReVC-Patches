@@ -1,0 +1,212 @@
+From f57fe36477e81a0055c290a942a9ef2671be02da Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 19:41:57 -0500
+Subject: [PATCH 13/13] Add invincibility toggle for bikes, helicopters, and
+ boats.
+
+---
+ src/extras/test/cheats/custom_cheats.cpp | 129 ++++++++++++++++-------
+ 1 file changed, 89 insertions(+), 40 deletions(-)
+
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+index a7fc2721..819d42f6 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -62,6 +62,8 @@
+ // Enable test features in this file, only define under CUSTOM_CODE1
+ #define _TEST
+ 
++#include "Heli.h"
++
+ #include "Bike.h"
+ #include "Explosion.h"
+ #include "Radar.h"
+@@ -762,12 +764,10 @@ CustomCheats::NeverWantedCheat()
+ 	}
+ }
+ 
+-// Test
+ // TODO Figure out how to move this into vehicle_functions.cpp without errors
+ 
+ /// <summary>
+ /// Enable invincibility for the vehicle
+-/// 
+ /// </summary>
+ /// <param name="veh"></param>
+ void
+@@ -784,6 +784,10 @@ CustomCheats::EnableVehicleInvincibility(CVehicle *veh)
+ 	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+ }
+ 
++/// <summary>
++/// Disable the current vehicles invincibility
++/// </summary>
++/// <param name="veh"></param>
+ void
+ CustomCheats::DisableVehicleInvincibility(CVehicle *veh)
+ {
+@@ -797,51 +801,69 @@ CustomCheats::DisableVehicleInvincibility(CVehicle *veh)
+ 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
+ }
+ 
++// Adds a toggle for the invincible vehicle.
++static bool bVehicleInvincible = false;
++
++/// <summary>
++/// Toggle the vehicle invincibility status.
++/// Toggles Bullet Proof, Collision Proof, Explosion Proof, Fire Proof, Melee Proof,
++/// and make tires not burst.
++/// Seems to work on Cars, Bikes, Boats, and Helicopters
++/// </summary>
++/// <param name="veh">The vehicle to toggle for.</param>
+ static void
+ ToggleVehicleInvincible(CVehicle *veh)
++
+ {
++	// This is the toggle for this function
++	bVehicleInvincible = !bVehicleInvincible;
++
++	// I switched this from using the complicated thing here.
++	//if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
++	if(bVehicleInvincible) {
++		// This one seems to work
++		
++		switch(veh->m_vehType) 
++		{
++		case VEHICLE_TYPE_CAR:
++		{
++				((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++				((CAutomobile *)veh)->Fix();
++			    break;
++		}
+ 
+-	// TODO Implement this later
++		// Oops, I had this defined in the InvincibleVehicleCheat function which is what
++		// My debug menu calls to run this.. I was wondering why it wasn't working on bikes.
++		case VEHICLE_TYPE_BIKE: {
++			    //	// This doesn't seem to exist on CBike.
++			    //((CBike *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++			    ((CBike *)veh)->Fix();
++				break;
++		}
+ 
+-	// This is from the below function
+-	// This looks to be complete but I'll test it later.
+-	#ifdef _TEST3
+-	switch(veh->m_vehType) {
+-	case VEHICLE_TYPE_CAR:
+-		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
++		// These work now.
++		case VEHICLE_TYPE_BOAT: 
++		{
++			// TODO Figure out how to repair the boats
++			//((CBoat *)veh)->Fix();
++
++			break;
++		}
+ 
+-			((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
+-			((CAutomobile *)veh)->Fix();
++		case VEHICLE_TYPE_HELI: 
++		{
++			// TODO Figure out how to repair the helicopters
++			//((CHeli *)veh)->Fix();
+ 
+-			CustomCheats::EnableVehicleInvincibility(veh);
+-		} else {
+-			CustomCheats::DisableVehicleInvincibility(veh);
++			break;
+ 		}
+-		break;
+-	case VEHICLE_TYPE_BIKE:
+-		if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) { 
+-			((CBike *)veh)->Fix();
+-
+-			CustomCheats::EnableVehicleInvincibility(veh);
+-		} else {
+-			CustomCheats::DisableVehicleInvincibility(veh);
++			
+ 		}
+-		break;
+-		// TODO Figure out how to implement for the boat, there isn't a fix function for it.
+-	//case VEHICLE_TYPE_BOAT: 
+-	//	if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
+-	//	}
+-		break;
+-	//case VEHICLE_TYPE_HELI: break;
+-	}
+-	#endif //_TEST3
+-
+-	if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
+-		((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
+-		((CAutomobile *)veh)->Fix();
+ 
++		// Enable the invincibility
+ 		CustomCheats::EnableVehicleInvincibility(veh);
+ 	} else {
++		// Disable the invincibility
+ 		CustomCheats::DisableVehicleInvincibility(veh);
+ 
+ 	}
+@@ -849,7 +871,15 @@ ToggleVehicleInvincible(CVehicle *veh)
+ //
+ 
+ // Invincible car
+-// I got this working with a toggle.
++
++
++/// <summary>
++/// I got this working with a toggle.
++/// TODO Setup this to disable for the previous vehicle if a player was in one.
++/// So if it is toggled on for a different vehicle, it'll disable the invincibility on the old one.
++/// So far this is tested and working for Cars, Bikes, and Helicopters.
++/// I still need to test the Boats for it.
++/// </summary>
+ void
+ CustomCheats::InvincibleVehicleCheat()
+ {
+@@ -861,18 +891,37 @@ CustomCheats::InvincibleVehicleCheat()
+ 
+ 		CVehicle *currentVeh = pPed->m_pMyVehicle;
+ 
++		// TODO Possibly remove this switch, I'm doing this in the ToggleVehicleInvincible function.
+ 		switch(currentVeh->m_vehType) {
+ 
+-		case VEHICLE_TYPE_CAR:
++		case VEHICLE_TYPE_CAR: 
++		{
+ 			// This could be useful for getting a vehicles coords.
+ 			// CVector vehPos = veh->GetPosition();
+ 			/*CVehicle *currentVeh = pPed->m_pMyVehicle;*/
+ 			// VehicleFunctions::ToggleVehicleInvincible(currentVeh);
+ 			ToggleVehicleInvincible(currentVeh);
+ 			break;
+-		case VEHICLE_TYPE_BIKE: break;
+-		case VEHICLE_TYPE_BOAT: break;
+-		case VEHICLE_TYPE_HELI: break;
++		}
++		
++		// These work now
++		case VEHICLE_TYPE_BIKE: 
++		{
++			ToggleVehicleInvincible(currentVeh);
++			break;
++		}
++
++		case VEHICLE_TYPE_BOAT: 
++		{
++			ToggleVehicleInvincible(currentVeh);
++			break;
++		}
++
++		case VEHICLE_TYPE_HELI: 
++		{
++			ToggleVehicleInvincible(currentVeh); 
++			break;
++		}
+ 		}
+ 
+ 		if(currentVeh->m_vehType == VEHICLE_TYPE_CAR) {}
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,88 @@
+From 0e1b0b73d12eb80a1246333a8ba61df188cae0cf Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 18:32:20 -0500
+Subject: [PATCH 11/13] Add some missing changes for photo mode.
+
+---
+ src/audio/MusicManager.cpp |  9 +++++++++
+ src/core/config.h          | 10 ++++++++++
+ src/skel/win/win.cpp       |  8 ++++++++
+ 3 files changed, 27 insertions(+)
+
+diff --git a/src/audio/MusicManager.cpp b/src/audio/MusicManager.cpp
+index 828a4a39..340bc295 100644
+--- a/src/audio/MusicManager.cpp
++++ b/src/audio/MusicManager.cpp
+@@ -25,6 +25,10 @@
+ #include "Frontend.h"
+ #endif
+ 
++#ifdef EX_PHOTO_MODE
++#include "PhotoMode.h"
++#endif
++
+ #if !defined FIX_BUGS && (defined RADIO_SCROLL_TO_PREV_STATION || defined RADIO_OFF_TEXT)
+ static_assert(false, "R*'s radio implementation is quite buggy, RADIO_SCROLL_TO_PREV_STATION and RADIO_OFF_TEXT won't work without FIX_BUGS");
+ #endif
+@@ -1280,6 +1284,11 @@ cMusicManager::SetStripClubTrackPos(uint8 scriptObject)
+ void
+ cMusicManager::DisplayRadioStationName()
+ {
++#ifdef EX_PHOTO_MODE // Don't draw a radio station name during photo mode
++	if (CPhotoMode::IsPhotoModeEnabled())
++		return;
++#endif
++
+ 	uint8 gStreamedSound;
+ 	static wchar *pCurrentStation = nil;
+ 	static uint8 cDisplay = 0;
+diff --git a/src/core/config.h b/src/core/config.h
+index bece6b11..a235ff52 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -85,6 +85,16 @@
+ // // TODO Test this
+ // #define SWIMMING
+ 
++// It seems to build with these two enabled!!!
++// TODO Test photo mode once I get IMPROVED_MENU_AND_INPUT complete.
++#define EX_MORE_BUTTON_ICONS
++#define EX_PC_KEY_ICONS
++
++// TODO Implement the defines below to possibly make photo mode build.
++// #define IMPROVED_MENU_AND_INPUT
++// #define IMPROVE_TECH_PART
++// #define EX_PHOTO_MODE
++
+ /*********************** End partially complete code  ******************/
+ 
+ // End disable these when done testing.
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 63c9b311..b086b485 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -58,6 +58,10 @@
+ #include "platform.h"
+ #include "crossplatform.h"
+ 
++#ifdef EX_PHOTO_MODE
++#include "PhotoMode.h"
++#endif
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ #include "Script.h"
+ #include "GenericGameStorage.h"
+@@ -3166,6 +3170,10 @@ CMenuManager cMenuManager = CMenuManager();
+ 			break;
+ 		}
+ #endif
++
++#ifdef EX_PHOTO_MODE // Disabling photo mode when starting a new game or loading a game save
++		CPhotoMode::DisablePhotoMode();
++#endif
+ 		
+ 		CPad::ResetCheats();
+ 		CPad::StopPadsShaking();
+-- 
+2.45.1.windows.1
+

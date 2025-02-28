@@ -1,0 +1,81 @@
+From f2c3c59fc4485ae89c3c640a73d46373f32bfcce Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 05:41:24 -0500
+Subject: [PATCH 04/13] Add time to the test logs, it now displays the time it
+ was logged.
+
+---
+ src/extras/functions/log_functions.cpp | 33 ++++++++++++++++++++++++--
+ 1 file changed, 31 insertions(+), 2 deletions(-)
+
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index fd9aef0f..cd9f7b7b 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -6,6 +6,12 @@
+ #include <fstream>
+ #include <string>
+ 
++#include <ctime>
++#include <iomanip>
++
++#include <chrono>
++#include <sstream>
++
+ #ifdef _WIN32
+ #include <Windows.h>
+ #endif //_WIN32
+@@ -14,6 +20,7 @@
+ // https://stackoverflow.com/questions/7400418/writing-a-log-file-in-c-c
+ #include <cstdio>
+ 
++// TODO Setup this to get the current time and date.
+ 
+ 
+ // https://stackoverflow.com/questions/143174/how-do-i-get-the-directory-that-a-program-is-running-from
+@@ -70,6 +77,10 @@ LogFunctions::LogText(const char *fileName)
+ 
+ 		// This is Windows file directory specific stuff.
+ 		#ifdef _WIN32
++
++		// Test for adding time to logs
++		std::time_t now = std::time(nullptr);
++		std::tm local_tm = *std::localtime(&now);
+ 		//int bytes = GetModuleFileName(NULL, pBuf, len);
+ 
+ 		// https://stackoverflow.com/a/19535628
+@@ -93,11 +104,29 @@ LogFunctions::LogText(const char *fileName)
+ 			// TODO Add the ViceExtended folder to this, this doesn't seem to set it.
+ 			currentDirectory = currentDirectory + "\\ViceExtended\\";
+ 			std::string logFilePath = currentDirectory + fileName;
++
++			// Test for making this into a variable, got this idea from Google AI.
++			std::ostringstream oss;
++			oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
++			std::string formatted_time = oss.str();
++
++			//std::string currentTime = std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+ 			
+ 			//logFile << "File path: " << result << std::endl;
+-			logFile << "Folder path: " << currentDirectory << std::endl;
++			
++			// This works for displaying this with the date and time.
++			//logFile << "[" << formatted_time << "] Application started" << std::endl;
++			
++			logFile << "[" << formatted_time << "] " << "Folder path: " << currentDirectory << std::endl;
++			logFile << "[" << formatted_time << "] " << "File path: " << logFilePath << std::endl;
++
++			// logFile << "File path: " << logFilePath << std::endl;
++
++
++			// These work
++			//logFile << "Folder path: " << currentDirectory << std::endl;
+ 
+-			logFile << "File path: " << logFilePath << std::endl;
++			//logFile << "File path: " << logFilePath << std::endl;
+ 		}
+ 		#endif //_WIN32
+ 
+-- 
+2.45.1.windows.1
+

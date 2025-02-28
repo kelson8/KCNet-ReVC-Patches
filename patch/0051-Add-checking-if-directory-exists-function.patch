@@ -1,0 +1,99 @@
+From f4bb4ef4254f9b4906a381e55f900164c445abf4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 15:51:13 -0500
+Subject: [PATCH 07/13] Add checking if directory exists function. Make my
+ LogToFile function create the logs folder if it doesn't exist.
+
+---
+ src/extras/functions/log_functions.cpp | 59 +++++++++++++++++++++++++-
+ 1 file changed, 57 insertions(+), 2 deletions(-)
+
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index 183d3e91..ac5cb34e 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -37,7 +37,49 @@ std::string logPath = filePath + "logs\\";
+     // This is in the functions
+ //std::string logFilePath = filePath + fileName;
+ 
++// https://stackoverflow.com/questions/1200188/how-to-convert-stdstring-to-lpcstr
++// https://stackoverflow.com/questions/8931196/how-to-create-a-directory-in-c
+ 
++/// <summary>
++/// Check if a directory exists, for now this only works for Windows.
++/// TODO Make this work on Linux if I get around to testing it on there.
++/// </summary>
++/// <param name="folderPath">The path to check</param>
++/// <returns>If the folder exists</returns>
++bool
++#ifdef _WIN32
++CheckDirectoryExists(LPCSTR folderPath)
++#else
++CheckDirectoryExists(std::string folderPath)
++#endif //_WIN32
++{
++#ifdef _WIN32
++
++	// TODO Move this into another function.
++	// Create the directory if it doesn't already exist.
++	//CreateDirectory(logPath.c_str(), NULL);
++	//CreateDirectory(folderPath, NULL);
++	
++	// Check if the directory exists
++	// https://stackoverflow.com/questions/8233842/how-to-check-if-directory-exist-using-c-and-winapi
++	DWORD ftyp = GetFileAttributesA(folderPath);
++	if (ftyp == INVALID_FILE_ATTRIBUTES) { 
++		return false; // Something is wrong with the path
++	}
++
++	if (ftyp & FILE_ATTRIBUTE_DIRECTORY) { 
++		return true; // This is a valid directory
++	}
++
++	return false; // Not a directory
++
++	// 
++	//TRACE("KCNet - 'ViceExtended\logs' folder not found, creating one for you");
++#else
++	// Not implemented on other systems.
++	return false;
++#endif //_WIN32
++}
+ 
+ 
+ // Logging functions
+@@ -69,6 +111,20 @@ LogToFile(std::string type, std::string fileName, std::string message)
+ 	// Why does this show weird symbols? It works in game
+ 	//TRACE("Path: %s", logFilePath);
+ 
++	// Create directory if it doesn't exist.
++	if (!CheckDirectoryExists(logPath.c_str())) {
++		
++		// This works, but the error message seems to cancel out the info log line.
++		// Create the directory if it doesn't already exist.
++		// This only works on Windows.
++#ifdef _WIN32
++		CreateDirectory(logPath.c_str(), NULL);
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
++#endif //_WIN32
++	}
++	
++	//
++
+ 	// Check if the file was opened.
+ 	if(logFile.is_open()) 
+ 	{
+@@ -139,9 +195,8 @@ LogToFile(std::string type, std::string fileName, std::string message)
+ 		// TODO Figure out why this message always displays.
+ #endif //_WIN32
+ 	} else {
+-		// TODO Make this create the directory if it doesn't exist.
+ 		// Well this has some weird symbols in it..
+-		TRACE("KCNet - File %s not found.", fileName);
++		//TRACE("KCNet - File %s not found.", fileName);		
+ 		//TRACE("KCNet - Logging not implemented.");
+ 	}
+ }
+-- 
+2.45.1.windows.1
+
