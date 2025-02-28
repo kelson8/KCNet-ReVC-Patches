@@ -17,6 +17,96 @@ I have added these files:
 * src/extras/functions/ini_functions.cpp - Ini functions moved out of re3.cpp
 * src/extras/imgui_test.cpp & imgui_test.h - This is a very early work in progress for ImGui, it will show up but there is no mouse, and if closed it crashes the game so I have it disabled for now.
 * src/extras/modloader_reVC.h, modloader.cpp, modloader.h - Partial modloader support, this is very incomplete and crashes the game.
+* src/extras/PhotoMode.cpp and PhotoMode.h - This is the photo mode from the Vice Extended project, I don't have it working just yet.
+
+### Log test:
+src/extras/functions/log_functions.cpp, and log_functions.h 
+* These files have a log to file function in the debug menu hooked up to them. I figured out how to make this create the 'ViceExtended\\logs' folder if it doesn't exist and do some basic logging. For now all it logs is a test info, warning, and error message.
+
+### Custom cheats
+src/extras/test/cheats/custom_cheats.cpp, and custom_cheats.h
+
+* Blow up all cars: BlowUpAllCars(void)
+
+---
+
+Toggle police spike strips
+* Enable Police Spike Strips: EnablePoliceSpikeStrips(void)
+* Disable Police Spike Strips: DisablePoliceSpikeStrips(void)
+* Toggle Police Spike Strips: TogglePoliceSpikeStrips(void)
+
+---
+Toggle police weapons
+* Change police weapons (Can change police weapons to anything once I set it up in the debug menu): EnableChangePoliceWeapons(void)
+* DisableChangePoliceWeapons(void)
+
+---
+Misc testing
+* Vehicle Testing: vehicleTest(void)
+* Ped Testing: PedTest1(void)
+* Explode Ped: ExplodePed(void)
+* Plugin sdk test: CommandTest1(void)
+* Give RC Car test: GiveRcCar(void)
+
+---
+Vehicle
+* Lock Car Doors: LockDoors(void)
+* Unlock Car Doors: UnlockDoors(void)
+----
+
+* Clear items from area: void ClearItemsFromArea(float radius)
+* Test cheat: TestCheat1(void)
+* Spawn ped cheat: SpawnPedCheat(void)
+* Give player a weapon: GivePlayerWeapon(void)
+
+---
+Test for spawning peds and cars
+* Spawn ped test: SpawnPedTest(void)
+* Spawn Car test: SpawnCarTestCheat(void)
+---
+
+* Set Text test: SetText(void)
+* Tank rapid fire toggle (Incomplete): TankRapidFireToggle(void)
+---
+Raise/Lower wanted level
+* Raise wanted level: RaiseWantedLevel(void)
+* Lower wanted level: LowerWantedLevel(void)
+---
+Health
+* Enable infinite health: EnableInfiniteHealth(void)
+* Disable infinite health: DisableInfiniteHealth(void)
+* Infinite health cheat: InfiniteHealthCheat(void)
+---
+Never wanted
+* Enable never wanted: EnableNeverWanted(void)
+* Disable never wanted: DisableNeverWanted(void)
+* Never wanted cheat: NeverWantedCheat(void)
+---
+Vehicle
+* Enable vehicle invincibility: void EnableVehicleInvincibility(CVehicle *veh)
+* Disable vehicle invincibility: void DisableVehicleInvincibility(CVehicle *veh)
+* Toggle vehicle invincibility: void ToggleVehicleInvincible(CVehicle *veh)
+* Invincible vehicle cheat: InvincibleVehicleCheat(void)
+* No upside down blow up cheat: void NoUpsideDownBlowUpCheat(bool toggle)
+---
+Player
+* Explosion cheat (Add a bomb near the player): ExplosionCheat(void)
+* Player Testing: PlayerTest2(void)
+* Spawn weapon pickup (This does nothing): SpawnWeaponPickup(void)
+
+
+### Vehicle Functions
+src/extras/functions/vehicle_functions.cpp, and vehicle_functions.h
+
+* Repair vehicle
+* Toggle vehicle invincibility
+* Unlock all car doors in area (Incomplete)
+* Toggle Upside Down Explosions (Incomplete)
+* Spawn vehicle function, customized from original debug menu: SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle)
+* Requesting the vehicle model: RequestVehicleModel(int vehicleModel)
+* Removing the vehicle from the world: RemoveCurrentVehicleFromWorld(void)
+
+
 
 # Fast loader
 * The fast loader can be modified in the ReVC.ini, or when a game is launched while on the pause menu. It won't work in the main menu.
