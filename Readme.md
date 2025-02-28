@@ -63,7 +63,7 @@ TODO Complete this list
 This is the KCNet ReVC project, it will need applied to a copy of the ReVC code.
 
 
-I have documentated quite a bit in this repo, a lot of functions have documentation now.
+I have documented quite a bit in this repo, a lot of functions have documentation now.
 
 # Credits
 Credit goes to x87 on github for some code from the Vice Extended project
