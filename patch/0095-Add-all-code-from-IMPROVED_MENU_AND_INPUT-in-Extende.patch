@@ -1,0 +1,5855 @@
+From 57de7da7346ea394ccf05003c6fd88b62d0a16af Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Mar 2025 20:20:34 -0400
+Subject: [PATCH 095/101] Add all code from IMPROVED_MENU_AND_INPUT in Extended
+ Vice project.
+
+---
+ src/audio/MusicManager.cpp             |   14 +
+ src/control/Pickups.cpp                |    6 +-
+ src/control/Script5.cpp                |  115 +++
+ src/core/Cam.cpp                       |  327 +++++-
+ src/core/Camera.cpp                    |    2 +-
+ src/core/ControllerConfig.cpp          |  285 ++++-
+ src/core/ControllerConfig.h            |   12 +
+ src/core/Frontend.cpp                  | 1061 ++++++++++++++++++-
+ src/core/Frontend.h                    |   79 +-
+ src/core/FrontendTriggers.h            |    6 +
+ src/core/MenuScreensCustom.cpp         |  100 +-
+ src/core/Pad.cpp                       | 1321 +++++++++++++++++++-----
+ src/core/Pad.h                         |   37 +-
+ src/core/Radar.cpp                     |   32 +
+ src/core/Radar.h                       |    4 +
+ src/core/config.h                      |    4 +
+ src/core/main.cpp                      |   28 +
+ src/extras/functions/ini_functions.cpp |   58 +-
+ src/peds/PedFight.cpp                  |   24 +
+ src/peds/PlayerPed.cpp                 |  131 ++-
+ src/peds/PlayerPed.h                   |    4 +
+ src/renderer/Console.cpp               |    2 +
+ src/renderer/Hud.cpp                   |   16 +
+ src/renderer/Weather.cpp               |    6 +
+ src/skel/win/win.cpp                   |   31 +-
+ src/vehicles/Automobile.cpp            |   34 +-
+ src/vehicles/Bike.cpp                  |   16 +-
+ src/weapons/Explosion.cpp              |    7 +
+ src/weapons/Weapon.cpp                 |   54 +-
+ src/weapons/WeaponEffects.cpp          |    5 +
+ 30 files changed, 3519 insertions(+), 302 deletions(-)
+
+diff --git a/src/audio/MusicManager.cpp b/src/audio/MusicManager.cpp
+index 340bc295..02f8fedc 100644
+--- a/src/audio/MusicManager.cpp
++++ b/src/audio/MusicManager.cpp
+@@ -564,7 +564,12 @@ cMusicManager::ServiceGameMode()
+ 				}
+ 			}
+ #endif
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (CPad::GetPad(0)->NextStationJustDown() && 
++				(CPad::GetPad(0)->IsAffectedByController || !CPad::GetPad(0)->IsAffectedByController && TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_HELICANNON_1STPERSON))
++#else
+ 			if (CPad::GetPad(0)->ChangeStationJustDown())
++#endif
+ 			{
+ 				if (!UsesPoliceRadio(vehicle) && !UsesTaxiRadio(vehicle)) {
+ 					gNumRetunePresses++;
+@@ -573,13 +578,22 @@ cMusicManager::ServiceGameMode()
+ 				}
+ 			}
+ #ifdef RADIO_SCROLL_TO_PREV_STATION
++#ifdef IMPROVED_MENU_AND_INPUT
++			else if(!CPad::GetPad(0)->ArePlayerControlsDisabled() && (CPad::GetPad(0)->GetMouseWheelDownJustDown() || CPad::GetPad(0)->GetMouseWheelUpJustDown() || CPad::GetPad(0)->PrevStationJustDown())) {
++#else
+ 			else if(!CPad::GetPad(0)->ArePlayerControlsDisabled() && (CPad::GetPad(0)->GetMouseWheelDownJustDown() || CPad::GetPad(0)->GetMouseWheelUpJustDown())) {
++#endif
++
+ 				if(!UsesPoliceRadio(vehicle) && !UsesTaxiRadio(vehicle)) {
+ 					int scrollNext = ControlsManager.GetControllerKeyAssociatedWithAction(VEHICLE_CHANGE_RADIO_STATION, MOUSE);
+ 					int scrollPrev = scrollNext == rsMOUSEWHEELUPBUTTON ? rsMOUSEWHEELDOWNBUTTON
+ 																		: scrollNext == rsMOUSEWHEELDOWNBUTTON ? rsMOUSEWHEELUPBUTTON : -1;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++					if(scrollPrev != -1 && !ControlsManager.IsAnyVehicleActionAssignedToMouseKey(scrollPrev) || (CPad::GetPad(0)->IsAffectedByController && CPad::GetPad(0)->PrevStationJustDown())) {
++#else
+ 					if(scrollPrev != -1 && !ControlsManager.IsAnyVehicleActionAssignedToMouseKey(scrollPrev)) {
++#endif
+ 						gNumRetunePresses--;
+ 						gRetuneCounter = 20;
+ 						RadioStaticCounter = 0;
+diff --git a/src/control/Pickups.cpp b/src/control/Pickups.cpp
+index 098fc42e..e5b4a8fd 100644
+--- a/src/control/Pickups.cpp
++++ b/src/control/Pickups.cpp
+@@ -423,7 +423,11 @@ CPickup::Update(CPlayerPed *player, CVehicle *vehicle, int playerId)
+ 		// if we didn't then we've got nothing to do
+ 		if (isPickupTouched && CanBePickedUp(player, playerId)) {
+ 			if (m_pObject->GetModelIndex() != MI_PICKUP_PROPERTY && m_pObject->GetModelIndex() != MI_PICKUP_PROPERTY_FORSALE)
+-				CPad::GetPad(0)->StartShake(120, 100);
++#ifdef IMPROVED_MENU_AND_INPUT
++			CPad::GetPad(0)->StartShake(120, 0, 100);
++#else
++			CPad::GetPad(0)->StartShake(120, 100);
++#endif
+ 
+ 			eWeaponType weaponType = CPickups::WeaponForModel(m_pObject->GetModelIndex());
+ 			switch (m_eType)
+diff --git a/src/control/Script5.cpp b/src/control/Script5.cpp
+index e9f0967e..6e27ee90 100644
+--- a/src/control/Script5.cpp
++++ b/src/control/Script5.cpp
+@@ -19,6 +19,10 @@
+ #include "main.h"
+ #include "SaveBuf.h"
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++#include "Pad.h"
++#endif
++
+ void CRunningScript::UpdateCompareFlag(bool flag)
+ {
+ 	if (m_bNotFlag)
+@@ -1400,6 +1404,116 @@ void CRunningScript::DoDeatharrestCheck()
+ int16 CRunningScript::GetPadState(uint16 pad, uint16 button)
+ {
+ 	CPad* pPad = CPad::GetPad(pad);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	switch (pPad->IsAffectedByController ? pPad->Mode : 0)
++	{
++		case 0:
++		case 2:
++		{
++			if (FindPlayerPed()->InVehicle())
++				switch (button) {
++					case 0: return pPad->NewState.LeftStickX;
++					case 1: return pPad->NewState.LeftStickY;
++					case 2: return pPad->NewState.RightStickX;
++					case 3: return pPad->NewState.RightStickY;
++					case 4: return pPad->NewState. LeftShoulder1;
++					case 5: return pPad->NewState.LeftShoulder2;
++					case 6: return pPad->NewState.RightShoulder1;
++					case 7: return pPad->NewState.RightShoulder2;
++					case 8: return pPad->NewState.DPadUp;
++					case 9: return pPad->NewState.DPadDown;
++					case 10: return pPad->NewState.DPadLeft;
++					case 11: return pPad->NewState.DPadRight;
++					case 12: return pPad->NewState.Start;
++					case 13: return pPad->NewState.Select;
++					case 14: return pPad->NewState.Square;
++					case 15: return pPad->NewState.Triangle;
++					case 16: return pPad->NewState.Cross;
++					case 17: return pPad->NewState.Circle;
++					case 18: return pPad->NewState.LeftShock;
++					case 19: return pPad->NewState.RightShock;
++					default: break;
++				}
++			else
++				switch (button) {
++					case 0: return pPad->NewState.LeftStickX;
++					case 1: return pPad->NewState.LeftStickY;
++					case 2: return pPad->NewState.RightStickX;
++					case 3: return pPad->NewState.RightStickY;
++					case 4: return pPad->IsAffectedByController ? pPad->NewState.LeftShoulder1 : pPad->NewState.Circle;
++					case 5: return pPad->NewState.LeftShoulder2;
++					case 6: return pPad->NewState.RightShoulder1;
++					case 7: return pPad->NewState.RightShoulder2;
++					case 8: return pPad->NewState.DPadUp;
++					case 9: return pPad->NewState.DPadDown;
++					case 10: return pPad->NewState.DPadLeft;
++					case 11: return pPad->NewState.DPadRight;
++					case 12: return pPad->NewState.Start;
++					case 13: return pPad->NewState.Select;
++					case 14: return pPad->NewState.Square;
++					case 15: return pPad->NewState.Triangle;
++					case 16: return pPad->NewState.Cross;
++					case 17: return pPad->IsAffectedByController ? pPad->NewState.Circle : pPad->NewState.LeftShoulder1;
++					case 18: return pPad->NewState.LeftShock;
++					case 19: return pPad->NewState.RightShock;
++					default: break;
++				}
++		}
++		case 1:
++		case 3:
++		{
++			if (FindPlayerPed()->InVehicle())
++				switch (button) {
++					case 0: return pPad->NewState.LeftStickX;
++					case 1: return pPad->NewState.LeftStickY;
++					case 2: return pPad->NewState.RightStickX;
++					case 3: return pPad->NewState.RightStickY;
++					case 4: return pPad->NewState.LeftShoulder2;
++					case 5: return pPad->NewState.LeftShoulder1;
++					case 6: return pPad->NewState.RightShoulder2;
++					case 7: return pPad->NewState.RightShoulder1;
++					case 8: return pPad->NewState.RightShock;
++					case 9: return pPad->NewState.DPadDown;
++					case 10: return pPad->NewState.DPadLeft;
++					case 11: return pPad->NewState.DPadRight;
++					case 12: return pPad->NewState.Start;
++					case 13: return pPad->NewState.Select;
++					case 14: return pPad->NewState.Square;
++					case 15: return pPad->NewState.Triangle;
++					case 16: return pPad->NewState.Cross;
++					case 17: return pPad->NewState.Circle;
++					case 18: return pPad->NewState.LeftShock;
++					case 19: return pPad->NewState.DPadUp;
++					default: break;
++				}
++			else
++				switch (button) {
++					case 0: return pPad->NewState.LeftStickX;
++					case 1: return pPad->NewState.LeftStickY;
++					case 2: return pPad->NewState.RightStickX;
++					case 3: return pPad->NewState.RightStickY;
++					case 4: return pPad->NewState.LeftShoulder1;
++					case 5: return pPad->NewState.LeftShoulder2;
++					case 6: return pPad->NewState.RightShoulder1;
++					case 7: return pPad->NewState.RightShoulder2;
++					case 8: return pPad->NewState.DPadUp;
++					case 9: return pPad->NewState.DPadDown;
++					case 10: return pPad->NewState.DPadLeft;
++					case 11: return pPad->NewState.DPadRight;
++					case 12: return pPad->NewState.Start;
++					case 13: return pPad->NewState.Select;
++					case 14: return pPad->NewState.Square;
++					case 15: return pPad->NewState.Triangle;
++					case 16: return pPad->NewState.Cross;
++					case 17: return pPad->NewState.Circle;
++					case 18: return pPad->NewState.LeftShock;
++					case 19: return pPad->NewState.RightShock;
++					default: break;
++				}
++		}
++	}
++#else
+ 	switch (button) {
+ 	case 0: return pPad->NewState.LeftStickX;
+ 	case 1: return pPad->NewState.LeftStickY;
+@@ -1423,6 +1537,7 @@ int16 CRunningScript::GetPadState(uint16 pad, uint16 button)
+ 	case 19: return pPad->NewState.RightShock;
+ 	default: break;
+ 	}
++#endif
+ 	return 0;
+ }
+ 
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index b68f9b3f..1462c67a 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -1588,8 +1588,30 @@ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrient
+ 	Beta += BetaOffset;
+ 	while(Beta >= PI) Beta -= 2*PI;
+ 	while(Beta < -PI) Beta += 2*PI;
+-	if(Alpha > DEGTORAD(45.0f)) Alpha = DEGTORAD(45.0f);
+-	else if(Alpha < -DEGTORAD(89.5f)) Alpha = -DEGTORAD(89.5f);
++
++#if defined FIRING_AND_AIMING && defined SWIMMING // limit the vertical angle of the camera
++	if (ped) {
++		if (ped->bIsSwimming) {
++			if (Alpha > DEGTORAD(5.0f)) Alpha = DEGTORAD(5.0f);
++			else if (Alpha < -DEGTORAD(89.5f)) Alpha = -DEGTORAD(89.5f);
++		} else {
++			if (ped->bIsPlayerAiming) {
++				if (Alpha > DEGTORAD(44.0f)) Alpha = DEGTORAD(44.0f);
++				else if (Alpha < -DEGTORAD(65.0f)) Alpha = -DEGTORAD(65.0f);
++			} else {
++				if (Alpha > DEGTORAD(40.0f)) Alpha = DEGTORAD(40.0f);
++				else if (Alpha < -DEGTORAD(89.5f)) Alpha = -DEGTORAD(89.5f);
++			}
++		}
++	}
++#else
++	if (Alpha > DEGTORAD(40.0f)) Alpha = DEGTORAD(40.0f);
++	else if (Alpha < -DEGTORAD(89.5f)) Alpha = -DEGTORAD(89.5f);
++#endif
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	CamDist = TheCamera.m_fPedZoomValue + fAngleDist;
++#else
+ 
+ 	// SA code
+ #ifdef FREE_CAM
+@@ -1601,6 +1623,8 @@ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrient
+ 	else
+ 		CamDist = fBaseDist + Cos(Alpha)*fAngleDist;
+ 
++#endif
++
+ 	if(TheCamera.m_bUseTransitionBeta)
+ 		Beta = m_fTransitionBeta;
+ 
+@@ -1639,6 +1663,12 @@ CCam::Process_FollowPedWithMouse(const CVector &CameraTarget, float TargetOrient
+ 	Source = TargetCoors - Front*CamDist;
+ 	m_cvecTargetCoorsForFudgeInter = TargetCoors;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT // raise the camera if it is near water
++	float waterLevel;
++	if (CWaterLevel::GetWaterLevel(Source, &waterLevel, false) && Source.z < waterLevel + 0.75f)
++		Source.z = waterLevel + 0.75f;
++#endif
++
+ 	// Clip Source and fix near clip
+ 	CWorld::pIgnoreEntity = CamTargetEntity;
+ 	entity = nil;
+@@ -2443,6 +2473,13 @@ CCam::Process_Rocket(const CVector &CameraTarget, float, float, float)
+ 		LookLeftRight = -CPad::GetPad(0)->SniperModeLookLeftRight();
+ 		LookUpDown = CPad::GetPad(0)->SniperModeLookUpDown();
+ 	}
++
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	Beta += LookLeftRight * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f;
++	Alpha += LookUpDown * TheCamera.m_fMouseAccelVertical * FOV / 80.0f;
++#else
+ 	if(UseMouse){
+ 		Beta += TheCamera.m_fMouseAccelHorzntl * LookLeftRight * FOV/80.0f;
+ 		Alpha += TheCamera.m_fMouseAccelVertical * LookUpDown * FOV/80.0f;
+@@ -2452,6 +2489,11 @@ CCam::Process_Rocket(const CVector &CameraTarget, float, float, float)
+ 		Beta += SQR(LookLeftRight/100.0f)*xdir*0.8f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 		Alpha += SQR(LookUpDown/150.0f)*ydir*1.0f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 	}
++#endif
++
++
++
++
+ 	while(Beta >= PI) Beta -= 2*PI;
+ 	while(Beta < -PI) Beta += 2*PI;
+ 	if(Alpha > DEGTORAD(60.0f)) Alpha = DEGTORAD(60.0f);
+@@ -2545,6 +2587,12 @@ CCam::Process_M16_1stPerson(const CVector &CameraTarget, float, float, float)
+ 		LookLeftRight = -CPad::GetPad(0)->SniperModeLookLeftRight();
+ 		LookUpDown = CPad::GetPad(0)->SniperModeLookUpDown();
+ 	}
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	Beta += LookLeftRight * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f;
++	Alpha += LookUpDown * TheCamera.m_fMouseAccelVertical * FOV / 80.0f;
++#else
+ 	if(UseMouse){
+ 		Beta += TheCamera.m_fMouseAccelHorzntl * LookLeftRight * FOV/80.0f;
+ 		Alpha += TheCamera.m_fMouseAccelVertical * LookUpDown * FOV/80.0f;
+@@ -2559,6 +2607,10 @@ CCam::Process_M16_1stPerson(const CVector &CameraTarget, float, float, float)
+ 		Beta += SQR(LookLeftRight/100.0f)*xdir*0.8f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 		Alpha += SQR(LookUpDown/150.0f)*ydir*1.0f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 	}
++#endif
++
++
++
+ 	if (!isAttached) {
+ 		while(Beta >= TWOPI) Beta -= TWOPI;
+ 		while(Beta < 0) Beta += TWOPI;
+@@ -2956,6 +3008,11 @@ CCam::Process_1rstPersonPedOnPC(const CVector&, float TargetOrientation, float,
+ 			LookLeftRight = -CPad::GetPad(0)->LookAroundLeftRight();
+ 			LookUpDown = CPad::GetPad(0)->LookAroundUpDown();
+ 		}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		Beta += LookLeftRight * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f;
++		Alpha += LookUpDown * TheCamera.m_fMouseAccelVertical * FOV / 80.0f;
++#else
+ 		if(UseMouse){
+ 			Beta += TheCamera.m_fMouseAccelHorzntl * LookLeftRight * FOV/80.0f;
+ 			Alpha += TheCamera.m_fMouseAccelVertical * LookUpDown * FOV/80.0f;
+@@ -2965,6 +3022,9 @@ CCam::Process_1rstPersonPedOnPC(const CVector&, float TargetOrientation, float,
+ 			Beta += SQR(LookLeftRight/100.0f)*xdir*0.8f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 			Alpha += SQR(LookUpDown/150.0f)*ydir*1.0f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 		}
++#endif
++
++
+ 		while(Beta >= PI) Beta -= 2*PI;
+ 		while(Beta < -PI) Beta += 2*PI;
+ 		if(Alpha > DEGTORAD(60.0f)) Alpha = DEGTORAD(60.0f);
+@@ -3095,6 +3155,12 @@ CCam::Process_Sniper(const CVector &CameraTarget, float TargetOrientation, float
+ 		LookLeftRight = -CPad::GetPad(0)->SniperModeLookLeftRight();
+ 		LookUpDown = CPad::GetPad(0)->SniperModeLookUpDown();
+ 	}
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	Beta += LookLeftRight * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f;
++	Alpha += LookUpDown * TheCamera.m_fMouseAccelVertical * FOV / 80.0f;
++#else
+ 	if(UseMouse){
+ 		Beta += TheCamera.m_fMouseAccelHorzntl * LookLeftRight * FOV/80.0f;
+ 		Alpha += TheCamera.m_fMouseAccelVertical * LookUpDown * FOV/80.0f;
+@@ -3104,6 +3170,8 @@ CCam::Process_Sniper(const CVector &CameraTarget, float TargetOrientation, float
+ 		Beta += SQR(LookLeftRight/100.0f)*xdir*0.8f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 		Alpha += SQR(LookUpDown/150.0f)*ydir*1.0f/14.0f * FOV/80.0f * CTimer::GetTimeStep();
+ 	}
++#endif
++
+ 	while(Beta >= PI) Beta -= 2*PI;
+ 	while(Beta < -PI) Beta += 2*PI;
+ 	if(Alpha > DEGTORAD(60.0f)) Alpha = DEGTORAD(60.0f);
+@@ -5195,6 +5263,244 @@ CCam::ProcessArrestCamTwo(void)
+ void
+ CCam::Process_FollowPed_Rotation(const CVector &CameraTarget, float TargetOrientation, float, float)
+ {
++	#ifdef IMPROVED_MENU_AND_INPUT
++	/*from Process_FollowPedWithMouse, but modified*/
++
++	bool bChangeAimFOV = TheCamera.Cams[TheCamera.ActiveCam].FOV < DefaultFOV - 0.01f;
++
++	if (!bChangeAimFOV)
++		FOV = DefaultFOV;
++
++	CPlayerPed* ped = (CPlayerPed*)CamTargetEntity;
++	if (ped) {
++		// smoothly change FOV during aiming
++		if (ped->bIsPlayerAiming) {
++			float newFOV = InterpFloat(FOV, AimingFOV, 5.0f);
++			FOV = Clamp(newFOV, AimingFOV, DefaultFOV);
++		} else {
++			float newFOV = InterpFloat(FOV, DefaultFOV, 5.0f);
++			FOV = Clamp(newFOV, FOV, DefaultFOV);
++		}
++	}
++
++	if (!CamTargetEntity->IsPed())
++		return;
++
++	CVector TargetCoors;
++	float CamDist;
++	CColPoint colPoint;
++	CEntity* entity;
++
++	bool wasResetStatics = ResetStatics;
++
++	static CVector CurrentAimOffset = { 0.0f, 0.0f, 0.0f };
++
++	if (ResetStatics) {
++		Rotating = false;
++		m_bCollisionChecksOn = true;
++		ResetStatics = false;
++	}
++
++	bool OnTrain = FindPlayerVehicle() && FindPlayerVehicle()->IsTrain();
++
++	TargetCoors = CameraTarget;
++	TargetCoors.z += fTranslateCamUp;
++
++	float newZ = InterpFloat(m_fCurrentCameraOffsetZ, m_fTargetCameraPosZ, 8.0f);
++	m_fCurrentCameraOffsetZ = newZ;
++	TargetCoors.z -= m_fCurrentCameraOffsetZ;
++
++	float AlphaOffset, BetaOffset;
++	float LookLeftRight, LookUpDown;
++	if (CPad::GetPad(0)->IsPlayerControlsDisabledBy(PLAYERCONTROL_PLAYERINFO)) {
++		LookLeftRight = 0.0f;
++		LookUpDown = 0.0f;
++	} else {
++		LookLeftRight = -CPad::GetPad(0)->LookAroundLeftRight();
++		LookUpDown = CPad::GetPad(0)->LookAroundUpDown();
++	}
++
++	BetaOffset = LookLeftRight * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f * CTimer::GetTimeStep();
++	AlphaOffset = LookUpDown * TheCamera.m_fMouseAccelVertical * FOV / 80.0f * CTimer::GetTimeStep();
++
++	if (TheCamera.GetFading() && TheCamera.GetFadingDirection() == FADE_IN && nFadeControlThreshhold < CDraw::FadeValue ||
++		CDraw::FadeValue > 200 ||
++		CPad::GetPad(0)->IsPlayerControlsDisabledBy(PLAYERCONTROL_PLAYERINFO)) {
++		if (Alpha < fDefaultAlphaOrient - 0.05f)
++			AlphaOffset = 0.05f;
++		else if (Alpha < fDefaultAlphaOrient)
++			AlphaOffset = fDefaultAlphaOrient - Alpha;
++		else if (Alpha > fDefaultAlphaOrient + 0.05f)
++			AlphaOffset = -0.05f;
++		else if (Alpha > fDefaultAlphaOrient)
++			AlphaOffset = fDefaultAlphaOrient - Alpha;
++		else
++			AlphaOffset = 0.0f;
++	}
++
++#ifdef CLIMBING
++	if (ped && (ped->bIsClimbingPull || (ped->bIsClimbingHighJump && !ped->bIsClimbingIdle))) {
++		if (Alpha < fDefaultAlphaOrient - 0.02f)
++			AlphaOffset = 0.02f;
++		else if (Alpha < fDefaultAlphaOrient)
++			AlphaOffset = fDefaultAlphaOrient - Alpha;
++		else if (Alpha > fDefaultAlphaOrient + 0.02f)
++			AlphaOffset = -0.02f;
++		else if (Alpha > fDefaultAlphaOrient)
++			AlphaOffset = fDefaultAlphaOrient - Alpha;
++		else
++			AlphaOffset = 0.0f;
++	}
++
++	if (ped && !ped->bIsPlayerAiming && !ped->bIsClimbing && !CPad::GetPad(0)->IsPlayerControlsDisabledBy(PLAYERCONTROL_PLAYERINFO) && !ped->m_vecMoveSpeed.IsZero()) {
++		CVector Dist = Source - TargetCoors;
++		float GroundDist = Dist.Magnitude2D();
++		Beta = CGeneral::GetATanOfXY(-Dist.x, -Dist.y);
++		Alpha = CGeneral::GetATanOfXY(GroundDist, -Dist.z);
++		while (Alpha >= PI) Alpha -= 2.0f * PI;
++		while (Alpha < -PI) Alpha += 2.0f * PI;
++	}
++
++#endif
++
++	Alpha += AlphaOffset;
++	Beta += BetaOffset;
++
++	if (ped) {
++		// limit the vertical angle of the camera
++		if (ped->bIsSwimming) {
++			if (Alpha > DEGTORAD(5.0f)) Alpha = DEGTORAD(5.0f);
++			else if (Alpha < -DEGTORAD(89.5f)) Alpha = -DEGTORAD(89.5f);
++		} else {
++			if (ped->bIsPlayerAiming) {
++				if (Alpha > DEGTORAD(44.0f)) Alpha = DEGTORAD(44.0f);
++				else if (Alpha < -DEGTORAD(65.0f)) Alpha = -DEGTORAD(65.0f);
++			} else {
++				if (Alpha > DEGTORAD(40.0f)) Alpha = DEGTORAD(40.0f);
++				else if (Alpha < -DEGTORAD(89.5f)) Alpha = -DEGTORAD(89.5f);
++			}
++		}
++	}
++
++	CamDist = TheCamera.m_fPedZoomValue + fAngleDist;
++
++	if (TheCamera.m_bUseTransitionBeta)
++		Beta = CGeneral::GetATanOfXY(-Cos(m_fTransitionBeta), -Sin(m_fTransitionBeta));
++
++	if (TheCamera.m_bCamDirectlyInFront)
++		Beta = TheCamera.m_PedOrientForBehindOrInFront;
++	if (OnTrain)
++		Beta = TargetOrientation;
++
++	// smoothly move the camera while aiming
++	if (FindPlayerPed()->bIsPlayerAiming && ped->m_nPedState != PED_ROLL) {
++		CVector cameraOffset = ped->GetRight() * 0.25f;
++		if (CurrentAimOffset.Magnitude() < 0.22f) {
++			CurrentAimOffset = InterpVector(CurrentAimOffset, cameraOffset, 0.9f);
++			TargetCoors += CurrentAimOffset;
++		} else {
++			CurrentAimOffset = cameraOffset;
++			TargetCoors += CurrentAimOffset;
++		}
++	} else {
++		if (CurrentAimOffset.Magnitude() > 0.05f) {
++			CurrentAimOffset = InterpVector(CurrentAimOffset, CVector(0.0f, 0.0f, 0.0f), 0.9f);
++			TargetCoors += CurrentAimOffset;
++		} else {
++			CurrentAimOffset = CVector(0.0f, 0.0f, 0.0f);
++			TargetCoors += CurrentAimOffset;
++		}
++	}
++
++	Front = CVector(Cos(Alpha) * Cos(Beta), Cos(Alpha) * Sin(Beta), Sin(Alpha));
++
++	Source = TargetCoors - Front * CamDist;
++	m_cvecTargetCoorsForFudgeInter = TargetCoors;
++
++	// raise the camera if it is near water
++	float waterLevel;
++	if (CWaterLevel::GetWaterLevel(Source, &waterLevel, false) && Source.z < waterLevel + 0.75f)
++		Source.z = waterLevel + 0.75f;
++
++	CWorld::pIgnoreEntity = CamTargetEntity;
++	entity = nil;
++	if (CWorld::ProcessLineOfSight(TargetCoors, Source, colPoint, entity, true, true, true, true, false, false, true)) {
++		float PedColDist = (TargetCoors - colPoint.point).Magnitude();
++		float ColCamDist = CamDist - PedColDist;
++		if (entity->IsPed() && ColCamDist > DEFAULT_NEAR + 0.1f) {
++			if (CWorld::ProcessLineOfSight(colPoint.point, Source, colPoint, entity, true, true, true, true, false, false, true)) {
++				PedColDist = (TargetCoors - colPoint.point).Magnitude();
++				Source = colPoint.point;
++				if (PedColDist < DEFAULT_NEAR + 0.3f)
++					RwCameraSetNearClipPlane(Scene.camera, Max(PedColDist - 0.3f, 0.05f));
++			}
++			else {
++				RwCameraSetNearClipPlane(Scene.camera, Min(ColCamDist - 0.35f, DEFAULT_NEAR));
++			}
++		}
++		else {
++			Source = colPoint.point;
++			if (PedColDist < DEFAULT_NEAR + 0.3f)
++				RwCameraSetNearClipPlane(Scene.camera, Max(PedColDist - 0.3f, 0.05f));
++		}
++	}
++	CWorld::pIgnoreEntity = nil;
++
++	float ViewPlaneHeight = Tan(DEGTORAD(FOV) / 2.0f);
++	float ViewPlaneWidth = ViewPlaneHeight * CDraw::CalculateAspectRatio() * fTweakFOV;
++	float Near = RwCameraGetNearClipPlane(Scene.camera);
++	float radius = ViewPlaneWidth * Near;
++	entity = CWorld::TestSphereAgainstWorld(Source + Front * Near, radius, nil, true, true, false, true, false, false);
++	int i = 0;
++	while (entity) {
++		CVector CamToCol = gaTempSphereColPoints[0].point - Source;
++		float frontDist = DotProduct(CamToCol, Front);
++		float dist = (CamToCol - Front * frontDist).Magnitude() / ViewPlaneWidth;
++
++		dist = Max(Min(Near, dist), 0.1f);
++		if (dist < Near)
++			RwCameraSetNearClipPlane(Scene.camera, dist);
++
++		if (dist == 0.1f)
++			Source += (TargetCoors - Source) * 0.3f;
++
++		Near = RwCameraGetNearClipPlane(Scene.camera);
++		radius = ViewPlaneWidth * Near;
++		entity = CWorld::TestSphereAgainstWorld(Source + Front * Near, radius, nil, true, true, false, true, false, false);
++
++		i++;
++		if (i > 5)
++			entity = nil;
++	}
++
++	float TargetDist = (TargetCoors - Source).Magnitude();
++	if (TargetDist < Distance)
++		Distance = TargetDist;
++	else {
++		float f = Pow(fMouseAvoidGeomReturnRate, CTimer::GetTimeStep());
++		Distance = (1.0f - f) * TargetDist + f * Distance;
++		if (TargetDist > 0.05f)
++			Source = TargetCoors + (Source - TargetCoors) * Distance / TargetDist;
++		float clip = Distance - fRangePlayerRadius;
++		if (clip < RwCameraGetNearClipPlane(Scene.camera))
++			RwCameraSetNearClipPlane(Scene.camera, Max(clip, fCloseNearClipLimit));
++	}
++
++	TheCamera.m_bCamDirectlyInFront = false;
++	TheCamera.m_bCamDirectlyBehind = false;
++
++	GetVectorsReadyForRW();
++
++	if (((CPed*)CamTargetEntity)->CanStrafeOrMouseControl() && CDraw::FadeValue < 250 &&
++		(TheCamera.GetFadingDirection() != FADE_OUT || CDraw::FadeValue <= 100) &&
++		!CPad::GetPad(0)->IsPlayerControlsDisabledBy(PLAYERCONTROL_PLAYERINFO)) {
++		float Heading = Front.Heading();
++		((CPed*)TheCamera.pTargetEntity)->m_fRotationCur = Heading;
++		((CPed*)TheCamera.pTargetEntity)->m_fRotationDest = Heading;
++		TheCamera.pTargetEntity->SetHeading(Heading);
++		TheCamera.pTargetEntity->GetMatrix().UpdateRW();
++	}
++#else
+ 	FOV = DefaultFOV;
+ 
+ 	const float MinDist = 2.0f;
+@@ -5397,6 +5703,7 @@ CCam::Process_FollowPed_Rotation(const CVector &CameraTarget, float TargetOrient
+ 	}
+ 
+ 	GetVectorsReadyForRW();
++#endif
+ }
+ 
+ // LCS cam hehe
+@@ -5705,8 +6012,13 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 	else if (CPad::bInvertLook4Pad)
+ 		stickY = -stickY;
+ 
+-	float xMovement = Abs(stickX) * (FOV / 80.0f * 5.f / 70.f) * stickX * 0.007f * 0.007f;
+-	float yMovement = Abs(stickY) * (FOV / 80.0f * 3.f / 70.f) * stickY * 0.007f * 0.007f;
++#ifdef IMPROVED_MENU_AND_INPUT
++		float xMovement = stickX * TheCamera.m_fMouseAccelHorzntl * FOV / 80.0f;
++		float yMovement = stickY * TheCamera.m_fMouseAccelVertical * FOV / 80.0f;
++#else
++		float xMovement = Abs(stickX) * (FOV / 80.0f * 5.f / 70.f) * stickX * 0.007f * 0.007f;
++		float yMovement = Abs(stickY) * (FOV / 80.0f * 3.f / 70.f) * stickY * 0.007f * 0.007f;
++#endif
+ 
+ 	bool correctAlpha = true;
+ 	//	if (SA checks if we aren't in work car, why?) {
+@@ -5749,7 +6061,14 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 		// There was a pad->NewState.m_bVehicleMouseLook in SA, which doesn't exists in III.
+ 
+ 		if ((mouseX != 0.0 || mouseY != 0.0) && (CVehicle::m_bDisableMouseSteering)) {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			yMovement = mouseY * FOV / 80.0f * TheCamera.m_fMouseAccelVertical;
++#else
+ 			yMovement = mouseY * FOV / 80.0f * TheCamera.m_fMouseAccelHorzntl; // Same as SA, horizontal sensitivity.
++#endif
++
++
+ 			BetaSpeed = 0.0;
+ 			AlphaSpeed = 0.0;
+ 			xMovement = mouseX * FOV / 80.0f * TheCamera.m_fMouseAccelHorzntl;
+diff --git a/src/core/Camera.cpp b/src/core/Camera.cpp
+index 4670c88a..d073dcf1 100644
+--- a/src/core/Camera.cpp
++++ b/src/core/Camera.cpp
+@@ -936,7 +936,7 @@ CCamera::CamControl(void)
+ 							ReqMode = CCam::MODE_CAM_ON_A_STRING;
+ 						}
+ 
+-						#ifdef FIRST_PERSON
++#ifdef FIRST_PERSON
+ 					}else if (CarZoomIndicator != CAM_ZOOM_REAL_1ST_PERSON){
+ 						if(m_bPlayerIsInGarage){
+ 							m_bJustCameOutOfGarage = true;
+diff --git a/src/core/ControllerConfig.cpp b/src/core/ControllerConfig.cpp
+index a61ea372..0db70841 100644
+--- a/src/core/ControllerConfig.cpp
++++ b/src/core/ControllerConfig.cpp
+@@ -187,6 +187,148 @@ void CControllerConfigManager::LoadSettings(int32 file)
+ 
+ void CControllerConfigManager::InitDefaultControlConfiguration()
+ {
++	#ifdef VICE_EXTENDED // InitDefaultControlConfiguration
++	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKLEFT,                    'Q',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKLEFT,                    rsPADEND,   OPTIONAL_EXTRA);
++										    						          
++	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKRIGHT,                   'E',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKRIGHT,                   rsPADDOWN,  OPTIONAL_EXTRA);
++																              
++	if ( _dwOperatingSystemVersion == OS_WIN98 )											              
++		SetControllerKeyAssociatedWithAction(VEHICLE_HORN,                        rsSHIFT,    OPTIONAL_EXTRA); // BUG: must be KEYBOARD ?											              
++	else		
++	{
++		SetControllerKeyAssociatedWithAction(VEHICLE_HORN,                        rsLSHIFT,   KEYBOARD);
++		SetControllerKeyAssociatedWithAction(VEHICLE_HORN,                        rsRSHIFT,   OPTIONAL_EXTRA);
++	}													              
++	
++	SetControllerKeyAssociatedWithAction    (VEHICLE_HANDBRAKE,                   ' ',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_HANDBRAKE,                   rsRCTRL,    OPTIONAL_EXTRA);
++															                      
++	SetControllerKeyAssociatedWithAction    (VEHICLE_ENTER_EXIT,                  'F',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_ENTER_EXIT,                  rsENTER,    OPTIONAL_EXTRA);
++										    					                  
++	SetControllerKeyAssociatedWithAction    (VEHICLE_ACCELERATE,                  'W',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_ACCELERATE,                  rsUP,       OPTIONAL_EXTRA);
++																		          
++	SetControllerKeyAssociatedWithAction    (VEHICLE_CHANGE_RADIO_STATION,        'R',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_CHANGE_RADIO_STATION,        rsINS,      OPTIONAL_EXTRA);
++	
++	SetControllerKeyAssociatedWithAction    (VEHICLE_BRAKE,                       'S',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_BRAKE,                       rsDOWN,     OPTIONAL_EXTRA);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKBEHIND,                  'C',		  KEYBOARD);
++#endif
++
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	SetControllerKeyAssociatedWithAction    (VEHICLE_LEFT_TURNSIGNALS,            'Z',		  KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_RIGHT_TURNSIGNALS,           'X',		  KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_EMERGENCYLIGHTS,             'Y',		  KEYBOARD);
++#endif
++																		          
++	SetControllerKeyAssociatedWithAction    (TOGGLE_SUBMISSIONS,                  rsPLUS,     KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (TOGGLE_SUBMISSIONS,                  rsCAPSLK,   OPTIONAL_EXTRA);
++																		          
++	SetControllerKeyAssociatedWithAction    (GO_LEFT,                             'A',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (GO_LEFT,                             rsLEFT,     OPTIONAL_EXTRA);
++																		          
++	SetControllerKeyAssociatedWithAction    (GO_RIGHT,                            'D',		  KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (GO_RIGHT,                            rsRIGHT,    OPTIONAL_EXTRA);
++																		          
++	SetControllerKeyAssociatedWithAction    (GO_FORWARD,                          'W',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (GO_FORWARD,                          rsUP,       OPTIONAL_EXTRA);
++	
++	SetControllerKeyAssociatedWithAction    (GO_BACK,                             'S',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (GO_BACK,                             rsDOWN,     OPTIONAL_EXTRA);
++
++																		          
++#ifdef IMPROVED_MENU_AND_INPUT
++	SetControllerKeyAssociatedWithAction    (NETWORK_TALK,                        'K',        KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (RADAR_ZOOM_OUT,                      'T',        KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_RELOAD,						  'R',        KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_WALK,							  rsLALT,     KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_LOOKBEHIND,                      'C',		  KEYBOARD);
++#else
++	SetControllerKeyAssociatedWithAction    (NETWORK_TALK,                        'T',        KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_LOOKBEHIND,                      rsPADEND,   KEYBOARD);
++#endif
++	SetControllerKeyAssociatedWithAction    (PED_LOOKBEHIND,                      rsCAPSLK,   OPTIONAL_EXTRA);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	SetControllerKeyAssociatedWithAction    (PED_DUCK,                            rsLCTRL,	  KEYBOARD);
++#else
++	SetControllerKeyAssociatedWithAction    (PED_DUCK,                            'C',        KEYBOARD);
++#endif
++					
++	SetControllerKeyAssociatedWithAction    (PED_FIREWEAPON,                      rsPADINS,   KEYBOARD);
++#ifndef IMPROVED_MENU_AND_INPUT
++	SetControllerKeyAssociatedWithAction    (PED_FIREWEAPON,                      rsLCTRL,    OPTIONAL_EXTRA);
++#endif
++#ifdef BIND_VEHICLE_FIREWEAPON
++	SetControllerKeyAssociatedWithAction    (VEHICLE_FIREWEAPON,                  rsLCTRL,    KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (VEHICLE_FIREWEAPON,                  rsPADINS,   OPTIONAL_EXTRA);
++#endif
++#ifdef IMPROVED_MENU_AND_INPUT
++	SetControllerKeyAssociatedWithAction    (PED_CYCLE_WEAPON_LEFT,               'Q', KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_CYCLE_WEAPON_RIGHT,              'E', OPTIONAL_EXTRA); // BUG: must be KEYBOARD ?
++#else
++	SetControllerKeyAssociatedWithAction    (PED_CYCLE_WEAPON_LEFT,               rsPADDEL,   KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_CYCLE_WEAPON_RIGHT,              rsPADENTER, OPTIONAL_EXTRA); // BUG: must be KEYBOARD ?
++#endif
++																		          
++	SetControllerKeyAssociatedWithAction    (PED_LOCK_TARGET,                     rsDEL,      KEYBOARD);
++	
++	SetControllerKeyAssociatedWithAction    (PED_JUMPING,                         ' ',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (PED_JUMPING,                         rsRCTRL,    OPTIONAL_EXTRA);
++
++	SetControllerKeyAssociatedWithAction    (PED_ANSWER_PHONE,                    rsTAB,      KEYBOARD);
++																              
++	if ( _dwOperatingSystemVersion == OS_WIN98 )											              
++		SetControllerKeyAssociatedWithAction(PED_SPRINT,                          rsSHIFT,    OPTIONAL_EXTRA); // BUG: must be KEYBOARD ?											              
++	else		
++	{
++		SetControllerKeyAssociatedWithAction(PED_SPRINT,                          rsLSHIFT,   KEYBOARD);
++	}
++
++	SetControllerKeyAssociatedWithAction    (PED_CYCLE_TARGET_LEFT,               '[',        KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_CYCLE_TARGET_RIGHT,              ']',        OPTIONAL_EXTRA); // BUG: must be KEYBOARD ?
++																			      
++	SetControllerKeyAssociatedWithAction    (PED_CENTER_CAMERA_BEHIND_PLAYER,     '#',        KEYBOARD);
++	
++	SetControllerKeyAssociatedWithAction    (PED_SNIPER_ZOOM_IN,                  'Z',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (PED_SNIPER_ZOOM_IN,                  rsPGUP,     OPTIONAL_EXTRA);
++										    
++	SetControllerKeyAssociatedWithAction    (PED_SNIPER_ZOOM_OUT,                 'X',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (PED_SNIPER_ZOOM_OUT,                 rsPGDN,     OPTIONAL_EXTRA);
++										    
++	SetControllerKeyAssociatedWithAction    (PED_1RST_PERSON_LOOK_LEFT,           rsPADLEFT,  KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_1RST_PERSON_LOOK_RIGHT,          rsPADRIGHT, KEYBOARD);
++										    
++	SetControllerKeyAssociatedWithAction    (PED_1RST_PERSON_LOOK_UP,             rsPADUP,    KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (PED_1RST_PERSON_LOOK_DOWN,           rsPAD5,     KEYBOARD);
++										    
++	SetControllerKeyAssociatedWithAction    (VEHICLE_TURRETLEFT,                  rsPADLEFT,  KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (VEHICLE_TURRETRIGHT,                 rsPAD5,     KEYBOARD);
++										    
++	SetControllerKeyAssociatedWithAction    (VEHICLE_TURRETUP,                    rsPADPGUP,  KEYBOARD);
++
++	SetControllerKeyAssociatedWithAction    (VEHICLE_TURRETDOWN,                  rsPADRIGHT, KEYBOARD);
++	
++	SetControllerKeyAssociatedWithAction    (CAMERA_CHANGE_VIEW_ALL_SITUATIONS,   'V',        KEYBOARD);
++	SetControllerKeyAssociatedWithAction    (CAMERA_CHANGE_VIEW_ALL_SITUATIONS,   rsHOME,     OPTIONAL_EXTRA);
++#else
+ 	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKLEFT,                    rsPADEND,   KEYBOARD);
+ 	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKLEFT,                    'Q',        OPTIONAL_EXTRA);
+ 										    						              
+@@ -231,19 +373,16 @@ void CControllerConfigManager::InitDefaultControlConfiguration()
+ 	SetControllerKeyAssociatedWithAction    (GO_BACK,                             rsDOWN,     KEYBOARD);
+ 	SetControllerKeyAssociatedWithAction    (GO_BACK,                             'S',        OPTIONAL_EXTRA);
+ 
+-	SetControllerKeyAssociatedWithAction    (NETWORK_TALK,                        'T',        KEYBOARD);
+ 																		          
++	SetControllerKeyAssociatedWithAction    (NETWORK_TALK,                        'T',        KEYBOARD);
++
+ 	SetControllerKeyAssociatedWithAction    (PED_LOOKBEHIND,                      rsPADEND,   KEYBOARD);
+ 	SetControllerKeyAssociatedWithAction    (PED_LOOKBEHIND,                      rsCAPSLK,   OPTIONAL_EXTRA);
+ 
+ 	SetControllerKeyAssociatedWithAction    (PED_DUCK,                            'C',        KEYBOARD);
+-																		          
++					
+ 	SetControllerKeyAssociatedWithAction    (PED_FIREWEAPON,                      rsPADINS,   KEYBOARD);
+ 	SetControllerKeyAssociatedWithAction    (PED_FIREWEAPON,                      rsLCTRL,    OPTIONAL_EXTRA);
+-#ifdef BIND_VEHICLE_FIREWEAPON
+-	SetControllerKeyAssociatedWithAction    (VEHICLE_FIREWEAPON,                  rsPADINS,   KEYBOARD);
+-	SetControllerKeyAssociatedWithAction    (VEHICLE_FIREWEAPON,                  rsLCTRL,    OPTIONAL_EXTRA);
+-#endif
+ 	SetControllerKeyAssociatedWithAction    (PED_CYCLE_WEAPON_LEFT,               rsPADDEL,   KEYBOARD);
+ 
+ 	SetControllerKeyAssociatedWithAction    (PED_CYCLE_WEAPON_RIGHT,              rsPADENTER, OPTIONAL_EXTRA); // BUG: must be KEYBOARD ?
+@@ -297,6 +436,7 @@ void CControllerConfigManager::InitDefaultControlConfiguration()
+ 										    
+ 	SetControllerKeyAssociatedWithAction    (CAMERA_CHANGE_VIEW_ALL_SITUATIONS,   rsHOME,     KEYBOARD);
+ 	SetControllerKeyAssociatedWithAction    (CAMERA_CHANGE_VIEW_ALL_SITUATIONS,   'V',        OPTIONAL_EXTRA);
++#endif
+ 
+ 	for (int32 i = 0; i < MAX_SIMS; i++)
+ 	{
+@@ -546,6 +686,17 @@ void CControllerConfigManager::InitialiseControllerActionNameArray()
+ 	SETACTIONNAME(SWITCH_DEBUG_CAM_ON);
+ 	SETACTIONNAME(TAKE_SCREEN_SHOT);
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	SETACTIONNAME(PED_WALK);
++	SETACTIONNAME(RADAR_ZOOM_OUT);
++	SETACTIONNAME(PED_RELOAD);
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	SETACTIONNAME(VEHICLE_LEFT_TURNSIGNALS);
++	SETACTIONNAME(VEHICLE_RIGHT_TURNSIGNALS);
++	SETACTIONNAME(VEHICLE_EMERGENCYLIGHTS);
++#endif
++
+ #undef SETACTIONNAME
+ }
+ 
+@@ -647,6 +798,11 @@ void CControllerConfigManager::UpdateJoyInConfigMenus_ButtonDown(int32 button, i
+ 	}
+ }
+ 
++/// <summary>
++/// Possibly use this for a ImGui keybind for controller
++/// </summary>
++/// <param name="button"></param>
++/// <param name="type"></param>
+ void CControllerConfigManager::AffectControllerStateOn_ButtonDown(int32 button, eControllerType type)
+ {
+ 	bool process = true;
+@@ -859,6 +1015,41 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_Driving(int32
+ 		else
+ 			state.RightStickY = -128;
+ 	}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (button == GetControllerKeyAssociatedWithAction(GO_LEFT, type)) 
++	{
++		if (state.DPadRight || m_aSimCheckers[SIM_X1][type])
++		{
++			m_aSimCheckers[SIM_X1][type] = true;
++			state.DPadLeft = 0;
++			state.DPadRight = 0;
++		}
++		else
++			state.DPadLeft = 255;
++	}
++
++	if (button == GetControllerKeyAssociatedWithAction(GO_RIGHT, type)) 
++	{
++		if (state.DPadLeft || m_aSimCheckers[SIM_X1][type])
++		{
++			m_aSimCheckers[SIM_X1][type] = true;
++			state.DPadLeft = 0;
++			state.DPadRight = 0;
++		}
++		else
++			state.DPadRight = 255;
++	}
++#endif
++
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	if (button == GetControllerKeyAssociatedWithAction(VEHICLE_LEFT_TURNSIGNALS, type))
++		state.bLeftTurnSignals = 255;
++	if (button == GetControllerKeyAssociatedWithAction(VEHICLE_RIGHT_TURNSIGNALS, type))
++		state.bRightTurnSignals = 255;
++	if (button == GetControllerKeyAssociatedWithAction(VEHICLE_EMERGENCYLIGHTS, type))
++		state.bEmergencyLights = 255;
++#endif
+ }
+ 
+ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_FirstPersonOnly(int32 button, eControllerType type, CControllerState &state)
+@@ -878,7 +1069,13 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_ThirdPersonOnl
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_JUMPING, type))
+ 		state.Square = 255;
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_ANSWER_PHONE, type))
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		state.Circle = 255;
++#else
+ 		state.LeftShoulder1 = 255;
++#endif
++
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_CYCLE_WEAPON_LEFT, type))
+ 		state.LeftShoulder2 = 255;
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_CYCLE_WEAPON_RIGHT, type))
+@@ -887,6 +1084,14 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_ThirdPersonOnl
+ 		state.Cross = 255;
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_DUCK, type))
+ 		state.LeftShock = 255;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (button == GetControllerKeyAssociatedWithAction(PED_WALK, type))
++			state.bWalk = 255;
++	
++		if (button == GetControllerKeyAssociatedWithAction(PED_RELOAD, type))
++			state.Circle = 255;
++#endif
+ 	
+ 	if (FrontEndMenuManager.m_ControlMethod == CONTROL_CLASSIC)
+ 	{
+@@ -905,13 +1110,24 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_FirstAndThirdP
+ 
+ #ifdef BIND_VEHICLE_FIREWEAPON
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_FIREWEAPON, type))
++		
++#ifdef IMPROVED_MENU_AND_INPUT
++		state.LeftShoulder1 = 255;
++#else
+ 		state.Circle = 255;
++#endif
++
++
+ #endif
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_LOCK_TARGET, type))
+ 		state.RightShoulder1 = 255;
+ 
+ 	if (button == GetControllerKeyAssociatedWithAction(GO_FORWARD, type))
+ 	{
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		state.LeftStickY = -255;
++#else
+ 		if (state.DPadDown || m_aSimCheckers[SIM_Y1][type])
+ 		{
+ 			m_aSimCheckers[SIM_Y1][type] = true;
+@@ -920,10 +1136,15 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_FirstAndThirdP
+ 		}
+ 		else
+ 			state.DPadUp = 255;
++#endif
++
+ 	}
+ 
+ 	if (button == GetControllerKeyAssociatedWithAction(GO_BACK, type))
+ 	{
++#ifdef IMPROVED_MENU_AND_INPUT
++		state.LeftStickY = 255;
++#else
+ 		if (state.DPadUp || m_aSimCheckers[SIM_Y1][type])
+ 		{
+ 			m_aSimCheckers[SIM_Y1][type] = true;
+@@ -932,6 +1153,8 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_FirstAndThirdP
+ 		}
+ 		else
+ 			state.DPadDown = 255;
++#endif
++
+ 	}
+ 
+ 	if (button == GetControllerKeyAssociatedWithAction(PED_1RST_PERSON_LOOK_LEFT, type))
+@@ -982,6 +1205,14 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_FirstAndThirdP
+ 				state.RightStickY = -128;
+ 		}
+ 	}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (button == GetControllerKeyAssociatedWithAction(GO_LEFT, type))
++		state.LeftStickX = -255;
++
++	if (button == GetControllerKeyAssociatedWithAction(GO_RIGHT, type))
++		state.LeftStickX = 255;
++#endif
+ }
+ 
+ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_AllStates(int32 button, eControllerType type, CControllerState &state)
+@@ -1026,6 +1257,11 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_VehicleAndThir
+ {
+ 	if (button == GetControllerKeyAssociatedWithAction(VEHICLE_ENTER_EXIT, type))
+ 		state.Triangle = 255;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (button == GetControllerKeyAssociatedWithAction(RADAR_ZOOM_OUT, type))
++		state.DPadUp = 255;
++#endif
+ }
+ 
+ void CControllerConfigManager::UpdateJoyInConfigMenus_ButtonUp(int32 button, int32 padnumber)
+@@ -1807,6 +2043,12 @@ void CControllerConfigManager::DeleteMatchingVehicle_3rdPersonControls(e_Control
+ 	if (!GetIsKeyBlank(key, type))
+ 	{
+ 		CLEAR_ACTION_IF_NEEDED(VEHICLE_ENTER_EXIT);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		CLEAR_ACTION_IF_NEEDED(PED_WALK);
++		CLEAR_ACTION_IF_NEEDED(RADAR_ZOOM_OUT);
++		CLEAR_ACTION_IF_NEEDED(PED_RELOAD);
++#endif
+ 	}
+ }
+ 
+@@ -1859,6 +2101,17 @@ bool CControllerConfigManager::IsAnyVehicleActionAssignedToMouseKey(int32 key)
+ 		CHECK_ACTION(TOGGLE_DPAD);
+ 		CHECK_ACTION(TAKE_SCREEN_SHOT);
+ 		CHECK_ACTION(SHOW_MOUSE_POINTER_TOGGLE);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		CHECK_ACTION(PED_WALK);
++		CHECK_ACTION(RADAR_ZOOM_OUT);
++		CHECK_ACTION(PED_RELOAD);
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++		CHECK_ACTION(VEHICLE_LEFT_TURNSIGNALS);
++		CHECK_ACTION(VEHICLE_RIGHT_TURNSIGNALS);
++		CHECK_ACTION(VEHICLE_EMERGENCYLIGHTS);
++#endif
+ 	}
+ 	return false;
+ }
+@@ -1967,6 +2220,11 @@ e_ControllerActionType CControllerConfigManager::GetActionType(e_ControllerActio
+ 	case PED_CYCLE_TARGET_LEFT:
+ 	case PED_CYCLE_TARGET_RIGHT:
+ 	case PED_CENTER_CAMERA_BEHIND_PLAYER:
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	case PED_WALK:
++	case PED_RELOAD:
++#endif
+ 		return ACTIONTYPE_3RDPERSON;
+ 		break;
+ 
+@@ -1986,10 +2244,21 @@ e_ControllerActionType CControllerConfigManager::GetActionType(e_ControllerActio
+ 	case VEHICLE_TURRETRIGHT:
+ 	case VEHICLE_TURRETUP:
+ 	case VEHICLE_TURRETDOWN:
++
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	case VEHICLE_LEFT_TURNSIGNALS:
++	case VEHICLE_RIGHT_TURNSIGNALS:
++	case VEHICLE_EMERGENCYLIGHTS:
++#endif
++
+ 		return ACTIONTYPE_VEHICLE;
+ 		break;
+ 
+ 	case VEHICLE_ENTER_EXIT:
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	case RADAR_ZOOM_OUT:
++#endif
+ 		return ACTIONTYPE_VEHICLE_3RDPERSON;
+ 		break;
+ 
+@@ -2989,6 +3258,10 @@ void CControllerConfigManager::GetWideStringOfCommandKeys(uint16 action, wchar *
+ 		case CMenuManager::CONTROLLER_DUALSHOCK2:
+ 		case CMenuManager::CONTROLLER_DUALSHOCK3:
+ 		case CMenuManager::CONTROLLER_DUALSHOCK4:
++
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad buttons
++		case CMenuManager::CONTROLLER_DUALSENSE:
++#endif
+ 			Buttons = CFont::ButtonsSlot != -1 ? PlayStationButtons : PlayStationButtons_noIcons;
+ 			break;
+ 		case CMenuManager::CONTROLLER_NINTENDO_SWITCH:
+diff --git a/src/core/ControllerConfig.h b/src/core/ControllerConfig.h
+index 9d5e4200..7bd05fd9 100644
+--- a/src/core/ControllerConfig.h
++++ b/src/core/ControllerConfig.h
+@@ -65,6 +65,18 @@ enum e_ControllerAction
+ 	TAKE_SCREEN_SHOT,
+ 	SHOW_MOUSE_POINTER_TOGGLE,
+ 	UNKNOWN_ACTION,
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	PED_WALK,
++	RADAR_ZOOM_OUT,
++	PED_RELOAD,
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	VEHICLE_LEFT_TURNSIGNALS,
++	VEHICLE_RIGHT_TURNSIGNALS,
++	VEHICLE_EMERGENCYLIGHTS,
++#endif
++
+ 	MAX_CONTROLLERACTIONS,
+ };
+ 
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 308ab1ee..88c1d794 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -81,7 +81,14 @@ const CRGBA SCROLLBAR_COLOR = LABEL_COLOR;
+ #define SCROLLBAR_MAX_HEIGHT 263.0f // not in end result
+ #define SCROLLABLE_PAGES
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++#define NUM_PC_FOOT_OPTIONS 20
++#define NUM_PC_VEHICLE_OPTIONS 21
++
++#define hasNativeList(screen) (screen == MENUPAGE_SKIN_SELECT || screen == MENUPAGE_PC_FOOT_CONTROLS || screen == MENUPAGE_PC_VEHICLE_CONTROLS)
++#else
+ #define hasNativeList(screen) (screen == MENUPAGE_SKIN_SELECT || screen == MENUPAGE_KEYBOARD_CONTROLS)
++#endif
+ 
+ #ifdef SCROLLABLE_PAGES
+ #define MAX_VISIBLE_OPTION 12
+@@ -596,7 +603,25 @@ CMenuManager::CMenuManager()
+ 	m_bAttemptingMissionRetry = false;
+ #endif
+ 
+-#ifdef EX_GPS
++#ifdef IMPROVED_MENU_AND_INPUT
++	m_PrefsAutoaim = false;
++	m_PrefsPadLookSensX = 1.0f / 800.0f;
++	m_PrefsPadAimSensX = 1.0f / 1600.0f;
++	m_PrefsPadLookSensY = 1.0f / 800.0f;
++	m_PrefsPadAimSensY = 1.0f / 1600.0f;
++	m_PrefsLeftStickDeadzone = 15;
++	m_PrefsRightStickDeadzone = 15;
++	m_PrefsVibrationForce = 0.5f;
++	m_PrefsMouseLookSensX = 1.0f / 400.0f;
++	m_PrefsMouseAimSensX = 1.0f / 600.0f;
++	m_PrefsMouseLookSensY = 1.0f / 400.0f;
++	m_PrefsMouseAimSensY = 1.0f / 600.0f;
++	m_PrefsInvertVertically = false;
++	m_PrefsGPS = true;
++#endif
++
++// TODO Test this later.
++#if defined(EX_GPS) && !defined(IMPROVED_MENU_AND_INPUT)
+ 	m_PrefsGPS = true;
+ #endif
+ 
+@@ -834,8 +859,90 @@ CMenuManager::CheckSliderMovement(int value)
+ #ifdef FIX_BUGS
+ 		TheCamera.m_fMouseAccelVertical = TheCamera.m_fMouseAccelHorzntl + 0.0005f;
+ #endif
+-
+ 		break;
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		case MENUACTION_LEFTDEADZONE:
++			m_PrefsLeftStickDeadzone += value * (80 / MENUSLIDER_LOGICAL_BARS);
++	
++			m_PrefsLeftStickDeadzone = Clamp(m_PrefsLeftStickDeadzone, 0, 80);
++	
++			break;
++		case MENUACTION_RIGHTDEADZONE:
++			m_PrefsRightStickDeadzone += value * (80 / MENUSLIDER_LOGICAL_BARS);
++	
++			m_PrefsRightStickDeadzone = Clamp(m_PrefsRightStickDeadzone, 0, 80);
++	
++			break;
++		case MENUACTION_VIBRATIONFORCE:
++			m_PrefsVibrationForce += value * (1.0f / MENUSLIDER_LOGICAL_BARS);
++	
++			m_PrefsVibrationForce = Clamp(m_PrefsVibrationForce, 0.0f, 1.0f);
++	
++			CPad::GetPad(0)->StopShaking(0);
++			CPad::GetPad(0)->StartShake(300, 150, 150);
++			TimeToStopPadShaking = CTimer::GetTimeInMillisecondsPauseMode() + 300;
++	
++			break;
++		case MENUACTION_PADLOOKSENSX:
++			m_PrefsPadLookSensX += value * 1.0f / 600.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsPadLookSensX = Clamp(m_PrefsPadLookSensX, 1.0f / 6400.0f, 1.0f / 600.0f);
++	
++			TheCamera.m_fMouseAccelHorzntl = m_PrefsPadLookSensX;
++	
++			break;
++		case MENUACTION_PADAIMSENSX:
++			m_PrefsPadAimSensX += value * 1.0f / 600.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsPadAimSensX = Clamp(m_PrefsPadAimSensX, 1.0f / 6400.0f, 1.0f / 600.0f);
++	
++			TheCamera.m_fMouseAccelHorzntl = m_PrefsPadAimSensX;
++	
++			break;
++		case MENUACTION_PADLOOKSENSY:
++			m_PrefsPadLookSensY += value * 1.0f / 600.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsPadLookSensY = Clamp(m_PrefsPadLookSensY, 1.0f / 6400.0f, 1.0f / 600.0f);
++	
++			TheCamera.m_fMouseAccelVertical = m_PrefsPadLookSensY;
++	
++			break;
++		case MENUACTION_PADAIMSENSY:
++			m_PrefsPadAimSensY += value * 1.0f / 600.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsPadAimSensY = Clamp(m_PrefsPadAimSensY, 1.0f / 6400.0f, 1.0f / 600.0f);
++	
++			TheCamera.m_fMouseAccelVertical = m_PrefsPadAimSensY;
++	
++			break;
++		case MENUACTION_MOUSELOOKSENSX:
++			m_PrefsMouseLookSensX += value * 1.0f / 200.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsMouseLookSensX = Clamp(m_PrefsMouseLookSensX, 1.0f / 3200.0f, 1.0f / 200.0f);
++	
++			TheCamera.m_fMouseAccelHorzntl = m_PrefsMouseLookSensX;
++	
++			break;
++		case MENUACTION_MOUSEAIMSENSX:
++			m_PrefsMouseAimSensX += value * 1.0f / 200.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsMouseAimSensX = Clamp(m_PrefsMouseAimSensX, 1.0f / 3200.0f, 1.0f / 200.0f);
++	
++			TheCamera.m_fMouseAccelHorzntl = m_PrefsMouseAimSensX;
++	
++			break;
++		case MENUACTION_MOUSELOOKSENSY:
++			m_PrefsMouseLookSensY += value * 1.0f / 200.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsMouseLookSensY = Clamp(m_PrefsMouseLookSensY, 1.0f / 3200.0f, 1.0f / 200.0f);
++	
++			TheCamera.m_fMouseAccelVertical = m_PrefsMouseLookSensY;
++	
++			break;
++		case MENUACTION_MOUSEAIMSENSY:
++			m_PrefsMouseAimSensY += value * 1.0f / 200.0f / MENUSLIDER_LOGICAL_BARS;
++			m_PrefsMouseAimSensY = Clamp(m_PrefsMouseAimSensY, 1.0f / 3200.0f, 1.0f / 200.0f);
++	
++			TheCamera.m_fMouseAccelVertical = m_PrefsMouseAimSensY;
++	
++			break;
++#endif
++
+ //
+ #ifdef FIRST_PERSON
+ 	case MENUACTION_FOV_FP:
+@@ -934,7 +1041,14 @@ CMenuManager::DisplayHelperText(char *text)
+ 				return;
+ 			}
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_FOOTCONTROLS ||
++				aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_VEHICLECONTROLS)
++#else
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_KEYBOARDCTRLS)
++#endif
++
++
+ 				return;
+ 
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_SCREENRES) {
+@@ -1120,7 +1234,13 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 		CFont::SetRightJustifyWrap(MENU_X_LEFT_ALIGNED(xMargin));
+ 	}
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS || m_nCurrScreen == MENUPAGE_PC_VEHICLE_CONTROLS) {
++#else
+ 	if (m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS) {
++#endif
++
++
+ 		if (m_bWaitingForNewKeyBind)
+ 			itemsAreSelectable = false;
+ 
+@@ -1249,6 +1369,28 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 				break;
+ #endif // EXTRA_LOGGING
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++				case MENUACTION_AUTOAIM:
++					if (m_PrefsAutoaim)
++						rightText = TheText.Get("FEM_ON");
++					else
++						rightText = TheText.Get("FEM_OFF");
++					break;
++				case MENUACTION_INVERTVERTICALLY:
++					if (m_PrefsInvertVertically)
++						rightText = TheText.Get("FEM_ON");
++					else
++						rightText = TheText.Get("FEM_OFF");
++					break;
++				// This is in my EX_GPS define above
++				//case MENUACTION_GPS:
++				//	if (m_PrefsGPS)
++				//		rightText = TheText.Get("FEM_ON");
++				//	else
++				//		rightText = TheText.Get("FEM_OFF");
++				//	break;
++#endif
++
+ //
+ #ifdef FIRST_PERSON
+ 				case MENUACTION_AUTOCENTER_IN_VEHICLE_FP:
+@@ -1586,8 +1728,17 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						// TODO Is this extra?
+ 						saveSlot >= SAVESLOT_1 && saveSlot <= SAVESLOT_8
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++						|| action == MENUACTION_LEFTDEADZONE || action == MENUACTION_RIGHTDEADZONE ||
++						action == MENUACTION_VIBRATIONFORCE ||
++						action == MENUACTION_MOUSELOOKSENSX || action == MENUACTION_MOUSEAIMSENSX ||
++						action == MENUACTION_PADLOOKSENSX || action == MENUACTION_PADAIMSENSX ||
++						action == MENUACTION_MOUSELOOKSENSY || action == MENUACTION_MOUSEAIMSENSY ||
++						action == MENUACTION_PADLOOKSENSY || action == MENUACTION_PADAIMSENSY ||
++#endif
++
+ #ifdef FIRST_PERSON
+-						|| action == MENUACTION_FOV_FP
++						action == MENUACTION_FOV_FP
+ #endif
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 						|| action == MENUACTION_CFO_SLIDER
+@@ -1749,6 +1900,44 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 								ProcessSlider(m_PrefsMP3BoostVolume / 64.f, SLIDER_Y(128.0f), HOVEROPTION_INCREASE_MP3BOOST, HOVEROPTION_DECREASE_MP3BOOST, SCREEN_WIDTH, true);
+ 							break;
+ 
++						
++							
++#ifdef IMPROVED_MENU_AND_INPUT
++							case MENUACTION_LEFTDEADZONE:
++								ProcessSlider(m_PrefsLeftStickDeadzone / 80.0f, SLIDER_Y(70.0f), HOVEROPTION_INCREASE_LEFTDEADZONE, HOVEROPTION_DECREASE_LEFTDEADZONE, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_RIGHTDEADZONE:
++								ProcessSlider(m_PrefsRightStickDeadzone / 80.0f, SLIDER_Y(70.0f), HOVEROPTION_INCREASE_RIGHTDEADZONE, HOVEROPTION_DECREASE_RIGHTDEADZONE, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_VIBRATIONFORCE:
++								ProcessSlider(m_PrefsVibrationForce / 1.0f, SLIDER_Y(70.0f), HOVEROPTION_INCREASE_VIBRATIONFORCE, HOVEROPTION_DECREASE_VIBRATIONFORCE, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_PADLOOKSENSX:
++								ProcessSlider(m_PrefsPadLookSensX * 600.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_PADLOOKSENSX, HOVEROPTION_DECREASE_PADLOOKSENSX, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_PADAIMSENSX:
++								ProcessSlider(m_PrefsPadAimSensX * 600.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_PADAIMSENSX, HOVEROPTION_DECREASE_PADAIMSENSX, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_PADLOOKSENSY:
++								ProcessSlider(m_PrefsPadLookSensY * 600.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_PADLOOKSENSY, HOVEROPTION_DECREASE_PADLOOKSENSY, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_PADAIMSENSY:
++								ProcessSlider(m_PrefsPadAimSensY * 600.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_PADAIMSENSY, HOVEROPTION_DECREASE_PADAIMSENSY, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_MOUSELOOKSENSX:
++								ProcessSlider(m_PrefsMouseLookSensX * 200.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_MOUSELOOKSENSX, HOVEROPTION_DECREASE_MOUSELOOKSENSX, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_MOUSEAIMSENSX:
++								ProcessSlider(m_PrefsMouseAimSensX * 200.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_MOUSEAIMSENSX, HOVEROPTION_DECREASE_MOUSEAIMSENSX, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_MOUSELOOKSENSY:
++								ProcessSlider(m_PrefsMouseLookSensY * 200.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_MOUSELOOKSENSY, HOVEROPTION_DECREASE_MOUSELOOKSENSY, SCREEN_WIDTH, false);
++								break;
++							case MENUACTION_MOUSEAIMSENSY:
++								ProcessSlider(m_PrefsMouseAimSensY * 200.0f, SLIDER_Y(170.0f), HOVEROPTION_INCREASE_MOUSEAIMSENSY, HOVEROPTION_DECREASE_MOUSEAIMSENSY, SCREEN_WIDTH, false);
++								break;
++#endif
++
+ #ifdef FIRST_PERSON
+ 						case MENUACTION_FOV_FP:
+ 							ProcessSlider((m_PrefsFOV_FP - 80.0f) / (100 - 80), SLIDER_Y(99.0f), HOVEROPTION_INCREASE_FOV_FP, HOVEROPTION_DECREASE_FOV_FP, SCREEN_WIDTH, false);
+@@ -1857,16 +2046,28 @@ CMenuManager::GetNumOptionsCntrlConfigScreens(void)
+ 			number = 4;
+ 			break;
+ #endif
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		case MENUPAGE_PC_FOOT_CONTROLS:
++			number = NUM_PC_FOOT_OPTIONS;
++			break;
++		case MENUPAGE_PC_VEHICLE_CONTROLS:
++			number = NUM_PC_VEHICLE_OPTIONS;
++			break;
++#else
+ 		case MENUPAGE_KEYBOARD_CONTROLS:
+ 			switch (m_ControlMethod) {
+-				case CONTROL_STANDARD:
+-					number = 27;
+-					break;
+-				case CONTROL_CLASSIC:
+-					number = 32;
+-					break;
++			case CONTROL_STANDARD:
++				number = 27;
++				break;
++			case CONTROL_CLASSIC:
++				number = 32;
++				break;
+ 			}
+ 			break;
++#endif
++
++
+ 	}
+ 	return number;
+ }
+@@ -1879,6 +2080,10 @@ CMenuManager::DrawControllerBound(int32 yStart, int32 xStart, int32 unused, int8
+ 	int numOptions = GetNumOptionsCntrlConfigScreens();
+ 	int nextY = MENU_Y(yStart);
+ 	int bindingMargin = MENU_X(3.0f);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	float rowHeight = CONTSETUP_STANDARD_ROW_HEIGHT;
++#else
+ 	float rowHeight;
+ 	switch (m_ControlMethod) {
+ 		case CONTROL_STANDARD:
+@@ -1891,12 +2096,154 @@ CMenuManager::DrawControllerBound(int32 yStart, int32 xStart, int32 unused, int8
+ 			break;
+ 	}
+ 
++
++#endif
++
+ 	for (int optionIdx = 0; optionIdx < numOptions; nextY = MENU_Y(++optionIdx * rowHeight + yStart)) {
+ 		int nextX = xStart;
+ 		int bindingsForThisOpt = 0;
+ 		int contSetOrder = SETORDER_1;
+ 		CFont::SetColor(CRGBA(255, 255, 255, FadeIn(255)));
+ 
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (column == CONTSETUP_PED_COLUMN) {
++			switch (optionIdx) {
++				case 0:
++					controllerAction = PED_FIREWEAPON;
++					break;
++				case 1:
++					controllerAction = PED_CYCLE_WEAPON_RIGHT;
++					break;
++				case 2:
++					controllerAction = PED_CYCLE_WEAPON_LEFT;
++					break;
++				case 3:
++					controllerAction = GO_FORWARD;
++					break;
++				case 4:
++					controllerAction = GO_BACK;
++					break;
++				case 5:
++					controllerAction = GO_LEFT;
++					break;
++				case 6:
++					controllerAction = GO_RIGHT;
++					break;
++				case 7:
++					controllerAction = PED_SNIPER_ZOOM_IN;
++					break;
++				case 8:
++					controllerAction = PED_SNIPER_ZOOM_OUT;
++					break;
++				case 9:
++					controllerAction = VEHICLE_ENTER_EXIT;
++					break;
++				case 10:
++					controllerAction = CAMERA_CHANGE_VIEW_ALL_SITUATIONS;
++					break;
++				case 11:
++					controllerAction = PED_JUMPING;
++					break;
++				case 12:
++					controllerAction = PED_SPRINT;
++					break;
++				case 13:
++					controllerAction = PED_LOCK_TARGET;
++					break;
++				case 14:
++					controllerAction = PED_DUCK;
++					break;
++				case 15:
++					controllerAction = PED_ANSWER_PHONE;
++					break;
++				case 16:
++					controllerAction = PED_LOOKBEHIND;
++					break;
++				case 17:
++					controllerAction = PED_WALK;
++					break;
++				case 18:
++					controllerAction = RADAR_ZOOM_OUT;
++					break;
++				case 19:
++					controllerAction = PED_RELOAD;
++					break;
++				default:
++					break;
++			}
++		} else if (column == CONTSETUP_VEHICLE_COLUMN) {
++			switch (optionIdx) {
++				case 0:
++ 					controllerAction = VEHICLE_FIREWEAPON;
++					break;
++				case 1:
++					controllerAction = VEHICLE_ACCELERATE;
++					break;
++				case 2:
++					controllerAction = VEHICLE_BRAKE;
++					break;
++				case 3:
++					controllerAction = GO_LEFT;
++					break;
++				case 4:
++					controllerAction = GO_RIGHT;
++					break;
++				case 5:
++					controllerAction = VEHICLE_ENTER_EXIT;
++					break;
++				case 6:
++					controllerAction = VEHICLE_CHANGE_RADIO_STATION;
++					break;
++				case 7:
++					controllerAction = VEHICLE_HORN;
++					break;
++				case 8:
++					controllerAction = TOGGLE_SUBMISSIONS;
++					break;
++				case 9:
++					controllerAction = CAMERA_CHANGE_VIEW_ALL_SITUATIONS;
++					break;
++				case 10:
++					controllerAction = VEHICLE_HANDBRAKE;
++					break;
++				case 11:
++					controllerAction = VEHICLE_TURRETLEFT;
++					break;
++				case 12:
++					controllerAction = VEHICLE_TURRETRIGHT;
++					break;
++				case 13:
++					controllerAction = VEHICLE_TURRETUP;
++					break;
++				case 14:
++					controllerAction = VEHICLE_TURRETDOWN;
++					break;
++				case 15:
++					controllerAction = VEHICLE_LOOKLEFT;
++					break;
++				case 16:
++					controllerAction = VEHICLE_LOOKRIGHT;
++					break;
++				case 17:
++					controllerAction = RADAR_ZOOM_OUT;
++					break;
++#ifdef IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++				case 18:
++					controllerAction = VEHICLE_LEFT_TURNSIGNALS;
++					break;
++				case 19:
++					controllerAction = VEHICLE_RIGHT_TURNSIGNALS;
++					break;
++				case 20:
++					controllerAction = VEHICLE_EMERGENCYLIGHTS;
++					break;
++#endif
++				default:
++					break;
++			}
++		}
++#else
+ 		if (column == CONTSETUP_PED_COLUMN) {
+ 			switch (optionIdx) {
+ 				case 0:
+@@ -2070,6 +2417,9 @@ CMenuManager::DrawControllerBound(int32 yStart, int32 xStart, int32 unused, int8
+ 					break;
+ 			}
+ 		}
++#endif
++
++		////
+ 
+ 		// Highlight selected column(and make its text black)
+ 		if (m_nSelectedListRow == optionIdx) {
+@@ -2256,6 +2606,176 @@ CMenuManager::DrawControllerScreenExtraText(int yStart, int xStart, int lineHeig
+ void
+ CMenuManager::DrawControllerSetupScreen()
+ {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	float rowHeight = CONTSETUP_STANDARD_ROW_HEIGHT;
++
++	RESET_FONT_FOR_NEW_PAGE
++	SET_FONT_FOR_MENU_HEADER
++
++	// Shadow
++	CFont::SetColor(CRGBA(30, 30, 30, FadeIn(255)));
++
++	CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(MENUHEADER_POS_X) - MENU_X(7.f), SCREEN_SCALE_Y(MENUHEADER_POS_Y + 7.f), TheText.Get("FET_STI"));
++
++	// Real header
++	CFont::SetColor(CRGBA(HEADER_COLOR.r, HEADER_COLOR.g, HEADER_COLOR.b, FadeIn(255)));
++
++	CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(MENUHEADER_POS_X), SCREEN_SCALE_Y(MENUHEADER_POS_Y), TheText.Get("FET_STI"));
++
++#ifdef IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	wchar *actionTexts[22];
++#else
++	wchar *actionTexts[21];
++#endif
++
++	if (m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS) {
++		actionTexts[0] = TheText.Get("FEC_FIR");
++		actionTexts[1] = TheText.Get("FEC_NWE");
++		actionTexts[2] = TheText.Get("FEC_PWE");
++		actionTexts[3] = TheText.Get("FEC_FOR");
++		actionTexts[4] = TheText.Get("FEC_BAC");
++		actionTexts[5] = TheText.Get("FEC_LEF");
++		actionTexts[6] = TheText.Get("FEC_RIG");
++		actionTexts[7] = TheText.Get("FEC_ZIN");
++		actionTexts[8] = TheText.Get("FEC_ZOT");
++		actionTexts[9] = TheText.Get("FEC_EEX");
++		actionTexts[10] = TheText.Get("FEC_CMR");
++		actionTexts[11] = TheText.Get("FEC_JMP");
++		actionTexts[12] = TheText.Get("FEC_SPN");
++		actionTexts[13] = TheText.Get("FEC_TAR");
++		actionTexts[14] = TheText.Get("FEC_CRO");
++		actionTexts[15] = TheText.Get("FEC_ANS");
++		actionTexts[16] = TheText.Get("FEC_LBA");
++		actionTexts[17] = TheText.Get("FEC_WAL");
++		actionTexts[18] = TheText.Get("FEC_RZO");
++		actionTexts[19] = TheText.Get("FEC_REL");
++		actionTexts[20] = nil;
++	} else {
++		actionTexts[0] = TheText.Get("FEC_FIR");
++		actionTexts[1] = TheText.Get("FEC_FOR");
++		actionTexts[2] = TheText.Get("FEC_BAC");
++		actionTexts[3] = TheText.Get("FEC_LEF");
++		actionTexts[4] = TheText.Get("FEC_RIG");
++		actionTexts[5] = TheText.Get("FEC_EEX");
++		actionTexts[6] = TheText.Get("FEC_RAD");
++		actionTexts[7] = TheText.Get("FEC_HRN");
++		actionTexts[8] = TheText.Get("FEC_SUB");
++		actionTexts[9] = TheText.Get("FEC_CMR");
++		actionTexts[10] = TheText.Get("FEC_HND");
++		actionTexts[11] = TheText.Get("FEC_TFL");
++		actionTexts[12] = TheText.Get("FEC_TFR");
++		actionTexts[13] = TheText.Get("FEC_TFU");
++		actionTexts[14] = TheText.Get("FEC_TFD");
++		actionTexts[15] = TheText.Get("FEC_LOL");
++		actionTexts[16] = TheText.Get("FEC_LOR");
++		actionTexts[17] = TheText.Get("FEC_RZO");
++#ifdef IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++		actionTexts[18] = TheText.Get("FEC_LTS");
++		actionTexts[19] = TheText.Get("FEC_RTS");
++		actionTexts[20] = TheText.Get("FEC_EML");
++		actionTexts[21] = nil;
++#else
++		actionTexts[18] = nil;
++#endif
++	}
++
++	// Blue panel background
++	CSprite2d::DrawRect(CRect(MENU_X_LEFT_ALIGNED(CONTSETUP_LIST_LEFT), MENU_Y(CONTSETUP_LIST_TOP),
++		MENU_X_RIGHT_ALIGNED(CONTSETUP_LIST_RIGHT), SCREEN_SCALE_FROM_BOTTOM(CONTSETUP_LIST_BOTTOM)),
++		CRGBA(LIST_BACKGROUND_COLOR.r, LIST_BACKGROUND_COLOR.g, LIST_BACKGROUND_COLOR.b, FadeIn(LIST_BACKGROUND_COLOR.a)));
++
++	if (m_nCurrExLayer == HOVEROPTION_LIST)
++		CFont::SetColor(CRGBA(SELECTEDMENUOPTION_COLOR.r, SELECTEDMENUOPTION_COLOR.g, SELECTEDMENUOPTION_COLOR.b, FadeIn(255)));
++	else
++		CFont::SetColor(CRGBA(MENUOPTION_COLOR.r, MENUOPTION_COLOR.g, MENUOPTION_COLOR.b, FadeIn(255)));
++
++	// List header
++	CFont::SetFontStyle(FONT_LOCALE(FONT_HEADING));
++	CFont::SetScale(MENU_X(MENUACTION_SCALE_MULT), MENU_Y(MENUACTION_SCALE_MULT));
++	CFont::SetRightJustifyOff();
++	CFont::SetDropShadowPosition(2);
++	CFont::SetDropColor(CRGBA(0, 0, 0, FadeIn(255)));
++	CFont::PrintString(MENU_X_LEFT_ALIGNED(CONTSETUP_COLUMN_2_X), MENU_Y(CONTSETUP_LIST_TOP), m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS ? TheText.Get("FET_CFT") : TheText.Get("FET_CCR"));
++	CFont::SetDropShadowPosition(0);
++	SET_FONT_FOR_LIST_ITEM
++
++	int yStart = CONTSETUP_LIST_TOP + 21;
++
++	float optionYBottom = yStart + rowHeight;
++	for (int i = 0; i < ARRAY_SIZE(actionTexts); ++i) {
++		wchar *actionText = actionTexts[i];
++		if (!actionText)
++			break;
++
++		if (!m_bWaitingForNewKeyBind) {
++			if (m_nMousePosX > MENU_X_LEFT_ALIGNED(CONTSETUP_LIST_LEFT - 10.0f) &&
++				m_nMousePosX < MENU_X_LEFT_ALIGNED(CONTSETUP_COLUMN_3_X + CONTSETUP_BOUND_COLUMN_WIDTH)) {
++
++				if (m_nMousePosY > MENU_Y(i * rowHeight + yStart) && m_nMousePosY < MENU_Y(i * rowHeight + optionYBottom)) {
++						m_nOptionMouseHovering = i;
++						if (m_nMouseOldPosX != m_nMousePosX || m_nMouseOldPosY != m_nMousePosY) {
++							m_nCurrExLayer = HOVEROPTION_LIST;
++							m_nSelectedListRow = i;
++
++							if (m_nMousePosX > MENU_X_LEFT_ALIGNED(0.0f) && m_nMousePosX < MENU_X_LEFT_ALIGNED(CONTSETUP_COLUMN_2_X + CONTSETUP_BOUND_COLUMN_WIDTH)) {
++								m_nSelectedContSetupColumn = m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS ? CONTSETUP_PED_COLUMN : CONTSETUP_VEHICLE_COLUMN;
++							}
++						}
++						// what??
++						if (m_nHoverOption == HOVEROPTION_SKIN) {
++							if (i == m_nSelectedListRow) {
++								m_nHoverOption = HOVEROPTION_NOT_HOVERING;
++								m_bWaitingForNewKeyBind = true;
++								m_bStartWaitingForKeyBind = true;
++								pControlEdit = &m_KeyPressedCode;
++							}
++						} else
++							m_nHoverOption = HOVEROPTION_NOT_HOVERING;
++				}
++			}
++		}
++		if (m_nSelectedListRow != i)
++			CFont::SetColor(CRGBA(MENUOPTION_COLOR.r, MENUOPTION_COLOR.g, MENUOPTION_COLOR.b, FadeIn(255)));
++		else if (m_nCurrExLayer == HOVEROPTION_LIST)
++			CFont::SetColor(CRGBA(SELECTEDMENUOPTION_COLOR.r, SELECTEDMENUOPTION_COLOR.g, SELECTEDMENUOPTION_COLOR.b, FadeIn(255)));
++
++		CFont::SetRightJustifyOff();
++		if (m_PrefsLanguage == LANGUAGE_GERMAN && (i == 20 || i == 21 || i == 22 || i == 23))
++			CFont::SetScale(MENU_X(0.32f), MENU_Y(LISTITEM_Y_SCALE));
++		else
++			CFont::SetScale(MENU_X(LISTITEM_X_SCALE), MENU_Y(LISTITEM_Y_SCALE));
++
++		CFont::PrintString(MENU_X_LEFT_ALIGNED(CONTSETUP_COLUMN_1_X), MENU_Y(i * rowHeight + yStart), actionText);
++	}
++	DrawControllerBound(yStart, MENU_X_LEFT_ALIGNED(CONTSETUP_COLUMN_2_X), rowHeight, m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS ? CONTSETUP_PED_COLUMN : CONTSETUP_VEHICLE_COLUMN);
++
++	if (!m_bWaitingForNewKeyBind) {
++		CFont::SetScale(MENU_X(BIGTEXT_X_SCALE), MENU_Y(BIGTEXT_Y_SCALE));
++
++		if ((m_nMousePosX > MENU_X_RIGHT_ALIGNED(CONTSETUP_BACK_RIGHT) - CFont::GetStringWidth(TheText.Get("FEDS_TB"), true)
++			&& m_nMousePosX < MENU_X_RIGHT_ALIGNED(CONTSETUP_BACK_RIGHT) && m_nMousePosY > SCREEN_SCALE_FROM_BOTTOM(CONTSETUP_BACK_BOTTOM)
++			&& m_nMousePosY < SCREEN_SCALE_FROM_BOTTOM(CONTSETUP_BACK_BOTTOM - CONTSETUP_BACK_HEIGHT)) || m_nCurrExLayer == HOVEROPTION_BACK) {
++			m_nHoverOption = HOVEROPTION_BACK;
++
++		} else if (m_nMousePosX > MENU_X_LEFT_ALIGNED(CONTSETUP_LIST_LEFT - 10.0f) && m_nMousePosX < MENU_X_LEFT_ALIGNED(CONTSETUP_COLUMN_3_X + CONTSETUP_BOUND_COLUMN_WIDTH)
++			&& m_nMousePosY > MENU_Y(CONTSETUP_LIST_TOP - 10.0f) && m_nMousePosY < SCREEN_SCALE_FROM_BOTTOM(CONTSETUP_LIST_BOTTOM)) {
++			m_nHoverOption = HOVEROPTION_LIST;
++
++		} else {
++			m_nHoverOption = HOVEROPTION_NOT_HOVERING;
++		}
++	}
++
++	// Back button and it's shadow
++	CFont::SetFontStyle(FONT_LOCALE(FONT_HEADING));
++	CFont::SetScale(MENU_X(BIGTEXT_X_SCALE), MENU_Y(BIGTEXT_Y_SCALE));
++	CFont::SetRightJustifyOn();
++	CFont::SetDropShadowPosition(2);
++	CFont::SetDropColor(CRGBA(0, 0, 0, FadeIn(255)));
++	CFont::SetColor(CRGBA(MENUOPTION_COLOR.r, MENUOPTION_COLOR.g, MENUOPTION_COLOR.b, FadeIn(255)));
++	CFont::PrintString(MENU_X_RIGHT_ALIGNED(CONTSETUP_BACK_RIGHT - 2.0f), SCREEN_SCALE_FROM_BOTTOM(CONTSETUP_BACK_BOTTOM - 4.0f), TheText.Get("FEDS_TB"));
++#else
+ 	float rowHeight;
+ 	switch (m_ControlMethod) {
+ 		case CONTROL_STANDARD:
+@@ -2444,6 +2964,7 @@ CMenuManager::DrawControllerSetupScreen()
+ 	CFont::SetDropColor(CRGBA(0, 0, 0, FadeIn(255)));
+ 	CFont::SetColor(CRGBA(MENUOPTION_COLOR.r, MENUOPTION_COLOR.g, MENUOPTION_COLOR.b, FadeIn(255)));
+ 	CFont::PrintString(MENU_X_RIGHT_ALIGNED(CONTSETUP_BACK_RIGHT - 2.0f), SCREEN_SCALE_FROM_BOTTOM(CONTSETUP_BACK_BOTTOM - 4.0f), TheText.Get("FEDS_TB"));
++#endif
+ }
+ 
+ void
+@@ -2576,7 +3097,15 @@ CMenuManager::DrawBackground(bool transitionCall)
+ 				menuBg.bottomRight_y = 410.0f;
+ 				break;
+ 			case MENUPAGE_SKIN_SELECT:
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			case MENUPAGE_PC_FOOT_CONTROLS:
++			case MENUPAGE_PC_VEHICLE_CONTROLS:
++#else
+ 			case MENUPAGE_KEYBOARD_CONTROLS:
++#endif
++
++
+ 				menuBg.topLeft_x = 14.0f;
+ 				menuBg.topLeft_y = 39.0f;
+ 				menuBg.topRight_x = 636.0f;
+@@ -2668,7 +3197,14 @@ CMenuManager::DrawBackground(bool transitionCall)
+ 				case MENUPAGE_SKIN_SELECT:
+ 					DrawPlayerSetupScreen(false);
+ 					break;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				case MENUPAGE_PC_FOOT_CONTROLS:
++				case MENUPAGE_PC_VEHICLE_CONTROLS:
++#else
+ 				case MENUPAGE_KEYBOARD_CONTROLS:
++#endif
++
+ 					DrawControllerSetupScreen();
+ 					break;
+ 				case MENUPAGE_OUTRO:
+@@ -2687,7 +3223,14 @@ CMenuManager::DrawBackground(bool transitionCall)
+ 		case MENUPAGE_SKIN_SELECT:
+ 			DrawPlayerSetupScreen(true);
+ 			break;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		case MENUPAGE_PC_FOOT_CONTROLS:
++		case MENUPAGE_PC_VEHICLE_CONTROLS:
++#else
+ 		case MENUPAGE_KEYBOARD_CONTROLS:
++#endif
++
+ 			DrawControllerSetupScreen();
+ 			break;
+ 		case MENUPAGE_OUTRO:
+@@ -3142,7 +3685,14 @@ CMenuManager::GetStartOptionsCntrlConfigScreens()
+ 			number = 35;
+ 			break;
+ #endif
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		case MENUPAGE_PC_FOOT_CONTROLS:
++		case MENUPAGE_PC_VEHICLE_CONTROLS:
++#else
+ 		case MENUPAGE_KEYBOARD_CONTROLS:
++#endif
++
+ 			number = 0;
+ 			break;
+ 		default:
+@@ -3824,7 +4374,13 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ #else
+ 			// Adding marker
+ 			if (m_nMenuFadeAlpha == 255) {
++
++#ifdef IMPROVED_MENU_AND_INPUT // Map input
++				if (CPad::GetPad(0)->GetRightMouseJustDown() || CPad::GetPad(0)->GetSquareJustDown()) {
++#else
+ 				if (CPad::GetPad(0)->GetRightMouseJustDown() || CPad::GetPad(0)->GetCrossJustDown()) {
++#endif
++
+ 					if (mapCrosshair.y > m_fMapCenterY - m_fMapSize && mapCrosshair.y < m_fMapCenterY + m_fMapSize &&
+ 						mapCrosshair.x > m_fMapCenterX - m_fMapSize && mapCrosshair.x < m_fMapCenterX + m_fMapSize) {
+ 
+@@ -3844,7 +4400,12 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ 				else
+ 					ZOOM(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, false);
+ 
++#ifdef IMPROVED_MENU_AND_INPUT // Map input
++			} else if (CPad::GetPad(0)->GetMouseWheelUp() || CPad::GetPad(0)->GetPageUp() || CPad::GetPad(0)->GetLeftShoulder2()) {
++#else
+ 			} else if (CPad::GetPad(0)->GetMouseWheelUp() || CPad::GetPad(0)->GetPageUp() || CPad::GetPad(0)->GetRightShoulder1()) {
++#endif
++
+ 				if (CPad::GetPad(0)->GetMouseWheelUp())
+ 					ZOOM(mapCrosshair.x, mapCrosshair.y, true);
+ 				else
+@@ -3938,6 +4499,18 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ 
+ 			static bool pressedL = false;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT // Map input
++			if (!CPad::GetPad(0)->GetChar('L') && !CPad::GetPad(0)->GetChar('l') && !CPad::GetPad(0)->GetRightShoulder1()) {
++				pressedL = false;
++			}
++
++			if (!pressedL) {
++				if (CPad::GetPad(0)->GetChar('L') || CPad::GetPad(0)->GetChar('l') || CPad::GetPad(0)->GetRightShoulder1()) {
++					m_PrefsShowLegends = !m_PrefsShowLegends;
++					pressedL = true;
++				}
++			}
++#else
+ 			if (!CPad::GetPad(0)->GetChar('L') && !CPad::GetPad(0)->GetChar('l')) {
+ 				pressedL = false;
+ 			}
+@@ -3948,6 +4521,7 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ 					pressedL = true;
+ 				}
+ 			}
++#endif
+ 			break;
+ 		}
+ 		case MENUPAGE_SOUND_SETTINGS:
+@@ -4332,18 +4906,34 @@ CMenuManager::ProcessList(bool &optionSelected, bool &goBack)
+ 	if (m_nCurrScreen == MENUPAGE_SKIN_SELECT) {
+ 		m_nTotalListRow = m_nSkinsTotal;
+ 	}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS || m_nCurrScreen == MENUPAGE_PC_VEHICLE_CONTROLS) {
++		m_nTotalListRow = m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS ? NUM_PC_FOOT_OPTIONS : NUM_PC_VEHICLE_OPTIONS;
++		if (m_nSelectedListRow > m_nTotalListRow)
++			m_nSelectedListRow = m_nTotalListRow - 1;
++	}
++#else
+ 	if (m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS) {
+ 		// GetNumOptionsCntrlConfigScreens would have been a better choice
+ 		m_nTotalListRow = m_ControlMethod == CONTROL_CLASSIC ? 32 : 27;
+ 		if (m_nSelectedListRow > m_nTotalListRow)
+ 			m_nSelectedListRow = m_nTotalListRow - 1;
+ 	}
++#endif
++
+ 
+ 	if (CPad::GetPad(0)->GetEnterJustDown() || CPad::GetPad(0)->GetCrossJustDown()) {
+ 		m_bShowMouse = 0;
+ 		optionSelected = true;
+ 	}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (CPad::GetPad(0)->GetBackspaceJustDown() && (m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS || m_nCurrScreen == MENUPAGE_PC_VEHICLE_CONTROLS) && !field_159) {
++#else
+ 	if (CPad::GetPad(0)->GetBackspaceJustDown() && m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS && !field_159) {
++#endif
++
+ 		if (m_nCurrExLayer == HOVEROPTION_LIST) {
+ 			m_nHoverOption = HOVEROPTION_NOT_HOVERING;
+ 			m_bWaitingForNewKeyBind = true;
+@@ -4383,7 +4973,13 @@ CMenuManager::ProcessList(bool &optionSelected, bool &goBack)
+ 		if (((m_nCurrScreen == MENUPAGE_SKIN_SELECT) && (m_nCurrExLayer == HOVEROPTION_USESKIN)) && strcmp(m_aSkinName, m_PrefsSkinFile) == 0) {
+ 			m_nCurrExLayer = HOVEROPTION_BACK;
+ 		}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		if ((m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS || m_nCurrScreen == MENUPAGE_PC_VEHICLE_CONTROLS) && (m_nCurrExLayer == HOVEROPTION_USESKIN)) {
++#else
+ 		if ((m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS) && (m_nCurrExLayer == HOVEROPTION_USESKIN)) {
++#endif
++
+ 			m_nCurrExLayer = HOVEROPTION_BACK;
+ 		}
+ 	}
+@@ -4432,7 +5028,13 @@ CMenuManager::ProcessList(bool &optionSelected, bool &goBack)
+ 		m_bPressedDownOnList = false;
+ 	}
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (m_nCurrScreen != MENUPAGE_PC_FOOT_CONTROLS && m_nCurrScreen != MENUPAGE_PC_VEHICLE_CONTROLS) {
++#else
+ 	if (m_nCurrScreen != MENUPAGE_KEYBOARD_CONTROLS) {
++#endif
++
++
+ 		if (!CPad::GetPad(0)->GetPageUp()) {
+ 			m_bPressedPgUpOnList = false;
+ 		} else {
+@@ -4601,6 +5203,15 @@ CMenuManager::UserInput(void)
+ 				&& action != MENUACTION_CFO_SLIDER
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++				&& action != MENUACTION_LEFTDEADZONE && action != MENUACTION_RIGHTDEADZONE
++				&& action != MENUACTION_VIBRATIONFORCE
++				&& action != MENUACTION_MOUSELOOKSENSX && action != MENUACTION_MOUSEAIMSENSX
++				&& action != MENUACTION_PADLOOKSENSX && action != MENUACTION_PADAIMSENSX
++				&& action != MENUACTION_MOUSELOOKSENSY && action != MENUACTION_MOUSEAIMSENSY
++				&& action != MENUACTION_PADLOOKSENSY && action != MENUACTION_PADAIMSENSY
++#endif
++
+ #ifdef FIRST_PERSON
+ 				&& action != MENUACTION_FOV_FP
+ #endif
+@@ -4689,6 +5300,21 @@ CMenuManager::UserInput(void)
+ 			case HOVEROPTION_INCREASE_CFO_SLIDER:
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++			case HOVEROPTION_INCREASE_MOUSELOOKSENSX:
++			case HOVEROPTION_INCREASE_MOUSEAIMSENSX:
++			case HOVEROPTION_INCREASE_MOUSELOOKSENSY:
++			case HOVEROPTION_INCREASE_MOUSEAIMSENSY:
++
++			case HOVEROPTION_INCREASE_LEFTDEADZONE:
++			case HOVEROPTION_INCREASE_RIGHTDEADZONE:
++			case HOVEROPTION_INCREASE_VIBRATIONFORCE:
++			case HOVEROPTION_INCREASE_PADLOOKSENSX:
++			case HOVEROPTION_INCREASE_PADAIMSENSX:
++			case HOVEROPTION_INCREASE_PADLOOKSENSY:
++			case HOVEROPTION_INCREASE_PADAIMSENSY:
++#endif
++
+ #ifdef FIRST_PERSON
+ 			case HOVEROPTION_INCREASE_FOV_FP:
+ #endif
+@@ -4704,6 +5330,21 @@ CMenuManager::UserInput(void)
+ 			case HOVEROPTION_DECREASE_CFO_SLIDER:
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++			case HOVEROPTION_DECREASE_MOUSELOOKSENSX:
++			case HOVEROPTION_DECREASE_MOUSEAIMSENSX:
++			case HOVEROPTION_DECREASE_MOUSELOOKSENSY:
++			case HOVEROPTION_DECREASE_MOUSEAIMSENSY:
++
++			case HOVEROPTION_DECREASE_LEFTDEADZONE:
++			case HOVEROPTION_DECREASE_RIGHTDEADZONE:
++			case HOVEROPTION_DECREASE_VIBRATIONFORCE:
++			case HOVEROPTION_DECREASE_PADLOOKSENSX:
++			case HOVEROPTION_DECREASE_PADAIMSENSX:
++			case HOVEROPTION_DECREASE_PADLOOKSENSY:
++			case HOVEROPTION_DECREASE_PADAIMSENSY:
++#endif
++
+ #ifdef FIRST_PERSON
+ 			case HOVEROPTION_DECREASE_FOV_FP:
+ #endif
+@@ -4782,6 +5423,15 @@ CMenuManager::UserInput(void)
+ 				|| curAction == MENUACTION_CFO_SLIDER
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++				|| curAction == MENUACTION_LEFTDEADZONE || curAction == MENUACTION_RIGHTDEADZONE
++				|| curAction == MENUACTION_VIBRATIONFORCE
++				|| curAction == MENUACTION_MOUSELOOKSENSX || curAction == MENUACTION_MOUSEAIMSENSX
++				|| curAction == MENUACTION_PADLOOKSENSX || curAction == MENUACTION_PADAIMSENSX
++				|| curAction == MENUACTION_MOUSELOOKSENSY || curAction == MENUACTION_MOUSEAIMSENSY
++				|| curAction == MENUACTION_PADLOOKSENSY || curAction == MENUACTION_PADAIMSENSY
++#endif
++
+ #ifdef FIRST_PERSON
+ 				|| curAction == MENUACTION_FOV_FP
+ #endif
+@@ -4801,6 +5451,15 @@ CMenuManager::UserInput(void)
+ 				|| curAction == MENUACTION_CFO_SLIDER
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++				|| curAction == MENUACTION_LEFTDEADZONE || curAction == MENUACTION_RIGHTDEADZONE
++				|| curAction == MENUACTION_VIBRATIONFORCE
++				|| curAction == MENUACTION_MOUSELOOKSENSX || curAction == MENUACTION_MOUSEAIMSENSX
++				|| curAction == MENUACTION_PADLOOKSENSX || curAction == MENUACTION_PADAIMSENSX
++				|| curAction == MENUACTION_MOUSELOOKSENSY || curAction == MENUACTION_MOUSEAIMSENSY
++				|| curAction == MENUACTION_PADLOOKSENSY || curAction == MENUACTION_PADAIMSENSY
++#endif
++
+ #ifdef FIRST_PERSON
+ 				|| curAction == MENUACTION_FOV_FP
+ #endif
+@@ -4847,6 +5506,22 @@ CMenuManager::UserInput(void)
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_DRAWDIST
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MOUSESENS
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MP3VOLUMEBOOST
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_LEFTDEADZONE 
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_RIGHTDEADZONE 
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_VIBRATIONFORCE
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MOUSELOOKSENSX
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MOUSEAIMSENSX
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_PADLOOKSENSX
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_PADAIMSENSX
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MOUSELOOKSENSY
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_MOUSEAIMSENSY
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_PADLOOKSENSY
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_PADAIMSENSY
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_FOOTCONTROLS
++			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_VEHICLECONTROLS
++#endif
+ 		
+ #ifdef FIRST_PERSON
+ 			&& aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action != MENUACTION_FOV_FP
+@@ -4988,7 +5663,13 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 		} else if (hasNativeList(m_nCurrScreen)) {
+ 			switch (m_nCurrExLayer) {
+ 			case HOVEROPTION_LIST:
+-				if (m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS) {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS || m_nCurrScreen == MENUPAGE_PC_VEHICLE_CONTROLS) {
++#else
++			if (m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS) {
++#endif
++
+ 					m_bWaitingForNewKeyBind = true;
+ 					m_bStartWaitingForKeyBind = true;
+ 					pControlEdit = &m_KeyPressedCode;
+@@ -5133,11 +5814,27 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 			case MENUACTION_GOBACK:
+ 				goBack = true;
+ 				break;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			case MENUACTION_FOOTCONTROLS:
++				SwitchToNewScreen(MENUPAGE_PC_FOOT_CONTROLS);
++				m_nSelectedListRow = 0;
++				m_nCurrExLayer = HOVEROPTION_LIST;
++				break;
++			case MENUACTION_VEHICLECONTROLS:
++				SwitchToNewScreen(MENUPAGE_PC_VEHICLE_CONTROLS);
++				m_nSelectedListRow = 0;
++				m_nCurrExLayer = HOVEROPTION_LIST;
++				break;
++#else
+ 			case MENUACTION_KEYBOARDCTRLS:
+ 				SwitchToNewScreen(MENUPAGE_KEYBOARD_CONTROLS);
+ 				m_nSelectedListRow = 0;
+ 				m_nCurrExLayer = HOVEROPTION_LIST;
+ 				break;
++#endif
++
++
+ 			case MENUACTION_GETKEY:
+ 				m_CurrCntrlAction = GetStartOptionsCntrlConfigScreens() + m_nCurrOption;
+ 				m_bKeyIsOK = true;
+@@ -5287,7 +5984,24 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 					TheCamera.m_bUseMouse3rdPerson = false;
+ #endif
+ 
+-#ifdef EX_GPS
++#ifdef IMPROVED_MENU_AND_INPUT
++					m_PrefsAutoaim = false;
++					m_PrefsPadLookSensX = 1.0f / 800.0f;
++					m_PrefsPadAimSensX = 1.0f / 1600.0f;
++					m_PrefsPadLookSensY = 1.0f / 800.0f;
++					m_PrefsPadAimSensY = 1.0f / 1600.0f;
++					m_PrefsLeftStickDeadzone = 15;
++					m_PrefsRightStickDeadzone = 15;
++					m_PrefsVibrationForce = 0.5f;
++					m_PrefsMouseLookSensX = 1.0f / 400.0f;
++					m_PrefsMouseAimSensX = 1.0f / 600.0f;
++					m_PrefsMouseLookSensY = 1.0f / 400.0f;
++					m_PrefsMouseAimSensY = 1.0f / 600.0f;
++					m_PrefsInvertVertically = false;
++					m_PrefsGPS = true;
++#endif
++
++#if defined(EX_GPS) && !defined(IMPROVED_MENU_AND_INPUT)
+ 					m_PrefsGPS = true;
+ #endif
+ 
+@@ -5388,10 +6102,19 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #ifdef GAMEPAD_MENU
+ 			case MENUACTION_CTRLCONFIG:
+ 				CPad::GetPad(0)->Mode += changeAmount;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				if (CPad::GetPad(0)->Mode > 2)
++					CPad::GetPad(0)->Mode = 1;
++				else if (CPad::GetPad(0)->Mode < 1)
++					CPad::GetPad(0)->Mode = 2;
++#else
+ 				if (CPad::GetPad(0)->Mode > 3)
+ 					CPad::GetPad(0)->Mode = 0;
+ 				else if (CPad::GetPad(0)->Mode < 0)
+ 					CPad::GetPad(0)->Mode = 3;
++#endif
++
+ 				SaveSettings();
+ 				break;
+ #endif
+@@ -5522,6 +6245,17 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 		}
+ 		CheckSliderMovement(changeAmount);
+ 		ProcessOnOffMenuOptions();
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (m_nCurrScreen == MENUPAGE_PC_FOOT_CONTROLS || m_nCurrScreen == MENUPAGE_PC_VEHICLE_CONTROLS) {
++			if (changeAmount < 1) {
++				m_nSelectedContSetupColumn = CONTSETUP_PED_COLUMN;
++			} else {
++				m_nSelectedContSetupColumn = CONTSETUP_VEHICLE_COLUMN;
++			}
++		}
++#else
+ 		if (m_nCurrScreen == MENUPAGE_KEYBOARD_CONTROLS) {
+ 			if (changeAmount < 1) {
+ 				m_nSelectedContSetupColumn = CONTSETUP_PED_COLUMN;
+@@ -5529,6 +6263,9 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 				m_nSelectedContSetupColumn = CONTSETUP_VEHICLE_COLUMN;
+ 			}
+ 		}
++#endif
++
++
+ 	}
+ }
+ 
+@@ -5543,10 +6280,32 @@ CMenuManager::ProcessOnOffMenuOptions()
+ {
+ 	switch (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action) {
+ #ifdef GAMEPAD_MENU
++#ifdef IMPROVED_MENU_AND_INPUT
++	case MENUACTION_AUTOAIM:
++		m_PrefsAutoaim = !m_PrefsAutoaim;
++		SaveSettings();
++		break;
++	case MENUACTION_INVERTVERTICALLY:
++		m_PrefsInvertVertically = !m_PrefsInvertVertically;
++		SaveSettings();
++		break;
++	// Already in use below.
++	//case MENUACTION_GPS:
++	//	m_PrefsGPS = !m_PrefsGPS;
++	//	SaveSettings();
++	//	break;
++#endif
++
+ 	case MENUACTION_CTRLVIBRATION:
+ 		m_PrefsUseVibration = !m_PrefsUseVibration;
+ 		if (m_PrefsUseVibration) {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			CPad::GetPad(0)->StartShake(350, 50, 50);
++#else
+ 			CPad::GetPad(0)->StartShake(350, 150);
++#endif
++
+ 			TimeToStopPadShaking = CTimer::GetTimeInMillisecondsPauseMode() + 500;
+ 		}
+ 		SaveSettings();
+@@ -6010,6 +6769,10 @@ CMenuManager::SwitchMenuOnAndOff()
+ #ifdef REGISTER_START_BUTTON
+ 			|| CPad::GetPad(0)->GetStartJustDown() && !m_bGameNotLoaded
+ #endif
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			|| CPad::GetPad(0)->GetBackJustUp() && !m_bGameNotLoaded && m_nCurrScreen == MENUPAGE_PAUSE_MENU && m_bMenuActive
++#endif
+ 			) {
+ 
+ 			if (m_nCurrScreen != MENUPAGE_LOADING_IN_PROGRESS
+@@ -6375,7 +7138,18 @@ CMenuManager::PrintMap(void)
+ 
+ 	CFont::SetWrapx(MENU_X_RIGHT_ALIGNED(MENU_X_MARGIN));
+ 	CFont::SetRightJustifyWrap(MENU_X_LEFT_ALIGNED(MENU_X_MARGIN));
++
++
++#ifdef IMPROVED_MENU_AND_INPUT // Map hints
++	if (CPad::GetPad(0)->IsAffectedByController) {
++		DisplayHelperText("FEH_MPJ");
++	} else {
++		DisplayHelperText("FEH_MPH");
++	}
++#else
+ 	DisplayHelperText("FEH_MPH");
++#endif
++
+ }
+ 
+ void
+@@ -6425,15 +7199,34 @@ uint8 CMenuManager::GetNumberOfMenuOptions()
+ 
+ #ifdef GAMEPAD_MENU
+ // More controller types can be added here.
++
++
+ const char* controllerTypesPaths[] = {
++	#ifdef VICE_EXTENDED // ViceExtended folder - Controller types
++	"ViceExtended/MODELS/FRONTEND_DS2.TXD",
++	"ViceExtended/MODELS/FRONTEND_DS3.TXD",
++	"ViceExtended/MODELS/FRONTEND_DS4.TXD",
++	"ViceExtended/MODELS/FRONTEND_X360.TXD",
++	"ViceExtended/MODELS/FRONTEND_XONE.TXD",
++	"ViceExtended/MODELS/FRONTEND_NSW.TXD",
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad icon
++	"ViceExtended/MODELS/FRONTEND_DS5.TXD",
++#endif
++#else
+ 	"MODELS/FRONTEND_DS2.TXD",
+ 	"MODELS/FRONTEND_DS3.TXD",
+ 	"MODELS/FRONTEND_DS4.TXD",
+ 	"MODELS/FRONTEND_X360.TXD",
+ 	"MODELS/FRONTEND_XONE.TXD",
+ 	"MODELS/FRONTEND_NSW.TXD",
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad icon
++	"MODELS/FRONTEND_DS5.TXD",
++#endif
++#endif
+ };
+ 
++
++
+ /// <summary>
+ /// This is interesting, it prints the buttons for the controller.
+ /// Although I have no idea how in the hell any of this is set.
+@@ -6458,6 +7251,10 @@ CMenuManager::PrintController(void)
+ #define Y(f) ((f)*scale + centerY)
+ 
+ 	m_aFrontEndSprites[MENUSPRITE_CONTROLLER].Draw(MENU_X_LEFT_ALIGNED(X(-CONTROLLER_SIZE_X / 2)), MENU_Y(Y(-CONTROLLER_SIZE_Y / 2)), MENU_X(CONTROLLER_SIZE_X * scale), MENU_Y(CONTROLLER_SIZE_Y * scale), CRGBA(255, 255, 255, FadeIn(255)));
++	
++#ifdef IMPROVED_MENU_AND_INPUT
++	m_aFrontEndSprites[MENUSPRITE_ARROWS1].Draw(MENU_X_LEFT_ALIGNED(X(-CONTROLLER_SIZE_X / 2)), MENU_Y(Y(-CONTROLLER_SIZE_Y / 2)), MENU_X(CONTROLLER_SIZE_X * scale), MENU_Y(CONTROLLER_SIZE_Y * scale), CRGBA(255, 255, 255, FadeIn(255)));
++#else
+ 	if (m_DisplayControllerOnFoot) {
+ 		if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
+ 			m_aFrontEndSprites[MENUSPRITE_ARROWS1].Draw(MENU_X_LEFT_ALIGNED(X(-CONTROLLER_SIZE_X / 2)), MENU_Y(Y(-CONTROLLER_SIZE_Y / 2)), MENU_X(CONTROLLER_SIZE_X * scale), MENU_Y(CONTROLLER_SIZE_Y * scale), CRGBA(255, 255, 255, FadeIn(255)));
+@@ -6470,6 +7267,9 @@ CMenuManager::PrintController(void)
+ 		else
+ 			m_aFrontEndSprites[MENUSPRITE_ARROWS4].Draw(MENU_X_LEFT_ALIGNED(X(-CONTROLLER_SIZE_X / 2)), MENU_Y(Y(-CONTROLLER_SIZE_Y / 2)), MENU_X(CONTROLLER_SIZE_X * scale), MENU_Y(CONTROLLER_SIZE_Y * scale), CRGBA(255, 255, 255, FadeIn(255)));
+ 	}
++#endif
++
++
+ 
+ 	CFont::SetFontStyle(FONT_LOCALE(FONT_STANDARD));
+ 
+@@ -6480,6 +7280,161 @@ CMenuManager::PrintController(void)
+ 	CFont::SetColor(CRGBA(0, 0, 0, FadeIn(255)));
+ 	CFont::SetWrapx(SCREEN_WIDTH);
+ 
++	//
++
++	#ifdef IMPROVED_MENU_AND_INPUT
++	float TEXT_L2_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_L2_Y = 22.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_L1_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_L1_Y = 36.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_SELECT_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_SELECT_Y = 49.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_L3_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_L3_Y = 63.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_LSTICK_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_LSTICK_Y = 77.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_DPADU_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_DPADU_Y = 90.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_DPADL_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_DPADL_Y = 104.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_DPADD_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_DPADD_Y = 118.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_DPADR_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_DPADR_Y = 131.0f + CONTROLLER_POS_Y - centerY;
++
++	float TEXT_R2_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_R2_Y = 22.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_R1_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_R1_Y = 36.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_START_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_START_Y = 49.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_TRIANGLE_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_TRIANGLE_Y = 63.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_CIRCLE_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_CIRCLE_Y = 77.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_CROSS_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_CROSS_Y = 90.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_SQUARE_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_SQUARE_Y = 104.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_RSTICK_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_RSTICK_Y = 118.0f + CONTROLLER_POS_Y - centerY;
++	float TEXT_R3_X = 242.0f + CONTROLLER_POS_X - centerX, TEXT_R3_Y = 131.0f + CONTROLLER_POS_Y - centerY;
++
++	if (m_DisplayControllerOnFoot) {
++		switch (CPad::GetPad(0)->Mode) {
++		case 0:
++		case 2:
++			CFont::SetRightJustifyOn();
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L2_X)), MENU_Y(Y(TEXT_L2_Y)), TheText.Get("FEC_CWL"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L1_X)), MENU_Y(Y(TEXT_L1_Y)), TheText.Get("FEC_ANS"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SELECT_X)), MENU_Y(Y(TEXT_SELECT_Y)), TheText.Get("FEC_CAM"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L3_X)), MENU_Y(Y(TEXT_L3_Y)), TheText.Get("FEC_CRO"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_LSTICK_X)), MENU_Y(Y(TEXT_LSTICK_Y)), TheText.Get("FEC_MOV"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADU_X)), MENU_Y(Y(TEXT_DPADU_Y)), TheText.Get("FEC_NA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADL_X)), MENU_Y(Y(TEXT_DPADL_Y)), TheText.Get("FEC_NA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADD_X)), MENU_Y(Y(TEXT_DPADD_Y)), TheText.Get("FEC_RZO"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADR_X)), MENU_Y(Y(TEXT_DPADR_Y)), TheText.Get("FEC_NA"));
++
++			CFont::SetJustifyOn();
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R2_X)), MENU_Y(Y(TEXT_R2_Y)), TheText.Get("FEC_CWR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R1_X)), MENU_Y(Y(TEXT_R1_Y)), TheText.Get("FEC_TAR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_START_X)), MENU_Y(Y(TEXT_START_Y)), TheText.Get("FEC_PAU"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_TRIANGLE_X)), MENU_Y(Y(TEXT_TRIANGLE_Y)), TheText.Get("FEC_EXV"));
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_ATK"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_REL"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CROSS_X)), MENU_Y(Y(TEXT_CROSS_Y)), TheText.Get("FEC_ACC"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SQUARE_X)), MENU_Y(Y(TEXT_SQUARE_Y)), TheText.Get("FEC_BRA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R3_X)), MENU_Y(Y(TEXT_R3_Y)), TheText.Get("FEC_LB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_RSTICK_X)), MENU_Y(Y(TEXT_RSTICK_Y)), TheText.Get("FEC_RTC"));
++			break;
++		case 1:
++		case 3:
++			CFont::SetRightJustifyOn();
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L2_X)), MENU_Y(Y(TEXT_L2_Y)), TheText.Get("FEC_TAR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L1_X)), MENU_Y(Y(TEXT_L1_Y)), TheText.Get("FEC_ANS"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SELECT_X)), MENU_Y(Y(TEXT_SELECT_Y)), TheText.Get("FEC_CAM"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L3_X)), MENU_Y(Y(TEXT_L3_Y)), TheText.Get("FEC_CRO"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_LSTICK_X)), MENU_Y(Y(TEXT_LSTICK_Y)), TheText.Get("FEC_MOV"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADU_X)), MENU_Y(Y(TEXT_DPADU_Y)), TheText.Get("FEC_NA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADL_X)), MENU_Y(Y(TEXT_DPADL_Y)), TheText.Get("FEC_CWL"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADD_X)), MENU_Y(Y(TEXT_DPADD_Y)), TheText.Get("FEC_RZO"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADR_X)), MENU_Y(Y(TEXT_DPADR_Y)), TheText.Get("FEC_CWR"));
++
++			CFont::SetJustifyOn();
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R2_X)), MENU_Y(Y(TEXT_R2_Y)), TheText.Get("FEC_ATT"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R1_X)), MENU_Y(Y(TEXT_R1_Y)), TheText.Get("FEC_NA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_START_X)), MENU_Y(Y(TEXT_START_Y)), TheText.Get("FEC_PAU"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_TRIANGLE_X)), MENU_Y(Y(TEXT_TRIANGLE_Y)), TheText.Get("FEC_EXV"));
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_ATK"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_REL"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CROSS_X)), MENU_Y(Y(TEXT_CROSS_Y)), TheText.Get("FEC_ACC"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SQUARE_X)), MENU_Y(Y(TEXT_SQUARE_Y)), TheText.Get("FEC_BRA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R3_X)), MENU_Y(Y(TEXT_R3_Y)), TheText.Get("FEC_LB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_RSTICK_X)), MENU_Y(Y(TEXT_RSTICK_Y)), TheText.Get("FEC_RTC"));
++			break;
++		default:
++			return;
++		}
++	} else {
++		switch (CPad::GetPad(0)->Mode) {
++		case 0:
++		case 2:
++			CFont::SetRightJustifyOn();
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L2_X)), MENU_Y(Y(TEXT_L2_Y)), TheText.Get("FEC_LL"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L2_X)), MENU_Y(Y(TEXT_L2_Y)), TheText.Get("FEC_TAR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L1_X)), MENU_Y(Y(TEXT_L1_Y)), TheText.Get("FEC_NRS"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SELECT_X)), MENU_Y(Y(TEXT_SELECT_Y)), TheText.Get("FEC_CAM"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L3_X)), MENU_Y(Y(TEXT_L3_Y)), TheText.Get("FEC_HOR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_LSTICK_X)), MENU_Y(Y(TEXT_LSTICK_Y)), TheText.Get("FEC_VES"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADU_X)), MENU_Y(Y(TEXT_DPADU_Y)), TheText.Get("FEC_RTC"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADL_X)), MENU_Y(Y(TEXT_DPADL_Y)), TheText.Get("FEC_VES"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADD_X)), MENU_Y(Y(TEXT_DPADD_Y)), TheText.Get("FEC_RTC"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADR_X)), MENU_Y(Y(TEXT_DPADR_Y)), TheText.Get("FEC_VES"));
++
++			CFont::SetJustifyOn();
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R2_X)), MENU_Y(Y(TEXT_R2_Y)), TheText.Get("FEC_LR"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R2_X)), MENU_Y(Y(TEXT_R2_Y)), TheText.Get("FEC_ATT"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R1_X)), MENU_Y(Y(TEXT_R1_Y)), TheText.Get("FEC_HAB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_START_X)), MENU_Y(Y(TEXT_START_Y)), TheText.Get("FEC_PAU"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_TRIANGLE_X)), MENU_Y(Y(TEXT_TRIANGLE_Y)), TheText.Get("FEC_EXV"));
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_CAW"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_ATT"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CROSS_X)), MENU_Y(Y(TEXT_CROSS_Y)), TheText.Get("FEC_ACC"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SQUARE_X)), MENU_Y(Y(TEXT_SQUARE_Y)), TheText.Get("FEC_BRA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R3_X)), MENU_Y(Y(TEXT_R3_Y)), TheText.Get("FEC_SUB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_RSTICK_X)), MENU_Y(Y(TEXT_RSTICK_Y)), TheText.Get("FEC_RTC"));
++			break;
++		case 1:
++		case 3:
++			CFont::SetRightJustifyOn();
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L2_X)), MENU_Y(Y(TEXT_L2_Y)), TheText.Get("FEC_BRA"));
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L1_X)), MENU_Y(Y(TEXT_L1_Y)), TheText.Get("FEC_LL"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L1_X)), MENU_Y(Y(TEXT_L1_Y)), TheText.Get("FEC_TAR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SELECT_X)), MENU_Y(Y(TEXT_SELECT_Y)), TheText.Get("FEC_CAM"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_L3_X)), MENU_Y(Y(TEXT_L3_Y)), TheText.Get("FEC_HOR"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_LSTICK_X)), MENU_Y(Y(TEXT_LSTICK_Y)), TheText.Get("FEC_VES"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADU_X)), MENU_Y(Y(TEXT_DPADU_Y)), TheText.Get("FEC_SUB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADL_X)), MENU_Y(Y(TEXT_DPADL_Y)), TheText.Get("FEC_PRS"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADD_X)), MENU_Y(Y(TEXT_DPADD_Y)), TheText.Get("FEC_NA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_DPADR_X)), MENU_Y(Y(TEXT_DPADR_Y)), TheText.Get("FEC_NRS"));
++
++			CFont::SetJustifyOn();
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R2_X)), MENU_Y(Y(TEXT_R2_Y)), TheText.Get("FEC_ACC"));
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R1_X)), MENU_Y(Y(TEXT_R1_Y)), TheText.Get("FEC_LR"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R1_X)), MENU_Y(Y(TEXT_R1_Y)), TheText.Get("FEC_ATT"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_START_X)), MENU_Y(Y(TEXT_START_Y)), TheText.Get("FEC_PAU"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_TRIANGLE_X)), MENU_Y(Y(TEXT_TRIANGLE_Y)), TheText.Get("FEC_EXV"));
++			if ((int)CTimer::GetTimeInMillisecondsPauseMode() & 0x400)
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_CAW"));
++			else
++				CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CIRCLE_X)), MENU_Y(Y(TEXT_CIRCLE_Y)), TheText.Get("FEC_ATT"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_CROSS_X)), MENU_Y(Y(TEXT_CROSS_Y)), TheText.Get("FEC_HAB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_SQUARE_X)), MENU_Y(Y(TEXT_SQUARE_Y)), TheText.Get("FEC_BRA"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_R3_X)), MENU_Y(Y(TEXT_R3_Y)), TheText.Get("FEC_LB"));
++			CFont::PrintString(MENU_X_LEFT_ALIGNED(X(TEXT_RSTICK_X)), MENU_Y(Y(TEXT_RSTICK_Y)), TheText.Get("FEC_RTC"));
++			break;
++		default:
++			return;
++		}
++	}
++#else
+ 	float TEXT_L2_X = 85.0f + CONTROLLER_POS_X - centerX, TEXT_L2_Y = -14.0f + CONTROLLER_POS_Y - centerY;
+ 	float TEXT_L1_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_L1_Y = 27.0f + CONTROLLER_POS_Y - centerY, TEXT_L1_Y_VEH = 3.0f + TEXT_L1_Y;
+ 	float TEXT_DPAD_X = -4.0f + CONTROLLER_POS_X - centerX, TEXT_DPAD_Y = 67.0f + CONTROLLER_POS_Y - centerY;
+@@ -7130,6 +8085,8 @@ CMenuManager::PrintController(void)
+ 			return;
+ 		}
+ 	}
++#endif
++//
+ 
+ 	CFont::SetDropShadowPosition(0); // X
+ 
+@@ -7147,17 +8104,77 @@ CMenuManager::LoadController(int8 type)
+ {
+ 	switch (type)
+ 	{
+-	case CONTROLLER_DUALSHOCK2:
+-	case CONTROLLER_DUALSHOCK3:
+-	case CONTROLLER_DUALSHOCK4:
+-		CFont::LoadButtons("MODELS/PS3BTNS.TXD");
+-		break;
+-	case CONTROLLER_NINTENDO_SWITCH:
+-		CFont::LoadButtons("MODELS/NSWBTNS.TXD");
+-		break;
+-	default:
+-		CFont::LoadButtons("MODELS/X360BTNS.TXD");
+-		break;
++
++#ifdef VICE_EXTENDED // ViceExtended folder - Gamepad buttons
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad buttons
++			case CONTROLLER_DUALSHOCK2:
++			case CONTROLLER_DUALSHOCK3:
++				CFont::LoadButtons("ViceExtended/MODELS/PS3BTNS.TXD");
++				break;
++			case CONTROLLER_DUALSHOCK4:
++				CFont::LoadButtons("ViceExtended/MODELS/ps4btns.TXD");
++				break;
++			case CONTROLLER_XBOXONE:
++				CFont::LoadButtons("ViceExtended/MODELS/x1btns.TXD");
++				break;
++			case CONTROLLER_NINTENDO_SWITCH:
++				CFont::LoadButtons("ViceExtended/MODELS/NSWBTNS.TXD");
++				break;
++			case CONTROLLER_DUALSENSE:
++				CFont::LoadButtons("ViceExtended/MODELS/ps5btns.TXD");
++				break;
++			default:
++				CFont::LoadButtons("ViceExtended/MODELS/X360BTNS.TXD");
++				break;
++#else
++			case CONTROLLER_DUALSHOCK2:
++			case CONTROLLER_DUALSHOCK3:
++			case CONTROLLER_DUALSHOCK4:
++				CFont::LoadButtons("ViceExtended/MODELS/PS3BTNS.TXD");
++				break;
++			case CONTROLLER_NINTENDO_SWITCH:
++				CFont::LoadButtons("ViceExtended/MODELS/NSWBTNS.TXD");
++				break;
++			default:
++				CFont::LoadButtons("ViceExtended/MODELS/X360BTNS.TXD");
++				break;
++#endif
++		
++#else
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad buttons
++			case CONTROLLER_DUALSHOCK2:
++			case CONTROLLER_DUALSHOCK3:
++				CFont::LoadButtons("MODELS/PS3BTNS.TXD");
++				break;
++			case CONTROLLER_DUALSHOCK4:
++				CFont::LoadButtons("MODELS/ps4btns.TXD");
++				break;
++			case CONTROLLER_XBOXONE:
++				CFont::LoadButtons("MODELS/x1btns.TXD");
++				break;
++			case CONTROLLER_NINTENDO_SWITCH:
++				CFont::LoadButtons("MODELS/NSWBTNS.TXD");
++				break;
++			case CONTROLLER_DUALSENSE:
++				CFont::LoadButtons("MODELS/ps5btns.TXD");
++				break;
++			default:
++				CFont::LoadButtons("MODELS/X360BTNS.TXD");
++				break;
++#else
++			case CONTROLLER_DUALSHOCK2:
++			case CONTROLLER_DUALSHOCK3:
++			case CONTROLLER_DUALSHOCK4:
++				CFont::LoadButtons("MODELS/PS3BTNS.TXD");
++				break;
++			case CONTROLLER_NINTENDO_SWITCH:
++				CFont::LoadButtons("MODELS/NSWBTNS.TXD");
++				break;
++			default:
++				CFont::LoadButtons("MODELS/X360BTNS.TXD");
++				break;
++#endif
++#endif
+ 	}
+ 
+ 	// Unload current textures
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index c85555a8..d39a827a 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -249,6 +249,12 @@ enum eMenuScreen
+ 
+ 	MENUPAGE_OUTRO, // Originally 34, but CFO needs last screen to be empty to count number of menu pages
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	MENUPAGE_GAMEPAD_SETTINGS,
++	MENUPAGE_PC_FOOT_CONTROLS,
++	MENUPAGE_PC_VEHICLE_CONTROLS,
++#endif
++
+ #ifdef MENU_TEST
+ 	MENUPAGE_GENERAL_SETTINGS,
+ #endif // MENU_TEST
+@@ -337,7 +343,29 @@ enum eMenuAction
+ 	MENUACTION_UNK114,
+ #endif
+ 
+-#ifdef EX_GPS
++#ifdef IMPROVED_MENU_AND_INPUT
++	MENUACTION_INVERTVERTICALLY,
++
++	MENUACTION_MOUSELOOKSENSX,
++	MENUACTION_MOUSELOOKSENSY,
++	MENUACTION_MOUSEAIMSENSX,
++	MENUACTION_MOUSEAIMSENSY,
++
++	MENUACTION_LEFTDEADZONE,
++	MENUACTION_RIGHTDEADZONE,
++	MENUACTION_VIBRATIONFORCE,
++	MENUACTION_AUTOAIM,
++	MENUACTION_PADLOOKSENSX,
++	MENUACTION_PADLOOKSENSY,
++	MENUACTION_PADAIMSENSX,
++	MENUACTION_PADAIMSENSY,
++
++	MENUACTION_FOOTCONTROLS,
++	MENUACTION_VEHICLECONTROLS,
++	MENUACTION_GPS,
++#endif
++
++#if defined EX_GPS && !defined IMPROVED_MENU_AND_INPUT
+ 	MENUACTION_GPS,
+ #endif
+ 
+@@ -423,6 +451,32 @@ enum eCheckHover
+ #endif
+ 	HOVEROPTION_NOT_HOVERING,
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	HOVEROPTION_INCREASE_MOUSELOOKSENSX,
++	HOVEROPTION_DECREASE_MOUSELOOKSENSX,
++	HOVEROPTION_INCREASE_MOUSEAIMSENSX,
++	HOVEROPTION_DECREASE_MOUSEAIMSENSX,
++	HOVEROPTION_INCREASE_MOUSELOOKSENSY,
++	HOVEROPTION_DECREASE_MOUSELOOKSENSY,
++	HOVEROPTION_INCREASE_MOUSEAIMSENSY,
++	HOVEROPTION_DECREASE_MOUSEAIMSENSY,
++
++	HOVEROPTION_INCREASE_LEFTDEADZONE,
++	HOVEROPTION_DECREASE_LEFTDEADZONE,
++	HOVEROPTION_INCREASE_RIGHTDEADZONE,
++	HOVEROPTION_DECREASE_RIGHTDEADZONE,
++	HOVEROPTION_INCREASE_VIBRATIONFORCE,
++	HOVEROPTION_DECREASE_VIBRATIONFORCE,
++	HOVEROPTION_INCREASE_PADLOOKSENSX,
++	HOVEROPTION_DECREASE_PADLOOKSENSX,
++	HOVEROPTION_INCREASE_PADAIMSENSX,
++	HOVEROPTION_DECREASE_PADAIMSENSX,
++	HOVEROPTION_INCREASE_PADLOOKSENSY,
++	HOVEROPTION_DECREASE_PADLOOKSENSY,
++	HOVEROPTION_INCREASE_PADAIMSENSY,
++	HOVEROPTION_DECREASE_PADAIMSENSY,
++#endif
++
+ #ifdef FIRST_PERSON
+ 	HOVEROPTION_INCREASE_FOV_FP,
+ 	HOVEROPTION_DECREASE_FOV_FP,
+@@ -825,7 +879,24 @@ public:
+ 	bool m_bAttemptingMissionRetry;
+ #endif
+ 
+-#ifdef EX_GPS
++#ifdef IMPROVED_MENU_AND_INPUT
++	bool m_PrefsInvertVertically;
++	float m_PrefsPadLookSensX;
++	float m_PrefsPadAimSensX;
++	float m_PrefsPadLookSensY;
++	float m_PrefsPadAimSensY;
++	int8 m_PrefsLeftStickDeadzone;
++	int8 m_PrefsRightStickDeadzone;
++	float m_PrefsVibrationForce;
++	bool m_PrefsAutoaim;
++	float m_PrefsMouseLookSensX;
++	float m_PrefsMouseAimSensX;
++	float m_PrefsMouseLookSensY;
++	float m_PrefsMouseAimSensY;
++	bool m_PrefsGPS;
++#endif
++
++#if defined EX_GPS && !defined IMPROVED_MENU_AND_INPUT
+ 	bool m_PrefsGPS;
+ #endif
+ 
+@@ -854,6 +925,10 @@ public:
+ 		CONTROLLER_XBOX360,
+ 		CONTROLLER_XBOXONE,
+ 		CONTROLLER_NINTENDO_SWITCH,
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad buttons
++		CONTROLLER_DUALSENSE,
++#endif
++	
+ 	};
+ 
+ 	int8 m_PrefsControllerType;
+diff --git a/src/core/FrontendTriggers.h b/src/core/FrontendTriggers.h
+index 44bae54f..717107c2 100644
+--- a/src/core/FrontendTriggers.h
++++ b/src/core/FrontendTriggers.h
+@@ -641,7 +641,13 @@ TriggerControls_Vibrations(CMenuOnOffTriggered *widget)
+ 		CMenuManager::m_PrefsUseVibration = widget->GetMenuSelection();
+ 		if ( CMenuManager::m_PrefsUseVibration )
+ 		{
++#ifdef IMPROVED_MENU_AND_INPUT
++			CPad::GetPad(0)->StartShake(300, 150, 150);
++#else
+ 			CPad::GetPad(0)->StartShake(300, 150);
++#endif
++
++
+ 			TimeToStopPadShaking = CTimer::GetTimeInMillisecondsPauseMode() + 500;
+ 		}
+ 	}
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 5ef16909..969d8468 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -38,7 +38,12 @@
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 
+ #if defined(IMPROVED_VIDEOMODE) && !defined(GTA_HANDHELD)
++#ifdef IMPROVED_MENU_AND_INPUT // Borderless window
++	#define VIDEOMODE_SELECTOR MENUACTION_CFO_SELECT, "FEM_SCF", { new CCFOSelect((int8*)&FrontEndMenuManager.m_nPrefsWindowed, "VideoMode", "Windowed", screenModes, 3, true, ScreenModeAfterChange, true) }, 0, 0, MENUALIGN_LEFT,
++#else
+ 	#define VIDEOMODE_SELECTOR MENUACTION_CFO_SELECT, "FEM_SCF", { new CCFOSelect((int8*)&FrontEndMenuManager.m_nPrefsWindowed, "VideoMode", "Windowed", screenModes, 2, true, ScreenModeAfterChange, true) }, 0, 0, MENUALIGN_LEFT,
++#endif
++
+ #else
+ 	#define VIDEOMODE_SELECTOR
+ #endif
+@@ -295,7 +300,13 @@ wchar* MultiSamplingDraw(bool *disabled, bool userHovering) {
+ #endif
+ 
+ #ifdef IMPROVED_VIDEOMODE
++
++#ifdef IMPROVED_MENU_AND_INPUT // Borderless window
++const char* screenModes[] = { "FED_FLS", "FED_WND", "FED_BRL"};
++#else
+ const char* screenModes[] = { "FED_FLS", "FED_WND" };
++#endif
++
+ void ScreenModeAfterChange(int8 before, int8 after)
+ {
+ 	_psSelectScreenVM(FrontEndMenuManager.m_nPrefsVideoMode); // apply same resolution
+@@ -395,7 +406,12 @@ void DetectJoystickGoBack() {
+ #endif
+ 
+ #ifdef GAMEPAD_MENU
++#ifdef IMPROVED_MENU_AND_INPUT // Gamepad icon
++const char* controllerTypes[] = { "FEC_DS2", "FEC_DS3", "FEC_DS4", "FEC_360", "FEC_ONE", "FEC_NSW", "FEC_DS5" };
++#else
+ const char* controllerTypes[] = { "FEC_DS2", "FEC_DS3", "FEC_DS4", "FEC_360", "FEC_ONE", "FEC_NSW" };
++#endif
++
+ void ControllerTypeAfterChange(int8 before, int8 after)
+ {
+ 	FrontEndMenuManager.LoadController(after);
+@@ -470,8 +486,14 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_RESTOREDEF,	"FET_DEF", {nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS}, 320, 0, MENUALIGN_CENTER,
+ 		MENUACTION_GOBACK,		"FEDS_TB", {nil, SAVESLOT_NONE, MENUPAGE_NONE}, 320, 0, MENUALIGN_CENTER,
+ 	},
++#else
++#ifdef IMPROVED_MENU_AND_INPUT
++	{ "FEH_DIS", MENUPAGE_OPTIONS, new CCustomScreenLayout({40, 90, 25, true}), nil,
+ #else
+ 	{ "FEH_DIS", MENUPAGE_OPTIONS, new CCustomScreenLayout({40, 78, 25, true}), nil,
++#endif
++
++
+ 		MENUACTION_BRIGHTNESS,	"FED_BRI", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_DRAWDIST,	"FEM_LOD", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		DENSITY_SLIDERS
+@@ -644,8 +666,14 @@ CMenuScreenCustom aScreens[] = {
+ 	// MENUPAGE_CONTROLLER_PC = 26
+ 	{ "FET_CTL", MENUPAGE_OPTIONS, new CCustomScreenLayout({0, 0, MENU_DEFAULT_LINE_HEIGHT, false, false, 150}), nil,
+ #ifdef PC_PLAYER_CONTROLS
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		MENUACTION_CHANGEMENU, "FEC_RED", {nil, SAVESLOT_NONE, MENUPAGE_KEYBOARD_CONTROLS}, 320, 120, MENUALIGN_CENTER,
++#else
+ 		MENUACTION_CTRLMETHOD,	"FET_STI", {nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_PC}, 320, 150, MENUALIGN_CENTER,
+ 		MENUACTION_KEYBOARDCTRLS,"FEC_RED", {nil, SAVESLOT_NONE, MENUPAGE_KEYBOARD_CONTROLS}, 0, 0, MENUALIGN_CENTER,
++#endif
++
+ #else
+ 		MENUACTION_KEYBOARDCTRLS,"FEC_RED", {nil, SAVESLOT_NONE, MENUPAGE_KEYBOARD_CONTROLS}, 320, 150, MENUALIGN_CENTER,
+ #endif
+@@ -712,12 +740,27 @@ CMenuScreenCustom aScreens[] = {
+ 
+ 	// MENUPAGE_KEYBOARD_CONTROLS = 30
+ 	{ "FET_STI", MENUPAGE_CONTROLLER_PC, nil, nil,
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		MENUACTION_FOOTCONTROLS, "FEC_PED", { nil, SAVESLOT_NONE, MENUPAGE_PC_FOOT_CONTROLS }, 320, 190, MENUALIGN_CENTER,
++		MENUACTION_VEHICLECONTROLS, "FEC_VEH", { nil, SAVESLOT_NONE, MENUPAGE_PC_VEHICLE_CONTROLS }, 0, 0, MENUALIGN_CENTER,
++#endif
+    },
+ 
+ 	// MENUPAGE_MOUSE_CONTROLS = 31
+ 	{ "FEC_MOU", MENUPAGE_CONTROLLER_PC, nil, nil,
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		MENUACTION_MOUSELOOKSENSX, "FEC_LSX", { nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS }, 40, 130, MENUALIGN_LEFT,
++		MENUACTION_MOUSELOOKSENSY, "FEC_LSY", { nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_MOUSEAIMSENSX, "FEC_ASX", { nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_MOUSEAIMSENSY, "FEC_ASY", { nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_INVERTVERTICALLY, "FEC_IVL", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++#else
+ 		MENUACTION_MOUSESENS,	"FEC_MSH",	{nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS}, 40, 170, MENUALIGN_LEFT,
+ 		MENUACTION_INVVERT,		"FEC_IVV",	{nil, SAVESLOT_NONE, MENUPAGE_MOUSE_CONTROLS}, 0, 0, MENUALIGN_LEFT,
++#endif
++
+ #ifndef GAMEPAD_MENU
+ 	   INVERT_PAD_SELECTOR
+ #endif
+@@ -746,19 +789,32 @@ CMenuScreenCustom aScreens[] = {
+ 	{ "", 0, nil, nil, },
+ 
+ #ifdef GAMEPAD_MENU
+-#ifdef GTA_HANDHELD
+-	{ "FET_AGS", MENUPAGE_OPTIONS, new CCustomScreenLayout({40, 78, 25, true, true}), nil,
+-#else
+-	{ "FET_AGS", MENUPAGE_CONTROLLER_PC, new CCustomScreenLayout({40, 78, 25, true, true}), nil,
+-#endif
+-		MENUACTION_CTRLCONFIG,		"FEC_CCF", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 40, 76, MENUALIGN_LEFT,
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	{ "FET_AGC", MENUPAGE_CONTROLLER_PC, new CCustomScreenLayout({40, 78, 25, true, true}), nil,
++		MENUACTION_CTRLCONFIG,		"FEC_CCF", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 40, 125, MENUALIGN_LEFT,
+ 		MENUACTION_CTRLDISPLAY,		"FEC_CDP", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+-		INVERT_PAD_SELECTOR
+-		MENUACTION_CTRLVIBRATION,	"FEC_VIB", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		SELECT_CONTROLLER_TYPE
+-		MENUACTION_GOBACK,		"FEDS_TB", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_GOBACK, "FEDS_TB", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 0, 0, MENUALIGN_LEFT,
+ 	},
++#else
++
++#ifdef GTA_HANDHELD
++		{ "FET_AGS", MENUPAGE_OPTIONS, new CCustomScreenLayout({40, 78, 25, true, true}), nil,
++#else
++		{ "FET_AGS", MENUPAGE_CONTROLLER_PC, new CCustomScreenLayout({40, 78, 25, true, true}), nil,
+ #endif
++			MENUACTION_CTRLCONFIG,		"FEC_CCF", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 40, 76, MENUALIGN_LEFT,
++			MENUACTION_CTRLDISPLAY,		"FEC_CDP", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++			INVERT_PAD_SELECTOR
++			MENUACTION_CTRLVIBRATION,	"FEC_VIB", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++			SELECT_CONTROLLER_TYPE
++			MENUACTION_GOBACK,		"FEDS_TB", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 0, 0, MENUALIGN_LEFT,
++		},
++#endif
++#endif
++
++
+ #ifdef LEGACY_MENU_OPTIONS
+ 	// MENUPAGE_DEBUG_MENU = 18
+ 	{ "FED_DBG", MENUPAGE_NONE, nil, nil,
+@@ -906,6 +962,32 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_GOBACK,			"FEDS_TB",   {nil, SAVESLOT_NONE, MENUPAGE_NONE}, 0, 0, MENUALIGN_LEFT,
+ 	},
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	// MENUPAGE_GAMEPAD_SETTINGS = 45
++	{ "FET_AGS", MENUPAGE_CONTROLLER_PC, nil, nil,
++		MENUACTION_PADLOOKSENSX, "FEC_LSX", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 40, 90, MENUALIGN_LEFT,
++		MENUACTION_PADLOOKSENSY, "FEC_LSY", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_PADAIMSENSX, "FEC_ASX", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_PADAIMSENSY, "FEC_ASY", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_LEFTDEADZONE, "FEC_LZN", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_RIGHTDEADZONE, "FEC_RZN", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_VIBRATIONFORCE, "FEC_VBF", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_INVERTVERTICALLY, "FEC_IVL", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_AUTOAIM, "FEC_AIM", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_GOBACK, "FEDS_TB", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 0, 0, MENUALIGN_LEFT,
++	},
++
++	// MENUPAGE_PC_FOOT_CONTROLS = 46
++	{ "FET_STI", MENUPAGE_KEYBOARD_CONTROLS, nil, nil,
++		
++	},
++
++	// MENUPAGE_PC_VEHICLE_CONTROLS = 47
++	{ "FET_STI", MENUPAGE_KEYBOARD_CONTROLS, nil, nil,
++		
++	},
++#endif
++
+ #if defined FIRST_PERSON && defined FIRING_AND_AIMING
+ 	// MENUPAGE_FIRST_PERSON = 48
+ 	{ "FEC_FPC", MENUPAGE_CONTROLLER_PC, nil, nil,
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 9c2f295b..4e49dff3 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -63,6 +63,12 @@
+ #include "..\extras\test\enums\model_ids.h"
+ #endif //CUSTOM_CODE
+ 
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++
++#endif
++
+ CPad Pads[MAX_PADS];
+ #ifdef GTA_PS2
+ u_long128 pad_dma_buf[scePadDmaBufferMax] __attribute__((aligned(64)));
+@@ -840,6 +846,15 @@ CControllerState::Clear(void)
+ 	Square = Triangle = Cross = Circle = 0;
+ 	LeftShock = RightShock = 0;
+ 	NetworkTalk = 0;
++
++#ifdef IMPROVED_MENU_AND_INPUT // walking on the key
++	bWalk = 0;
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	bLeftTurnSignals = bRightTurnSignals = bEmergencyLights = 0;
++#endif
++
++
+ }
+ 
+ void CKeyboardState::Clear()
+@@ -912,7 +927,15 @@ void CPad::Clear(bool bResetPlayerControls)
+ 	PCTempMouseControllerState.Clear();
+ 
+ 	Phase = 0;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	ShakeLowFreq = 0;
++	ShakeHighFreq = 0;
++#else
+ 	ShakeFreq = 0;
++#endif
++
++
+ 	ShakeDur = 0;
+ 
+ 	for (int32 i = 0; i < DRUNK_STEERING_BUFFER_SIZE; i++)
+@@ -1038,9 +1061,21 @@ CMouseControllerState CMousePointerStateHelper::GetMouseSetUp()
+ 	return state;
+ }
+ 
++// TODO Disable this if ImGui is open.
++// Hmm, I wonder how I would do that.
++// Idea from here: https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/d3dhook.cpp#L227
+ void CPad::UpdateMouse()
+ {
+ #if defined RW_D3D9 || defined RWLIBS
++
++	// This did nothing.
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	if(!imGuiFunctions.ImGuiDone) 
++		return;
++#endif
++	
++
+ 	if ( IsForegroundApp() )
+ 	{
+ 		if ( PSGLOBAL(mouse) == nil )
+@@ -1130,6 +1165,14 @@ CControllerState CPad::ReconcileTwoControllersInput(CControllerState const &Stat
+ 
+ 	ReconState.Clear();
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++#define _RECONCILE_LTRIGGER(button) \
++	{ if ( State1.button || State2.button ) ReconState.button = IsAffectedByController ? State2.LeftShoulder2 : 255 ; }
++
++#define _RECONCILE_RTRIGGER(button) \
++	{ if ( State1.button || State2.button ) ReconState.button = IsAffectedByController ? State2.RightShoulder2 : 255 ; }
++#endif
++
+ #define _RECONCILE_BUTTON(button) \
+ 	{ if ( State1.button || State2.button ) ReconState.button = 255; }
+ 
+@@ -1148,8 +1191,15 @@ CControllerState CPad::ReconcileTwoControllersInput(CControllerState const &Stat
+ #define _FIX_RECON_DIR(pos, neg, axis) \
+ 	{ if ( (ReconState.pos || ReconState.axis < 0) && (ReconState.neg || ReconState.axis > 0) ) { ReconState.pos = 0; ReconState.neg = 0; ReconState.axis = 0; } }
+ 
+-	_RECONCILE_BUTTON(LeftShoulder1);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	_RECONCILE_LTRIGGER(LeftShoulder2);
++	_RECONCILE_RTRIGGER(RightShoulder2);
++#else
+ 	_RECONCILE_BUTTON(LeftShoulder2);
++	_RECONCILE_BUTTON(RightShoulder2);
++#endif
++
+ 	_RECONCILE_BUTTON(RightShoulder1);
+ 	_RECONCILE_BUTTON(RightShoulder2);
+ 	_RECONCILE_BUTTON(Start);
+@@ -1161,6 +1211,16 @@ CControllerState CPad::ReconcileTwoControllersInput(CControllerState const &Stat
+ 	_RECONCILE_BUTTON(LeftShock);
+ 	_RECONCILE_BUTTON(RightShock);
+ 	_RECONCILE_BUTTON(NetworkTalk);
++
++#ifdef IMPROVED_MENU_AND_INPUT // walking on the key
++	_RECONCILE_BUTTON(bWalk);
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	_RECONCILE_BUTTON(bLeftTurnSignals);
++	_RECONCILE_BUTTON(bRightTurnSignals);
++	_RECONCILE_BUTTON(bEmergencyLights);
++#endif
++
+ 	_RECONCILE_AXIS(LeftStickX);
+ 	_RECONCILE_AXIS(LeftStickY);
+ 	_FIX_AXIS_DIR(LeftStickX);
+@@ -1173,8 +1233,14 @@ CControllerState CPad::ReconcileTwoControllersInput(CControllerState const &Stat
+ 	_RECONCILE_BUTTON(DPadDown);
+ 	_RECONCILE_BUTTON(DPadLeft);
+ 	_RECONCILE_BUTTON(DPadRight);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	_FIX_AXIS_DIR(LeftStickX);
++	_FIX_AXIS_DIR(LeftStickY);
++#else
+ 	_FIX_RECON_DIR(DPadUp, DPadDown, LeftStickY);
+ 	_FIX_RECON_DIR(DPadLeft, DPadRight, LeftStickX);
++#endif
+ 
+ 	return ReconState;
+ 
+@@ -1186,10 +1252,72 @@ CControllerState CPad::ReconcileTwoControllersInput(CControllerState const &Stat
+ #undef _FIX_RECON_DIR
+ }
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++void CPad::StartShake(int16 nDur, uint8 nLowFreq, uint8 nHighFreq)
++{
++	if (!IsAffectedByController)
++		return;
++
++	if (CCutsceneMgr::IsRunning() || CGame::playingIntro)
++		return;
++
++	if (nLowFreq == 0 && nHighFreq == 0)
++	{
++		ShakeDur = 0;
++		nLowFreq = 0;
++		nHighFreq = 0;
++		return;
++	}
++
++	if (nDur > ShakeDur)
++	{
++		ShakeDur = nDur;
++		ShakeLowFreq = nLowFreq * FrontEndMenuManager.m_PrefsVibrationForce;
++		ShakeHighFreq = nHighFreq * FrontEndMenuManager.m_PrefsVibrationForce;
++	}
++}
++
++void CPad::StartShake_Distance(int16 nDur, uint8 nLowFreq, uint8 nHighFreq, float fX, float fY, float fZ)
++{
++	if (!IsAffectedByController)
++		return;
++
++	if (CCutsceneMgr::IsRunning() || CGame::playingIntro)
++		return;
++
++	float fDist = (TheCamera.GetPosition() - CVector(fX, fY, fZ)).Magnitude();
++
++	if (fDist < 70.0f)
++	{
++		if (nLowFreq == 0 && nHighFreq == 0)
++		{
++			ShakeDur = 0;
++			nLowFreq = 0;
++			nHighFreq = 0;
++			return;
++		}
++
++		if (nDur > ShakeDur)
++		{
++			ShakeDur = nDur;
++			ShakeLowFreq = nLowFreq * FrontEndMenuManager.m_PrefsVibrationForce;
++			ShakeHighFreq = nHighFreq * FrontEndMenuManager.m_PrefsVibrationForce;
++		}
++	}
++}
++#else
+ void CPad::StartShake(int16 nDur, uint8 nFreq)
+ {
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (!IsAffectedByController)
++		return;
++#else
++
+ 	if ( !FrontEndMenuManager.m_PrefsUseVibration )
+ 		return;
++#endif
+ 
+ 	if ( CCutsceneMgr::IsRunning() || CGame::playingIntro )
+ 		return;
+@@ -1234,6 +1362,7 @@ void CPad::StartShake_Distance(int16 nDur, uint8 nFreq, float fX, float fY, floa
+ 		}
+ 	}
+ }
++#endif
+ 
+ void CPad::StartShake_Train(float fX, float fY)
+ {
+@@ -1255,7 +1384,13 @@ void CPad::StartShake_Train(float fX, float fY)
+ 		if ( ShakeDur < 100 )
+ 		{
+ 			ShakeDur = 100;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			ShakeHighFreq = freq * FrontEndMenuManager.m_PrefsVibrationForce;
++#else
+ 			ShakeFreq = freq;
++#endif
++
+ 		}
+ 	}
+ }
+@@ -1741,6 +1876,12 @@ void CPad::AddToPCCheatString(char c)
+ 		RenderWaterLayersCheat();
+ #endif
+ 
++// TODO Add cheats to activate lua functions when I set those up.
++#ifdef LUA_TEST
++	//if(!_CHEATCMP("PUEMWOLB"))
++	//	// Run the init lua function, which can test the cheats
++#endif //LUA_TEST
++
+ #undef _CHEATCMP
+ }
+ 
+@@ -1781,12 +1922,25 @@ void CPad::AffectFromXinput(uint32 pad)
+ 		float rx = (float)xstate.Gamepad.sThumbRX / (float)0x7FFF;
+ 		float ry = (float)xstate.Gamepad.sThumbRY / (float)0x7FFF;
+ 
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (Abs(lx) > 0.12f || Abs(ly) > 0.12f) {
++#else
+ 		if (Abs(lx) > 0.3f || Abs(ly) > 0.3f) {
++#endif
++
++
+ 			PCTempJoyState.LeftStickX = (int32)(lx * 128.0f);
+ 			PCTempJoyState.LeftStickY = (int32)(-ly * 128.0f);
+ 		}
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (Abs(rx) > 0.1f || Abs(ry) > 0.1f) {
++#else
+ 		if (Abs(rx) > 0.3f || Abs(ry) > 0.3f) {
++#endif
++
+ 			PCTempJoyState.RightStickX = (int32)(rx * 128.0f);
+ 			PCTempJoyState.RightStickY = (int32)(-ry * 128.0f);
+ 		}
+@@ -1795,14 +1949,30 @@ void CPad::AffectFromXinput(uint32 pad)
+ 
+ 		memset(&VibrationState, 0, sizeof(XINPUT_VIBRATION));
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++		uint16 iLeftMotor = (uint16)((float)ShakeLowFreq / 255.0f * (float)0xffff);
++		uint16 iRightMotor = (uint16)((float)ShakeHighFreq / 255.0f * (float)0xffff);
++#else
+ 		uint16 iLeftMotor = (uint16)((float)ShakeFreq / 255.0f * (float)0xffff);
+ 		uint16 iRightMotor = (uint16)((float)ShakeFreq / 255.0f * (float)0xffff);
++#endif
++
++
+ 
+ 		if (ShakeDur < CTimer::GetTimeStepInMilliseconds())
+ 			ShakeDur = 0;
+ 		else
+ 			ShakeDur -= CTimer::GetTimeStepInMilliseconds();
+-		if (ShakeDur == 0) ShakeFreq = 0;
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (ShakeDur == 0) {
++				ShakeLowFreq = 0;
++				ShakeHighFreq = 0;
++			}
++#else
++			if (ShakeDur == 0) ShakeFreq = 0;
++#endif
++
++
+ 
+ 		VibrationState.wLeftMotorSpeed = iLeftMotor;
+ 		VibrationState.wRightMotorSpeed = iRightMotor;
+@@ -1831,9 +2001,21 @@ void CPad::UpdatePads(void)
+ #endif
+ 
+ #ifdef DETECT_PAD_INPUT_SWITCH
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (GetPad(0)->PCTempJoyState.CheckForInput()) {
++		IsAffectedByController = true;
++		CCamera::m_bUseMouse3rdPerson = false;
++		FrontEndMenuManager.m_ControlMethod = CONTROL_CLASSIC;
++	} else {
++#else
+ 	if (GetPad(0)->PCTempJoyState.CheckForInput())
+ 		IsAffectedByController = true;
+ 	else {
++#endif
++
++
+ #endif
+ 		ControlsManager.ClearSimButtonPressCheckers();
+ 		ControlsManager.AffectPadFromKeyBoard();
+@@ -1841,8 +2023,19 @@ void CPad::UpdatePads(void)
+ 
+ #ifdef DETECT_PAD_INPUT_SWITCH
+ 	}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (IsAffectedByController && (GetPad(0)->PCTempKeyState.CheckForInput() || GetPad(0)->PCTempMouseState.CheckForInput())) {
++		IsAffectedByController = false;
++		CCamera::m_bUseMouse3rdPerson = true;
++		FrontEndMenuManager.m_ControlMethod = CONTROL_STANDARD;
++	}
++#else
+ 	if (IsAffectedByController && (GetPad(0)->PCTempKeyState.CheckForInput() || GetPad(0)->PCTempMouseState.CheckForInput()))
+ 		IsAffectedByController = false;
++#endif
++
++
+ #endif
+ 
+ 	if ( CReplay::IsPlayingBackFromFile() && !FrontEndMenuManager.m_bMenuActive )
+@@ -2221,7 +2414,15 @@ void CPad::StopPadsShaking(void)
+ void CPad::StopShaking(int16 pad)
+ {
+ #ifdef GTA_PS2_STUFF
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	ShakeLowFreq = 0;
++	ShakeHighFreq = 0;
++#else
+ 	ShakeFreq = 0;
++#endif
++	ShakeDur = 0;
++
+ 	ShakeDur = 0;
+ 
+ #ifdef GTA_PS2
+@@ -2298,6 +2499,9 @@ int16 CPad::GetSteeringUpDown(void)
+ 		case 0:
+ 		case 2:
+ 		{
++#ifdef IMPROVED_MENU_AND_INPUT
++			return NewState.LeftStickY;
++#else
+ 			int16 axis = NewState.LeftStickY;
+ 			int16 dpad = (NewState.DPadDown - NewState.DPadUp) / 2;
+ 
+@@ -2305,6 +2509,7 @@ int16 CPad::GetSteeringUpDown(void)
+ 				return axis;
+ 			else
+ 				return dpad;
++#endif
+ 
+ 			break;
+ 		}
+@@ -2326,26 +2531,35 @@ int16 CPad::GetCarGunUpDown(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return 0;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		case 1:
+-		case 2:
+-		{
+-			return NewState.RightStickY;
+-
+-			break;
+-		}
+-
+-		case 3:
++#ifdef IMPROVED_MENU_AND_INPUT
++		int16 axis = NewState.RightStickY;
++	
++		if (Abs(axis) > FrontEndMenuManager.m_PrefsRightStickDeadzone)
++			return (axis > 0.f ? axis - FrontEndMenuManager.m_PrefsRightStickDeadzone : axis + FrontEndMenuManager.m_PrefsRightStickDeadzone);
++		else
++			return 0;
++#else
++		switch (CURMODE)
+ 		{
+-			return (NewState.DPadUp - NewState.DPadDown) / 2;
+-
+-			break;
++			case 0:
++			case 1:
++			case 2:
++			{
++				return NewState.RightStickY;
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return (NewState.DPadUp - NewState.DPadDown) / 2;
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return 0;
++	
++		return 0;
++#endif
+ }
+ 
+ int16 CPad::GetCarGunLeftRight(void)
+@@ -2353,26 +2567,35 @@ int16 CPad::GetCarGunLeftRight(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return 0;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		case 1:
+-		case 2:
+-		{
+-			return NewState.RightStickX;
+-
+-			break;
+-		}
+-
+-		case 3:
++#ifdef IMPROVED_MENU_AND_INPUT
++		int16 axis = NewState.RightStickX;
++	
++		if (Abs(axis) > FrontEndMenuManager.m_PrefsRightStickDeadzone)
++			return (axis > 0.f ? axis - FrontEndMenuManager.m_PrefsRightStickDeadzone : axis + FrontEndMenuManager.m_PrefsRightStickDeadzone);
++		else
++			return 0;
++#else
++		switch (CURMODE)
+ 		{
+-			return (NewState.DPadRight - NewState.DPadLeft) / 2;
+-
+-			break;
++			case 0:
++			case 1:
++			case 2:
++			{
++				return NewState.RightStickX;
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return (NewState.DPadRight - NewState.DPadLeft) / 2;
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return 0;
++	
++		return 0;
++#endif
+ }
+ 
+ int16 CPad::GetPedWalkLeftRight(void)
+@@ -2386,12 +2609,20 @@ int16 CPad::GetPedWalkLeftRight(void)
+ 		case 2:
+ 		{
+ 			int16 axis = NewState.LeftStickX;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (Abs(axis) > FrontEndMenuManager.m_PrefsLeftStickDeadzone)
++				return axis;
++			else
++				return 0;
++#else
+ 			int16 dpad = (NewState.DPadRight - NewState.DPadLeft) / 2;
+ 
+ 			if ( Abs(axis) > Abs(dpad) )
+ 				return axis;
+ 			else
+ 				return dpad;
++#endif
+ 
+ 			break;
+ 		}
+@@ -2399,7 +2630,15 @@ int16 CPad::GetPedWalkLeftRight(void)
+ 		case 1:
+ 		case 3:
+ 		{
++#ifdef IMPROVED_MENU_AND_INPUT
++			int16 axis = NewState.LeftStickX;
++			if (Abs(axis) > FrontEndMenuManager.m_PrefsLeftStickDeadzone)
++				return axis;
++			else
++				return 0;
++#else
+ 			return NewState.LeftStickX;
++#endif
+ 
+ 			break;
+ 		}
+@@ -2419,12 +2658,20 @@ int16 CPad::GetPedWalkUpDown(void)
+ 		case 2:
+ 		{
+ 			int16 axis = NewState.LeftStickY;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (Abs(axis) > FrontEndMenuManager.m_PrefsLeftStickDeadzone)
++				return axis;
++			else
++				return 0;
++#else
+ 			int16 dpad = (NewState.DPadDown - NewState.DPadUp) / 2;
+ 
+ 			if ( Abs(axis) > Abs(dpad) )
+ 				return axis;
+ 			else
+ 				return dpad;
++#endif
+ 
+ 			break;
+ 		}
+@@ -2432,7 +2679,15 @@ int16 CPad::GetPedWalkUpDown(void)
+ 		case 1:
+ 		case 3:
+ 		{
++#ifdef IMPROVED_MENU_AND_INPUT
++			int16 axis = NewState.LeftStickY;
++			if (Abs(axis) > FrontEndMenuManager.m_PrefsLeftStickDeadzone)
++				return axis;
++			else
++				return 0;
++#else
+ 			return NewState.LeftStickY;
++#endif
+ 
+ 			break;
+ 		}
+@@ -2443,6 +2698,9 @@ int16 CPad::GetPedWalkUpDown(void)
+ 
+ int16 CPad::GetAnalogueUpDown(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	return NewState.LeftStickY;
++#else
+ 	switch (CURMODE)
+ 	{
+ 		case 0:
+@@ -2455,7 +2713,6 @@ int16 CPad::GetAnalogueUpDown(void)
+ 				return axis;
+ 			else
+ 				return dpad;
+-
+ 			break;
+ 		}
+ 
+@@ -2469,10 +2726,14 @@ int16 CPad::GetAnalogueUpDown(void)
+ 	}
+ 
+ 	return 0;
++#endif
+ }
+ 
+ int16 CPad::GetAnalogueLeftRight(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	return NewState.LeftStickX;
++#else
+ 	switch (CURMODE)
+ 	{
+ 		case 0:
+@@ -2499,6 +2760,7 @@ int16 CPad::GetAnalogueLeftRight(void)
+ 	}
+ 
+ 	return 0;
++#endif
+ }
+ 
+ bool CPad::GetLookLeft(void)
+@@ -2506,7 +2768,29 @@ bool CPad::GetLookLeft(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.LeftShoulder2 && !NewState.RightShoulder2);
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.LeftShoulder2 && !NewState.RightShoulder2);
++			}
++	
++			case 1:
++			case 3:
++			{
++				return !!(NewState.LeftShoulder1 && !NewState.RightShoulder1);
++	
++				break;
++			}
++		}
++	
++		return 0;
++#else
++	
++		return !!(NewState.LeftShoulder2 && !NewState.RightShoulder2);
++#endif
+ }
+ 
+ bool CPad::GetLookRight(void)
+@@ -2514,7 +2798,29 @@ bool CPad::GetLookRight(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.RightShoulder2 && !NewState.LeftShoulder2);
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.RightShoulder2 && !NewState.LeftShoulder2);
++			}
++	
++			case 1:
++			case 3:
++			{
++				return !!(NewState.RightShoulder1 && !NewState.LeftShoulder1);;
++	
++				break;
++			}
++		}
++	
++		return 0;
++	#else
++	
++		return !!(NewState.RightShoulder2 && !NewState.LeftShoulder2);
++	#endif
+ }
+ 
+ 
+@@ -2523,9 +2829,32 @@ bool CPad::GetLookBehindForCar(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.RightShoulder2 && NewState.LeftShoulder2);
+-}
+-
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.RightShoulder2 && NewState.LeftShoulder2);
++	
++				break;
++			}
++	
++			case 1:
++			case 3:
++			{
++				return NewState.RightShock || !!(NewState.RightShoulder1 && NewState.LeftShoulder1);
++	
++				break;
++			}
++		}
++	
++		return 0;
++#else
++		return !!(NewState.RightShoulder2 && NewState.LeftShoulder2);
++#endif
++}
++
+ bool CPad::GetLookBehindForPed(void)
+ {
+ 	if ( ArePlayerControlsDisabled() )
+@@ -2539,38 +2868,42 @@ bool CPad::GetHorn(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		{
+-			return !!NewState.LeftShock;
+-
+-			break;
+-		}
+-
+-		case 1:
+-		{
+-			return !!NewState.LeftShoulder1;
+-
+-			break;
+-		}
+-
+-		case 2:
+-		{
+-			return !!NewState.RightShoulder1;
+-
+-			break;
+-		}
+-
+-		case 3:
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!NewState.LeftShock;
++#else
++		switch (CURMODE)
+ 		{
+-			return !!NewState.LeftShock;
+-
+-			break;
++			case 0:
++			{
++				return !!NewState.LeftShock;
++	
++				break;
++			}
++	
++			case 1:
++			{
++				return !!NewState.LeftShoulder1;
++	
++				break;
++			}
++	
++			case 2:
++			{
++				return !!NewState.RightShoulder1;
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return !!NewState.LeftShock;
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return false;
++	
++		return false;
++#endif
+ }
+ 
+ bool CPad::HornJustDown(void)
+@@ -2578,38 +2911,42 @@ bool CPad::HornJustDown(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		{
+-			return !!(NewState.LeftShock && !OldState.LeftShock);
+-
+-			break;
+-		}
+-
+-		case 1:
+-		{
+-			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
+-
+-			break;
+-		}
+-
+-		case 2:
+-		{
+-			return !!(NewState.RightShoulder1 && !OldState.RightShoulder1);
+-
+-			break;
+-		}
+-
+-		case 3:
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!(NewState.LeftShock && !OldState.LeftShock);
++#else
++		switch (CURMODE)
+ 		{
+-			return !!(NewState.LeftShock && !OldState.LeftShock);
+-
+-			break;
++			case 0:
++			{
++				return !!(NewState.LeftShock && !OldState.LeftShock);
++	
++				break;
++			}
++	
++			case 1:
++			{
++				return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++	
++				break;
++			}
++	
++			case 2:
++			{
++				return !!(NewState.RightShoulder1 && !OldState.RightShoulder1);
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return !!(NewState.LeftShock && !OldState.LeftShock);
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return false;
++	
++		return false;
++#endif
+ }
+ 
+ bool CPad::GetCarGunFired(void)
+@@ -2617,62 +2954,87 @@ bool CPad::GetCarGunFired(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		case 1:
+-		case 2:
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!NewState.Circle;
++#else
++		switch (CURMODE)
+ 		{
+-			return !!NewState.Circle;
+-
+-			break;
++			case 0:
++			case 1:
++			case 2:
++			{
++				return !!NewState.Circle;
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return !!NewState.RightShoulder1;
++	
++				break;
++			}
+ 		}
++	
++		return false;
++#endif
++}
+ 
+-		case 3:
+-		{
+-			return !!NewState.RightShoulder1;
++bool CPad::CarGunJustDown(void)
++{
++	if ( ArePlayerControlsDisabled() )
++		return false;
+ 
+-			break;
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!(NewState.Circle && !OldState.Circle);
++#else
++		switch (CURMODE)
++		{
++			case 0:
++			case 1:
++			case 2:
++			{
++				return !!(NewState.Circle && !OldState.Circle);
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return !!(NewState.RightShoulder1 && !OldState.RightShoulder1);
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return false;
++	
++		return false;
++#endif
+ }
+ 
+-bool CPad::CarGunJustDown(void)
++int16 CPad::GetHandBrake(void)
+ {
+ 	if ( ArePlayerControlsDisabled() )
+-		return false;
++		return 0;
+ 
+ 	switch (CURMODE)
+ 	{
++#ifdef IMPROVED_MENU_AND_INPUT
+ 		case 0:
+-		case 1:
+ 		case 2:
+ 		{
+-			return !!(NewState.Circle && !OldState.Circle);
++			return NewState.RightShoulder1;
+ 
+ 			break;
+ 		}
+ 
++		case 1:
+ 		case 3:
+ 		{
+-			return !!(NewState.RightShoulder1 && !OldState.RightShoulder1);
++			return NewState.Cross;
+ 
+ 			break;
+ 		}
+-	}
+-
+-	return false;
+-}
+-
+-int16 CPad::GetHandBrake(void)
+-{
+-	if ( ArePlayerControlsDisabled() )
+-		return 0;
+-
+-	switch (CURMODE)
+-	{
++#else
+ 		case 0:
+ 		case 1:
+ 		{
+@@ -2694,6 +3056,9 @@ int16 CPad::GetHandBrake(void)
+ 
+ 			break;
+ 		}
++#endif
++
++
+ 	}
+ 
+ 	return 0;
+@@ -2706,6 +3071,28 @@ int16 CPad::GetBrake(void)
+ 
+ 	switch (CURMODE)
+ 	{
++#ifdef IMPROVED_MENU_AND_INPUT
++		case 0:
++		case 2:
++		{
++			return NewState.Square;
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			int16 axis = NewState.LeftShoulder2;
++
++			if ( axis < 0 )
++				return 0;
++			else
++				return axis;
++
++			break;
++		}
++#else
+ 		case 0:
+ 		case 2:
+ 		{
+@@ -2732,6 +3119,7 @@ int16 CPad::GetBrake(void)
+ 
+ 			break;
+ 		}
++#endif
+ 	}
+ 
+ 	return 0;
+@@ -2746,26 +3134,30 @@ bool CPad::GetExitVehicle(void)
+ 	if ( JustOutOfFrontend != 0 )
+ 		return false;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		case 1:
+-		case 3:
+-		{
+-			return !!NewState.Triangle;
+-
+-			break;
+-		}
+-
+-		case 2:
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!NewState.Triangle;
++#else
++		switch (CURMODE)
+ 		{
+-			return !!NewState.LeftShoulder1;
+-
+-			break;
++			case 0:
++			case 1:
++			case 3:
++			{
++				return !!NewState.Triangle;
++	
++				break;
++			}
++	
++			case 2:
++			{
++				return !!NewState.LeftShoulder1;
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return false;
++	
++		return false;
++#endif
+ }
+ 
+ bool CPad::ExitVehicleJustDown(void)
+@@ -2776,35 +3168,73 @@ bool CPad::ExitVehicleJustDown(void)
+ 	if ( JustOutOfFrontend != 0 )
+ 		return false;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!(NewState.Triangle && !OldState.Triangle);
++#else
++		switch (CURMODE)
++		{
++			case 0:
++			case 1:
++			case 3:
++			{
++				return !!(NewState.Triangle && !OldState.Triangle);
++	
++				break;
++			}
++	
++			case 2:
++			{
++				return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++	
++				break;
++			}
++		}
++	
++		return false;
++#endif
++}
++
++int32 CPad::GetWeapon(void)
++{
++	if ( ArePlayerControlsDisabled() )
++		return false;
++
+ 	switch (CURMODE)
+ 	{
++		#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
+ 		case 0:
+-		case 1:
+-		case 3:
++		case 2:
+ 		{
+-			return !!(NewState.Triangle && !OldState.Triangle);
++			if (FindPlayerVehicle() || CPad::GetPad(0)->IsAffectedByController && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_HELICANNON_1STPERSON) {
++				if (IsAffectedByController)
++					return NewState.RightShoulder1 || NewState.Circle;
+ 
+-			break;
+-		}
++				return NewState.Circle || (NewState.RightShoulder1 && NewState.LeftShoulder1);
++			}
+ 
+-		case 2:
+-		{
+-			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++			if (IsAffectedByController)
++				return NewState.RightShoulder1 && NewState.LeftShoulder1;
++
++			return NewState.LeftShoulder1;
+ 
+ 			break;
+ 		}
+-	}
+ 
+-	return false;
+-}
++		case 1:
++		case 3:
++		{
++			if (FindPlayerVehicle()) {
++				if (IsAffectedByController)
++					return NewState.RightShoulder1 || NewState.Circle;
++				else
++					return NewState.RightShoulder2 || NewState.Circle;
++			}
+ 
+-int32 CPad::GetWeapon(void)
+-{
+-	if ( ArePlayerControlsDisabled() )
+-		return false;
++			return NewState.RightShoulder2;
+ 
+-	switch (CURMODE)
+-	{
++			break;
++		}
++#else
+ 		case 0:
+ 		case 1:
+ 		{
+@@ -2826,6 +3256,7 @@ int32 CPad::GetWeapon(void)
+ 
+ 			break;
+ 		}
++#endif
+ 	}
+ 
+ 	return false;
+@@ -2838,6 +3269,26 @@ bool CPad::WeaponJustDown(void)
+ 
+ 	switch (CURMODE)
+ 	{
++		#ifdef IMPROVED_MENU_AND_INPUT
++		case 0:
++		case 2:
++		{
++			if (IsAffectedByController)
++				return !!(NewState.RightShoulder2 && !OldState.RightShoulder2) || !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++
++			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			return !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++
++			break;
++		}
++#else
+ 		case 0:
+ 		case 1:
+ 		{
+@@ -2859,6 +3310,7 @@ bool CPad::WeaponJustDown(void)
+ 
+ 			break;
+ 		}
++#endif
+ 	}
+ 
+ 	return false;
+@@ -2871,6 +3323,28 @@ int16 CPad::GetAccelerate(void)
+ 
+ 	switch (CURMODE)
+ 	{
++		#ifdef IMPROVED_MENU_AND_INPUT
++		case 0:
++		case 2:
++		{
++			return NewState.Cross;
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			int16 axis = NewState.RightShoulder2;
++
++			if ( axis < 0 )
++				return 0;
++			else
++				return axis;
++
++			break;
++		}
++#else
+ 		case 0:
+ 		case 2:
+ 		{
+@@ -2897,6 +3371,8 @@ int16 CPad::GetAccelerate(void)
+ 
+ 			break;
+ 		}
++#endif
++
+ 	}
+ 
+ 	return 0;
+@@ -2904,6 +3380,9 @@ int16 CPad::GetAccelerate(void)
+ 
+ bool CPad::CycleCameraModeJustDown(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	return !!(NewState.Select && !OldState.Select);
++#else
+ 	bool result;
+ 	switch (CURMODE)
+ 	{
+@@ -2947,10 +3426,15 @@ bool CPad::CycleCameraModeJustDown(void)
+ 	}
+ 
+ 	return result;
++#endif
+ }
+ 
+ bool CPad::CycleCameraModeUpJustDown(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	return !!(NewState.Select && !OldState.Select);
++#endif
++
+ 	switch (CURMODE)
+ 	{
+ 		case 0:
+@@ -2977,6 +3461,16 @@ bool CPad::CycleCameraModeDownJustDown(void)
+ {
+ 	switch (CURMODE)
+ 	{
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		case 1:
++		case 3:
++		{
++			return false;
++
++			break;
++		}
++#else
+ 		case 0:
+ 		case 2:
+ 		case 3:
+@@ -2992,56 +3486,241 @@ bool CPad::CycleCameraModeDownJustDown(void)
+ 
+ 			break;
+ 		}
++#endif
++
++	}
++
++	return false;
++}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++bool CPad::GetRadarZoomOut(void)
++{
++	if (ArePlayerControlsDisabled())
++		return false;
++
++	if (JustOutOfFrontend != 0)
++		return false;
++
++	if (TheCamera.PlayerWeaponMode.Mode == CCam::MODE_SNIPER || TheCamera.PlayerWeaponMode.Mode == CCam::MODE_CAMERA)
++		return false;
++
++	return IsAffectedByController ? !!NewState.DPadDown : !!NewState.DPadUp;
++}
++
++bool CPad::GetPedWalk()
++{
++	if (ArePlayerControlsDisabled())
++		return false;
++
++	return NewState.bWalk;
++}
++
++bool CPad::WeaponReloadJustDown()
++{
++	if (ArePlayerControlsDisabled())
++		return false;
++
++	return !!(NewState.Circle && !OldState.Circle);
++}
++
++bool CPad::GetMeleeWeapon()
++{
++	if ( ArePlayerControlsDisabled() )
++		return false;
++
++	switch (CURMODE)
++	{
++		case 0:
++		case 2:
++		{
++			if (IsAffectedByController)
++				return NewState.Circle;
++
++			return NewState.LeftShoulder1;
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			return NewState.Circle || NewState.RightShoulder2;
++
++			break;
++		}
++	}
++
++	return false;
++}
++
++bool CPad::MeleeWeaponJustDown()
++{
++	if (ArePlayerControlsDisabled())
++		return false;
++
++	switch (CURMODE)
++	{
++		case 0:
++		case 2:
++		{
++			if (IsAffectedByController)
++				return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1) || !!(NewState.Circle && !OldState.Circle);
++
++			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			return !!(NewState.Circle && !OldState.Circle) || !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++
++			break;
++		}
++	}
++
++	return false;
++}
++
++bool CPad::NextStationJustDown(void)
++#else
++bool CPad::ChangeStationJustDown(void)
++#endif
++{
++	if ( ArePlayerControlsDisabled() )
++		return false;
++
++	switch (CURMODE)
++	{
++
++	#ifdef IMPROVED_MENU_AND_INPUT
++	case 0:
++	case 2:
++	{
++		return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++
++		break;
++	}
++
++	case 1:
++	case 3:
++	{
++		return !!(NewState.DPadRight && !OldState.DPadRight);
++
++		break;
++	}
++#else
++	case 0:
++	{
++		return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++
++		break;
++	}
++
++	case 1:
++	{
++		return !!(NewState.Select && !OldState.Select);
++
++		break;
++	}
++
++	case 2:
++	{
++		return !!(NewState.LeftShock && !OldState.LeftShock);
++
++		break;
++	}
++
++	case 3:
++	{
++		return !!(NewState.Circle && !OldState.Circle);
++
++		break;
++	}
++#endif
+ 	}
+ 
+ 	return false;
+ }
+ 
+-bool CPad::ChangeStationJustDown(void)
++// New
++
++#ifdef IMPROVED_MENU_AND_INPUT
++bool CPad::PrevStationJustDown(void)
+ {
+-	if ( ArePlayerControlsDisabled() )
++	if (ArePlayerControlsDisabled())
+ 		return false;
+ 
+ 	switch (CURMODE)
+ 	{
+-		case 0:
++		case 1:
++		case 3:
+ 		{
+-			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++			return !!(NewState.DPadLeft && !OldState.DPadLeft);
+ 
+ 			break;
+ 		}
++	}
+ 
+-		case 1:
+-		{
+-			return !!(NewState.Select && !OldState.Select);
++	return false;
++}
++#endif
+ 
+-			break;
+-		}
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++bool CPad::LeftTurnSignalsJustDown()
++{
++	if (ArePlayerControlsDisabled())
++		return false;
+ 
+-		case 2:
+-		{
+-			return !!(NewState.LeftShock && !OldState.LeftShock);
++	return !!(NewState.bLeftTurnSignals && !OldState.bLeftTurnSignals);
++}
+ 
+-			break;
+-		}
++bool CPad::RightTurnSignalsJustDown()
++{
++	if (ArePlayerControlsDisabled())
++		return false;
+ 
+-		case 3:
+-		{
+-			return !!(NewState.Circle && !OldState.Circle);
++	return !!(NewState.bRightTurnSignals && !OldState.bRightTurnSignals);
++}
+ 
+-			break;
+-		}
+-	}
++bool CPad::EmergencyLightsJustDown()
++{
++	if (ArePlayerControlsDisabled())
++		return false;
+ 
+-	return false;
++	return !!(NewState.bEmergencyLights && !OldState.bEmergencyLights);
+ }
++#endif
++
++//
+ 
+ bool CPad::CycleWeaponLeftJustDown(void)
+ {
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
++			}
++	
++			case 1:
++			case 3:
++			{
++				return !!(NewState.DPadLeft && !OldState.DPadLeft);
++			}
++		}
++	
++		return 0;
++#else
++		return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
++#endif
+ }
+ 
+ bool CPad::CycleWeaponRightJustDown(void)
+@@ -3049,7 +3728,26 @@ bool CPad::CycleWeaponRightJustDown(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++			}
++	
++			case 1:
++			case 3:
++			{
++				return !!(NewState.DPadRight && !OldState.DPadRight);
++			}
++		}
++	
++		return 0;
++#else
++		return !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++#endif
+ }
+ 
+ bool CPad::GetTarget(void)
+@@ -3086,8 +3784,8 @@ bool CPad::TargetJustDown(void)
+ 
+ 	switch (CURMODE)
+ 	{
++#ifdef IMPROVED_MENU_AND_INPUT
+ 		case 0:
+-		case 1:
+ 		case 2:
+ 		{
+ 			return !!(NewState.RightShoulder1 && !OldState.RightShoulder1);
+@@ -3095,49 +3793,74 @@ bool CPad::TargetJustDown(void)
+ 			break;
+ 		}
+ 
++		case 1:
+ 		case 3:
+ 		{
+-			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++			return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
+ 
+ 			break;
+ 		}
+-	}
+-
+-	return false;
+-}
+-
+-bool CPad::CollectPickupJustDown(void)
+-{
+-	if ( ArePlayerControlsDisabled() )
+-		return false;
+-
+-	switch (CURMODE)
+-	{
++#else
+ 		case 0:
+ 		case 1:
+-		{
+-			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
+-
+-			break;
+-		}
+ 		case 2:
+ 		{
+-			return !!(NewState.Triangle && !OldState.Triangle);
++			return !!(NewState.RightShoulder1 && !OldState.RightShoulder1);
+ 
+ 			break;
+ 		}
+ 
+ 		case 3:
+ 		{
+-			return !!(NewState.Circle && !OldState.Circle);
++			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
+ 
+ 			break;
+ 		}
++#endif
+ 	}
+ 
+ 	return false;
+ }
+ 
++bool CPad::CollectPickupJustDown(void)
++{
++	if ( ArePlayerControlsDisabled() )
++		return false;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (IsAffectedByController)
++			return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++	
++		return !!(NewState.Circle && !OldState.Circle);
++#else
++		switch (CURMODE)
++		{
++			case 0:
++			case 1:
++			{
++				return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1);
++	
++				break;
++			}
++			case 2:
++			{
++				return !!(NewState.Triangle && !OldState.Triangle);
++	
++				break;
++			}
++	
++			case 3:
++			{
++				return !!(NewState.Circle && !OldState.Circle);
++	
++				break;
++			}
++		}
++	
++		return false;
++#endif
++}
++
+ bool CPad::DuckJustDown(void)
+ {
+ 	if (ArePlayerControlsDisabled())
+@@ -3159,26 +3882,30 @@ bool CPad::GetSprint(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	switch (CURMODE)
+-	{
+-		case 0:
+-		case 1:
+-		case 3:
+-		{
+-			return !!NewState.Cross;
+-
+-			break;
+-		}
+-
+-		case 2:
++#ifdef IMPROVED_MENU_AND_INPUT
++		return !!NewState.Cross;
++#else
++		switch (CURMODE)
+ 		{
+-			return !!NewState.Circle;
+-
+-			break;
++			case 0:
++			case 1:
++			case 3:
++			{
++				return !!NewState.Cross;
++	
++				break;
++			}
++	
++			case 2:
++			{
++				return !!NewState.Circle;
++	
++				break;
++			}
+ 		}
+-	}
+-
+-	return false;
++	
++		return false;
++#endif
+ }
+ 
+ bool CPad::ShiftTargetLeftJustDown(void)
+@@ -3186,7 +3913,30 @@ bool CPad::ShiftTargetLeftJustDown(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
++	
++				break;
++			}
++	
++			case 1:
++			case 3:
++			{
++				return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1) || !!(NewState.DPadLeft && !OldState.DPadLeft);
++	
++				break;
++			}
++		}
++	
++		return false;
++#else
++		return !!(NewState.LeftShoulder2 && !OldState.LeftShoulder2);
++#endif
+ }
+ 
+ bool CPad::ShiftTargetRightJustDown(void)
+@@ -3194,7 +3944,30 @@ bool CPad::ShiftTargetRightJustDown(void)
+ 	if ( ArePlayerControlsDisabled() )
+ 		return false;
+ 
+-	return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1) || !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++#ifdef IMPROVED_MENU_AND_INPUT
++		switch (CURMODE)
++		{
++			case 0:
++			case 2:
++			{
++				return !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++	
++				break;
++			}
++	
++			case 1:
++			case 3:
++			{
++				return !!(NewState.RightShoulder1 && !OldState.RightShoulder1) || !!(NewState.DPadRight && !OldState.DPadRight);
++	
++				break;
++			}
++		}
++	
++		return false;
++#else
++		return !!(NewState.LeftShoulder1 && !OldState.LeftShoulder1) || !!(NewState.RightShoulder2 && !OldState.RightShoulder2);
++#endif
+ }
+ 
+ bool CPad::GetAnaloguePadUp(void)
+@@ -3349,6 +4122,23 @@ bool CPad::SniperZoomIn(void)
+ 
+ 	switch (CURMODE)
+ 	{
++#ifdef IMPROVED_MENU_AND_INPUT
++		case 0:
++		case 2:
++		{
++			return !!NewState.Square;
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			return NewState.DPadUp;
++
++			break;
++		}
++#else
+ 		case 0:
+ 		case 1:
+ 		case 3:
+@@ -3364,6 +4154,7 @@ bool CPad::SniperZoomIn(void)
+ 
+ 			break;
+ 		}
++#endif
+ 	}
+ 
+ 	return false;
+@@ -3376,6 +4167,23 @@ bool CPad::SniperZoomOut(void)
+ 
+ 	switch (CURMODE)
+ 	{
++#ifdef IMPROVED_MENU_AND_INPUT
++		case 0:
++		case 2:
++		{
++			return !!NewState.Cross;
++
++			break;
++		}
++
++		case 1:
++		case 3:
++		{
++			return NewState.DPadDown;
++
++			break;
++		}
++#else
+ 		case 0:
+ 		case 1:
+ 		case 3:
+@@ -3391,6 +4199,7 @@ bool CPad::SniperZoomOut(void)
+ 
+ 			break;
+ 		}
++#endif
+ 	}
+ 
+ 	return false;
+@@ -3400,6 +4209,14 @@ bool CPad::SniperZoomOut(void)
+ 
+ int16 CPad::SniperModeLookLeftRight(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	int16 axis = NewState.RightStickX;
++
++	if (Abs(axis) > FrontEndMenuManager.m_PrefsRightStickDeadzone)
++		return (axis > 0.f ? axis - FrontEndMenuManager.m_PrefsRightStickDeadzone : axis + FrontEndMenuManager.m_PrefsRightStickDeadzone);
++	else
++		return 0;
++#else
+ 	int16 axis = NewState.LeftStickX;
+ 	int16 dpad = (NewState.DPadRight - NewState.DPadLeft) / 2;
+ 
+@@ -3411,10 +4228,21 @@ int16 CPad::SniperModeLookLeftRight(void)
+ 		}
+ 	} else
+ 		return dpad;
++#endif
+ }
+ 
+ int16 CPad::SniperModeLookUpDown(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	int16 axis = NewState.RightStickY;
++
++	axis = -axis;
++
++	if (Abs(axis) > FrontEndMenuManager.m_PrefsRightStickDeadzone)
++		return (axis > 0.f ? axis - FrontEndMenuManager.m_PrefsRightStickDeadzone : axis + FrontEndMenuManager.m_PrefsRightStickDeadzone);
++	else
++		return 0;
++#else
+ 	int16 axis = NewState.LeftStickY;
+ 	int16 dpad;
+ 
+@@ -3429,22 +4257,30 @@ int16 CPad::SniperModeLookUpDown(void)
+ 	}
+ 
+ 	if ( Abs(axis) > Abs(dpad) ) {
+-	    if ( Abs(axis) > 35.0f ) {
+-	      return (axis > 0.f ? axis - 35.f : axis + 35.f) * (128.f / (128 - 35));
++		if (Abs(axis) > 35.0f) {
++			return (axis > 0.f ? axis - 35.f : axis + 35.f) * (128.f / (128 - 35));
+ 	    } else {
+ 	      return 0;
+ 	    }
+ 	} else
+ 		return dpad;
++#endif
+ }
+ 
+ int16 CPad::LookAroundLeftRight(void)
+ {
+ 	float axis = GetPad(0)->NewState.RightStickX;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (Abs(axis) > FrontEndMenuManager.m_PrefsRightStickDeadzone && !GetLookBehindForPed())
++		return (int16)((axis + ((axis > 0) ? -FrontEndMenuManager.m_PrefsRightStickDeadzone : FrontEndMenuManager.m_PrefsRightStickDeadzone)));
++#else
+ 	if ( Abs(axis) > 85 && !GetLookBehindForPed() )
+ 		return (int16) ( (axis + ( ( axis > 0 ) ? -85 : 85) )
+ 							* (127.0f / 32.0f) ); // 3.96875f
++#endif
++
++
+ 
+ 	else if ( TheCamera.Cams[0].Using3rdPersonMouseCam() && Abs(axis) > 10 )
+ 		return (int16) ( (axis + ( ( axis > 0 ) ? -10 : 10) )
+@@ -3462,9 +4298,14 @@ int16 CPad::LookAroundUpDown(void)
+ 	if (CPad::bInvertLook4Pad)
+ 		axis = -axis;
+ 
+-	if ( Abs(axis) > 85 && !GetLookBehindForPed() )
+-		return (int16) ( (axis + ( ( axis > 0 ) ? -85 : 85) )
+-							* (127.0f / 32.0f) ); // 3.96875f
++#ifdef IMPROVED_MENU_AND_INPUT
++		if (Abs(axis) > FrontEndMenuManager.m_PrefsRightStickDeadzone && !GetLookBehindForPed())
++			return (int16)((axis + ((axis > 0) ? -FrontEndMenuManager.m_PrefsRightStickDeadzone : FrontEndMenuManager.m_PrefsRightStickDeadzone)));
++	#else
++		if ( Abs(axis) > 85 && !GetLookBehindForPed() )
++			return (int16) ( (axis + ( ( axis > 0 ) ? -85 : 85) )
++								* (127.0f / 32.0f) ); // 3.96875f
++	#endif
+ 
+ 	else if ( TheCamera.Cams[0].Using3rdPersonMouseCam() && Abs(axis) > 40 )
+ 		return (int16) ( (axis + ( ( axis > 0 ) ? -40 : 40) )
+diff --git a/src/core/Pad.h b/src/core/Pad.h
+index 166c0aa9..c4cd81c7 100644
+--- a/src/core/Pad.h
++++ b/src/core/Pad.h
+@@ -25,6 +25,14 @@ public:
+ 	int16 Square, Triangle, Cross, Circle;
+ 	int16 LeftShock, RightShock;
+ 	int16 NetworkTalk;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	int16 bWalk;
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	int16 bLeftTurnSignals, bRightTurnSignals, bEmergencyLights;
++#endif
++
+ 	float GetLeftStickX(void) { return LeftStickX/32767.0f; };
+ 	float GetLeftStickY(void) { return LeftStickY/32767.0f; };
+ 	float GetRightStickX(void) { return RightStickX/32767.0f; };
+@@ -152,10 +160,18 @@ public:
+ 	CControllerState PCTempMouseState;
+ 	// straight out of my IDB
+ 	int16 Phase;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	int16 Mode = 1;
++	uint8 ShakeLowFreq;
++	uint8 ShakeHighFreq;
++#else
+ 	int16 Mode;
++	uint8 ShakeFreq;
++#endif
++
+ 	int16 ShakeDur;
+ 	uint16 DisablePlayerControls;
+-	uint8 ShakeFreq;
+ 	bool bHornHistory[HORNHISTORY_SIZE];
+ 	uint8 iCurrHornHistory;
+ 	int8 JustOutOfFrontend;
+@@ -196,8 +212,15 @@ public:
+ 	void ClearKeyBoardHistory();
+ 	void UpdateMouse();
+ 	CControllerState ReconcileTwoControllersInput(CControllerState const &State1, CControllerState const &State2);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	void StartShake(int16 nDur, uint8 nLowFreq, uint8 nHighFreq);
++	void StartShake_Distance(int16 nDur, uint8 nLowFreq, uint8 nHighFreq, float fX, float fY, float fz);
++#else
+ 	void StartShake(int16 nDur, uint8 nFreq);
+ 	void StartShake_Distance(int16 nDur, uint8 nFreq, float fX, float fY, float fz);
++#endif
++
+ 	void StartShake_Train(float fX, float fY);
+ #ifdef GTA_PS2_STUFF
+ 	void AddToCheatString(char c);
+@@ -248,7 +271,19 @@ public:
+ 	bool CycleCameraModeJustDown(void);
+ 	bool CycleCameraModeUpJustDown(void);
+ 	bool CycleCameraModeDownJustDown(void);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	bool GetRadarZoomOut(void);
++	bool GetPedWalk();
++	bool WeaponReloadJustDown();
++	bool GetMeleeWeapon();
++	bool MeleeWeaponJustDown();
++	bool NextStationJustDown(void);
++	bool PrevStationJustDown(void);
++#else
+ 	bool ChangeStationJustDown(void);
++#endif
++
+ 	bool CycleWeaponLeftJustDown(void);
+ 	bool CycleWeaponRightJustDown(void);
+ 	bool GetTarget(void);
+diff --git a/src/core/Radar.cpp b/src/core/Radar.cpp
+index 9489b03d..b2dc67ff 100644
+--- a/src/core/Radar.cpp
++++ b/src/core/Radar.cpp
+@@ -22,6 +22,10 @@
+ #include "Font.h"
+ #include "SaveBuf.h"
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++#include "Pad.h"
++#endif
++
+ float CRadar::m_radarRange;
+ sRadarTrace CRadar::ms_RadarTrace[NUMRADARBLIPS];
+ CVector2D vec2DRadarOrigin;
+@@ -137,6 +141,11 @@ CRGBA CRadar::ArrowBlipColour1;
+ CRGBA CRadar::ArrowBlipColour2;
+ int16 CRadar::MapLegendCounter;
+ int16 CRadar::MapLegendList[NUM_MAP_LEGENDS];
++
++#ifdef IMPROVED_MENU_AND_INPUT
++int32 CRadar::RadarZoomOutTimer;
++#endif
++
+ #ifdef MAP_ENHANCEMENTS
+ int CRadar::TargetMarkerId = -1;
+ CVector CRadar::TargetMarkerPos;
+@@ -684,6 +693,28 @@ void CRadar::DrawMap()
+ {
+ 	if (!TheCamera.m_WideScreenOn && CHud::m_Wants_To_Draw_Hud) {
+ 		CalculateCachedSinCos();
++
++#ifdef IMPROVED_MENU_AND_INPUT // Radar zoom out
++		if (CPad::GetPad(0)->GetRadarZoomOut())
++			RadarZoomOutTimer = CTimer::GetTimeInMilliseconds();
++
++		if (CTimer::GetTimeInMilliseconds() < RadarZoomOutTimer + 2000) {
++			float maxRange = FindPlayerVehicle() ? RADAR_MAX_RANGE + 150.0f : RADAR_MAX_RANGE;
++			m_radarRange = InterpFloat(m_radarRange, maxRange, 5.0);
++		} else {
++			if (FindPlayerVehicle()) {
++				float speed = FindPlayerSpeed().Magnitude();
++				if (speed < RADAR_MIN_SPEED)
++					m_radarRange = InterpFloat(m_radarRange, RADAR_MIN_RANGE, 5.0);
++				else if (speed < RADAR_MAX_SPEED) {
++					int newRadarRange = (speed - RADAR_MIN_SPEED)/(RADAR_MAX_SPEED-RADAR_MIN_SPEED) * (RADAR_MAX_RANGE-RADAR_MIN_RANGE) + RADAR_MIN_RANGE;
++					m_radarRange = InterpFloat(m_radarRange, newRadarRange, 5.0f);
++				} else
++					m_radarRange = InterpFloat(m_radarRange, RADAR_MAX_RANGE, 5.0);
++			} else
++				m_radarRange = InterpFloat(m_radarRange, RADAR_MIN_RANGE, 5.0);
++		}
++#else
+ 		if (FindPlayerVehicle()) {
+ 			float speed = FindPlayerSpeed().Magnitude();
+ 			if (speed < RADAR_MIN_SPEED)
+@@ -695,6 +726,7 @@ void CRadar::DrawMap()
+ 		}
+ 		else
+ 			m_radarRange = RADAR_MIN_RANGE;
++#endif
+ 
+ 		vec2DRadarOrigin = CVector2D(FindPlayerCentreOfWorld_NoSniperShift());
+ 		if (FrontEndMenuManager.m_PrefsRadarMode != 1)
+diff --git a/src/core/Radar.h b/src/core/Radar.h
+index 355fec63..8735cc26 100644
+--- a/src/core/Radar.h
++++ b/src/core/Radar.h
+@@ -235,6 +235,10 @@ public:
+ 	static int16 MapLegendList[NUM_MAP_LEGENDS];
+ 	static int16 MapLegendCounter;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	static int32 RadarZoomOutTimer;
++#endif
++
+ #ifdef MAP_ENHANCEMENTS
+ 	static CSprite2d WaypointSprite;
+ 	static int TargetMarkerId;
+diff --git a/src/core/config.h b/src/core/config.h
+index 98fd31ff..eafb881b 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -95,6 +95,7 @@
+ 
+ // Begin working
+ 
++// Well one of these break aiming in a vehicle.
+ #define FIRING_AND_AIMING
+ // I think I mostly got this one completed also.
+ #define FIRST_PERSON
+@@ -102,6 +103,9 @@
+ // Enable better crouching support
+ #define CROUCH
+ 
++// Copied in changes from this define
++#define IMPROVED_MENU_AND_INPUT
++
+ // It seems to build with this now.
+ // TODO Fix this to work, it shows in the menu but doesn't seem to change the weapon sights.
+ // This almost works, I think I'm missing the texture somewhere.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e7b63024..e066f4de 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -935,6 +935,17 @@ ProcessSlowMode(void)
+ 	int16 L3 = CPad::GetPad(0)->NewState.LeftShock;
+ 	int16 R3 = CPad::GetPad(0)->NewState.RightShock;
+ 	int16 networktalk = CPad::GetPad(0)->NewState.NetworkTalk;
++
++
++#ifdef IMPROVED_MENU_AND_INPUT // walking on the key
++	int16 walk = CPad::GetPad(0)->NewState.bWalk;
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	int16 leftTurnSignals = CPad::GetPad(0)->NewState.bLeftTurnSignals;
++	int16 rightTurnSignals = CPad::GetPad(0)->NewState.bRightTurnSignals;
++	int16 emergencyLights = CPad::GetPad(0)->NewState.bEmergencyLights;
++#endif
++
+ 	int16 stop = true;
+ 	
+ 	do
+@@ -998,6 +1009,15 @@ ProcessSlowMode(void)
+ 	CPad::GetPad(0)->NewState.LeftShock = L3;
+ 	CPad::GetPad(0)->NewState.RightShock = R3;
+ 	CPad::GetPad(0)->NewState.NetworkTalk = networktalk;
++
++#ifdef IMPROVED_MENU_AND_INPUT // walking on the key
++	CPad::GetPad(0)->NewState.bWalk = walk;
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // Turn and emergency signals for player
++	CPad::GetPad(0)->NewState.bLeftTurnSignals = leftTurnSignals;
++	CPad::GetPad(0)->NewState.bRightTurnSignals = rightTurnSignals;
++	CPad::GetPad(0)->NewState.bEmergencyLights = emergencyLights;
++#endif
+ }
+ 
+ 
+@@ -1960,7 +1980,15 @@ FrontendIdle(void)
+ void
+ InitialiseGame(void)
+ {
++#ifdef IMPROVED_MENU_AND_INPUT // Random splash screen
++	int index = CGeneral::GetRandomNumberInRange(0, 14);
++	char splashName[16];
++	sprintf(splashName, "loadsc%d", index);
++	LoadingScreen(nil, nil, splashName);
++#else
+ 	LoadingScreen(nil, nil, "loadsc0");
++#endif
++
+ 	CGame::Initialise("DATA\\GTA_VC.DAT");
+ }
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 31bb5846..8c48dc35 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -349,7 +349,22 @@ const char *iniControllerActions[] = {"PED_FIREWEAPON",
+                                       "SWITCH_DEBUG_CAM_ON",
+                                       "TAKE_SCREEN_SHOT",
+                                       "SHOW_MOUSE_POINTER_TOGGLE",
+-                                      "UNKNOWN_ACTION"};
++                                      "UNKNOWN_ACTION",
++#ifdef IMPROVED_MENU_AND_INPUT // iniControllerActions
++									  "PED_WALK",
++									  "RADAR_ZOOM_OUT",
++									  "PED_RELOAD",
++#endif
++#if defined IMPROVED_MENU_AND_INPUT && defined IMPROVED_VEHICLES_2 // iniControllerActions: Turn and emergency signals for player
++									  "VEHICLE_LEFT_TURNSIGNALS",
++									  "VEHICLE_RIGHT_TURNSIGNALS",
++									  "VEHICLE_EMERGENCYLIGHTS",
++#endif
++									
++									
++									};
++
++
+ 
+ const char *iniControllerTypes[] = {"kbd:", "2ndKbd:", "mouse:", "joy:"};
+ 
+@@ -543,7 +558,28 @@ LoadINISettings()
+ 	ReadIniIfExists("Controller", "HorizantalMouseSens", &TheCamera.m_fMouseAccelHorzntl);
+ 	ReadIniIfExists("Controller", "InvertMouseVertically", &MousePointerStateHelper.bInvertVertically);
+ 	ReadIniIfExists("Controller", "DisableMouseSteering", &CVehicle::m_bDisableMouseSteering);
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	ReadIniIfExists("Controller", "InvertVertically", &FrontEndMenuManager.m_PrefsInvertVertically);
++	ReadIniIfExists("Controller", "Autoaim", &FrontEndMenuManager.m_PrefsAutoaim);
++	ReadIniIfExists("Controller", "LeftStickDeadzone", &FrontEndMenuManager.m_PrefsLeftStickDeadzone);
++	ReadIniIfExists("Controller", "RightStickDeadzone", &FrontEndMenuManager.m_PrefsRightStickDeadzone);
++	ReadIniIfExists("Controller", "VibrationForce", &FrontEndMenuManager.m_PrefsVibrationForce);
++	ReadIniIfExists("Controller", "PadLookSensX", &FrontEndMenuManager.m_PrefsPadLookSensX);
++	ReadIniIfExists("Controller", "PadAimSensX", &FrontEndMenuManager.m_PrefsPadAimSensX);
++	ReadIniIfExists("Controller", "PadLookSensY", &FrontEndMenuManager.m_PrefsPadLookSensY);
++	ReadIniIfExists("Controller", "PadAimSensY", &FrontEndMenuManager.m_PrefsPadAimSensY);
++	ReadIniIfExists("Controller", "MouseLookSensX", &FrontEndMenuManager.m_PrefsMouseLookSensX);
++	ReadIniIfExists("Controller", "MouseAimSensX", &FrontEndMenuManager.m_PrefsMouseAimSensX);
++	ReadIniIfExists("Controller", "MouseLookSensY", &FrontEndMenuManager.m_PrefsMouseLookSensY);
++	ReadIniIfExists("Controller", "MouseAimSensY", &FrontEndMenuManager.m_PrefsMouseAimSensY);
++	ReadIniIfExists("Display", "GPS", &FrontEndMenuManager.m_PrefsGPS);
++#else
+ 	ReadIniIfExists("Controller", "Vibration", &FrontEndMenuManager.m_PrefsUseVibration);
++#endif
++
++
+ 	ReadIniIfExists("Audio", "SfxVolume", &FrontEndMenuManager.m_PrefsSfxVolume);
+ 	ReadIniIfExists("Audio", "MusicVolume", &FrontEndMenuManager.m_PrefsMusicVolume);
+ 	ReadIniIfExists("Audio", "MP3BoostVolume", &FrontEndMenuManager.m_PrefsMP3BoostVolume);
+@@ -691,8 +727,28 @@ SaveINISettings()
+ 	StoreIni("Controller", "HeadBob1stPerson", TheCamera.m_bHeadBob);
+ 	StoreIni("Controller", "HorizantalMouseSens", TheCamera.m_fMouseAccelHorzntl);
+ 	StoreIni("Controller", "InvertMouseVertically", MousePointerStateHelper.bInvertVertically);
++
+ 	StoreIni("Controller", "DisableMouseSteering", CVehicle::m_bDisableMouseSteering);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	StoreIni("Controller", "InvertVertically", FrontEndMenuManager.m_PrefsInvertVertically);
++	StoreIni("Controller", "Autoaim", FrontEndMenuManager.m_PrefsAutoaim);
++	StoreIni("Controller", "LeftStickDeadzone", FrontEndMenuManager.m_PrefsLeftStickDeadzone);
++	StoreIni("Controller", "RightStickDeadzone", FrontEndMenuManager.m_PrefsRightStickDeadzone);
++	StoreIni("Controller", "VibrationForce", FrontEndMenuManager.m_PrefsVibrationForce);
++	StoreIni("Controller", "PadLookSensX", FrontEndMenuManager.m_PrefsPadLookSensX);
++	StoreIni("Controller", "PadAimSensX", FrontEndMenuManager.m_PrefsPadAimSensX);
++	StoreIni("Controller", "PadLookSensY", FrontEndMenuManager.m_PrefsPadLookSensY);
++	StoreIni("Controller", "PadAimSensY", FrontEndMenuManager.m_PrefsPadAimSensY);
++	StoreIni("Controller", "MouseLookSensX", FrontEndMenuManager.m_PrefsMouseLookSensX);
++	StoreIni("Controller", "MouseAimSensX", FrontEndMenuManager.m_PrefsMouseAimSensX);
++	StoreIni("Controller", "MouseLookSensY", FrontEndMenuManager.m_PrefsMouseLookSensY);
++	StoreIni("Controller", "MouseAimSensY", FrontEndMenuManager.m_PrefsMouseAimSensY);
++	StoreIni("Display", "GPS", FrontEndMenuManager.m_PrefsGPS);
++#else
+ 	StoreIni("Controller", "Vibration", FrontEndMenuManager.m_PrefsUseVibration);
++#endif
++
+ 	StoreIni("Audio", "SfxVolume", FrontEndMenuManager.m_PrefsSfxVolume);
+ 	StoreIni("Audio", "MusicVolume", FrontEndMenuManager.m_PrefsMusicVolume);
+ 	StoreIni("Audio", "MP3BoostVolume", FrontEndMenuManager.m_PrefsMP3BoostVolume);
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index 17579e55..a9621ecf 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -1009,12 +1009,24 @@ CPed::Attack(void)
+ 
+ 			DMAudio.PlayOneShot(m_audioEntityId, SOUND_WEAPON_CHAINSAW_MADECONTACT, (float)damagerType);
+ 			if (IsPlayer()) {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				CPad::GetPad(0)->StartShake(240, 180, 0);
++#else
+ 				CPad::GetPad(0)->StartShake(240, 180);
++#endif
++
+ 			}
+ 		} else {
+ 			DMAudio.PlayOneShot(m_audioEntityId, SOUND_WEAPON_CHAINSAW_ATTACK, 0.0f);
+ 			if (IsPlayer()) {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				CPad::GetPad(0)->StartShake(240, 90, 0);
++#else
+ 				CPad::GetPad(0)->StartShake(240, 90);
++#endif
++
+ 			}
+ 		}
+ 		attackShouldContinue = false;
+@@ -2821,6 +2833,10 @@ CPed::InflictDamage(CEntity *damagedBy, eWeaponType method, float damage, ePedPi
+ 		if ((method == WEAPONTYPE_FLAMETHROWER || method == WEAPONTYPE_MOLOTOV) && CWorld::Players[CWorld::PlayerInFocus].m_bFireproof)
+ 			return false;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++			CPad::GetPad(0)->StartShake(100, 55, 55);
++#endif
++
+ 		player->AnnoyPlayerPed(false);
+ 	}
+ 
+@@ -3819,7 +3835,15 @@ CPed::KillPedWithCar(CVehicle *car, float impulse)
+ 			} else {
+ 				shakeFreq = 250.0f;
+ 			}
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			CPad::GetPad(0)->StartShake(40000 / shakeFreq, shakeFreq, shakeFreq);
++#else
+ 			CPad::GetPad(0)->StartShake(40000 / shakeFreq, shakeFreq);
++#endif
++
++
+ 		}
+ 		bIsStanding = false;
+ 		damageDir = GetLocalDirection(-m_vecMoveSpeed);
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index ea23b702..a62951ad 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -30,6 +30,10 @@
+ #include "Particle.h"
+ #endif
+ 
++// #ifdef IMPROVED_MENU_AND_INPUT
++// #include "Frontend.h"
++// #endif
++
+ #ifdef IMPROVED_TECH_PART // Fix for the FrontEndMenuManager not being recognized
+ #include "Frontend.h"
+ #endif
+@@ -147,6 +151,10 @@ CPlayerPed::CPlayerPed(void) : CPed(PEDTYPE_PLAYER1)
+ void
+ CPlayerPed::ClearWeaponTarget()
+ {
++#ifdef IMPROVED_MENU_AND_INPUT
++	bIsAutoAiming = false;
++#endif
++
+ 	if (m_nPedType == PEDTYPE_PLAYER1) {
+ 		SetWeaponLockOnTarget(nil);
+ 		TheCamera.ClearPlayerWeaponMode();
+@@ -1223,7 +1231,15 @@ CPlayerPed::ProcessWeaponSwitch(CPad *padUsed)
+ 	if (CDarkel::FrenzyOnGoing() || m_attachedTo)
+ 		goto switchDetectDone;
+ 
+-	if (!m_pPointGunAt && !bDontAllowWeaponChange && GetWeapon()->m_eWeaponType != WEAPONTYPE_DETONATOR) {
++
++
++#ifdef IMPROVED_MENU_AND_INPUT // You cannot switch weapons during reloading, but you can with the detonator
++		if (!m_pPointGunAt && !bDontAllowWeaponChange && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING) { 
++#else
++		if (!m_pPointGunAt && !bDontAllowWeaponChange && GetWeapon()->m_eWeaponType != WEAPONTYPE_DETONATOR) {
++#endif
++
++
+ 		if (padUsed->CycleWeaponRightJustDown()) {
+ 
+ 			if (TheCamera.PlayerWeaponMode.Mode != CCam::MODE_M16_1STPERSON
+@@ -1628,6 +1644,10 @@ CPlayerPed::FindNextWeaponLockOnTarget(CEntity *previousTarget, bool lookToLeft)
+ 	if (!nextTarget)
+ 		return false;
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++		bIsAutoAiming = true;
++#endif
++
+ 	SetWeaponLockOnTarget(nextTarget);
+ 	bDontAllowWeaponChange = true;
+ 	SetPointGunAt(nextTarget);
+@@ -2049,6 +2069,93 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ #endif
+ 	}
+ 
++	//
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (padUsed->GetMeleeWeapon() && weaponInfo->m_nWeaponSlot <= WEAPONSLOT_MELEE && m_nMoveState != PEDMOVE_SPRINT) {
++		if (m_nSelectedWepSlot == m_currentWeapon) {
++			if (m_nPedState == PED_ATTACK) {
++				if (padUsed->MeleeWeaponJustDown()) {
++					m_bHaveTargetSelected = true;
++				} else if (!m_bHaveTargetSelected) {
++					m_fAttackButtonCounter += CTimer::GetTimeStepNonClipped();
++				}
++			} else {
++				m_fAttackButtonCounter = 0.0f;
++				m_bHaveTargetSelected = false;
++			}
++
++			if (padUsed->MeleeWeaponJustDown()) {
++				if ((GetWeapon()->m_eWeaponType == WEAPONTYPE_UNARMED || GetWeapon()->m_eWeaponType == WEAPONTYPE_BRASSKNUCKLE || weaponInfo->IsFlagSet(WEAPONFLAG_FIGHTMODE)) &&
++					(m_fMoveSpeed < 1.0f || m_nPedState == PED_FIGHT)) {
++					
++					StartFightAttack(padUsed->GetWeapon());
++				} else {
++					SetAttack(nil);
++				}
++			}
++		}
++	} else if (padUsed->GetWeapon() && m_nMoveState != PEDMOVE_SPRINT) {
++		if (m_nSelectedWepSlot == m_currentWeapon) {
++			if (m_pPointGunAt && FrontEndMenuManager.m_PrefsAutoaim) {
++				if (m_nPedState == PED_ATTACK) {
++					m_fAttackButtonCounter *= Pow(0.94f, CTimer::GetTimeStep());
++				} else {
++					m_fAttackButtonCounter = 0.0f;
++				}
++				SetAttack(m_pPointGunAt);
++			} else {
++				if (m_nPedState == PED_ATTACK) {
++					if (padUsed->WeaponJustDown()) {
++						m_bHaveTargetSelected = true;
++					} else if (!m_bHaveTargetSelected) {
++						m_fAttackButtonCounter += CTimer::GetTimeStepNonClipped();
++					}
++				} else {
++					m_fAttackButtonCounter = 0.0f;
++					m_bHaveTargetSelected = false;
++				}
++
++				if (GetWeapon()->m_eWeaponType != WEAPONTYPE_UNARMED && GetWeapon()->m_eWeaponType != WEAPONTYPE_BRASSKNUCKLE &&
++					!weaponInfo->IsFlagSet(WEAPONFLAG_FIGHTMODE)) {
++
++					if (GetWeapon()->m_eWeaponType != WEAPONTYPE_DETONATOR && GetWeapon()->m_eWeaponType != WEAPONTYPE_DETONATOR_GRENADE ||
++						padUsed->WeaponJustDown())
++
++						SetAttack(nil);
++				}
++			}
++		}
++	} else {
++		m_pedIK.m_flags &= ~CPedIK::LOOKAROUND_HEAD_ONLY;
++		if (m_nPedState == PED_ATTACK) {
++			m_bHaveTargetSelected = true;
++			bIsAttacking = false;
++		}
++	}
++
++	if (CPad::GetPad(0)->WeaponReloadJustDown() && weaponInfo->IsFlagSet(WEAPONFLAG_RELOAD)) {
++		CWeapon* weapon = GetWeapon();
++		if (weapon->m_eWeaponState == WEAPONSTATE_READY && weapon->m_nAmmoInClip > 0 && 
++			weapon->m_nAmmoInClip < weaponInfo->m_nAmountofAmmunition && weapon->m_nAmmoTotal != weapon->m_nAmmoInClip) {
++
++			weapon->m_eWeaponState = WEAPONSTATE_RELOADING;
++			weapon->m_nTimer = CTimer::GetTimeInMilliseconds() + weapon->GetInfo()->m_nReload;
++
++			CAnimBlendAssociation* newReloadAssoc = CAnimManager::BlendAnimation(
++				GetClump(), weaponInfo->m_AnimToPlay,
++				bIsDucking && GetCrouchReloadAnim(weaponInfo) ? GetCrouchReloadAnim(weaponInfo) : GetReloadAnim(weaponInfo),
++				8.0f);
++			newReloadAssoc->SetFinishCallback(FinishedReloadCB, this);
++
++			ClearLookFlag();
++			ClearAimFlag();
++			bIsAttacking = false;
++			bIsPointingGunAt = false;
++			m_shootTimer = CTimer::GetTimeInMilliseconds();
++		}
++	}
++#else
+ 	if (padUsed->GetWeapon() && m_nMoveState != PEDMOVE_SPRINT) {
+ 		if (m_nSelectedWepSlot == m_currentWeapon) {
+ 			if (m_pPointGunAt) {
+@@ -2069,13 +2176,13 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 					m_fAttackButtonCounter = 0.0f;
+ 					m_bHaveTargetSelected = false;
+ 				}
++
+ 				if (GetWeapon()->m_eWeaponType != WEAPONTYPE_UNARMED && GetWeapon()->m_eWeaponType != WEAPONTYPE_BRASSKNUCKLE &&
+ 					!weaponInfo->IsFlagSet(WEAPONFLAG_FIGHTMODE)) {
+ 
+ 					if (GetWeapon()->m_eWeaponType != WEAPONTYPE_DETONATOR && GetWeapon()->m_eWeaponType != WEAPONTYPE_DETONATOR_GRENADE ||
+ 						padUsed->WeaponJustDown())
+ 						SetAttack(nil);
+-
+ 				} else if (padUsed->WeaponJustDown()) {
+ 					if (m_fMoveSpeed < 1.0f || m_nPedState == PED_FIGHT)
+ 						StartFightAttack(padUsed->GetWeapon());
+@@ -2091,6 +2198,9 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 			bIsAttacking = false;
+ 		}
+ 	}
++#endif
++
++//
+ 
+ #ifdef FREE_CAM
+ 	static int8 changedHeadingRate = 0;
+@@ -2099,7 +2209,11 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 	if (pointedGun == 2) pointedGun = 1;
+ 
+ 	// Rotate player/arm when shooting. We don't have auto-rotation anymore
++#ifdef IMPROVED_MENU_AND_INPUT
++	if (CCamera::bFreeCam &&
++#else
+ 	if (CCamera::m_bUseMouse3rdPerson && CCamera::bFreeCam &&
++#endif
+ #ifdef FIRING_AND_AIMING // change hand position while driveby
+ 		(m_nSelectedWepSlot == m_currentWeapon || InVehicle()) && m_nMoveState != PEDMOVE_SPRINT) {
+ #else
+@@ -2221,8 +2335,16 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 			TheCamera.UpdateAimingCoors(m_pPointGunAt->GetPosition());
+ 
+ 		} else if (!CCamera::m_bUseMouse3rdPerson) {
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (!bIsAutoAiming || TheCamera.m_bJustJumpedOutOf1stPersonBecauseOfTarget)
++#else
+ 			if (padUsed->TargetJustDown() || TheCamera.m_bJustJumpedOutOf1stPersonBecauseOfTarget)
++#endif
++
++
+ 				FindWeaponLockOnTarget();
++
++
+ 		}
+ 	} else if (m_pPointGunAt) {
+ 		ClearWeaponTarget();
+@@ -2295,6 +2417,11 @@ CPlayerPed::PlayerControlZelda(CPad *padUsed)
+ 			m_fRotationDest = neededTurn;
+ 		}
+ 
++#ifdef IMPROVED_MENU_AND_INPUT // walking on the key
++		if (CPad::GetPad(0)->GetPedWalk() && !bIsPlayerAiming)
++			m_fMoveSpeed /= 2;
++#endif
++
+ 		float maxAcc = 0.07f * CTimer::GetTimeStep();
+ 		m_fMoveSpeed = Min(padMoveInGameUnit, m_fMoveSpeed + maxAcc);
+ 
+diff --git a/src/peds/PlayerPed.h b/src/peds/PlayerPed.h
+index 1d7bde1c..5fbbd7df 100644
+--- a/src/peds/PlayerPed.h
++++ b/src/peds/PlayerPed.h
+@@ -76,6 +76,10 @@ public:
+ 	bool bIsTiredSwimmingFast;
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	bool bIsAutoAiming;
++#endif
++
+ 	CPlayerPed();
+ 	~CPlayerPed();
+ 	void SetMoveAnim() { };
+diff --git a/src/renderer/Console.cpp b/src/renderer/Console.cpp
+index 244bfb17..e976beca 100644
+--- a/src/renderer/Console.cpp
++++ b/src/renderer/Console.cpp
+@@ -9,6 +9,8 @@
+ #define CONSOLE_Y_POS (10.0f)
+ #define CONSOLE_LINE_HEIGHT (12.0f)
+ 
++// TODO What's this file?
++
+ CConsole TheConsole;
+ 
+ void
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index ea85b24e..28328766 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -313,7 +313,13 @@ void CHud::Draw()
+ 			float fStep = Sin((CTimer::GetTimeInMilliseconds() & 1023)/1024.0f * 6.28f);
+ 			float fMultBright = SpriteBrightness * 0.03f * (0.25f * fStep + 0.75f);
+ 			CRect rect;
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			if (DrawCrossHairPC && !playerPed->bIsAutoAiming) {
++#else
+ 			if (DrawCrossHairPC && TheCamera.Cams[TheCamera.ActiveCam].Using3rdPersonMouseCam()) {
++#endif
++
+ 				float f3rdX = SCREEN_WIDTH * TheCamera.m_f3rdPersonCHairMultX;
+ 				float f3rdY = SCREEN_HEIGHT * TheCamera.m_f3rdPersonCHairMultY;
+ #ifdef ASPECT_RATIO_SCALE
+@@ -1272,6 +1278,11 @@ void CHud::Draw()
+ 				else
+ 					CFont::SetPropOff();
+ 
++#ifdef IMPROVED_MENU_AND_INPUT // DrawScriptText: Always place a black drop shadow
++					CFont::SetDropShadowPosition(2);
++					CFont::SetDropColor(CRGBA(0, 0, 0, 255));
++#endif	
++
+ 				CFont::SetFontStyle(FONT_LOCALE(CTheScripts::IntroTextLines[i].m_nFont));
+ 				CFont::PrintString(SCREEN_WIDTH - SCALE_AND_CENTER_X(DEFAULT_SCREEN_WIDTH - CTheScripts::IntroTextLines[i].m_fAtX), SCREEN_HEIGHT - SCREEN_SCALE_Y(DEFAULT_SCREEN_HEIGHT - CTheScripts::IntroTextLines[i].m_fAtY), CTheScripts::IntroTextLines[i].m_Text);
+ 			}
+@@ -1623,6 +1634,11 @@ void CHud::DrawAfterFade()
+ 			else
+ 				CFont::SetPropOff();
+ 
++#ifdef IMPROVED_MENU_AND_INPUT // DrawScriptText: Always place a black drop shadow
++				CFont::SetDropShadowPosition(2);
++				CFont::SetDropColor(CRGBA(0, 0, 0, 255));
++#endif	
++
+ 			CFont::SetFontStyle(line.m_nFont);
+ 			CFont::PrintString(SCREEN_WIDTH - SCALE_AND_CENTER_X(DEFAULT_SCREEN_WIDTH - line.m_fAtX), SCREEN_HEIGHT - SCREEN_SCALE_Y(DEFAULT_SCREEN_HEIGHT - line.m_fAtY), line.m_Text);
+ 		}
+diff --git a/src/renderer/Weather.cpp b/src/renderer/Weather.cpp
+index 904135fe..0cca75b6 100644
+--- a/src/renderer/Weather.cpp
++++ b/src/renderer/Weather.cpp
+@@ -203,7 +203,13 @@ void CWeather::Update(void)
+ 	}
+ 	if (WhenToPlayLightningSound && CTimer::GetTimeInMilliseconds() > WhenToPlayLightningSound) {
+ 		DMAudio.PlayOneShot(SoundHandle, SOUND_LIGHTNING, LightningDuration);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		CPad::GetPad(0)->StartShake(40 * LightningDuration + 100, 2 * LightningDuration + 80, 2 * LightningDuration + 80);
++#else
+ 		CPad::GetPad(0)->StartShake(40 * LightningDuration + 100, 2 * LightningDuration + 80);
++#endif
++
+ 		WhenToPlayLightningSound = 0;
+ 	}
+ 
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 9843ba3a..83bab86f 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -1070,6 +1070,10 @@ void HandleGraphEvent(void)
+ 
+ 
+ 
++/// <summary>
++/// Run my imgui DirectX9 init with Win32
++/// </summary>
++/// <param name="window">The HWND for the program.</param>
+ void
+ InitImGui(HWND window)
+ {
+@@ -1120,7 +1124,7 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 		mainWindow = window;
+ 
+ #ifdef _IMGUI_TEST
+-		// Hmm.. Will this work in here?
++		// Setup the proc handler for ImGui mouse and keyboard input.
+ 		if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
+ 
+ 		ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+@@ -1790,17 +1794,37 @@ psSelectDevice()
+ 		rect.left = rect.top = 0;
+ 		rect.right = FrontEndMenuManager.m_nPrefsWidth;
+ 		rect.bottom = FrontEndMenuManager.m_nPrefsHeight;
++
++
++#ifdef IMPROVED_MENU_AND_INPUT // Borderless window
++		if (FrontEndMenuManager.m_nPrefsWindowed == 1)
++			AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
++		else // 2, borderless
++			AdjustWindowRect(&rect, WS_VISIBLE, FALSE);
++#else
+ 		AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
++#endif
+ 
+ 		// center it
+ 		int spaceX = GetSystemMetrics(SM_CXSCREEN) - (rect.right-rect.left);
+ 		int spaceY = GetSystemMetrics(SM_CYSCREEN) - (rect.bottom-rect.top);
+ 
++
++#ifdef IMPROVED_MENU_AND_INPUT // Borderless window
++		if (FrontEndMenuManager.m_nPrefsWindowed == 1)
++			SetWindowLong(PSGLOBAL(window), GWL_STYLE, WS_VISIBLE | WS_OVERLAPPEDWINDOW);
++		else // 2, borderless
++			SetWindowLong(PSGLOBAL(window), GWL_STYLE, WS_VISIBLE);
++#else
+ 		SetWindowLong(PSGLOBAL(window), GWL_STYLE, WS_VISIBLE | WS_OVERLAPPEDWINDOW);
++#endif
++
++
+ 		SetWindowPos(PSGLOBAL(window), HWND_NOTOPMOST, spaceX/2, spaceY/2,
+ 			(rect.right - rect.left),
+ 			(rect.bottom - rect.top), 0);
+ 
++
+ 		// Have to get actual size because the window perhaps didn't fit
+ 		GetClientRect(PSGLOBAL(window), &rect);
+ 		RsGlobal.maximumWidth = rect.right;
+@@ -2879,13 +2903,14 @@ bool	luaInit = false;
+ 						       
+ #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 
+-								// TODO Test this without lua
++								// This works without lua
+ 						        static int newTime = 0;
+ 
++								// TODO Make this get controller input also.
+ 						        if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 							        newTime = CTimer::GetTimeInMilliseconds();
+ 
+-									// TODO Test this
++									// Toggle ImGui
+ 									imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+ 								}
+ 								
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index 115672cd..5359997f 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -1670,10 +1670,23 @@ CAutomobile::ProcessControl(void)
+ 			speed = Sqrt(speed);
+ 			if(suspShake > 0.0f){
+ 				uint8 freq = Min(200.0f*suspShake*speed*2000.0f/m_fMass + 100.0f, 250.0f);
+-				CPad::GetPad(0)->StartShake(20000.0f*CTimer::GetTimeStep()/freq, freq);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				CPad::GetPad(0)->StartShake(20000.0f * CTimer::GetTimeStep() / freq, 0, freq);
++#else
++				CPad::GetPad(0)->StartShake(20000.0f * CTimer::GetTimeStep() / freq, freq);
++#endif
++
++
+ 			}else{
+ 				uint8 freq = Min(200.0f*surfShake*speed*2000.0f/m_fMass + 40.0f, 150.0f);
+-				CPad::GetPad(0)->StartShake(5000.0f*CTimer::GetTimeStep()/freq, freq);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				CPad::GetPad(0)->StartShake(5000.0f * CTimer::GetTimeStep() / freq, 0, freq);
++#else
++				CPad::GetPad(0)->StartShake(5000.0f * CTimer::GetTimeStep() / freq, freq);
++#endif
++
+ 			}
+ 		}
+ 	}
+@@ -4265,7 +4278,13 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 
+ 		if(GetStatus() == STATUS_PLAYER && impulse > 50.0f){
+ 			uint8 freq = Min(0.4f*impulse*2000.0f/m_fMass + 100.0f, 250.0f);
+-			CPad::GetPad(0)->StartShake(40000/freq, freq);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++			CPad::GetPad(0)->StartShake(40000 / freq, freq, freq);
++#else
++			CPad::GetPad(0)->StartShake(40000 / freq, freq);
++#endif
++
+ 		}
+ 
+ 		if(GetStatus() != STATUS_PLAYER && bOnlyDamagedByPlayer){
+@@ -5378,7 +5397,12 @@ CPed::MakeTyresMuddySectorList(CPtrList &list)
+ 											CVector vehAndWheelDist = wheelPos - car->GetPosition();
+ 											car->ApplyTurnForce(CVector(0.0f, 0.0f, 50.0f * Min(1.0f, m_fTurnMass * 0.0005f)), vehAndWheelDist);
+ 											if (car == FindPlayerVehicle()) {
++
++#ifdef IMPROVED_MENU_AND_INPUT
++												CPad::GetPad(0)->StartShake(300, 0, 70);
++#else
+ 												CPad::GetPad(0)->StartShake(300, 70);
++#endif
+ 											}
+ 										}
+ 									}
+@@ -5417,7 +5441,11 @@ CPed::MakeTyresMuddySectorList(CPtrList &list)
+ 											bike->ApplyTurnForce(CVector(0.0f, 0.0f, 10.0f), vehAndWheelDist);
+ 
+ 											if (bike == FindPlayerVehicle()) {
++#ifdef IMPROVED_MENU_AND_INPUT
++												CPad::GetPad(0)->StartShake(300, 0, 70);
++#else
+ 												CPad::GetPad(0)->StartShake(300, 70);
++#endif
+ 											}
+ 										}
+ 									}
+diff --git a/src/vehicles/Bike.cpp b/src/vehicles/Bike.cpp
+index 1139306d..c15ab9ab 100644
+--- a/src/vehicles/Bike.cpp
++++ b/src/vehicles/Bike.cpp
+@@ -1188,10 +1188,22 @@ CBike::ProcessControl(void)
+ 			speed = Sqrt(speed);
+ 			if(suspShake > 0.0f){
+ 				uint8 freq = Min(200.0f*suspShake*speed*2000.0f/m_fMass + 100.0f, 250.0f);
+-				CPad::GetPad(0)->StartShake(20000.0f*CTimer::GetTimeStep()/freq, freq);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				CPad::GetPad(0)->StartShake(20000.0f * CTimer::GetTimeStep() / freq, 0, freq);
++#else
++				CPad::GetPad(0)->StartShake(20000.0f * CTimer::GetTimeStep() / freq, freq);
++#endif
++
+ 			}else{
+ 				uint8 freq = Min(200.0f*surfShake*speed*2000.0f/m_fMass + 40.0f, 150.0f);
+-				CPad::GetPad(0)->StartShake(5000.0f*CTimer::GetTimeStep()/freq, freq);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				CPad::GetPad(0)->StartShake(5000.0f * CTimer::GetTimeStep() / freq, 0, freq);
++#else
++				CPad::GetPad(0)->StartShake(5000.0f * CTimer::GetTimeStep() / freq, freq);
++#endif
++
+ 			}
+ 		}
+ 	}
+diff --git a/src/weapons/Explosion.cpp b/src/weapons/Explosion.cpp
+index 7683ed97..0c6e275e 100644
+--- a/src/weapons/Explosion.cpp
++++ b/src/weapons/Explosion.cpp
+@@ -353,7 +353,14 @@ CExplosion::AddExplosion(CEntity *explodingEntity, CEntity *culprit, eExplosionT
+ 		TheCamera.CamShake(0.2f, pos.x, pos.y, pos.z);
+ 	} else {
+ 		TheCamera.CamShake(0.6f, pos.x, pos.y, pos.z);
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		CPad::GetPad(0)->StartShake_Distance(500, 128, 128, pos.x, pos.y, pos.z);
++#else
+ 		CPad::GetPad(0)->StartShake_Distance(300, 128, pos.x, pos.y, pos.z);
++#endif
++
++
+ 	}
+ 	return true;
+ }
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 4bad8b76..6ebf105c 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -42,6 +42,10 @@
+ #include "Frontend.h"
+ #endif
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++#include "Frontend.h"
++#endif
++
+ #ifdef EX_IMPROVED_WEAPONS
+ #include "Streaming.h"
+ #endif
+@@ -946,7 +950,14 @@ CWeapon::FireInstantHit(CEntity *shooter, CVector *fireSource)
+ 		prev_heading = ((CPed*)shooter)->m_fRotationCur;
+ 	}
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++	if ( shooter->IsPed() && ((CPed *)shooter)->m_pPointGunAt && !((CPed*)shooter)->IsPlayer() ||
++		(shooter->IsPed() && ((CPed*)shooter)->IsPlayer() && ((CPed*)shooter)->m_pPointGunAt && CPad::GetPad(0)->IsAffectedByController && FrontEndMenuManager.m_PrefsAutoaim))
++#else
+ 	if ( shooter->IsPed() && ((CPed *)shooter)->m_pPointGunAt )
++#endif
++
++
+ 	{
+ 		CPed *shooterPed = (CPed *)shooter;
+ 		if ( shooterPed->m_pedIK.m_flags & CPedIK::GUN_POINTED_SUCCESSFULLY )
+@@ -1020,7 +1031,13 @@ CWeapon::FireInstantHit(CEntity *shooter, CVector *fireSource)
+ 		ahead.Normalise();
+ #endif
+ 	}
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	else if ( shooter == FindPlayerPed() )
++#else
+ 	else if ( shooter == FindPlayerPed() && TheCamera.Cams[0].Using3rdPersonMouseCam()  )
++#endif
++
+ 	{
+ #ifdef FREE_CAM
+ 		if (CCamera::bFreeCam) {
+@@ -1738,8 +1755,12 @@ CWeapon::DoBulletImpact(CEntity *shooter, CEntity *victim,
+ 		CBulletTraces::AddTrace(source, target, m_eWeaponType, shooter);
+ 
+ 	if ( shooter == FindPlayerPed() )
+-		CPad::GetPad(0)->StartShake_Distance(240, 128, FindPlayerPed()->GetPosition().x, FindPlayerPed()->GetPosition().y, FindPlayerPed()->GetPosition().z);
+-
++		
++#ifdef IMPROVED_MENU_AND_INPUT
++	CPad::GetPad(0)->StartShake_Distance(100, 0, 128, FindPlayerPed()->GetPosition().x, FindPlayerPed()->GetPosition().y, FindPlayerPed()->GetPosition().z);
++#else
++	CPad::GetPad(0)->StartShake_Distance(240, 128, FindPlayerPed()->GetPosition().x, FindPlayerPed()->GetPosition().y, FindPlayerPed()->GetPosition().z);
++#endif
+ 	BlowUpExplosiveThings(victim);
+ }
+ 
+@@ -2158,8 +2179,12 @@ CWeapon::FireShotgun(CEntity *shooter, CVector *fireSource)
+ 	}
+ 
+ 	if ( shooter == FindPlayerPed() )
+-		CPad::GetPad(0)->StartShake_Distance(240, 128, FindPlayerPed()->GetPosition().x, FindPlayerPed()->GetPosition().y, FindPlayerPed()->GetPosition().z);
+ 
++#ifdef IMPROVED_MENU_AND_INPUT
++		CPad::GetPad(0)->StartShake_Distance(240, 0, 128, FindPlayerPed()->GetPosition().x, FindPlayerPed()->GetPosition().y, FindPlayerPed()->GetPosition().z);
++#else
++		CPad::GetPad(0)->StartShake_Distance(240, 128, FindPlayerPed()->GetPosition().x, FindPlayerPed()->GetPosition().y, FindPlayerPed()->GetPosition().z);
++#endif
+ 	return true;
+ }
+ 
+@@ -2406,10 +2431,18 @@ CWeapon::FireSniper(CEntity *shooter)
+ 
+ 	if ( shooter == FindPlayerPed() )
+ 	{
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		CPad::GetPad(0)->StartShake_Distance(240, 0, 128,
++			FindPlayerPed()->GetPosition().x,
++			FindPlayerPed()->GetPosition().y,
++			FindPlayerPed()->GetPosition().z);
++#else
+ 		CPad::GetPad(0)->StartShake_Distance(240, 128,
+ 			FindPlayerPed()->GetPosition().x,
+ 			FindPlayerPed()->GetPosition().y,
+ 			FindPlayerPed()->GetPosition().z);
++#endif
+ 			
+ 		CParticle::HandleShootableBirdsStuff(shooter, source);
+ #ifdef FIRING_AND_AIMING
+@@ -2572,7 +2605,14 @@ CWeapon::FireM16_1stPerson(CEntity *shooter)
+ 		double raisedNotFiringRate = Max(1.0, Max(0.0, notFiringRate));
+ 
+ 		uint8 shakeFreq = 80.0 * raisedNotFiringRate + 130.0;
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++		CPad::GetPad(0)->StartShake(20000.0f * CTimer::GetTimeStep() / shakeFreq, 0, shakeFreq);
++#else
+ 		CPad::GetPad(0)->StartShake(20000.0f * CTimer::GetTimeStep() / shakeFreq, shakeFreq);
++#endif
++
+ 	}
+ 
+ 	return true;
+@@ -2787,8 +2827,12 @@ CWeapon::FireInstantHitFromCar(CVehicle *shooter, bool left, bool right)
+ 	}
+ 
+ 	if ( shooter == FindPlayerVehicle() )
+-		CPad::GetPad(0)->StartShake_Distance(240, 128, FindPlayerVehicle()->GetPosition().x, FindPlayerVehicle()->GetPosition().y, FindPlayerVehicle()->GetPosition().z);
+-
++		
++#ifdef IMPROVED_MENU_AND_INPUT
++	CPad::GetPad(0)->StartShake_Distance(240, 0, 128, FindPlayerVehicle()->GetPosition().x, FindPlayerVehicle()->GetPosition().y, FindPlayerVehicle()->GetPosition().z);
++#else
++	CPad::GetPad(0)->StartShake_Distance(240, 128, FindPlayerVehicle()->GetPosition().x, FindPlayerVehicle()->GetPosition().y, FindPlayerVehicle()->GetPosition().z);
++#endif
+ 	return true;
+ }
+ 
+diff --git a/src/weapons/WeaponEffects.cpp b/src/weapons/WeaponEffects.cpp
+index bb95ea85..9e6ca65c 100644
+--- a/src/weapons/WeaponEffects.cpp
++++ b/src/weapons/WeaponEffects.cpp
+@@ -116,7 +116,12 @@ CWeaponEffects::Render(void)
+ 			
+ 			CSprite::RenderOneXLUSprite_Rotate_Aspect(pos.x, pos.y, pos.z,
+ 				size*w, size*h,
++
++#ifdef IMPROVED_MENU_AND_INPUT
++				255, 88, 100, 255,
++#else
+ 				107, 134, 247, 158,
++#endif
+ 				recipz2, TWOPI - gCrossHair.m_fRotation, gCrossHair.m_nAlpha);
+ 						
+ 			gCrossHair.m_fRotation += 0.02f;
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,457 @@
+From 05a4ad40cd1e94d5b14188dfa23ddb2b274a88db Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 1 Mar 2025 03:46:45 -0500
+Subject: [PATCH 066/101] Fix firing and aiming, first person, and crouch code.
+ Add fixed swimming code, I had to disable the climbing because it was broken.
+ Add EX_IMPROVED_WEAPONS Update readme.
+
+---
+ README.md                         |  4 ++
+ src/animation/AnimManager.cpp     | 18 +++++++
+ src/animation/AnimManager.h       |  4 ++
+ src/animation/AnimationId.h       |  4 ++
+ src/core/Cam.cpp                  | 19 ++++++--
+ src/core/Frontend.cpp             |  7 +++
+ src/modelinfo/WeaponModelInfo.cpp | 20 ++++++++
+ src/modelinfo/WeaponModelInfo.h   | 12 +++++
+ src/peds/PlayerPed.cpp            |  4 ++
+ src/weapons/Weapon.cpp            | 78 +++++++++++++++++++++++++++++++
+ src/weapons/WeaponInfo.cpp        | 20 ++++++++
+ src/weapons/WeaponInfo.h          |  3 ++
+ 12 files changed, 190 insertions(+), 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 7b61cb96..b4b9b78c 100644
+--- a/README.md
++++ b/README.md
+@@ -37,9 +37,13 @@ Here is a list below of what all I have added from the Vice Extended project, al
+ I have a cleo mod menu here:
+ * https://git.internal.kelsoncraft.net/kelson8/gtavc-scripts
+ 
++### Bugs
++* The rocket launcher animation will be broken if 'RocketLauncherThirdPersonAiming' in features.ini is set to 1 (Enabled).
++
+ ### Items implemented (From Vice Extended):
+ * New and improved crouching
+ * Firing and Aiming
++* Swimming
+ * First person
+ * Photo mode (Option in the menu, can save screenshots to 'ViceExtended\\userfiles\\gallery')
+ * Gps marker line that shows you to your destination like in GTA 4 and GTA 5.
+diff --git a/src/animation/AnimManager.cpp b/src/animation/AnimManager.cpp
+index 9a2bd410..ce79046b 100644
+--- a/src/animation/AnimManager.cpp
++++ b/src/animation/AnimManager.cpp
+@@ -361,6 +361,13 @@ AnimAssocDesc aStdAnimDescsSide[] = {
+ 	{ ANIM_STD_STARTWALK, ASSOC_HAS_TRANSLATION | ASSOC_HAS_X_TRANSLATION },
+ };
+ #endif
++
++#ifdef EX_IMPROVED_WEAPONS
++AnimAssocDesc aAnimForWeaponDescsSide[] = {
++    {ANIM_FOR_WEAPON_SLIDE, ASSOC_FADEOUTWHENDONE},
++};
++#endif
++
+ char const* aStdAnimations[] = {
+ 	"walk_civi",
+ 	"run_civi",
+@@ -859,6 +866,7 @@ char const* aPlayerWithRocketAnimations[] = {
+ 	"walk_rocket",
+ 	"run_rocket",
+ 	"run_rocket",
++
+ 	"idle_rocket",
+ 	"walk_start_rocket",
+ };
+@@ -1064,6 +1072,12 @@ char const* aChainsawStrafeRightAnimations[] = {
+ };
+ #endif
+ 
++#ifdef EX_IMPROVED_WEAPONS
++char const *aColtWeaponAnimations[] = {
++    "weapon_colt45_slide",
++};
++#endif
++
+ #define awc(a) ARRAY_SIZE(a), a
+ const AnimAssocDefinition CAnimManager::ms_aAnimAssocDefinitions[NUM_ANIM_ASSOC_GROUPS] = {
+ 	{ "man", "ped", MI_COP, awc(aStdAnimations), aStdAnimDescs },
+@@ -1135,6 +1149,10 @@ const AnimAssocDefinition CAnimManager::ms_aAnimAssocDefinitions[NUM_ANIM_ASSOC_
+ 	{ "csawleft", "ped", MI_COP, awc(aChainsawStrafeLeftAnimations), aStdAnimDescsSide },
+ 	{ "csawright", "ped", MI_COP, awc(aChainsawStrafeRightAnimations), aStdAnimDescsSide },
+ #endif
++#ifdef EX_IMPROVED_WEAPONS
++    {"colt45weap", "colt45weap", MI_COLT45, awc(aColtWeaponAnimations), aAnimForWeaponDescsSide},
++#endif
++
+ };
+ #undef awc
+ 
+diff --git a/src/animation/AnimManager.h b/src/animation/AnimManager.h
+index e4c9e5e5..7055fd30 100644
+--- a/src/animation/AnimManager.h
++++ b/src/animation/AnimManager.h
+@@ -76,6 +76,10 @@ enum AssocGroupId
+ 	ASSOCGRP_CHAINSAWRIGHT,
+ #endif
+ 
++#ifdef EX_IMPROVED_WEAPONS
++	ASSOCGRP_WEAPON_COLT,
++#endif
++
+ 	NUM_ANIM_ASSOC_GROUPS
+ };
+ 
+diff --git a/src/animation/AnimationId.h b/src/animation/AnimationId.h
+index 3f36f6a2..a2e75ea8 100644
+--- a/src/animation/AnimationId.h
++++ b/src/animation/AnimationId.h
+@@ -347,4 +347,8 @@ enum AnimationId
+ 	ANIM_STRIP_E,
+ 	ANIM_STRIP_F,
+ 	ANIM_STRIP_G,
++
++#ifdef EX_IMPROVED_WEAPONS
++	ANIM_FOR_WEAPON_SLIDE,
++#endif
+ };
+\ No newline at end of file
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index afb5463c..b68f9b3f 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -97,6 +97,11 @@ CCam::Init(void)
+ 	m_fBufferedTargetOrientation = 0.0f;
+ 	m_fBufferedTargetOrientationSpeed = 0.0f;
+ 	m_fDimensionOfHighestNearCar = 0.0f;
++
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++	m_bAimingWhileLookBehind = false;
++	m_bFixed1stPersonCamInVeh = false;
++#endif
+ }
+ 
+ float PLAYERPED_LEVEL_SMOOTHING_CONST_INV = 0.6f;
+@@ -366,7 +371,15 @@ CCam::Process(void)
+ 	SourceBeforeLookBehind = Source;
+ 	if(&TheCamera.Cams[TheCamera.ActiveCam] == this){
+ 		if((Mode == MODE_CAM_ON_A_STRING || Mode == MODE_1STPERSON || Mode == MODE_BEHINDBOAT || Mode == MODE_BEHINDCAR) &&
+-		   CamTargetEntity->IsVehicle()){
++
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++		CamTargetEntity->IsVehicle() && !FindPlayerPed()->bIsPlayerAiming && Mode != MODE_REAL_1ST_PERSON){
++#else
++		CamTargetEntity->IsVehicle()){
++#endif
++
++
++
+ 			bool bDisableLR = CamTargetEntity &&
+ 				(((CVehicle*)CamTargetEntity)->GetVehicleAppearance() == VEHICLE_APPEARANCE_HELI || CamTargetEntity->GetModelIndex() == MI_RCBARON);
+ 			
+@@ -4390,7 +4403,7 @@ CCam::Process_Real_1st_Person(const CVector& CameraTarget, float TargetOrientati
+ 
+ 
+ 				// TODO Fix this, swimming code
+-#ifdef _DISABLED_CODE
++//#ifdef _DISABLED_CODE
+ 	if (ped->bIsSwimming) {
+ 		if (Alpha > DEGTORAD(89.0f)) Alpha = DEGTORAD(89.0f);
+ 		else if (Alpha < -DEGTORAD(30.0f)) Alpha = -DEGTORAD(30.0f);
+@@ -4423,7 +4436,7 @@ CCam::Process_Real_1st_Person(const CVector& CameraTarget, float TargetOrientati
+ 		}
+ 	}
+ 
+-#endif
++//#endif
+ 
+ 	CamDist = TheCamera.m_fPedZoomValue + fAngleDist;
+ 
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index fefa1d68..50e65598 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -5285,6 +5285,13 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 					m_PrefsGPS = true;
+ #endif
+ 
++#if defined FIRST_PERSON && defined FIRING_AND_AIMING
++					m_PrefsFOV_FP = 90;
++					m_PrefsAutocenterCamInVeh_FP = true;
++					m_PrefsRelativeCamInVeh_DB_FP = false;
++					m_PrefsDoomMode_FP = false;
++#endif
++
+ #ifdef EX_WEAPON_SIGHT // Menu
+ 					m_PrefsWeaponSight = 2;
+ #endif
+diff --git a/src/modelinfo/WeaponModelInfo.cpp b/src/modelinfo/WeaponModelInfo.cpp
+index d9294c3f..16b2d20a 100644
+--- a/src/modelinfo/WeaponModelInfo.cpp
++++ b/src/modelinfo/WeaponModelInfo.cpp
+@@ -23,7 +23,27 @@ CWeaponModelInfo::ConvertAnimFileIndex(void)
+ 		delete[] m_animFileName;
+ 		m_animFileIndex = index;
+ 	}
++
++#ifdef EX_IMPROVED_WEAPONS
++	if(m_animForWeaponFileIndex != -1) {
++		int32 index = CAnimManager::GetAnimationBlockIndex(m_animForWeaponFileName);
++		delete[] m_animForWeaponFileName;
++		m_animForWeaponFileIndex = index;
++	}
++#endif
++}
++
++#ifdef EX_IMPROVED_WEAPONS
++void
++CWeaponModelInfo::SetAnimForWeaponFile(const char *file)
++{
++	if(strcasecmp(file, "null") == 0) return;
++
++	m_animForWeaponFileName = new char[strlen(file) + 1];
++	strcpy(m_animForWeaponFileName, file);
++	m_animForWeaponFileIndex = 0;
+ }
++#endif
+ 
+ void
+ CWeaponModelInfo::Init(void)
+diff --git a/src/modelinfo/WeaponModelInfo.h b/src/modelinfo/WeaponModelInfo.h
+index 548bf8a6..3965989f 100644
+--- a/src/modelinfo/WeaponModelInfo.h
++++ b/src/modelinfo/WeaponModelInfo.h
+@@ -9,12 +9,24 @@ class CWeaponModelInfo : public CSimpleModelInfo
+ 		int32 m_animFileIndex;
+ 		char *m_animFileName;
+ 	};
++
++#ifdef EX_IMPROVED_WEAPONS
++	int32 m_animForWeaponFileIndex;
++	char *m_animForWeaponFileName;
++#endif
++
+ public:
+ 	CWeaponModelInfo(void) : CSimpleModelInfo(MITYPE_WEAPON) { m_animFileIndex = -1; }
+ 
+ 	virtual void SetAnimFile(const char *file);
+ 	virtual void ConvertAnimFileIndex(void);
+ 	virtual int GetAnimFileIndex(void) { return m_animFileIndex; }
++
++#ifdef EX_IMPROVED_WEAPONS
++	virtual void SetAnimForWeaponFile(const char *file);
++	virtual int GetAnimForWeaponFileIndex(void) { return m_animForWeaponFileIndex; }
++#endif
++
+ 	virtual void SetAtomic(int n, RpAtomic *atomic);
+ 	
+ 	void Init(void);
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index 9a899f0c..ea23b702 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -490,6 +490,9 @@ void CPlayerPed::ProcessSwimming(void)
+ 		CColPoint hitForwardPoint;
+ 		CColPoint hitBackwardPoint;
+ 		CColPoint hitJumpBPoint;
++
++		// Climbing code, disabling this made swimming work!
++		#ifdef _DISABLED_CODE
+ 		if (CanPedClimbingThis(hitForwardPoint, hitBackwardPoint, hitJumpBPoint)) {
+ 			if (curSwimBreastAssoc) {
+ 				delete curSwimBreastAssoc;
+@@ -510,6 +513,7 @@ void CPlayerPed::ProcessSwimming(void)
+ 
+ 			StartClimbing(hitForwardPoint, hitBackwardPoint, hitJumpBPoint);
+ 		}
++		#endif
+ 	}
+ }
+ #endif
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 669db718..4bad8b76 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -42,6 +42,11 @@
+ #include "Frontend.h"
+ #endif
+ 
++#ifdef EX_IMPROVED_WEAPONS
++#include "Streaming.h"
++#endif
++
++
+ float fReloadAnimSampleFraction[5] = {  0.5f,  0.7f,  0.75f,  0.75f,  0.7f };
+ float fSeaSparrowAimingAngle = 10.0f;
+ float fHunterAimingAngle = 30.0f;
+@@ -155,6 +160,18 @@ CWeapon::Initialise(eWeaponType type, int32 ammo)
+ 		CModelInfo::GetModelInfo(modelId)->AddRef();
+ 	if ( model2Id != -1 )
+ 		CModelInfo::GetModelInfo(model2Id)->AddRef();
++
++#ifdef EX_IMPROVED_WEAPONS
++	CWeaponModelInfo *modelInfo = (CWeaponModelInfo *)CModelInfo::GetModelInfo(modelId);
++	if(modelId != -1) {
++		int animForWeaponBlock = modelInfo->GetAnimForWeaponFileIndex();
++		if(animForWeaponBlock != -1) {
++			CStreaming::RequestAnim(animForWeaponBlock, STREAMFLAGS_DEPENDENCY);
++			CStreaming::LoadAllRequestedModels(false);
++			CAnimManager::AddAnimBlockRef(animForWeaponBlock);
++		}
++	}
++#endif
+ }
+ 
+ void
+@@ -164,6 +181,14 @@ CWeapon::Shutdown()
+ 	if (modelId != -1)
+ 		CModelInfo::GetModelInfo(modelId)->RemoveRef();
+ 
++#ifdef EX_IMPROVED_WEAPONS
++	CWeaponModelInfo *modelInfo = (CWeaponModelInfo *)CModelInfo::GetModelInfo(modelId);
++	if(modelId != -1) {
++		int animForWeaponBlock = modelInfo->GetAnimForWeaponFileIndex();
++		if(animForWeaponBlock != -1) { CAnimManager::RemoveAnimBlockRef(animForWeaponBlock); }
++	}
++#endif
++
+ 	int32 model2Id = CWeaponInfo::GetWeaponInfo(m_eWeaponType)->m_nModel2Id;
+ 	if (model2Id != -1)
+ 		CModelInfo::GetModelInfo(model2Id)->RemoveRef();
+@@ -217,6 +242,20 @@ CWeapon::Fire(CEntity *shooter, CVector *fireSource)
+ 			Reload();
+ 		}
+ 
++#ifdef _DISABLED_CODE
++#ifdef EX_IMPROVED_WEAPONS // Slide animation after a shot
++		if(shooter->IsPed()) {
++			CPed *ped = (CPed *)shooter;
++			if(ped->m_pWeaponModel && GetInfo()->m_animForWeaponToPlay != ASSOCGRP_STD) {
++				if(RpAnimBlendClumpGetAssociation(ped->m_pWeaponModel, ANIM_FOR_WEAPON_SLIDE))
++					CAnimManager::BlendAnimation(ped->m_pWeaponModel, GetInfo()->m_animForWeaponToPlay, ANIM_FOR_WEAPON_SLIDE, 100.0f);
++				else
++					CAnimManager::AddAnimation(ped->m_pWeaponModel, GetInfo()->m_animForWeaponToPlay, ANIM_FOR_WEAPON_SLIDE);
++			}
++		}
++#endif
++#endif
++
+ 		switch ( m_eWeaponType )
+ 		{
+ 			case WEAPONTYPE_SHOTGUN:
+@@ -2986,6 +3025,25 @@ CWeapon::Update(int32 audioEntity, CPed *pedToAdjustSound)
+ {
+ 	CWeaponInfo *info = GetInfo();
+ 
++#ifdef _DISABLED_CODE
++#ifdef EX_IMPROVED_WEAPONS // After the last shot is fired, the slide moves backwards
++	if(pedToAdjustSound && pedToAdjustSound->m_pWeaponModel) {
++		CAnimBlendAssociation *animForWeaponAssoc = RpAnimBlendClumpGetAssociation(pedToAdjustSound->m_pWeaponModel, ANIM_FOR_WEAPON_SLIDE);
++		if(m_eWeaponState == WEAPONSTATE_RELOADING && m_nAmmoInClip == 0) {
++			if(animForWeaponAssoc) {
++				float maxSlideOffsetTime = animForWeaponAssoc->hierarchy->totalLength / 2.5f;
++				if(animForWeaponAssoc->speed != 0.75f && animForWeaponAssoc->IsRunning() &&
++				   animForWeaponAssoc->currentTime >= maxSlideOffsetTime) {
++
++					animForWeaponAssoc->SetCurrentTime(maxSlideOffsetTime);
++					animForWeaponAssoc->flags &= ~ASSOC_RUNNING;
++				}
++			}
++		}
++	}
++#endif
++#endif
++
+ 	switch ( m_eWeaponState )
+ 	{
+ 		case WEAPONSTATE_MELEE_MADECONTACT:
+@@ -3064,6 +3122,26 @@ CWeapon::Update(int32 audioEntity, CPed *pedToAdjustSound)
+ 					}
+ 					if (reloadAssoc->GetProgress() >= soundStart && (reloadAssoc->currentTime - reloadAssoc->timeStep) / reloadAssoc->hierarchy->totalLength < soundStart)
+ 						DMAudio.PlayOneShot(audioEntity, SOUND_WEAPON_RELOAD, m_eWeaponType);
++
++					//
++
++
++					// TODO Fix this to build, it just breaks it.
++					#ifdef _DISABLED_CODE
++#ifdef EX_IMPROVED_WEAPONS // After the last shot is fired, the slide moves backwards
++				        CAnimBlendAssociation *animForWeaponAssoc =
++				            RpAnimBlendClumpGetAssociation(pedToAdjustSound->m_pWeaponModel, ANIM_FOR_WEAPON_SLIDE);
++				        if(animForWeaponAssoc && !animForWeaponAssoc->IsRunning()) {
++					        animForWeaponAssoc->SetRun();
++					        animForWeaponAssoc->speed = 0.75f;
++				        }
++#endif
++						#endif //_DISABLED_CODE
++					//
++
++
++
++
+ 					if (CTimer::GetTimeInMilliseconds() > m_nTimer && reloadAssoc->GetProgress() < 0.9f) {
+ 						m_nTimer = CTimer::GetTimeInMilliseconds();
+ 					}
+diff --git a/src/weapons/WeaponInfo.cpp b/src/weapons/WeaponInfo.cpp
+index e3b48bec..cc1e7009 100644
+--- a/src/weapons/WeaponInfo.cpp
++++ b/src/weapons/WeaponInfo.cpp
+@@ -136,6 +136,10 @@ CWeaponInfo::Initialise(void)
+ 		aWeaponInfo[i].m_Flags = WEAPONFLAG_USE_GRAVITY | WEAPONFLAG_SLOWS_DOWN | WEAPONFLAG_RAND_SPEED | WEAPONFLAG_EXPANDS | WEAPONFLAG_EXPLODES;
+ 		aWeaponInfo[i].m_nWeaponSlot = WEAPONSLOT_UNARMED;
+ 
++#ifdef EX_IMPROVED_WEAPONS
++		aWeaponInfo[i].m_animForWeaponToPlay = ASSOCGRP_STD;
++#endif
++
+ #ifdef EX_WEAPON_SIGHT // weapon.dat
+ 		aWeaponInfo[i].m_nWeaponSight = 0;
+ #endif
+@@ -157,6 +161,11 @@ CWeaponInfo::LoadWeaponData(void)
+ 	char line[256], weaponName[32], fireType[32];
+ 	char animToPlay[32];
+ 
++
++#ifdef EX_IMPROVED_WEAPONS // weapon.dat
++	char animForWeaponToPlay[32];
++#endif
++
+ #ifdef EX_WEAPON_SIGHT // weapon.dat
+ 	int weaponSight;
+ #endif
+@@ -313,6 +322,17 @@ CWeaponInfo::LoadWeaponData(void)
+ 				break;
+ 			}
+ 		}
++
++
++#ifdef EX_IMPROVED_WEAPONS // weapon.dat
++		for(int i = 0; i < NUM_ANIM_ASSOC_GROUPS; i++) {
++			if(!strcmp(animForWeaponToPlay, CAnimManager::GetAnimGroupName((AssocGroupId)i))) {
++				aWeaponInfo[weaponType].m_animForWeaponToPlay = (AssocGroupId)i;
++				break;
++			}
++		}
++#endif
++
+ 	}
+ }
+ 
+diff --git a/src/weapons/WeaponInfo.h b/src/weapons/WeaponInfo.h
+index 9762506f..dbe8f86e 100644
+--- a/src/weapons/WeaponInfo.h
++++ b/src/weapons/WeaponInfo.h
+@@ -61,6 +61,9 @@ public:
+ 
+ 	uint32 m_nWeaponSlot;
+ 
++#ifdef EX_IMPROVED_WEAPONS // weapon.dat
++	AssocGroupId m_animForWeaponToPlay;
++#endif
+ #ifdef EX_WEAPON_SIGHT
+ 	uint8 m_nWeaponSight;
+ #endif
+-- 
+2.45.1.windows.1
+

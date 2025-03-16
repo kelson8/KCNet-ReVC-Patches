@@ -1,0 +1,570 @@
+From 37e62657d54f8ef8539ebd8a9d84d941d3d21f79 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Mar 2025 14:37:30 -0400
+Subject: [PATCH 085/101] Add faster time and slower time, add teleport to
+ coords and display coords on warp menu. Add PlayAnnouncementTest to
+ custom_cheats. Add HealPlayer, and WarpPlayer to player_cheats. Make CheckLua
+ into a public function, add turn mass test to lua_test. Apply the new style
+ for imgui.
+
+---
+ src/extras/cheats/custom_cheats.cpp      |  64 ++++++++++++++
+ src/extras/cheats/custom_cheats.h        |   4 +
+ src/extras/cheats/player_cheats.cpp      |  34 ++++++++
+ src/extras/cheats/player_cheats.h        |   7 ++
+ src/extras/functions/imgui_main_menu.cpp |  96 ++++++++++++++++++++-
+ src/extras/lua/lua_test.cpp              | 103 +++++++++++++----------
+ src/extras/lua/lua_test.h                |   4 +
+ src/skel/win/win.cpp                     |  15 +++-
+ 8 files changed, 278 insertions(+), 49 deletions(-)
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 02284a26..508ab352 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -54,6 +54,8 @@
+ 
+ #include "CopPed.h"
+ 
++#include "DMAudio.h"
++
+ #define CUSTOM_CODE1
+ 
+ // Extra
+@@ -138,6 +140,68 @@ commandTest1()
+ //void
+ //BlowUpCarsCheat();
+ 
++/// <summary>
++/// Play the bridge open and close announcements
++/// </summary>
++/// <param name="value">Set to 1 for bridge open, set to 2 for bridge close.</param>
++void
++CustomCheats::PlayAnnouncementTest(int value)
++{
++	if (value == 1) { 
++		DMAudio.PlayRadioAnnouncement(STREAMED_SOUND_ANNOUNCE_BRIDGE_OPEN);
++	} else if(value == 2) {
++		DMAudio.PlayRadioAnnouncement(STREAMED_SOUND_ANNOUNCE_BRIDGE_CLOSED);
++	}
++	//DMAudio.PlayRadioAnnouncement(ScriptParams[0] + STREAMED_SOUND_ANNOUNCE_BRIDGE_CLOSED);
++}
++
++// TODO Setup these
++// The boolean to the ped roads, if set to false they are enabled, if set to true they are disabled.
++/* COMMAND_SWITCH_PED_ROADS_ON:
++* ThePaths.SwitchPedRoadsOffInArea(infX, supX, infY, supY, infZ, supZ, false);
++
++* COMMAND_SWITCH_PED_ROADS_OFF:
++* ThePaths.SwitchPedRoadsOffInArea(infX, supX, infY, supY, infZ, supZ, true);
++
++* Set vehicle colors
++* pVehicle->m_currentColour1
++* pVehicle->m_currentColour2
++* 
++
++TODO Figure out what these are doing
++CClock::StoreClock();
++CClock::RestoreClock();
++
++TODO Figure out how to get this
++UpdateCompareFlag(CWorld::Players[ScriptParams[0]].m_WBState == WBSTATE_PLAYING);
++
++TODO Figure out how to get the vehicle speed, convert it into mp/h and km/h:
++This below came from COMMAND_GET_CAR_SPEED
++pVehicle->GetSpeed().Magnitude() * GAME_SPEED_TO_METERS_PER_SECOND;
++
++TODO Figure out how to load cutscenes
++CCutsceneMgr::LoadCutsceneData(name);
++
++Hmm, I can set the ped weapon accuracy:
++pPed->m_wepAccuracy
++
++Check if ped is shooting:
++pPed->bIsShooting
++
++TODO Look into creating a taxi shortcut like in the missions:
++CGameLogic::SetUpShortCut(
++*(CVector*)&ScriptParams[0], *(float*)&ScriptParams[3],
++*(CVector*)&ScriptParams[4], *(float*)&ScriptParams[7]);
++
++*/
++
++void
++CustomCheats::LoadCutscene(const char* name)
++{
++	CCutsceneMgr::LoadCutsceneData(name);
++	CCutsceneMgr::ms_cutsceneLoadStatus = 1;
++}
++
+ /// <summary>
+ /// I have switched the debug menu function to using this.
+ /// Taken from Blowup cars cheat, I figured I would put a version in here to mess with
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index 89bd81ce..e39c4f93 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -77,6 +77,10 @@ public:
+ 	static void ExplodePed();
+ 
+ 	static void BlowUpAllCars();
++	static void PlayAnnouncementTest(int value);
++
++	// Loading cutscene test
++	static void LoadCutscene(const char *name);
+ 
+ 
+ 	// Rc Car test
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index 0673b484..7a1d9a1f 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -60,6 +60,15 @@
+ #include "defines.h"
+ 
+ 
++void
++PlayerCheats::HealPlayer()
++{
++	FindPlayerPed()->m_fHealth = 250;
++	FindPlayerPed()->m_fArmour = 100;
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++
++}
++
+ /// <summary>
+ /// Kill the player.
+ /// Copied from Pad.cpp
+@@ -295,4 +304,29 @@ PlayerCheats::NeverWantedCheat()
+ 	} else {
+ 		PlayerCheats::DisableNeverWanted();
+ 	}
++}
++
++// Idea from teleport.cpp in Cheat Menu
++void
++PlayerCheats::WarpPlayer(CVector pos, int interiorID)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	CStreaming::LoadScene(pos);
++	CStreaming::LoadSceneCollision(pos);
++
++	CStreaming::LoadAllRequestedModels(false);
++
++	if(vehicleFunctions.IsPlayerInVehicle()) 
++	{
++		CVehicle *pVeh = pPed->m_pMyVehicle;
++		pVeh->m_area = interiorID;
++		pVeh->Teleport(pos);
++	} else {
++		pPed->Teleport(pos);
++	}
++
++	pPed->m_area = interiorID;
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index 5631beff..a1513cc9 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -1,7 +1,12 @@
+ #pragma once
++
++//class CVector;
++
+ class PlayerCheats
+ {
+ public:
++	static void HealPlayer();
++
+ 	static void InfiniteHealthCheat();
+ 	static void SuicideCheat();
+ 	static void GivePlayerWeapon();
+@@ -17,4 +22,6 @@ public:
+ 	static void EnableNeverWanted();
+ 	static void DisableNeverWanted();
+ 	static void NeverWantedCheat();
++
++	static void WarpPlayer(CVector pos, int interiorID);
+ };
+diff --git a/src/extras/functions/imgui_main_menu.cpp b/src/extras/functions/imgui_main_menu.cpp
+index a55ae5f3..751e5b99 100644
+--- a/src/extras/functions/imgui_main_menu.cpp
++++ b/src/extras/functions/imgui_main_menu.cpp
+@@ -1,12 +1,16 @@
+ #include "imgui_main_menu.h"
+ #include "imgui.h"
+ 
++#include <iomanip>
++
+ // Lua test
+ #define WITHDINPUT
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+ 
++#include "main.h"
++
+ #include "lua_test.h"
+ // Lua
+ extern "C" {
+@@ -18,6 +22,7 @@ extern "C" {
+ 
+ #include <iostream>
+ 
++// My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+ #include "custom_cheats.h"
+@@ -26,16 +31,22 @@ extern "C" {
+ #include "player_cheats.h"
+ 
+ #include "vehicle_functions.h"
+-
++#include "log_functions.h"
+ 
+ 
+ #include "./extras/test/enums/model_ids.h"
+ 
++#include "defines.h"
++//
++
++
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++#include "Pad.h"
++
+ bool spawnInCar = false;
+ 
+ bool showVehicleListBox = false;
+@@ -56,6 +67,19 @@ bool infiniteHealth = false;
+ bool highVehicleMass = false;
+ bool vehicleInvincible = false;
+ 
++// Test from debug_functions.cpp
++
++// Well I figured out how to use the built in cheats without copying them
++void
++FastTimeCheat();
++void
++SlowTimeCheat();
++
++// Test from teleport.cpp in Cheat Menu
++#define INPUT_BUFFER_SIZE 64
++char m_LocBuf[INPUT_BUFFER_SIZE], m_InBuf[INPUT_BUFFER_SIZE];
++//
++
+ // TODO Separate these menus out, place player into imgui_player_menu.. and so on.
+ 
+ 
+@@ -229,6 +253,18 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 	static int counter = 0;
+ 
+ 	PlayerCheats playerCheats = PlayerCheats();
++	Defines defines = Defines();
++
++	CVector playerCoords = FindPlayerPed()->GetPosition();
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++	
++	// https://stackoverflow.com/questions/16691617/removing-some-digits-after-decimal-point-in-c
++	// Well this removes all the numbers
++	// TODO Make this only remove 3 numbers after the decimal.
++	//playerX = (double)((int)playerX * 100) / 100;
++
+ 
+ 	ImGui::Begin("KCNet ReVC ImGui");
+ 
+@@ -292,6 +328,7 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 				}
+ 			}
+ 
++			ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
+ 			if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) { 
+ 				toggleHighVehicleMass();
+ 			}
+@@ -334,12 +371,69 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 				toggleNeverWanted();
+ 			}
+ 
++			// Time cheats
++			ImGui::Text("Time");
++
++			if(ImGui::Button("Faster time")) { 
++				FastTimeCheat(); 
++			}
++
++			if(ImGui::Button("Slower time")) { 
++				SlowTimeCheat(); 
++			}
++
+ 			
+ 			//if(ImGui::Button("Nev")) { PlayerCheats::RaiseWantedLevel(); }
+ 
+ 			ImGui::EndTabItem();
+ 		}
+ 
++
++		// Warps
++		if(ImGui::BeginTabItem("Warps")) {
++			// Coords
++			ImGui::InputTextWithHint("Coordinates", "x, y, z", m_InBuf, INPUT_BUFFER_SIZE);
++			ImGui::Spacing();
++
++			// I got this to work, I took the idea from teleport.cpp in the Cheat Menu.
++			if(ImGui::Button("Teleport")) { 
++				CVector pos{0, 0, 10};
++				if (sscanf(m_InBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) { 
++					pos.z += 1.0f;
++					PlayerCheats::WarpPlayer(pos, 0);
++
++#ifdef EXTRA_LOGGING
++					CVector teleportPos{pos.x, pos.y, pos.z};
++					std::string warpMessage = "Player has warped to " 
++						+ std::to_string(teleportPos.x) 
++						+ std::to_string(teleportPos.y) + 
++						std::to_string(teleportPos.z);
++
++					if(gbExtraLogging) { 
++						LogFunctions::LogInfo(defines.logFile, warpMessage);
++						TRACE("X: %f, Y: %f, Z: %f", pos.x, pos.y, pos.z);
++					}
++
++#endif
++
++					
++				}
++			}
++
++
++			// This seems to show up the current coordinates on the screen.
++			std::string playerPositionMessage = "Player position X: " 
++				+ std::to_string(playerX) 
++				+ "Y: " + std::to_string(playerY) 
++				+ "Z: " + std::to_string(playerZ);
++			ImGui::Text(playerPositionMessage.c_str());
++
++			ImGui::EndTabItem();
++
++
++
++		}
++
+ 		// Misc
+ 		if(ImGui::BeginTabItem("Misc")) { 
+ 			ImGui::Text("Sounds");
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index ba262a87..a309fa28 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -308,13 +308,13 @@ HealPlayerLua(lua_State *L)
+ 
+ // Check lua globals, made this into a function
+ bool
+-CheckLua(lua_State *L, int r)
++LuaTest::CheckLua(lua_State *L, int r)
+ {
+ 	// Check if the value is valid
+ 	if(r != LUA_OK) {
+ 		std::string errorMsg = lua_tostring(L, -1);
+ 		//std::cout << errorMsg << std::endl;
+-		TRACE("KCNet - Lua Error");
++		TRACE("KCNet - Lua Error", errorMsg);
+ 		return false;
+ 	} /*else {
+ 		TRACE("KCNet - Lua Error");
+@@ -361,7 +361,6 @@ LuaTest::InitLua()
+ 	lua_register(m_luaVM, "heal_player", HealPlayerLua);
+ 
+ 	// Cheat test
+-	//Well this just crashes it..
+ 	lua_register(m_luaVM, "cheat_test", CheatTestNew);
+ 
+ 	// Toggle player control
+@@ -370,11 +369,23 @@ LuaTest::InitLua()
+ 	// Test for ImGui
+ 	lua_register(m_luaVM, "toggle_imgui", toggleImGuiLua);
+ 	
++	// TODO Setup this for ImGui later.
++	// I could use something like this so I don't have to keep changing the code.
++	//lua_getglobal(m_luaVM, "vehicle_mass");
++
++	//if ((float)lua_isnumber(m_luaVM, -1)) { 
++	//	vehicleTurnMass = lua_tonumber(m_luaVM, -1);
++	//}
++
++	// Clean up the stack
++	//lua_pop(m_luaVM, 1);
++	
+ 	
+ 	//
+ 		
+ 		// I got this working, it shows up in the output now, I thought it wouldn't.
+ 		//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "src/scripts/test.lua"))) {
++		//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/test.lua"))) {
+ 		if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/test.lua"))) {
+ 		// Run a function in lua
+ 
+@@ -438,48 +449,48 @@ LuaTest::InitLua()
+ // TODO Fix this, possibly use the same concept from MTA SA, if I can get it to work.
+ #ifdef LUA_TEST
+ 
+-void
+-HelloWorldTest(lua_State *L)
+-{
+-
+-	// Lua states is needed, to do anything in lua
+-	// TODO Figure this out in a function other then main
+-	//lua_State *L = luaL_newstate();
+-
+-	// Open the libraries, without this, stuff like math won't work
+-	//luaL_openlibs(L);
+-
+-
+-	// Make this run from a file
+-	if(CheckLua(L, luaL_dofile(L, "src/scripts/test.lua"))) {
+-
+-		// Run a function in lua
+-		lua_getglobal(L, "AddStuff");
+-		if(lua_isfunction(L, -1)) {
+-			lua_pushnumber(L, 3.5f);
+-			lua_pushnumber(L, 7.2f);
+-
+-			// The pcall function executes the function.
+-			if(CheckLua(L, lua_pcall(L, 2, 1, 0))) {
+-				float number1 = (float)lua_tonumber(L, -1);
+-				std::cout << "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got " << number1 << std::endl;
+-			}
+-		}
+-
+-		// Get the program name
+-		// lua_getglobal(L, "ProgamName");
+-		// if (lua_isstring(L, -1))
+-		//{
+-		//	std::string programName = (std::string)lua_tostring(L, -1);
+-		//	std::cout << "Program name: " << programName << std::endl;
+-		//}
+-
+-	}
+-
+-
+-
+-	// Cleanup the lua vm
+-	lua_close(L);
+-}
++//void
++//HelloWorldTest(lua_State *L)
++//{
++//
++//	// Lua states is needed, to do anything in lua
++//	// TODO Figure this out in a function other then main
++//	//lua_State *L = luaL_newstate();
++//
++//	// Open the libraries, without this, stuff like math won't work
++//	//luaL_openlibs(L);
++//
++//
++//	// Make this run from a file
++//	if(CheckLua(L, luaL_dofile(L, "src/scripts/test.lua"))) {
++//
++//		// Run a function in lua
++//		lua_getglobal(L, "AddStuff");
++//		if(lua_isfunction(L, -1)) {
++//			lua_pushnumber(L, 3.5f);
++//			lua_pushnumber(L, 7.2f);
++//
++//			// The pcall function executes the function.
++//			if(CheckLua(L, lua_pcall(L, 2, 1, 0))) {
++//				float number1 = (float)lua_tonumber(L, -1);
++//				std::cout << "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got " << number1 << std::endl;
++//			}
++//		}
++//
++//		// Get the program name
++//		// lua_getglobal(L, "ProgamName");
++//		// if (lua_isstring(L, -1))
++//		//{
++//		//	std::string programName = (std::string)lua_tostring(L, -1);
++//		//	std::cout << "Program name: " << programName << std::endl;
++//		//}
++//
++//	}
++//
++//
++//
++//	// Cleanup the lua vm
++//	lua_close(L);
++//}
+ 
+ #endif //LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 3e956df2..4d671b2c 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -23,8 +23,12 @@ public:
+ 	static void HelloWorldTest();
+ #endif
+ 
++	float vehicleTurnMass;
++
+ 	LuaTest();
+ 	void InitLua();
++	
++	bool CheckLua(lua_State *L, int r);
+ 
+ private:
+ 	//lua_State *m_luaVM;
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index d790d5e1..9f8d3a22 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -1089,6 +1089,10 @@ InitImGui(HWND window)
+ 	// Setup Dear ImGui style
+ 	ImGui::StyleColorsDark();
+ 
++	// Setup the style from the Cheat Menu
++	// https://github.com/user-grinch/Cheat-Menu
++	ImGuiFunctions::ApplyStyle();
++
+ 	// Setup Platform/Renderer backends
+ 	// TODO Place this somewhere in win.cpp, possibly in WndMainProc
+ 	ImGui_ImplWin32_Init(window);
+@@ -2860,10 +2864,14 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ #ifdef LUA_TEST
+ 
+-							// Oops, this somewhat slows the game down sometimes it looks like, I wonder why.
+ 						        LuaTest luaTest = LuaTest();
+ #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 
++								// TODO Figure out how to make this use Control + M
++//#define CTRLJUSTDOWN(key)                                                                                                                                      \
++//	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++//#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
+ 						        // Oops, forgot to init the variable..
+ 								static int newTime = 0;
+ 								// Some of the idea for this test came from here:
+@@ -2876,7 +2884,10 @@ CMenuManager cMenuManager = CMenuManager();
+ 								// If this is enabled in there, this will run otherwise it does nothing.
+ 						                if(gbLuaTest) {
+ 
+-							                if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++							                //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++							                if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++											// TODO Figure out how to make this use Control + M
++							                //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 								                // Wow this seems to work, with a delay now.
+ 								                // I figured out how to output this to a log.
+ 
+-- 
+2.45.1.windows.1
+

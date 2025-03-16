@@ -1,0 +1,186 @@
+From 09c86146413e216ba05ab5b18fc92a45af0e5d44 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 22:08:10 -0500
+Subject: [PATCH 060/101] Remove unnecessary preprocessors from code.
+
+---
+ src/core/main.cpp          | 6 ------
+ src/core/main.h            | 4 ----
+ src/renderer/Hud.cpp       | 2 --
+ src/renderer/SpecialFX.cpp | 2 --
+ src/weapons/Weapon.cpp     | 6 ------
+ src/weapons/Weapon.h       | 2 --
+ 6 files changed, 22 deletions(-)
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 0796e3df..47c61767 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -130,11 +130,9 @@ float NumberOfChunksLoaded;
+ bool g_SlowMode = false;
+ char version_name[64];
+ 
+-// #define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
+ uint32 newScreenNumber = 0;
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ void GameInit(void);
+ void SystemInit(void);
+@@ -374,7 +372,6 @@ RwGrabScreen(RwCamera *camera, RwChar *filename)
+ 	return result;
+ }
+ 
+-//#define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering (thanks to Shagg_E)
+ void TakeAndSaveScreenshot() {
+ 	char s[48];
+@@ -406,7 +403,6 @@ void TakeAndSaveScreenshot() {
+ 	RwGrabScreen(Scene.camera, s);
+ }
+ #endif //IMPROVED_TECH_PART
+-#undef IMPROVED_TECH_PART
+ 
+ #define TILE_WIDTH 576
+ #define TILE_HEIGHT 432
+@@ -437,14 +433,12 @@ DoRWStuffEndOfFrame(void)
+ 	if (CPad::GetPad(1)->GetLeftShockJustDown() || CPad::GetPad(0)->GetFJustDown(11)) {
+ 
+ 
+-// #define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
+ 		TakeAndSaveScreenshot();
+ #else
+ 		sprintf(s, "screen_%011lld.png", time(nil));
+ 		RwGrabScreen(Scene.camera, s);
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ 
+ 	}
+diff --git a/src/core/main.h b/src/core/main.h
+index e2b4264d..0ef121a7 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -35,11 +35,9 @@ extern bool gbShowTimebars;
+ extern bool gbPrintMemoryUsage;
+ #endif
+ 
+-#define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
+ extern uint32 newScreenNumber;
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ class CSprite2d;
+ 
+@@ -61,11 +59,9 @@ void ResetLoadingScreenBar(void);
+ void TheModelViewer(void);
+ #endif
+ 
+-#define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
+ void TakeAndSaveScreenshot();
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ #ifdef LOAD_INI_SETTINGS
+ bool LoadINISettings();
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index 90de16f2..44f5764f 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -252,12 +252,10 @@ void CHud::Draw()
+ 	if (CReplay::IsPlayingBack())
+ 		return;
+ 
+-// #define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
+ 		if (CWeapon::bTakePhoto)
+ 			return;
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ 	if (m_Wants_To_Draw_Hud && !TheCamera.m_WideScreenOn) {
+ 		// unused statics in here
+diff --git a/src/renderer/SpecialFX.cpp b/src/renderer/SpecialFX.cpp
+index 93cf0619..6349e50d 100644
+--- a/src/renderer/SpecialFX.cpp
++++ b/src/renderer/SpecialFX.cpp
+@@ -237,13 +237,11 @@ CSpecialFX::Render2DFXs(void)
+ 		}
+ 	}
+ 	
+-// #define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
+ 	if (CSpecialFX::bSnapShotActive && !CWeapon::bTakePhoto) {
+ #else
+ 	if (CSpecialFX::bSnapShotActive) {
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ 
+ 
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 3b45322e..7c9555de 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -45,11 +45,9 @@ float fPlayerAimScale = 2.5f;
+ 
+ bool CWeapon::bPhotographHasBeenTaken;
+ 
+-// #define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
+ bool CWeapon::bTakePhoto;
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ 
+ #ifdef SECUROM
+@@ -127,14 +125,12 @@ CWeapon::UpdateWeapons(void)
+ 	CProjectileInfo::Update();
+ 	CBulletInfo::Update();
+ 
+-//#define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
+ 	if (bTakePhoto) {
+ 		TakeAndSaveScreenshot();
+ 		bTakePhoto = false;
+ 	}
+ #endif
+-#undef IMPROVED_TECH_PART
+ }
+ 
+ 
+@@ -2397,11 +2393,9 @@ CWeapon::TakePhotograph(CEntity *shooter)
+ 		CStats::PhotosTaken++;
+ 		bPhotographHasBeenTaken = true;
+ 
+-//#define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
+ 		bTakePhoto = FrontEndMenuManager.m_PrefsStoreGalleryPhotos;
+ #endif
+-#undef IMPROVED_TECH_PART
+ 
+ 		for ( int32 i = CPools::GetPedPool()->GetSize() - 1; i >= 0; i--)
+ 		{
+diff --git a/src/weapons/Weapon.h b/src/weapons/Weapon.h
+index 40485842..3347e36e 100644
+--- a/src/weapons/Weapon.h
++++ b/src/weapons/Weapon.h
+@@ -24,11 +24,9 @@ public:
+ 	
+ 	static bool bPhotographHasBeenTaken;
+ 
+-// #define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
+ 	static bool bTakePhoto;
+ #endif
+-#undef IMPROVED_TECH_PART
+ 	
+ 	CWeapon() {
+ 		m_bAddRotOffset = false;
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,532 @@
+From e78d48bd021ad8d1f0dec0d7aa6146c7e4d31d7f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 1 Mar 2025 22:34:57 -0500
+Subject: [PATCH 072/101] Add cheats, functions, and lua folders to include
+ directories. Change LogFunctions::DoesFileExist to use string instead of
+ char. Make defines.cpp and move strings into it for the program. Add option
+ to turn on/off extra logging in general settings and ini settings. Add extra
+ logging into vehicle_cheats and player_cheats.
+
+---
+ src/core/Frontend.cpp                      | 14 +++++++
+ src/core/Frontend.h                        |  5 +++
+ src/core/MenuScreensCustom.cpp             |  5 ++-
+ src/core/config.h                          |  2 +
+ src/core/main.cpp                          |  4 ++
+ src/core/main.h                            |  4 ++
+ src/core/re3.cpp                           |  2 +-
+ src/extras/cheats/player_cheats.cpp        | 47 ++++++++++++++++++++++
+ src/extras/cheats/vehicle_cheats.cpp       | 26 ++++++++++++
+ src/extras/debug/debug_functions.cpp       | 13 +++---
+ src/extras/defines.cpp                     | 12 ++++++
+ src/extras/defines.h                       | 13 +++++-
+ src/extras/functions/ini_functions.cpp     | 23 ++++++++++-
+ src/extras/functions/log_functions.cpp     | 11 ++++-
+ src/extras/functions/log_functions.h       |  7 +++-
+ src/extras/functions/vehicle_functions.cpp |  3 +-
+ 16 files changed, 177 insertions(+), 14 deletions(-)
+ create mode 100644 src/extras/defines.cpp
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 50e65598..308ab1ee 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -1243,6 +1243,12 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ // #endif //_TEST1
+ #endif
+ 
++#ifdef EXTRA_LOGGING
++				case MENUACTION_EXTRA_LOGGING:
++					rightText = TheText.Get(gbExtraLogging ? "FEM_ON" : "FEM_OFF");
++				break;
++#endif // EXTRA_LOGGING
++
+ //
+ #ifdef FIRST_PERSON
+ 				case MENUACTION_AUTOCENTER_IN_VEHICLE_FP:
+@@ -5614,6 +5620,14 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 
+ #endif // _FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++	case MENUACTION_EXTRA_LOGGING: 
++		gbExtraLogging = !gbExtraLogging;
++		SaveSettings();
++		
++		break;
++#endif //EXTRA_LOGGING
++
+ #endif // GAMEPAD_MENU
+ 
+ #ifdef IMPROVED_TECH_PART // Other settings
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index c164a7e1..c85555a8 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -366,6 +366,11 @@ enum eMenuAction
+ 	MENUACTION_TEST,
+ 	// Test in Frontend.cpp
+ 	MENUACTION_FASTLOADER,
++
++#ifdef EXTRA_LOGGING
++	MENUACTION_EXTRA_LOGGING,
++#endif // EXTRA_LOGGING
++
+ #ifdef _TEST1
+ 	MENUACTION_FASTLOADER_SLOT,
+ #endif //_TEST1
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 2fee4c6d..6baa1102 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -876,9 +876,12 @@ CMenuScreenCustom aScreens[] = {
+ 		// so if you want to go back to the main menu you can't.
+ 		// Well I have added an option to disable this being toggled in the main menu, so it can only be toggled in game
+ 		MENUACTION_FASTLOADER,      "FST_LD",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++		
+ 		// MENUACTION_CFO_SLIDER,      "FST_SLT",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
+ 
+-
++		#ifdef EXTRA_LOGGING
++		MENUACTION_EXTRA_LOGGING,      "KCEXLOG",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++		#endif //EXTRA_LOGGING
+ 		// Test
+ 		// Well now this shows the numbers but it says "1-8 missing" in the menu selector for it.
+ 		// TODO Use this to create a fast loader slot selector, I have the slot numbers setup
+diff --git a/src/core/config.h b/src/core/config.h
+index 51175e61..e8bc6b85 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -47,6 +47,8 @@
+ // So far I have a test for enabling/disabling the spike strips.
+ #define EX_COP_FUNCTIONS
+ 
++// Adds extra logging features for KCNet, can be toggled in the general settings menu.
++#define EXTRA_LOGGING
+ 
+ 
+ // Toggle vehicle upside down explosion option in debug menu.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index c397bc50..1c716a31 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -113,6 +113,10 @@ bool gbNoMovies;
+ bool gbFastLoader;
+ #endif
+ 
++#ifdef EXTRA_LOGGING
++bool gbExtraLogging;
++#endif //
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ uint8 gbGameSaveOnStartup = 0;
+ #endif
+diff --git a/src/core/main.h b/src/core/main.h
+index 0ef121a7..9e69694f 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -87,6 +87,10 @@ extern bool gbNoMovies;
+ extern bool gbFastLoader;
+ #endif //_FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++extern bool gbExtraLogging;
++#endif //
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ extern uint8 gbGameSaveOnStartup;
+ #endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 6839a243..a49e2fa9 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -62,7 +62,7 @@
+ // TODO Are these needed anymore?
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+-#include "extras/cheats/custom_cheats.h"
++#include "custom_cheats.h"
+ 
+ #ifdef RWLIBS
+ extern "C" int vsprintf(char* const _Buffer, char const* const _Format, va_list  _ArgList);
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index 4378d043..0673b484 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -54,6 +54,11 @@
+ 
+ #include "CopPed.h"
+ 
++// New
++#include "main.h"
++#include "log_functions.h"
++#include "defines.h"
++
+ 
+ /// <summary>
+ /// Kill the player.
+@@ -97,6 +102,13 @@ PlayerCheats::RaiseWantedLevel()
+ #else
+ 	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 2, 6));
+ #endif // CUSTOM_CODE
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Wanted level raised."); 
++	}
++#endif
+ }
+ 
+ /// <summary>
+@@ -107,6 +119,13 @@ PlayerCheats::LowerWantedLevel()
+ {
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
+ 	FindPlayerPed()->m_pWanted->CheatWantedLevel(0);
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Wanted level cleared."); 
++	}
++#endif
+ }
+ 
+ /// <summary>
+@@ -119,6 +138,13 @@ PlayerCheats::EnableInfiniteHealth()
+ 	pPed->bInvincibleCheat = true;
+ 	// CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
+ 	CHud::SetHelpMessage(TheText.Get("CHEATON"), false);
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Infinite Health enabled."); 
++	}
++#endif
+ }
+ 
+ /// <summary>
+@@ -130,6 +156,13 @@ PlayerCheats::DisableInfiniteHealth()
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	pPed->bInvincibleCheat = false;
+ 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Infinite Health disabled."); 
++	}
++#endif
+ }
+ 
+ ///
+@@ -208,6 +241,13 @@ PlayerCheats::EnableNeverWanted()
+ 	CWanted::SetMaximumWantedLevel(0);
+ 
+ 	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Never wanted enabled."); 
++	}
++#endif
+ 	//}
+ }
+ 
+@@ -232,6 +272,13 @@ PlayerCheats::DisableNeverWanted()
+ 
+ 	// Show the hud message
+ 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{
++		LogFunctions::LogInfo(Defines::logFile, "Never wanted disabled."); 
++	}
++#endif
+ }
+ 
+ // Never wanted test
+diff --git a/src/extras/cheats/vehicle_cheats.cpp b/src/extras/cheats/vehicle_cheats.cpp
+index de3b917d..20fc0ae8 100644
+--- a/src/extras/cheats/vehicle_cheats.cpp
++++ b/src/extras/cheats/vehicle_cheats.cpp
+@@ -11,6 +11,9 @@
+ #endif
+ #endif
+ 
++// This was needed for the extra options I had.
++#include "main.h"
++
+ #include "vehicle_cheats.h"
+ 
+ // Vehicle functions
+@@ -57,6 +60,12 @@
+ #include "Heli.h"
+ #include "Bike.h"
+ 
++
++// Defines - KCNet
++#include "defines.h"
++// Logging - KCNet
++#include "log_functions.h"
++
+ // TODO Figure out how to move this into vehicle_functions.cpp without errors
+ 
+ /// <summary>
+@@ -75,6 +84,13 @@ VehicleCheats::EnableVehicleInvincibility(CVehicle *veh)
+ 
+ 	veh->bTyresDontBurst = true;
+ 	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++#ifdef EXTRA_LOGGING
++	if(gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Vehicle invincibility enabled."); 
++	}
++#endif
+ }
+ 
+ /// <summary>
+@@ -84,6 +100,7 @@ VehicleCheats::EnableVehicleInvincibility(CVehicle *veh)
+ void
+ VehicleCheats::DisableVehicleInvincibility(CVehicle *veh)
+ {
++	//Defines defines = Defines();
+ 	veh->bBulletProof = false;
+ 	veh->bCollisionProof = false;
+ 	veh->bExplosionProof = false;
+@@ -92,6 +109,15 @@ VehicleCheats::DisableVehicleInvincibility(CVehicle *veh)
+ 
+ 	veh->bTyresDontBurst = false;
+ 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
++	// Test logging to a file.
++	// This works!
++#ifdef EXTRA_LOGGING
++	if (gbExtraLogging) 
++	{ 
++		LogFunctions::LogInfo(Defines::logFile, "Vehicle invincibility disabled.");
++	}
++#endif
++	
+ }
+ 
+ // Adds a toggle for the invincible vehicle.
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index fd7b0de5..7c39179f 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -61,13 +61,16 @@
+ // Extra
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+-#include "extras/cheats/custom_cheats.h"
+-#include "extras/cheats/player_cheats.h"
+-#include "extras/cheats/vehicle_cheats.h"
+ 
+-#include "extras/functions/vehicle_functions.h"
++// Cheats
++#include "custom_cheats.h"
++#include "player_cheats.h"
++#include "vehicle_cheats.h"
+ 
+-#include "extras/functions/log_functions.h"
++
++// Functions
++#include "vehicle_functions.h"
++#include "log_functions.h"
+ //
+ 
+ /////////////////////
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+new file mode 100644
+index 00000000..283a03d6
+--- /dev/null
++++ b/src/extras/defines.cpp
+@@ -0,0 +1,12 @@
++#include "defines.h"
++
++// This is required.
++// Set the log file path
++std::string Defines::logFile = "KCNet-ReVC.log";
++
++// TODO Display these somewhere, possibly in a pop up under the debug menu.
++// Set the program modification author
++std::string Defines::modificationAuthor = "kelson8";
++
++// Set the program version.
++std::string Defines::programVersion = "1.0.1";
+\ No newline at end of file
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 39f965ab..2af1633b 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -1,6 +1,17 @@
+ #pragma once
++
++#include <iostream>
++
++// TODO Move file path defines into here, so I can easily change the folder path from 'ViceExtended'
++// To something else.
+ class Defines
+ {
+ public:
+-	const char *logFile = "KCNet-ReVC.log";
++	// Files
++	//const char *logFile = "KCNet-ReVC.log";
++	static std::string logFile;
++
++	// Program info
++	static std::string modificationAuthor;
++	static std::string programVersion;
+ };
+\ No newline at end of file
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 5bdc1c30..ab6e69cf 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -59,7 +59,8 @@
+ // Extra
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+-#include "extras/cheats/custom_cheats.h"
++
++#include "custom_cheats.h"
+ 
+ //#ifdef _TEST1
+ #include "ini_functions.h"
+@@ -295,10 +296,10 @@ extern bool bRocketLauncherThirdPersonAiming = ReadAndGetFeature("RocketLauncher
+ 
+ // New
+ #ifdef SWIMMING
+-// TODO Fix These
+ extern bool bEnableSwimming = ReadAndGetFeature("EnableSwimming");
+ #endif
+ 
++// TODO Fix this
+ #ifdef CLIMBING
+ extern bool bEnableClimbing = ReadAndGetFeature("EnableClimbing");
+ #endif
+@@ -610,14 +611,23 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "NoMovies", &gbNoMovies);
+ #endif
+ 
++// KCNet
++
+ #ifdef _FAST_LOADER
+ 	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
+ #endif //_FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++	ReadIniIfExists("KCNet", "ExtraLogging", &gbExtraLogging);
++#endif
++
++//
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+ 	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif
+ 
++
+ #ifdef IMPROVED_TECH_PART // Other settings
+ // ReadIniIfExists("Other", "Autosave", &FrontEndMenuManager.m_PrefsAutosave);
+ ReadIniIfExists("Other", "StoreGalleryPhotos", &FrontEndMenuManager.m_PrefsStoreGalleryPhotos);
+@@ -736,10 +746,19 @@ SaveINISettings()
+ 	StoreIni("General", "NoMovies", gbNoMovies);
+ #endif
+ 
++
++// KCNet
++
+ #ifdef _FAST_LOADER
+ 	StoreIni("General", "FastLoader", gbFastLoader);
+ #endif //_FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++	StoreIni("KCNet", "ExtraLogging", gbExtraLogging);
++#endif
++
++//
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+ 	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
+ #endif
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index ac5cb34e..555a2bd8 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -28,6 +28,9 @@
+ 
+ // TODO Make this write over instead of appending the log file for now.
+ 
++// The boolean gbExtraLogging is set in the main menu and ini options to toggle this.
++
++
+ // Set the file directory to ViceExtended
+ // const char *filePath = "\\ViceExtended\\";
+ // I had to remove the extra '\\' at the beginning of this to fix the log file path
+@@ -120,6 +123,8 @@ LogToFile(std::string type, std::string fileName, std::string message)
+ #ifdef _WIN32
+ 		CreateDirectory(logPath.c_str(), NULL);
+ 		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
++#else
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, this can only create the folder on Windows!");
+ #endif //_WIN32
+ 	}
+ 	
+@@ -270,9 +275,13 @@ LogFunctions::LogTest()
+ /// <param name="fileName">The file name to check if exists</param>
+ /// <returns>If the file exists or not.</returns>
+ bool
+-LogFunctions::DoesFileExist(const char *fileName)
++//LogFunctions::DoesFileExist(const char *fileName)
++LogFunctions::DoesFileExist(std::string fileName)
+ {
++	// Working
+ 	//std::string logFilePath = filePath + fileName;
++	
++	// New test
+ 	std::string logFilePath = logPath + fileName;
+ 
+ 	// Create an ifstream named file
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+index 5dd02fdb..cfd02c87 100644
+--- a/src/extras/functions/log_functions.h
++++ b/src/extras/functions/log_functions.h
+@@ -1,11 +1,16 @@
+ #pragma once
+ #include <iostream>
++#include <string>
+ 
+ class LogFunctions
+ {
++//private:
++	
+ public:
+ 	// Check if a file exists.
+-	static bool DoesFileExist(const char *fileName);
++	//static bool DoesFileExist(const char *fileName);
++	static bool DoesFileExist(std::string fileName);
++	// TODO Remove this
+ 	static void DoesFileExistTest();
+ 
+ 	// Logging
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 622af6bf..7bdf703b 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -69,8 +69,7 @@
+ #include "..\extras\test\enums\model_ids.h"
+ #include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+-//#include "extras\test\cheats\custom_cheats.h"
+-#include "extras/cheats/custom_cheats.h"
++#include "custom_cheats.h"
+ 
+ #include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+-- 
+2.45.1.windows.1
+

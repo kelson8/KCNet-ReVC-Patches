@@ -1,0 +1,26 @@
+From 59fe4f29803445498b1ef637787e62c28b141b75 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 7 Mar 2025 04:14:19 -0500
+Subject: [PATCH 077/101] Add missing option to config.h
+
+---
+ src/core/config.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/core/config.h b/src/core/config.h
+index e8bc6b85..98fd31ff 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -696,6 +696,9 @@ enum Config {
+ #define CUSTOM_CODE
+ 
+ #ifdef CUSTOM_CODE
++// Toggle the lua test, so far this just has a F8 keybind that sets the players position.
++#define LUA_TEST
++
+ // Move most debug functions into src/extras/debug/debug_functions.cpp
+ #define _MOVE_DEBUG_FILE
+ 
+-- 
+2.45.1.windows.1
+

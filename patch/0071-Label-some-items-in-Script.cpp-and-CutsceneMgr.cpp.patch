@@ -1,0 +1,386 @@
+From d0d115b19270988556aeb1745802e8b1ad8aa3ba Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 1 Mar 2025 21:18:53 -0500
+Subject: [PATCH 071/101] Label some items in Script.cpp and CutsceneMgr.cpp.
+ Slightly modify modloader code Add gitignore to utils folder.
+
+---
+ src/animation/CutsceneMgr.cpp |  16 +++--
+ src/control/Script.cpp        | 128 ++++++++++++++++++++++++++++++++++
+ src/core/CdStream.cpp         |   3 +-
+ utils/.gitignore              |   3 +
+ 4 files changed, 145 insertions(+), 5 deletions(-)
+ create mode 100644 utils/.gitignore
+
+diff --git a/src/animation/CutsceneMgr.cpp b/src/animation/CutsceneMgr.cpp
+index 4c6653e8..d62bc426 100644
+--- a/src/animation/CutsceneMgr.cpp
++++ b/src/animation/CutsceneMgr.cpp
+@@ -206,11 +206,11 @@ CCutsceneMgr::LoadCutsceneData(const char *szCutsceneName)
+ 
+ 	RwStream *stream;
+ 
+-	#ifdef MODLOADER // cuts.img
+-	stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, ModLoader_GetCdStreamPath_Unsafe("ANIM\\CUTS.IMG"));
++#ifdef MODLOADER // cuts.img
++	 stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, ModLoader_GetCdStreamPath_Unsafe("ANIM\\CUTS.IMG"));
+ #else
+ 	stream = RwStreamOpen(rwSTREAMFILENAME, rwSTREAMREAD, "ANIM\\CUTS.IMG");
+-#endif
++#endif // MODLOADER
+ 	assert(stream);
+ 
+ 	// Load animations
+@@ -229,11 +229,14 @@ CCutsceneMgr::LoadCutsceneData(const char *szCutsceneName)
+ 	RwStreamClose(stream, nil);
+ 
+ 	// Load camera data
++
++	// TODO Fix this
+ #ifdef MODLOADER // cuts.img
+ 	file = CFileMgr::OpenFile(ModLoader_GetCdStreamPath_Unsafe("ANIM\\CUTS.IMG"), "rb");
++	//file = CFileMgr::OpenFile("ANIM\\CUTS.IMG", "rb");
+ #else
+ 	file = CFileMgr::OpenFile("ANIM\\CUTS.IMG", "rb");
+-#endif
++#endif // MODLOADER 
+ 
+ 	sprintf(gString, "%s.DAT", szCutsceneName);
+ 	if (ms_pCutsceneDir->FindItem(gString, offset, size)) {
+@@ -285,6 +288,11 @@ CCutsceneMgr::FinishCutscene()
+ 	CWorld::Players[CWorld::PlayerInFocus].MakePlayerSafe(false);
+ }
+ 
++/// <summary>
++/// Setup the cutscene to run.
++/// This is where TheCamera.SetWideScreenOn is in use.
++/// </summary>
++/// <param name=""></param>
+ void
+ CCutsceneMgr::SetupCutsceneToStart(void)
+ {
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 892cf27b..3cb45e36 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -377,50 +377,86 @@ void CMissionCleanup::CheckIfCollisionHasLoadedForMissionObjects()
+ 	}
+ }
+ 
++/// <summary>
++/// Process the mission cleanup.
++/// </summary>
+ void CMissionCleanup::Process()
+ {
+ 	CPopulation::m_AllRandomPedsThisType = -1;
++
++	// Change the ped density and vehicle density multipliers
+ 	CPopulation::PedDensityMultiplier = 1.0f;
+ 	CCarCtrl::CarDensityMultiplier = 1.0f;
++
+ 	CPed::nThreatReactionRangeMultiplier = 1;
+ 	CPed::nEnterCarRangeMultiplier = 1;
++
+ 	FindPlayerPed()->m_pWanted->m_fCrimeSensitivity = 1.0f;
+ 	CRoadBlocks::ClearScriptRoadBlocks();
+ 	CRouteNode::Initialise();
++
+ 	if (!CWorld::Players[CWorld::PlayerInFocus].m_pRemoteVehicle)
+ 		TheCamera.Restore();
++
++	// Quite sure this is for removing the black bars on the cutscenes or something.
++	// TODO Test this.
+ 	TheCamera.SetWideScreenOff();
++
++	// Reset some SpecialFX code back to normal
+ 	CSpecialFX::bLiftCam = false;
+ 	CSpecialFX::bVideoCam = false;
++
++	// Seems to be resetting the time cycle
++	// In use under this command: COMMAND_CLEAR_EXTRA_COLOURS
+ 	CTimeCycle::StopExtraColour(0);
++
++	// Clear mission audio
+ 	for (int i = 0; i < MISSION_AUDIO_SLOTS; i++)
+ 		DMAudio.ClearMissionAudio(i);
++
++	// Release the weather
+ 	CWeather::ReleaseWeather();
++
++	// Mark the special characters and models as no longer needed.
+ 	for (int i = 0; i < NUM_OF_SPECIAL_CHARS; i++)
+ 		CStreaming::SetMissionDoesntRequireSpecialChar(i);
++
+ 	for (int i = 0; i < NUM_OF_CUTSCENE_OBJECTS; i++)
+ 		CStreaming::SetMissionDoesntRequireModel(MI_CUTOBJ01 + i);
++	//
++
++	// Reset variables back to normal
+ 	CStreaming::ms_disableStreaming = false;
+ 	CHud::m_ItemToFlash = -1;
+ 	CHud::SetHelpMessage(nil, false);
+ 	CUserDisplay::OnscnTimer.m_bDisabled = false;
++	
++	
+ 	CTheScripts::RemoveScriptTextureDictionary();
++
++	// Reset variables back to normal
+ 	CWorld::Players[0].m_pPed->m_pWanted->m_bIgnoredByCops = false;
+ 	CWorld::Players[0].m_pPed->m_pWanted->m_bIgnoredByEveryone = false;
+ 	CWorld::Players[0].MakePlayerSafe(false);
+ 	CWorld::Players[0].m_pPed->m_nFadeDrunkenness = 1;
+ 	CWorld::Players[0].m_pPed->m_nDrunkCountdown = 0;
++
+ 	CPad::GetPad(0)->SetDrunkInputDelay(0);
+ 	CWorld::Players[0].m_bDriveByAllowed = true;
+ 	DMAudio.ShutUpPlayerTalking(FALSE);
+ 	CVehicle::bDisableRemoteDetonation = false;
+ 	CVehicle::bDisableRemoteDetonationOnContact = false;
++
++	// Clear the taxi shortcuts
+ 	CGameLogic::ClearShortCut();
++
+ 	CTheScripts::RiotIntensity = 0;
+ 	CTheScripts::StoreVehicleIndex = -1;
+ 	CTheScripts::StoreVehicleWasRandom = true;
++
+ 	CTheScripts::UpsideDownCars.Init();
+ 	CTheScripts::StuckCars.Init();
++
+ 	for (int i = 0; i < MAX_CLEANUP; i++){
+ 		if (m_sEntities[i].type == CLEANUP_UNUSED)
+ 			continue;
+@@ -459,6 +495,11 @@ void CMissionCleanup::Process()
+ #endif
+ }
+ 
++//**********************
++// Begin stuck car check
++//**********************
++
++
+ /* NB: CUpsideDownCarCheck is not used by actual script at all
+  * It has a weird usage: AreAnyCarsUpsideDown would fail any mission
+  * just like death or arrest. */
+@@ -618,6 +659,18 @@ bool CStuckCarCheck::HasCarBeenStuckForAWhile(int32 id)
+ 	return false;
+ }
+ 
++//**********************
++// End stuck car check
++//**********************
++
++/// <summary>
++/// Collect the parameters for the scripts, in use for the main.scm file and the gta3sc language.
++/// Checks for the following:
++/// ARGUMENT_INT32, ARGUMENT_FLOAT, ARGUMENT_GLOBALVAR, ARGUMENT_LOCALVAR, ARGUMENT_INT8, and ARGUMENT_INT16
++/// TODO Figure out how exactly this is working, could be useful for running commands in the C++ code like plugin-sdk.
++/// </summary>
++/// <param name="pIp"></param>
++/// <param name="total"></param>
+ void CRunningScript::CollectParameters(uint32* pIp, int16 total)
+ {
+ 	for (int16 i = 0; i < total; i++){
+@@ -651,6 +704,11 @@ void CRunningScript::CollectParameters(uint32* pIp, int16 total)
+ 	}
+ }
+ 
++/// <summary>
++/// This seems to mostly be in use for blips, and property pickups.
++/// </summary>
++/// <param name="ip"></param>
++/// <returns></returns>
+ int32 CRunningScript::CollectNextParameterWithoutIncreasingPC(uint32 ip)
+ {
+ 	uint32* pIp = &ip;
+@@ -674,6 +732,11 @@ int32 CRunningScript::CollectNextParameterWithoutIncreasingPC(uint32 ip)
+ 	return -1;
+ }
+ 
++/// <summary>
++/// Store parameters for use in the scripts, these are set in the original sc scripts.
++/// </summary>
++/// <param name="pIp">Reference to &m_nIp in CRunningScript</param>
++/// <param name="number">The amount of arguments for the script command.</param>
+ void CRunningScript::StoreParameters(uint32* pIp, int16 number)
+ {
+ 	for (int16 i = 0; i < number; i++){
+@@ -690,6 +753,13 @@ void CRunningScript::StoreParameters(uint32* pIp, int16 number)
+ 	}
+ }
+ 
++/// <summary>
++/// Unsure of what this ones purpose is, but is in use quite a bit for the scripts.
++/// Get a pointer, TODO Figure out what exactly this one does.
++/// </summary>
++/// <param name="pIp">Reference to &m_nIp in CRunningScript</param>
++/// <param name="type">The type, either VAR_LOCAL or VAR_GLOBAL</param>
++/// <returns></returns>
+ int32 *CRunningScript::GetPointerToScriptVariable(uint32* pIp, int16 type)
+ {
+ 	switch (CTheScripts::Read1ByteFromScript(pIp))
+@@ -706,6 +776,9 @@ int32 *CRunningScript::GetPointerToScriptVariable(uint32* pIp, int16 type)
+ 	return nil;
+ }
+ 
++/// <summary>
++/// Initialize the CRunningScript
++/// </summary>
+ void CRunningScript::Init()
+ {
+ 	strcpy(m_abScriptName, "noname");
+@@ -731,6 +804,15 @@ void CRunningScript::Init()
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ int CTheScripts::ScriptToLoad = 0;
+ 
++/// <summary>
++/// Open the game script
++/// I have changed this to read the script from 'ViceExtended\data\'
++/// Original file: main.scm (For now this is the original scm)
++/// Modifed file: freeroam_miami.scm (I have my custom scm scripts in here, it has interiors enabled, 
++/// You spawn at the airport with a bunch of cars 
++/// And have a teleport marker between the Cherry Popper factory and the airport
++/// </summary>
++/// <returns></returns>
+ int CTheScripts::OpenScript()
+ {
+ 	CFileMgr::ChangeDir("\\");
+@@ -760,6 +842,9 @@ int CTheScripts::OpenScript()
+ }
+ #endif
+ 
++/// <summary>
++/// Initialize CTheScripts
++/// </summary>
+ void CTheScripts::Init()
+ {
+ 	for (int i = 0; i < SIZE_SCRIPT_SPACE; i++)
+@@ -865,6 +950,9 @@ void CTheScripts::Init()
+ #endif
+ }
+ 
++/// <summary>
++/// Remove script texture dictionary
++/// </summary>
+ void CTheScripts::RemoveScriptTextureDictionary()
+ {
+ 	for (int i = 0; i < ARRAY_SIZE(CTheScripts::ScriptSprites); i++)
+@@ -874,6 +962,10 @@ void CTheScripts::RemoveScriptTextureDictionary()
+ 		CTxdStore::RemoveTxd(slot);
+ }
+ 
++/// <summary>
++/// Remove a script from the list
++/// </summary>
++/// <param name="ppScript"></param>
+ void CRunningScript::RemoveScriptFromList(CRunningScript** ppScript)
+ {
+ 	if (prev)
+@@ -884,6 +976,10 @@ void CRunningScript::RemoveScriptFromList(CRunningScript** ppScript)
+ 		next->prev = prev;
+ }
+ 
++/// <summary>
++/// Add a script to the list
++/// </summary>
++/// <param name="ppScript"></param>
+ void CRunningScript::AddScriptToList(CRunningScript** ppScript)
+ {
+ 	next = *ppScript;
+@@ -893,6 +989,19 @@ void CRunningScript::AddScriptToList(CRunningScript** ppScript)
+ 	*ppScript = this;
+ }
+ 
++/// <summary>
++/// Start a new script
++/// Seems to be in use under these commands:
++/// COMMAND_LOAD_AND_LAUNCH_MISSION_INTERNAL
++/// And these functions:
++/// CTheScripts::SwitchToMission
++/// CTheScripts::LoadAllScripts
++/// CRunningScript::ProcessCommands0To99
++/// CRunningScript::ProcessCommands200To299
++/// Seems to mostly be in use for launching missions.
++/// </summary>
++/// <param name="ip"></param>
++/// <returns></returns>
+ CRunningScript* CTheScripts::StartNewScript(uint32 ip)
+ {
+ 	CRunningScript* pNew = pIdleScripts;
+@@ -905,6 +1014,9 @@ CRunningScript* CTheScripts::StartNewScript(uint32 ip)
+ 	return pNew;
+ }
+ 
++/// <summary>
++/// Process everything for the scripts.
++/// </summary>
+ void CTheScripts::Process()
+ {
+ 	if (CReplay::IsPlayingBack())
+@@ -999,16 +1111,28 @@ void CTheScripts::Process()
+ #endif
+ }
+ 
++/// <summary>
++/// Start a test script
++/// TODO Figure out what this does.
++/// </summary>
++/// <returns></returns>
+ CRunningScript* CTheScripts::StartTestScript()
+ {
+ 	return StartNewScript(0);
+ }
+ 
++/// <summary>
++/// Check if the player is on a mission.
++/// </summary>
++/// <returns></returns>
+ bool CTheScripts::IsPlayerOnAMission()
+ {
+ 	return OnAMissionFlag && *(int32*)&ScriptSpace[OnAMissionFlag] == 1;
+ }
+ 
++/// <summary>
++/// Process the CRunningScript code
++/// </summary>
+ void CRunningScript::Process()
+ {
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+@@ -1036,6 +1160,10 @@ void CRunningScript::Process()
+ 		CMessages::BriefMessages[0].m_nStartTime = 0;
+ }
+ 
++/// <summary>
++/// Run the commands in the functions.
++/// </summary>
++/// <returns></returns>
+ int8 CRunningScript::ProcessOneCommand()
+ {
+ 	int8 retval = -1;
+diff --git a/src/core/CdStream.cpp b/src/core/CdStream.cpp
+index 73dd03fb..66447d82 100644
+--- a/src/core/CdStream.cpp
++++ b/src/core/CdStream.cpp
+@@ -500,7 +500,8 @@ CdStreamAddImage(char const *path)
+ 	
+ 	SetLastError(0);
+ 
+-	#ifdef MODLOADER
++
++#ifdef MODLOADER
+ 	gImgFiles[gNumImages] = CreateFile(ModLoader_GetCdStreamPath_Unsafe(path),
+ #else
+ 	gImgFiles[gNumImages] = CreateFile(path,
+diff --git a/utils/.gitignore b/utils/.gitignore
+new file mode 100644
+index 00000000..89fdc1d5
+--- /dev/null
++++ b/utils/.gitignore
+@@ -0,0 +1,3 @@
++
++# These don't need to be in this repo, I'll upload these files somewhere else.
++*.zip
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

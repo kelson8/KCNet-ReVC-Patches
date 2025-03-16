@@ -1,0 +1,363 @@
+From 985ed90c5e282f509460415e0a582f20be7f8d5b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 22:04:42 -0500
+Subject: [PATCH 059/101] Add mostly working PhotoMode from Vice Extended
+ project. It has a option in the pause menu, I still need to implement the
+ screenshot features from it.
+
+---
+ src/core/config.h          |  2 +-
+ src/core/main.cpp          | 50 ++++++++++++++++++++++++++++++++++++++
+ src/core/main.h            | 12 +++++++++
+ src/extras/PhotoMode.cpp   | 24 ++++++++++++++++++
+ src/renderer/Font.cpp      |  7 ++++++
+ src/renderer/Hud.cpp       |  7 ++++++
+ src/renderer/SpecialFX.cpp | 10 ++++++++
+ src/weapons/Weapon.cpp     | 24 +++++++++++++++++-
+ src/weapons/Weapon.h       |  6 +++++
+ 9 files changed, 140 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/config.h b/src/core/config.h
+index ae2caab2..990bb3d5 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -97,7 +97,7 @@
+ // TODO Implement the defines below to possibly make photo mode build.
+ // #define IMPROVED_MENU_AND_INPUT
+ // #define IMPROVED_TECH_PART
+-// #define EX_PHOTO_MODE
++#define EX_PHOTO_MODE
+ 
+ /*********************** End partially complete code  ******************/
+ 
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 11346e96..0796e3df 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -126,9 +126,15 @@ bool gameAlreadyInitialised;
+ float NumberOfChunksLoaded;
+ #define TOTALNUMCHUNKS 95.0f
+ 
++
+ bool g_SlowMode = false;
+ char version_name[64];
+ 
++// #define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
++uint32 newScreenNumber = 0;
++#endif
++#undef IMPROVED_TECH_PART
+ 
+ void GameInit(void);
+ void SystemInit(void);
+@@ -368,6 +374,40 @@ RwGrabScreen(RwCamera *camera, RwChar *filename)
+ 	return result;
+ }
+ 
++//#define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // New screenshot folder and numbering (thanks to Shagg_E)
++void TakeAndSaveScreenshot() {
++	char s[48];
++	char numberFinal[255];
++	char numberFinal2[255];
++
++	sprintf(numberFinal, "%i", newScreenNumber);
++
++	int8 digitsQuantity = (unsigned)strlen(numberFinal);
++	if (5 > digitsQuantity) {
++		for (int i = digitsQuantity; i < 5; i++) {
++			sprintf(numberFinal2, "0%s", numberFinal); // to prevent 4th digit bug it's better to split this stuff to two different chars
++			strcpy(numberFinal, numberFinal2); // to prevent 4th digit bug it's better to split this stuff to two different chars
++		}
++	}
++#ifdef VICE_EXTENDED // ViceExtended folder - Gallery folder
++	strcpy(s, "ViceExtended\\userfiles\\Gallery\\photo_");
++#else
++	strcpy(s, "userfiles\\Gallery\\photo_");
++#endif
++	strcat(s, numberFinal);
++	strcat(s, ".png");
++
++	newScreenNumber++;
++
++	if (CWeapon::bTakePhoto)
++		RsCameraShowRaster(Scene.camera);
++
++	RwGrabScreen(Scene.camera, s);
++}
++#endif //IMPROVED_TECH_PART
++#undef IMPROVED_TECH_PART
++
+ #define TILE_WIDTH 576
+ #define TILE_HEIGHT 432
+ 
+@@ -395,8 +435,18 @@ DoRWStuffEndOfFrame(void)
+ 	}
+ #else
+ 	if (CPad::GetPad(1)->GetLeftShockJustDown() || CPad::GetPad(0)->GetFJustDown(11)) {
++
++
++// #define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
++		TakeAndSaveScreenshot();
++#else
+ 		sprintf(s, "screen_%011lld.png", time(nil));
+ 		RwGrabScreen(Scene.camera, s);
++#endif
++#undef IMPROVED_TECH_PART
++
++
+ 	}
+ #endif
+ #endif // !MASTER
+diff --git a/src/core/main.h b/src/core/main.h
+index 24163f8a..e2b4264d 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -35,6 +35,12 @@ extern bool gbShowTimebars;
+ extern bool gbPrintMemoryUsage;
+ #endif
+ 
++#define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
++extern uint32 newScreenNumber;
++#endif
++#undef IMPROVED_TECH_PART
++
+ class CSprite2d;
+ 
+ bool DoRWStuffStartOfFrame(int16 TopRed, int16 TopGreen, int16 TopBlue, int16 BottomRed, int16 BottomGreen, int16 BottomBlue, int16 Alpha);
+@@ -55,6 +61,12 @@ void ResetLoadingScreenBar(void);
+ void TheModelViewer(void);
+ #endif
+ 
++#define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
++void TakeAndSaveScreenshot();
++#endif
++#undef IMPROVED_TECH_PART
++
+ #ifdef LOAD_INI_SETTINGS
+ bool LoadINISettings();
+ void SaveINISettings();
+diff --git a/src/extras/PhotoMode.cpp b/src/extras/PhotoMode.cpp
+index a219ed3d..b67c8b0a 100644
+--- a/src/extras/PhotoMode.cpp
++++ b/src/extras/PhotoMode.cpp
+@@ -911,6 +911,8 @@ void CPhotoMode::ProcessCamera()
+ 	float curSenseX;
+ 	float curSenseY;
+ 
++	// TODO Enable these
++#ifdef _DISABLED_CODE
+ 	if (pad->IsAffectedByController) {
+ 		curSenseX = FrontEndMenuManager.m_PrefsPadLookSensX;
+ 		curSenseY = FrontEndMenuManager.m_PrefsPadLookSensY;
+@@ -924,6 +926,9 @@ void CPhotoMode::ProcessCamera()
+ 
+ 	TheCamera.m_fMouseAccelHorzntl = curSenseX;
+ 	TheCamera.m_fMouseAccelVertical = curSenseY;
++#endif //_DISABLED_CODE
++
++
+ 
+ 	float MouseX = pad->GetMouseX();
+ 	float MouseY = pad->GetMouseY();
+@@ -1558,7 +1563,11 @@ void CPhotoMode::TakePhoto()
+ 	if (!bPlayerWantsToTakePhoto)
+ 		return;
+ 
++	// TODO Enable these
++	// TODO Fix the screenshot feature to work, this compiles and seems to run other then that.
++#ifdef IMPROVED_TECH_PART
+ 	TakeAndSaveScreenshot();
++#endif
+ 
+ 	photoSavedTime = 225.0f;
+ 
+@@ -1597,6 +1606,8 @@ void CPhotoMode::ProcessPlayerPosition()
+ 	CPad* pad = CPad::GetPad(0);
+ 	if (pad->GetLeftMouse() || pad->IsAffectedByController && pad->GetCross()) {
+ 		if (pad->IsAffectedByController) {
++			// TODO Enable these
++#ifdef _DISABLED_CODE
+ 			float stickX = pad->NewState.LeftStickX;
+ 			if (Abs(stickX) <= FrontEndMenuManager.m_PrefsLeftStickDeadzone)
+ 				stickX = 0;
+@@ -1609,13 +1620,16 @@ void CPhotoMode::ProcessPlayerPosition()
+ 			else
+ 				stickY /= 128.0f * 5.0f;
+ 
++			
+ 			CVector oldPlayerPos = playerPos;
+ 
+ 			playerPos.z += -pad->NewState.LeftShoulder2 / 255.0f * 0.25f + pad->NewState.RightShoulder2 / 255.0f * 0.25f;
+ 			playerPos.x += TheCamera.GetRight().x * -stickX + TheCamera.GetForward().x * -stickY;
+ 			playerPos.y += TheCamera.GetRight().y * -stickX + TheCamera.GetForward().y * -stickY;
+ 
++
+ 			lightPos += playerPos - oldPlayerPos;
++#endif
+ 		} else {
+ 			CVector oldPlayerPos = playerPos;
+ 
+@@ -1644,6 +1658,9 @@ void CPhotoMode::ProcessLights()
+ 	CPad* pad = CPad::GetPad(0);
+ 	if (bMenuOpen && currentTab == TAB_LIGHT && (pad->GetLeftMouse() || pad->IsAffectedByController && pad->GetCross())) {
+ 		if (pad->IsAffectedByController) {
++
++			// TODO Enable these
++#ifdef _DISABLED_CODE
+ 			float stickX = pad->NewState.LeftStickX;
+ 			if (Abs(stickX) <= FrontEndMenuManager.m_PrefsLeftStickDeadzone)
+ 				stickX = 0;
+@@ -1659,6 +1676,8 @@ void CPhotoMode::ProcessLights()
+ 			lightPos.z += -pad->NewState.LeftShoulder2 / 255.0f * 0.25f + pad->NewState.RightShoulder2 / 255.0f * 0.25f;
+ 			lightPos.x += TheCamera.GetRight().x * -stickX + TheCamera.GetForward().x * -stickY;
+ 			lightPos.y += TheCamera.GetRight().y * -stickX + TheCamera.GetForward().y * -stickY;
++
++#endif
+ 		} else {
+ 			float mouseX = -(float)pad->GetMouseX() / 50.0f;
+ 			float mouseY = (float)pad->GetMouseY() / 50.0f;
+@@ -2051,8 +2070,13 @@ void CPhotoMode::InitFakePlayer()
+ 
+ 		if (animList[animID][0] == ASSOCGRP_COLT)
+ 			CAnimManager::AddAnimation(fakePlayer->GetClump(), ASSOCGRP_STD, ANIM_STD_IDLE);
++		
++					// TODO Enable these
++#ifdef _DISABLED_CODE
+ 		else
+ 			CAnimManager::AddAnimation(fakePlayer->GetClump(), ASSOCGRP_STD, ANIM_STD_GUN_STAND);
++		// TODO Enable these
++#endif //_DISABLED_CODE
+ 	} else if (animList[animID][1] == ANIM_STD_PARTIAL_FUCKU || animID == -1) {
+ 		CAnimManager::AddAnimation(fakePlayer->GetClump(), ASSOCGRP_STD, ANIM_STD_IDLE);
+ 	}
+diff --git a/src/renderer/Font.cpp b/src/renderer/Font.cpp
+index 25ae72ca..6ea9354c 100644
+--- a/src/renderer/Font.cpp
++++ b/src/renderer/Font.cpp
+@@ -708,6 +708,13 @@ CFont::DrawButton(float x, float y)
+ 		RwRenderStateGet(rwRENDERSTATEVERTEXALPHAENABLE, &vertexAlphaState);
+ 		RwRenderStateGet(rwRENDERSTATETEXTURERASTER, &raster);
+ 		RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void *)TRUE);
++
++#ifdef EX_PHOTO_MODE // We always apply filtering to gamepad button textures
++		int textureFilterState;
++		RwRenderStateGet(rwRENDERSTATETEXTUREFILTER, &textureFilterState);
++		RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
++#endif
++
+ 		if (RenderState.bIsShadow)
+ 			ButtonSprite[PS2Symbol].Draw(rect, RenderState.color);
+ 		else
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index 0d92ae42..90de16f2 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -252,6 +252,13 @@ void CHud::Draw()
+ 	if (CReplay::IsPlayingBack())
+ 		return;
+ 
++// #define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++		if (CWeapon::bTakePhoto)
++			return;
++#endif
++#undef IMPROVED_TECH_PART
++
+ 	if (m_Wants_To_Draw_Hud && !TheCamera.m_WideScreenOn) {
+ 		// unused statics in here
+ 		bool DrawCrossHair = false;
+diff --git a/src/renderer/SpecialFX.cpp b/src/renderer/SpecialFX.cpp
+index 1dd0b6f6..93cf0619 100644
+--- a/src/renderer/SpecialFX.cpp
++++ b/src/renderer/SpecialFX.cpp
+@@ -236,7 +236,17 @@ CSpecialFX::Render2DFXs(void)
+ 			CSprite2d::DrawRect(CRect(posX, posY + 2, posX+20, posY), CRGBA(255, 255, 255, 64));
+ 		}
+ 	}
++	
++// #define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++	if (CSpecialFX::bSnapShotActive && !CWeapon::bTakePhoto) {
++#else
+ 	if (CSpecialFX::bSnapShotActive) {
++#endif
++#undef IMPROVED_TECH_PART
++
++
++
+ 		if (++CSpecialFX::SnapShotFrames > 20) {
+ 			CSpecialFX::bSnapShotActive = false;
+ 			CTimer::SetTimeScale(1.0f);
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 6184eeb2..3b45322e 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -45,6 +45,13 @@ float fPlayerAimScale = 2.5f;
+ 
+ bool CWeapon::bPhotographHasBeenTaken;
+ 
++// #define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++bool CWeapon::bTakePhoto;
++#endif
++#undef IMPROVED_TECH_PART
++
++
+ #ifdef SECUROM
+ int32 sniperPirateCheck = 0x00797743; // 'Cwy\0' ???
+ #endif
+@@ -119,6 +126,15 @@ CWeapon::UpdateWeapons(void)
+ 	CExplosion::Update();
+ 	CProjectileInfo::Update();
+ 	CBulletInfo::Update();
++
++//#define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++	if (bTakePhoto) {
++		TakeAndSaveScreenshot();
++		bTakePhoto = false;
++	}
++#endif
++#undef IMPROVED_TECH_PART
+ }
+ 
+ 
+@@ -2380,7 +2396,13 @@ CWeapon::TakePhotograph(CEntity *shooter)
+ 		CSpecialFX::SnapShotFrames = 0;
+ 		CStats::PhotosTaken++;
+ 		bPhotographHasBeenTaken = true;
+-		
++
++//#define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++		bTakePhoto = FrontEndMenuManager.m_PrefsStoreGalleryPhotos;
++#endif
++#undef IMPROVED_TECH_PART
++
+ 		for ( int32 i = CPools::GetPedPool()->GetSize() - 1; i >= 0; i--)
+ 		{
+ 			CPed *ped = CPools::GetPedPool()->GetSlot(i);
+diff --git a/src/weapons/Weapon.h b/src/weapons/Weapon.h
+index f720b312..40485842 100644
+--- a/src/weapons/Weapon.h
++++ b/src/weapons/Weapon.h
+@@ -23,6 +23,12 @@ public:
+ 	bool m_bAddRotOffset;
+ 	
+ 	static bool bPhotographHasBeenTaken;
++
++// #define IMPROVED_TECH_PART
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++	static bool bTakePhoto;
++#endif
++#undef IMPROVED_TECH_PART
+ 	
+ 	CWeapon() {
+ 		m_bAddRotOffset = false;
+-- 
+2.45.1.windows.1
+

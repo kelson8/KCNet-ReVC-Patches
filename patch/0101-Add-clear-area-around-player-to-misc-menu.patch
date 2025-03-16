@@ -1,0 +1,300 @@
+From 11fc875e607a503578fbb8d6820be399fa1ae0ee Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Mar 2025 02:10:36 -0400
+Subject: [PATCH 101/101] Add clear area around player to misc menu. Label some
+ items, add more vehicles to menu. Add enum for vehicle models specifc to the
+ menu.
+
+Fix spacing in player position under warp menu.
+Add lua_test to wasted and busted, now if a toggle is enabled it'll stay enabled.
+---
+ src/control/GameLogic.cpp         |  24 +++++++
+ src/extras/menus/misc_menu.cpp    |  36 +++++++++++
+ src/extras/menus/vehicle_menu.cpp | 103 +++++++++++++++++++++++++++---
+ src/extras/menus/warp_menu.cpp    |   2 +-
+ 4 files changed, 155 insertions(+), 10 deletions(-)
+
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 5926a879..13c698c6 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -32,6 +32,10 @@
+ #include "screendroplets.h"
+ #include "SaveBuf.h"
+ 
++#ifdef LUA_TEST
++#include "lua_test.h"
++#endif
++
+ uint8 CGameLogic::ActivePlayers;
+ uint8 CGameLogic::ShortCutState;
+ CAutomobile* CGameLogic::pShortCutTaxi;
+@@ -190,6 +194,16 @@ CGameLogic::Update()
+ 				TheCamera.Fade(4.0f, FADE_IN);
+ 			} else
+ 				CRestart::bFadeInAfterNextDeath = true;
++
++
++			// Run lua file after being wasted
++#ifdef LUA_TEST // Wasted, reinit lua
++			// This works in here! I didn't think it would, I guess I added it to the wrong code before.
++			LuaTest luaTest = LuaTest();
++				luaTest.InitLua();
++#endif
++			//
++
+ 		}
+ 		break;
+ 	case WBSTATE_BUSTED:
+@@ -300,6 +314,16 @@ CGameLogic::Update()
+ 				TheCamera.Fade(4.0f, FADE_IN);
+ 			} else
+ 				CRestart::bFadeInAfterNextArrest = true;
++
++			// Run lua file after being busted
++#ifdef LUA_TEST // Busted, reinit lua
++
++			// This works when the player is busted.
++			LuaTest luaTest = LuaTest();
++			luaTest.InitLua();
++#endif
++			//
++
+ 		}
+ 		break;
+ 	case WBSTATE_FAILED_CRITICAL_MISSION:
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 63ac5989..e86b79a9 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -356,6 +356,15 @@ logJoyButtonJustDown()
+ 
+ }
+ 
++void
++clearAreaAroundPlayer(int radius)
++{
++	CustomCheats customCheats = CustomCheats();
++	customCheats.ClearItemsFromArea(radius);
++}
++
++static int radiusToClear = 0;
++
+ //----------- Misc tab ----------//
+ void MiscMenu::MiscTab()
+ {
+@@ -368,6 +377,29 @@ void MiscMenu::MiscTab()
+ 	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
+ 	if(ImGui::Button("Play bridge closed")) { CustomCheats::PlayAnnouncementTest(2); }
+ 
++	// TODO Setup radius for this
++
++	ImGui::Separator();
++
++	ImGui::Text("Clear area");
++
++	// Well this works, it doesn't have a slider on it for some reason though.
++	//ImGui::DragInt("Clear area amount", &radiusToClear, 1);
++	// Got this from here https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp#L927
++	//ImGui::DragInt("Clear area amount", &radiusToClear, 1, 1, 80, "%d", ImGuiSliderFlags_WrapAround);
++	ImGui::InputInt("Clear area amount", &radiusToClear);
++	
++	std::string radiusText = "Radius: " + std::to_string(radiusToClear);
++	ImGui::Text(radiusText.c_str());
++
++	if (ImGui::Button("Clear area")) { 
++		//clearAreaAroundPlayer(10);
++		clearAreaAroundPlayer(radiusToClear);
++	}
++
++	ImGui::Separator();
++	ImGui::Text("Debug functions");
++
+ 	// I have disabled this for now, broke it when moving into its own function.
+ 	//ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+ 
+@@ -399,6 +431,10 @@ void MiscMenu::MiscTab()
+ 	//	CustomCheats::ToggleText();
+ 	//}
+ 
++	ImGui::Separator();
++	ImGui::Text("Other tests");
++
++	ImGui::Text("This doesn't work, I need to fix the toggle hud in the code.");
+ 	if(ImGui::Checkbox("Toggle hud", &showHud)) { 
+ 		toggleHud();
+ 	}
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index f34d35f2..52c2cb3a 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -39,7 +39,18 @@ bool vehicleInvincible = false;
+ bool spawnInCar = false;
+ 
+ bool showVehicleListBox = false;
+-const char *vehicles[] = {"Rhino", "Cheetah", "Infernus", "Comet"};
++const char *vehicles[] = {"Rhino", 
++				"Cheetah", 
++				"Infernus", 
++				"Comet", 
++				"Hotring Racer", 
++				"Stinger",
++				"Sparrow", // Move to helicopters category
++				"Phoenix",
++				"Hunter", // Move to helicopters category
++				"Deluxo",
++				"Banshee",
++};
+ int currentItem = 150;
+ 
+ bool showCurrentItem = false;
+@@ -167,6 +178,27 @@ IV4toRGBA(ImVec4 color)
+ 
+ //
+ 
++/// <summary>
++/// These are not the vehicle ids, this is just for this menu organization.
++/// </summary>
++enum VehicleModelsMenu {
++	RHINO = 0,
++	CHEETAH = 1,
++	INFERNUS = 2,
++	COMET = 3,
++	HOTRING_RACER = 4,
++	STINGER = 5,
++	SPARROW = 6,
++	PHOENIX = 7,
++	DELUXO = 9,
++	BANSHEE = 10, 
++};
++
++enum HelicopterModelsMenu {
++	HUNTER = 8,
++};
++
++
+ void
+ VehicleMenu::VehicleTab()
+ {
+@@ -205,23 +237,49 @@ VehicleMenu::VehicleTab()
+ 		
+ 		// TODO Come up with a better solution then this.
+ 
++		// TODO Move this into another file.
+ 		if(spawnInCar) {
+ 			switch(currentItem) {
+ 				
+-			case 0: 
++			case RHINO: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true);
+ 				break;
+ 
+-			case 1: 
++			case CHEETAH: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); 
+ 				break;
+ 
+-			case 2: 
++			case INFERNUS: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, true, true);
+ 				break;
+-			case 3: 
++			case COMET: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::COMET, true, true); 
+ 				break;
++
++			case HOTRING_RACER: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, true, true); 
++				break;
++
++			case STINGER: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, true, true); 
++				break;
++
++			case SPARROW: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, true, true); 
++				break;
++
++			case PHOENIX: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, true, true); 
++				break;
++			case HUNTER: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, true, true); 
++				break; 
++			case DELUXO: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, true, true); 
++				break;
++			case BANSHEE: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, true, true);
++				break;
+ 			
+ 			}
+ 
+@@ -230,20 +288,47 @@ VehicleMenu::VehicleTab()
+ 		} else {
+ 			switch(currentItem) {
+ 
+-			case 0: 
++			case RHINO: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, false, false); 
+ 				break;
+ 
+-			case 1: 
++			case CHEETAH: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
+ 				break;
+ 
+-			case 2: 
++			case INFERNUS: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, false, false); 
+ 				break;
+-			case 3:
++			
++			case COMET:
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::COMET, false, false);
+ 				break;
++
++			case HOTRING_RACER: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, false, false); 
++				break;
++
++			case STINGER: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, false, false); 
++				break;
++
++			case SPARROW: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, false, false); 
++				break;
++
++			case PHOENIX: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, false, false); 
++				break;
++			case HUNTER: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, false, false); 
++				break; 
++			case DELUXO: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, false, false); 
++				break;
++			case BANSHEE: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, false, false);
++				break;
++			
+ 			}
+ 		}
+ 	}
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 97eb1210..a9668b7b 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -182,7 +182,7 @@ WarpMenu::WarpTab()
+ 	ImGui::Separator();
+ 	ImGui::Text("Position");
+ 	// This seems to show up the current coordinates on the screen.
+-	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + "Y: " + std::to_string(playerY) + "Z: " + std::to_string(playerZ);
++	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + " Y: " + std::to_string(playerY) + " Z: " + std::to_string(playerZ);
+ 	ImGui::Text(playerPositionMessage.c_str());
+ 
+ 	
+-- 
+2.45.1.windows.1
+

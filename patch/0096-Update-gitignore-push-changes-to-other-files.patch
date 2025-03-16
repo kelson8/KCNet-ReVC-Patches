@@ -1,0 +1,370 @@
+From ff9e419c95bf23b79100c2b41b3b1f48773bc50c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Mar 2025 20:23:51 -0400
+Subject: [PATCH 096/101] Update gitignore, push changes to other files. Mostly
+ just added todo's and some comments. Add ped speech toggle, doesn't seem to
+ work. Add TODO.md, add locations.lua, setup_game.lua tests. Update file
+ 'update-lua.bat'
+
+---
+ .gitignore                         | 11 +++++++++
+ .vscode/settings.json              | 18 ++++++++++++++-
+ TODO.md                            | 10 +++++++++
+ src/control/SceneEdit.cpp          |  1 +
+ src/core/AnimViewer.cpp            |  3 +++
+ src/core/Game.cpp                  | 14 ++++++++++++
+ src/extras/modloader.cpp           |  3 +++
+ src/extras/modloader_reVC.h        |  4 ++++
+ src/extras/test/ScriptCommands.cpp |  2 ++
+ src/peds/CopPed.cpp                | 10 ++++++++-
+ src/peds/Ped.cpp                   | 30 +++++++++++++++++++++++--
+ src/renderer/Fluff.cpp             |  1 +
+ utils/lua/locations.lua            |  5 +++++
+ utils/lua/setup_game.lua           | 36 ++++++++++++++++++++++++++++++
+ utils/lua/update-lua.bat           |  4 ++++
+ 15 files changed, 148 insertions(+), 4 deletions(-)
+ create mode 100644 TODO.md
+ create mode 100644 utils/lua/locations.lua
+ create mode 100644 utils/lua/setup_game.lua
+
+diff --git a/.gitignore b/.gitignore
+index fdc9ace4..0b752189 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -6,6 +6,16 @@
+ # Patch files
+ patches/
+ 
++# New files
++# win_new.cpp
++src/extras/test/win_new.cpp
++
++src/extras/test/mta_test.h
++
++# Test files
++src/vehicles/Rhino.cpp
++src/vehicles/Rhino.h
++
+ # User-specific files
+ *.rsuser
+ *.suo
+@@ -41,6 +51,7 @@ src/extras/cheats/old
+ 
+ # Temporary files
+ tmp/
++lib/sol
+ 
+ # Visual Studio 2015/2017 cache/options directory
+ .vs/
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index bdfcbb79..93c8d205 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -34,6 +34,22 @@
+   "files.trimFinalNewlines": false,
+   "files.trimTrailingWhitespace": false,
+   "files.associations": {
+-    "*.rh": "cpp"
++    "*.rh": "cpp",
++    "system_error": "cpp",
++    "any": "cpp",
++    "array": "cpp",
++    "compare": "cpp",
++    "filesystem": "cpp",
++    "functional": "cpp",
++    "future": "cpp",
++    "memory": "cpp",
++    "ratio": "cpp",
++    "tuple": "cpp",
++    "type_traits": "cpp",
++    "utility": "cpp",
++    "variant": "cpp",
++    "xmemory": "cpp",
++    "xtr1common": "cpp",
++    "xutility": "cpp"
+   }
+ }
+diff --git a/TODO.md b/TODO.md
+new file mode 100644
+index 00000000..33ad5d60
+--- /dev/null
++++ b/TODO.md
+@@ -0,0 +1,10 @@
++# For ReVC
++* Add these folders to premake:
++```
++src/extras/cheats
++src/extras/debug
++src/extras/functions
++src/extras/lua
++src/extras/test
++```
++
+diff --git a/src/control/SceneEdit.cpp b/src/control/SceneEdit.cpp
+index c1276429..ec17506f 100644
+--- a/src/control/SceneEdit.cpp
++++ b/src/control/SceneEdit.cpp
+@@ -255,6 +255,7 @@ void CSceneEdit::Update(void)
+ 	}
+ }
+ 
++// TODO Possibly use this code to draw a menu, it seems to be more complete.
+ void CSceneEdit::Draw(void)
+ {
+ 	char str[200];
+diff --git a/src/core/AnimViewer.cpp b/src/core/AnimViewer.cpp
+index bc463a02..7339bf77 100644
+--- a/src/core/AnimViewer.cpp
++++ b/src/core/AnimViewer.cpp
+@@ -114,9 +114,12 @@ CAnimViewer::Initialise(void) {
+ 	CCarCtrl::Init();
+ 	CPedStats::Initialise();
+ 	CMessages::Init();
++	// TODO Make these use ViceExtended folder
++	
+ 	CdStreamAddImage("MODELS\\GTA3.IMG");
+ 	CFileLoader::LoadLevel("DATA\\DEFAULT.DAT");
+ 	CFileLoader::LoadLevel("DATA\\ANIMVIEWER.DAT");
++
+ 	CStreaming::Init();
+ 	for(int i = 0; i < MODELINFOSIZE; i++)
+ 		if(CModelInfo::GetModelInfo(i))
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 1212c37d..a1f75db7 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -113,6 +113,10 @@
+ #include "imgui_impl_win32.h"
+ #endif
+ 
++#ifdef CUSTOM_CODE
++#include "lua_test.h"
++#endif // CUSTOM_CODE - LUA_TEST
++
+ eLevelName CGame::currLevel;
+ int32 CGame::currArea;
+ bool CGame::bDemoMode = true;
+@@ -515,6 +519,16 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	CdStreamAddImage("MODELS\\GTA3.IMG");
+ 
++
++	// This actually works? It displays the AddStuff function in the TRACE window in Visual Studio.
++	// TODO Setup keybind for this, setup script to heal player as a test, shouldn't be too hard if I can figure out
++	// Where to place the keybind.
++	// Oops, this crashes in here, don't enable unless I have another function.
++#ifdef CUSTOM_CODE
++	//LuaTest luaTest = LuaTest();
++	//luaTest.InitLua();
++#endif //CUSTOM_CODE - LUA_TEST
++
+ // Not using these below
+ 
+ // #ifdef VICE_EXTENDED// ViceExtended folder - ViceEx.dat
+diff --git a/src/extras/modloader.cpp b/src/extras/modloader.cpp
+index a1f84616..546925c5 100644
+--- a/src/extras/modloader.cpp
++++ b/src/extras/modloader.cpp
+@@ -490,6 +490,9 @@ ModLoader_OnRequestSpecialModel(uint32_t model_id, const char* model_name, uint3
+         return modloader_reVC_share.callback_table->OnRequestSpecialModel(model_id, model_name, pos, size);
+ }
+ 
++// TODO Fix this to work with the mod loader.
++// This says Read access violation, modloader_reVC_share.callback_table was nullptr.
++// Why is it not being set?
+ const char*
+ ModLoader_GetCdStreamPath_Unsafe(const char* filepath)
+ {
+diff --git a/src/extras/modloader_reVC.h b/src/extras/modloader_reVC.h
+index 220ada0b..ab7984a4 100644
+--- a/src/extras/modloader_reVC.h
++++ b/src/extras/modloader_reVC.h
+@@ -27,6 +27,10 @@ THE SOFTWARE.
+ #include "modloader.h"
+ #include <cstdint>
+ 
++#ifdef _WIN32
++#include <Windows.h>
++#endif //_WIN32
++
+ typedef struct {
+ 
+     uint32_t size;
+diff --git a/src/extras/test/ScriptCommands.cpp b/src/extras/test/ScriptCommands.cpp
+index 0f9f1d30..fcdd0d16 100644
+--- a/src/extras/test/ScriptCommands.cpp
++++ b/src/extras/test/ScriptCommands.cpp
+@@ -10,6 +10,8 @@
+ // I got this to build by adding something from the plugin-sdk into the script.h
+ // It still doesn't work though.
+ // This now crashes to the error under Read2BytesFromScript in Script.h, instead of refusing to build
++
++//#define PLUGIN_SDK_TEST
+ #ifdef PLUGIN_SDK_TEST
+ 
+ #define GTAVC
+diff --git a/src/peds/CopPed.cpp b/src/peds/CopPed.cpp
+index 6576fb2d..f210dbb4 100644
+--- a/src/peds/CopPed.cpp
++++ b/src/peds/CopPed.cpp
+@@ -24,6 +24,8 @@
+ // This is hooked up to the debug menu, once toggled it changes the normal cop ped weapons.
+ // TODO Add a list for the weapon selection and cop selection in the debug menu, to make this more useful.
+ bool CCopPed::bChangePoliceWeapons = false;
++////eWeaponType streetCopWeaponId = WEAPONTYPE_COLT45
++//int streetCopWeaponId = WEAPONTYPE_COLT45;
+ #endif	//CHANGE_POLICE_WEAPONS
+ 
+ #ifdef EX_COP_FUNCTIONS
+@@ -52,8 +54,14 @@ CCopPed::CCopPed(eCopType copType, int32 modifier) : CPed(PEDTYPE_COP)
+ 		// Give them a custom weapon if this is enabled, this is hooked up to the debug menu
+ #ifdef CHANGE_POLICE_WEAPONS
+ 		if (CCopPed::bChangePoliceWeapons) { 
++			// TODO Fix this to work.
++			// Hmm, I wonder if casting the int to a eWeaponType would work.
++			// This is not something I've really done much before.
++			//GiveDelayedWeapon((eWeaponType)streetCopWeaponId, 1000);
++			//SetCurrentWeapon((eWeaponType)streetCopWeaponId);
++			
+ 			GiveDelayedWeapon(katanaWeapon, 1000);
+-			// This is required.
++			 //This is required.
+ 			SetCurrentWeapon(katanaWeapon);
+ 
+ 		} else {
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index b2d177f9..249129ae 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -1585,6 +1585,13 @@ CPed::ScanForInterestingStuff(void)
+ bool
+ CPed::WillChat(CPed *stranger)
+ {
++#ifdef CUSTOM_CODE // Toggle ped speech
++	// TODO This didn't work, figure out where this goes.
++	if (gbPedSpeech) { 
++		return false;
++	}
++#endif
++
+ 	if (m_pNextPathNode && m_pLastPathNode) {
+ 		if (m_pNextPathNode != m_pLastPathNode && ThePaths.TestCrossesRoad(m_pNextPathNode, m_pLastPathNode)) {
+ 			return false;
+@@ -5362,14 +5369,33 @@ CPed::ClearWeapons(void)
+ void
+ CPed::RemoveWeaponWhenEnteringVehicle(void)
+ {
++#ifdef FIRING_AND_AIMING
++	if (IsPlayer() && ((CPlayerPed*)this)->GetPlayerInfoForThisPlayerPed()->m_bDriveByAllowed) {
++		if (!CDarkel::FrenzyOnGoing() && HasWeaponSlot(3) && GetWeapon(3).m_nAmmoTotal > 0 && 
++			(GetWeapon()->m_eWeaponType == WEAPONTYPE_COLT45 || GetWeapon(5).m_nAmmoTotal <= 0)) {
++
++			if (m_storedWeapon == WEAPONTYPE_UNIDENTIFIED)
++				m_storedWeapon = GetWeapon()->m_eWeaponType;
++			SetCurrentWeapon(GetWeapon(3).m_eWeaponType);
++		} else if (HasWeaponSlot(5) && GetWeapon(5).m_nAmmoTotal > 0) {
++			if (m_storedWeapon == WEAPONTYPE_UNIDENTIFIED)
++				m_storedWeapon = GetWeapon()->m_eWeaponType;
++			SetCurrentWeapon(GetWeapon(5).m_eWeaponType);
++		}
++	}
++	CWeaponInfo* ourWeapon = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
++	RemoveWeaponModel(ourWeapon->m_nModelId);
++#else
+ 	if (IsPlayer() && HasWeaponSlot(5) && GetWeapon(5).m_nAmmoTotal > 0 && ((CPlayerPed*)this)->GetPlayerInfoForThisPlayerPed()->m_bDriveByAllowed) {
+ 		if (m_storedWeapon == WEAPONTYPE_UNIDENTIFIED)
+ 			m_storedWeapon = GetWeapon()->m_eWeaponType;
+ 		SetCurrentWeapon(GetWeapon(5).m_eWeaponType);
+-	} else {
+-		CWeaponInfo *ourWeapon = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
++}
++	else {
++		CWeaponInfo* ourWeapon = CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType);
+ 		RemoveWeaponModel(ourWeapon->m_nModelId);
+ 	}
++#endif
+ }
+ void
+ CPed::ReplaceWeaponWhenExitingVehicle(void)
+diff --git a/src/renderer/Fluff.cpp b/src/renderer/Fluff.cpp
+index 938119ff..737afcf1 100644
+--- a/src/renderer/Fluff.cpp
++++ b/src/renderer/Fluff.cpp
+@@ -731,6 +731,7 @@ void CScrollBar::Update()
+ 	}
+ }
+ 
++// TODO Possibly use this for rendering stuff
+ void CScrollBar::Render()
+ {
+ 	if (!TheCamera.IsSphereVisible(m_Position, 2.0f * 20.0f * (ABS(m_Size.x) + ABS(m_Size.y))))
+diff --git a/utils/lua/locations.lua b/utils/lua/locations.lua
+new file mode 100644
+index 00000000..6eef66f5
+--- /dev/null
++++ b/utils/lua/locations.lua
+@@ -0,0 +1,5 @@
++-- TODO Fix this to work in multiple files.
++
++airportX = -1515.1
++airportY = -1182.1
++airportZ = 16.5
+\ No newline at end of file
+diff --git a/utils/lua/setup_game.lua b/utils/lua/setup_game.lua
+new file mode 100644
+index 00000000..aa1d0939
+--- /dev/null
++++ b/utils/lua/setup_game.lua
+@@ -0,0 +1,36 @@
++-- I got this to auto start in win.cpp by adding the initLua 
++-- function into the GS_PLAYING_GAME loop, once toggled on it shouldn't run anymore.
++-- So anything I run in this file now will auto start, I may just disable the keybind for now.
++local enableNeverWanted = false
++local enableInfiniteHealth = false
++
++-- Setup auto teleports to locations when the game starts
++local teleportPlayerToSpawn = false
++local teleportPlayerToAirport = true
++
++-- Locations
++-- TODO Figure out how to move these into another file
++
++local spawnX = -258.1
++local spawnY = -453.1
++local spawnZ = 13.5
++
++local airportX = -1515.1
++local airportY = -1182.1
++local airportZ = 16.5
++
++-- This works for an auto spawn system, TODO Make this grab random values from lua
++if teleportPlayerToSpawn then
++	set_position(spawnX, spawnY, spawnZ)
++elseif teleportPlayerToAirport then
++	set_position(airportX, airportY, airportZ)
++	-- set_heading(spawnHeading)
++end
++
++if enableNeverWanted then
++	enable_never_wanted()
++end
++
++if enableInfiniteHealth then
++	enable_infinite_health()
++end
+\ No newline at end of file
+diff --git a/utils/lua/update-lua.bat b/utils/lua/update-lua.bat
+index c587374f..1056bb2a 100644
+--- a/utils/lua/update-lua.bat
++++ b/utils/lua/update-lua.bat
+@@ -1,3 +1,7 @@
+ @echo off
+ :: This just copies the test.lua into the proper folder, useful for updating the script from here.
+ copy test.lua "C:\Rockstar Games\GTA Vice City\ViceExtended\lua_scripts"
++:: This copies the locations.lua test, well this didn't work
++@REM copy locations.lua "C:\Rockstar Games\GTA Vice City\ViceExtended\lua_scripts"
++:: Copy the new setup_game.lua test.
++@REM copy setup_game.lua "C:\Rockstar Games\GTA Vice City\ViceExtended\lua_scripts"
+-- 
+2.45.1.windows.1
+

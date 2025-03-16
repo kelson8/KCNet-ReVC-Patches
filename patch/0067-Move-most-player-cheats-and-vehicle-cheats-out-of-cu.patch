@@ -1,0 +1,1176 @@
+From 9e8a63ab88cc6626c1bfeed51d38115d8467d822 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 1 Mar 2025 13:54:13 -0500
+Subject: [PATCH 067/101] Move most player cheats and vehicle cheats out of
+ custom_cheats.cpp. Move custom_cheats.cpp and custom_cheats.h.
+
+---
+ .gitignore                                    |   1 +
+ src/core/Game.cpp                             |   3 +-
+ src/core/re3.cpp                              |   2 +-
+ .../{test => }/cheats/custom_cheats.cpp       | 404 +-----------------
+ src/extras/{test => }/cheats/custom_cheats.h  |  35 +-
+ src/extras/cheats/player_cheats.cpp           | 251 +++++++++++
+ src/extras/cheats/player_cheats.h             |  20 +
+ src/extras/cheats/vehicle_cheats.cpp          | 272 ++++++++++++
+ src/extras/cheats/vehicle_cheats.h            |  19 +
+ src/extras/functions/vehicle_functions.cpp    |   3 +-
+ 10 files changed, 592 insertions(+), 418 deletions(-)
+ rename src/extras/{test => }/cheats/custom_cheats.cpp (68%)
+ rename src/extras/{test => }/cheats/custom_cheats.h (75%)
+ create mode 100644 src/extras/cheats/player_cheats.cpp
+ create mode 100644 src/extras/cheats/player_cheats.h
+ create mode 100644 src/extras/cheats/vehicle_cheats.cpp
+ create mode 100644 src/extras/cheats/vehicle_cheats.h
+
+diff --git a/.gitignore b/.gitignore
+index 9138c6f5..fdc9ace4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -37,6 +37,7 @@ bld/
+ 
+ # Exclude my debug test from gitignore, the above was ignoring it
+ !src/extras/debug
++src/extras/cheats/old
+ 
+ # Temporary files
+ tmp/
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 33c381d0..1212c37d 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -105,7 +105,8 @@
+ #endif
+ 
+ // TODO Test this.
+-#define IMGUI_TEST
++
++//#define IMGUI_TEST
+ #ifdef IMGUI_TEST
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 76b6f0fb..6839a243 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -62,7 +62,7 @@
+ // TODO Are these needed anymore?
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+-#include "extras/test/cheats/custom_cheats.h"
++#include "extras/cheats/custom_cheats.h"
+ 
+ #ifdef RWLIBS
+ extern "C" int vsprintf(char* const _Buffer, char const* const _Format, va_list  _ArgList);
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+similarity index 68%
+rename from src/extras/test/cheats/custom_cheats.cpp
+rename to src/extras/cheats/custom_cheats.cpp
+index 6efe7edf..8b378bea 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -311,6 +311,8 @@ CustomCheats::CommandTest1()
+ #endif //PLUGIN_SDK_TEST
+ #define _TEST1
+ 
++
++
+ #ifdef CUSTOM_CODE1
+ 
+ // void
+@@ -513,18 +515,9 @@ CustomCheats::SpawnPedCheat()
+ 	// CPed *customPed = PED
+ }
+ 
+-// Give the player a shotgun as a test, untested
+-void
+-CustomCheats::GivePlayerWeapon()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 9999, true);
+-}
+-
+ void
+ CustomCheats::SpawnPedTest()
+ {
+-
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 
+ 	// This crashes it.
+@@ -593,176 +586,6 @@ TankRapidFireToggle()
+ {
+ }
+ 
+-////////////////////
+-// These are for cleo redux
+-// I guess the cheats in pad.cpp won't work with Memory.Translate.
+-// TODO Reorganize these sometime.
+-
+-/// <summary>
+-/// This originally gave the player two wanted stars, I changed it to give one at a time..
+-/// </summary>
+-void
+-CustomCheats::RaiseWantedLevel()
+-{
+-	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
+-
+-#ifdef CUSTOM_CODE
+-	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 1, 6));
+-#else
+-	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 2, 6));
+-#endif // CUSTOM_CODE
+-}
+-
+-/// <summary>
+-/// Clear the players wanted level.
+-/// </summary>
+-void
+-CustomCheats::LowerWantedLevel()
+-{
+-	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
+-	FindPlayerPed()->m_pWanted->CheatWantedLevel(0);
+-}
+-
+-/// <summary>
+-/// This should turn infinite health on, and show the cheat activated message.
+-/// </summary>
+-void CustomCheats::EnableInfiniteHealth()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->bInvincibleCheat = true;
+-	//CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
+-	CHud::SetHelpMessage(TheText.Get("CHEATON"), false);
+-}
+-
+-/// <summary>
+-/// This should turn infinite health off, and display the cheat toggled off message
+-/// </summary>
+-void CustomCheats::DisableInfiniteHealth() 
+-{ 
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->bInvincibleCheat = false;
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
+-}
+-
+-///
+-
+-// Infinite health
+-// This works with a toggle.
+-void
+-CustomCheats::InfiniteHealthCheat()
+-{
+-	// I have no idea what the option below is for but it didn't work.
+-	// CPed *pPed = FindPlayerPed();
+-
+-	
+-	CPlayerPed *pPed = FindPlayerPed();
+-
+-#ifdef INVINCIBLE_CHEAT
+-	wchar *string;
+-	if(pPed->bInvincibleCheat) 
+-		string = TheText.Get("CHEATOF");
+-
+-	else 
+-		//string = TheText.Get("CHEAT1");
+-		string = TheText.Get("CHEATON");
+-	
+-
+-	CHud::SetHelpMessage(string, true);
+-
+-	FindPlayerPed()->bInvincibleCheat = !FindPlayerPed()->bInvincibleCheat;
+-
+-	#else
+-	if(!pPed->bBulletProof && !pPed->bFireProof && !pPed->bCollisionProof && !pPed->bMeleeProof && !pPed->bOnlyDamagedByPlayer && !pPed->bExplosionProof &&
+-	   pPed->m_bCanBeDamaged) {
+-		pPed->bBulletProof = true;
+-		pPed->bFireProof = true;
+-		pPed->bCollisionProof = true;
+-		pPed->bMeleeProof = true;
+-		pPed->bOnlyDamagedByPlayer = true;
+-		pPed->bExplosionProof = true;
+-		pPed->m_bCanBeDamaged = false;
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-
+-	} else {
+-		pPed->bBulletProof = false;
+-		pPed->bFireProof = false;
+-		pPed->bCollisionProof = false;
+-		pPed->bMeleeProof = false;
+-		pPed->bOnlyDamagedByPlayer = false;
+-		pPed->bExplosionProof = false;
+-		pPed->m_bCanBeDamaged = true;
+-
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-	}
+-#endif //_TEST2
+-}
+-
+-/// <summary>
+-/// Enable the custom never wanted cheat
+-/// </summary>
+-void
+-CustomCheats::EnableNeverWanted()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CWanted *cWanted = new CWanted();
+-
+-	//if(!pPed->m_pWanted->m_bIgnoredByCops) {
+-		// Clear wanted level
+-		pPed->SetWantedLevel(0);
+-
+-		// Set ignored by cops
+-		pPed->m_pWanted->m_bIgnoredByCops = true;
+-		// Reset chaos level to 0
+-		cWanted->m_nChaos = 0;
+-
+-		// Turn on the never wanted cheat.
+-		cWanted->m_bNeverWanted = true;
+-		// Set max wanted level to 0.
+-		//cWanted->SetMaximumWantedLevel(0);
+-	    CWanted::SetMaximumWantedLevel(0);
+-
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-	//}
+-}
+-
+-/// <summary>
+-/// Disable the custom never wanted cheat
+-/// </summary>
+-void
+-CustomCheats::DisableNeverWanted()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CWanted *cWanted = new CWanted();
+-	// Disable ignored by cops
+-	pPed->m_pWanted->m_bIgnoredByCops = false;
+-
+-	// TODO Is this needed
+-	bool cheatActive = false;
+-	// Set never wanted to false
+-	cWanted->m_bNeverWanted = false;
+-	// Reset the maximum wanted level.
+-	//cWanted->SetMaximumWantedLevel(6);
+-	CWanted::SetMaximumWantedLevel(6);
+-
+-	// Show the hud message
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-}
+-
+-// Never wanted test
+-// I finally got this working!
+-// 8-22-2024 @ 12:43AM
+-// I refactored this a bit 2-19-2025 @ 6:55PM
+-void
+-CustomCheats::NeverWantedCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CWanted *cWanted = new CWanted();
+-	if(!pPed->m_pWanted->m_bIgnoredByCops) {
+-		CustomCheats::EnableNeverWanted();
+-	} else {
+-		CustomCheats::DisableNeverWanted();
+-	}
+-}
+ 
+ //--------------------
+ // Begin Weapon cheats from pad.cpp
+@@ -910,230 +733,7 @@ CustomCheats::WeaponCheat3()
+ // End Weapon cheats from pad.cpp
+ //--------------------
+ 
+-// TODO Figure out how to move this into vehicle_functions.cpp without errors
+-
+-/// <summary>
+-/// Enable invincibility for the vehicle
+-/// </summary>
+-/// <param name="veh"></param>
+-void
+-CustomCheats::EnableVehicleInvincibility(CVehicle *veh)
+-{
+-	veh->m_fHealth = 1000.0f;
+-	veh->bBulletProof = true;
+-	veh->bCollisionProof = true;
+-	veh->bExplosionProof = true;
+-	veh->bFireProof = true;
+-	veh->bMeleeProof = true;
+-
+-	veh->bTyresDontBurst = true;
+-	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-}
+-
+-/// <summary>
+-/// Disable the current vehicles invincibility
+-/// </summary>
+-/// <param name="veh"></param>
+-void
+-CustomCheats::DisableVehicleInvincibility(CVehicle *veh)
+-{
+-	veh->bBulletProof = false;
+-	veh->bCollisionProof = false;
+-	veh->bExplosionProof = false;
+-	veh->bFireProof = false;
+-	veh->bMeleeProof = false;
+-
+-	veh->bTyresDontBurst = false;
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
+-}
+-
+-// Adds a toggle for the invincible vehicle.
+-static bool bVehicleInvincible = false;
+-
+-/// <summary>
+-/// Toggle the vehicle invincibility status.
+-/// Toggles Bullet Proof, Collision Proof, Explosion Proof, Fire Proof, Melee Proof,
+-/// and make tires not burst.
+-/// Seems to work on Cars, Bikes, Boats, and Helicopters
+-/// </summary>
+-/// <param name="veh">The vehicle to toggle for.</param>
+-static void
+-ToggleVehicleInvincible(CVehicle *veh)
+-
+-{
+-	// This is the toggle for this function
+-	bVehicleInvincible = !bVehicleInvincible;
+-
+-	// I switched this from using the complicated thing here.
+-	//if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
+-	if(bVehicleInvincible) {
+-		// This one seems to work
+-		
+-		switch(veh->m_vehType) 
+-		{
+-		case VEHICLE_TYPE_CAR:
+-		{
+-				((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
+-				((CAutomobile *)veh)->Fix();
+-			    break;
+-		}
+-
+-		// Oops, I had this defined in the InvincibleVehicleCheat function which is what
+-		// My debug menu calls to run this.. I was wondering why it wasn't working on bikes.
+-		case VEHICLE_TYPE_BIKE: {
+-			    //	// This doesn't seem to exist on CBike.
+-			    //((CBike *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
+-			    ((CBike *)veh)->Fix();
+-				break;
+-		}
+-
+-		// These work now.
+-		case VEHICLE_TYPE_BOAT: 
+-		{
+-			// TODO Figure out how to repair the boats
+-			//((CBoat *)veh)->Fix();
+-
+-			break;
+-		}
+-
+-		case VEHICLE_TYPE_HELI: 
+-		{
+-			// TODO Figure out how to repair the helicopters
+-			//((CHeli *)veh)->Fix();
+-
+-			break;
+-		}
+-			
+-		}
+-
+-		// Enable the invincibility
+-		CustomCheats::EnableVehicleInvincibility(veh);
+-	} else {
+-		// Disable the invincibility
+-		CustomCheats::DisableVehicleInvincibility(veh);
+-
+-	}
+-}
+-//
+-
+-// Invincible car
+-
+-
+-/// <summary>
+-/// I got this working with a toggle.
+-/// TODO Setup this to disable for the previous vehicle if a player was in one.
+-/// So if it is toggled on for a different vehicle, it'll disable the invincibility on the old one.
+-/// So far this is tested and working for Cars, Bikes, and Helicopters.
+-/// I still need to test the Boats for it.
+-/// </summary>
+-void
+-CustomCheats::InvincibleVehicleCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-
+-	// This just crashes on a bike or anything other then a car so I added a check for that.
+-	// Not sure how to get it to work on other vehicles
+-	if(!pPed->EnteringCar() && pPed->bInVehicle) {
+-
+-		CVehicle *currentVeh = pPed->m_pMyVehicle;
+-
+-		// TODO Possibly remove this switch, I'm doing this in the ToggleVehicleInvincible function.
+-		switch(currentVeh->m_vehType) {
+-
+-		case VEHICLE_TYPE_CAR: 
+-		{
+-			// This could be useful for getting a vehicles coords.
+-			// CVector vehPos = veh->GetPosition();
+-			/*CVehicle *currentVeh = pPed->m_pMyVehicle;*/
+-			// VehicleFunctions::ToggleVehicleInvincible(currentVeh);
+-			ToggleVehicleInvincible(currentVeh);
+-			break;
+-		}
+-		
+-		// These work now
+-		case VEHICLE_TYPE_BIKE: 
+-		{
+-			ToggleVehicleInvincible(currentVeh);
+-			break;
+-		}
+-
+-		case VEHICLE_TYPE_BOAT: 
+-		{
+-			ToggleVehicleInvincible(currentVeh);
+-			break;
+-		}
+-
+-		case VEHICLE_TYPE_HELI: 
+-		{
+-			ToggleVehicleInvincible(currentVeh); 
+-			break;
+-		}
+-		}
+-
+-		if(currentVeh->m_vehType == VEHICLE_TYPE_CAR) {}
+-		//}
+-	}
+-}
+-
+-// Will this work?
+-// I never did get this working.
+-// void
+-////ToggleVehicleUpsideDownBlowUp()
+-//{
+-//	//CPlayerInfo::vehUpsidedownExplode != CPlayerInfo::vehUpsidedownExplode;
+-//	//if(CPlayerInfo::vehUpsidedownExplode)
+-//	//{
+-//	//	wchar w = *"Test";
+-//	//	//CHud::SetBigMessage("S", "");
+-//	//	CHud::SetMessage(&w);
+-//	//}
+-//}
+-
+-// I got this started on 3-26-2024 @ 2:50AM, it isn't confirmed to work yet.
+-void
+-CustomCheats::NoUpsideDownBlowUpCheat(bool toggle)
+-{
+-	// Base for cheat that toggles cars blowing up when they are flipped over on/off.
+-	// I'm not exactly sure how or if this would be possible.
+-	// bool toggle = true;
+-
+-	// https://stackoverflow.com/questions/9818515/what-does-error-a-nonstatic-member-reference-must-be-relative-to-a-specific-o
+-	CPlayerInfo *cPlayerInfo = new CPlayerInfo();
+-
+-	// Normal
+-	if(!toggle) {
+-		// Do nothing
+-		// return;
+-
+-		// This just gives an unresolved linker error
+-		cPlayerInfo->vehUpsidedownExplode = false;
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+ 
+-		// playerInfo.m_nUpsideDownCounter += 2;
+-
+-		// This doesn't work, this is the code from PlayerInfo.cpp on lines 436-440
+-		// if(FindPlayerVehicle()) {
+-		//	CVehicle *veh = FindPlayerVehicle();
+-
+-		//	if(veh->GetUp().z < -0.5f) {
+-		// m_nUpsideDownCounter += 2;
+-		//	} else {
+-		//		CPlayerInfo::m_nUpsideDownCounter++;
+-		//}
+-
+-		//}
+-		// No blow up test, will this work?
+-	} else {
+-
+-		// This just gives an unresolved linker error
+-		cPlayerInfo->vehUpsidedownExplode = true;
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-
+-		// if(FindPlayerVehicle()) {
+-		//	while(toggle) { playerInfo.m_nUpsideDownCounter = 0; }
+-		// }
+-	}
+-}
+ 
+ // Test adding a bomb around the player.
+ // This works, inspired by some of the code in Pickups.cpp
+diff --git a/src/extras/test/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+similarity index 75%
+rename from src/extras/test/cheats/custom_cheats.h
+rename to src/extras/cheats/custom_cheats.h
+index d88ec923..9b60434a 100644
+--- a/src/extras/test/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -36,16 +36,25 @@ public:
+ 	static void ExplodePed();
+ 
+ 	#else
++
++	// Test cheats
+ 	static void TestCheat1();
+ 	static void SpawnPedCheat();
+-	static void GivePlayerWeapon();
++	//static void GivePlayerWeapon();
+ 	static void SpawnPedTest();
+ 	static void SpawnCarTestCheat();
+-	static void InfiniteHealthCheat();
++
++	// Player
++	/*static void InfiniteHealthCheat();*/
++	//static void SuicideCheat();
++	
++	// Never wanted
+ 	static void ToggleNeverWanted();
+-	static void NeverWantedCheat();
+-	static void InvincibleVehicleCheat();
+-	static void NoUpsideDownBlowUpCheat(bool toggle);
++	//static void NeverWantedCheat();
++
++	// Vehicle
++	//static void InvincibleVehicleCheat();
++	//static void NoUpsideDownBlowUpCheat(bool toggle);
+ 	static void ExplosionCheat();
+ 	static void LockDoors();
+ 	static void UnlockDoors();
+@@ -64,17 +73,17 @@ public:
+ 	static void GiveRcCar();
+ 
+ 	// Toggles, TODO Move these into private function, I only want the Toggle functions down here if they work.
+-	void EnableInfiniteHealth();
+-	void DisableInfiniteHealth();
++	//void EnableInfiniteHealth();
++	//void DisableInfiniteHealth();
+ 
+-	static void EnableNeverWanted();
+-	static void DisableNeverWanted();
++	//static void EnableNeverWanted();
++	//static void DisableNeverWanted();
+ 
+-	static void EnableVehicleInvincibility(CVehicle *veh);
+-	static void DisableVehicleInvincibility(CVehicle *veh);
++	//static void EnableVehicleInvincibility(CVehicle *veh);
++	//static void DisableVehicleInvincibility(CVehicle *veh);
+ 
+-	static void RaiseWantedLevel();
+-	static void LowerWantedLevel();
++	//static void RaiseWantedLevel();
++	//static void LowerWantedLevel();
+ 
+ 
+ 	#ifdef CHANGE_POLICE_WEAPONS
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+new file mode 100644
+index 00000000..4378d043
+--- /dev/null
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -0,0 +1,251 @@
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++#ifdef XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++
++#include "player_cheats.h"
++
++// Vehicle functions
++#include "extras/functions/vehicle_functions.h"
++
++// #include "Pad.h"
++// #include "ControllerConfig.h"
++// #include "Timer.h"
++// #include "Frontend.h"
++#include "Camera.h"
++#include "CarCtrl.h"
++#include "CutsceneMgr.h"
++#include "Fluff.h"
++#include "Font.h"
++#include "Game.h"
++#include "Gangs.h"
++#include "General.h"
++#include "Hud.h"
++#include "PathFind.h"
++#include "Ped.h"
++#include "Population.h"
++#include "Record.h"
++#include "Replay.h"
++#include "Stats.h"
++#include "Streaming.h"
++#include "Text.h"
++#include "Timer.h"
++#include "TrafficLights.h"
++#include "Vehicle.h"
++#include "Wanted.h"
++#include "WaterLevel.h"
++#include "Weather.h"
++#include "World.h"
++#include "platform.h"
++
++#include "Remote.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerInfo.h"
++
++#include "CopPed.h"
++
++
++/// <summary>
++/// Kill the player.
++/// Copied from Pad.cpp
++/// Why doesn't this work in Cleo Redux?
++/// </summary>
++/// <param name=""></param>
++void
++PlayerCheats::SuicideCheat()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++	FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++#ifdef CUSTOM_CODE
++	FindPlayerPed()->m_fArmour = 0;
++#endif // CUSTOM_CODE
++}
++
++// Give the player a shotgun as a test, untested
++void
++PlayerCheats::GivePlayerWeapon()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 9999, true);
++}
++
++////////////////////
++// These are for cleo redux
++// I guess the cheats in pad.cpp won't work with Memory.Translate.
++// TODO Reorganize these sometime.
++
++/// <summary>
++/// This originally gave the player two wanted stars, I changed it to give one at a time..
++/// </summary>
++void
++PlayerCheats::RaiseWantedLevel()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
++
++#ifdef CUSTOM_CODE
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 1, 6));
++#else
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(Min(FindPlayerPed()->m_pWanted->GetWantedLevel() + 2, 6));
++#endif // CUSTOM_CODE
++}
++
++/// <summary>
++/// Clear the players wanted level.
++/// </summary>
++void
++PlayerCheats::LowerWantedLevel()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT5"), true);
++	FindPlayerPed()->m_pWanted->CheatWantedLevel(0);
++}
++
++/// <summary>
++/// This should turn infinite health on, and show the cheat activated message.
++/// </summary>
++void
++PlayerCheats::EnableInfiniteHealth()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->bInvincibleCheat = true;
++	// CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), false);
++}
++
++/// <summary>
++/// This should turn infinite health off, and display the cheat toggled off message
++/// </summary>
++void
++PlayerCheats::DisableInfiniteHealth()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	pPed->bInvincibleCheat = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
++}
++
++///
++
++// Infinite health
++// This works with a toggle.
++void
++PlayerCheats::InfiniteHealthCheat()
++{
++	// I have no idea what the option below is for but it didn't work.
++	// CPed *pPed = FindPlayerPed();
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++#ifdef INVINCIBLE_CHEAT
++	wchar *string;
++	if(pPed->bInvincibleCheat)
++		string = TheText.Get("CHEATOF");
++
++	else
++		// string = TheText.Get("CHEAT1");
++		string = TheText.Get("CHEATON");
++
++	CHud::SetHelpMessage(string, true);
++
++	FindPlayerPed()->bInvincibleCheat = !FindPlayerPed()->bInvincibleCheat;
++
++#else
++	if(!pPed->bBulletProof && !pPed->bFireProof && !pPed->bCollisionProof && !pPed->bMeleeProof && !pPed->bOnlyDamagedByPlayer && !pPed->bExplosionProof &&
++	   pPed->m_bCanBeDamaged) {
++		pPed->bBulletProof = true;
++		pPed->bFireProof = true;
++		pPed->bCollisionProof = true;
++		pPed->bMeleeProof = true;
++		pPed->bOnlyDamagedByPlayer = true;
++		pPed->bExplosionProof = true;
++		pPed->m_bCanBeDamaged = false;
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++	} else {
++		pPed->bBulletProof = false;
++		pPed->bFireProof = false;
++		pPed->bCollisionProof = false;
++		pPed->bMeleeProof = false;
++		pPed->bOnlyDamagedByPlayer = false;
++		pPed->bExplosionProof = false;
++		pPed->m_bCanBeDamaged = true;
++
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++	}
++#endif //_TEST2
++}
++
++/// <summary>
++/// Enable the custom never wanted cheat
++/// </summary>
++void
++PlayerCheats::EnableNeverWanted()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CWanted *cWanted = new CWanted();
++
++	// if(!pPed->m_pWanted->m_bIgnoredByCops) {
++	//  Clear wanted level
++	pPed->SetWantedLevel(0);
++
++	// Set ignored by cops
++	pPed->m_pWanted->m_bIgnoredByCops = true;
++	// Reset chaos level to 0
++	cWanted->m_nChaos = 0;
++
++	// Turn on the never wanted cheat.
++	cWanted->m_bNeverWanted = true;
++	// Set max wanted level to 0.
++	// cWanted->SetMaximumWantedLevel(0);
++	CWanted::SetMaximumWantedLevel(0);
++
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++	//}
++}
++
++/// <summary>
++/// Disable the custom never wanted cheat
++/// </summary>
++void
++PlayerCheats::DisableNeverWanted()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CWanted *cWanted = new CWanted();
++	// Disable ignored by cops
++	pPed->m_pWanted->m_bIgnoredByCops = false;
++
++	// TODO Is this needed
++	bool cheatActive = false;
++	// Set never wanted to false
++	cWanted->m_bNeverWanted = false;
++	// Reset the maximum wanted level.
++	// cWanted->SetMaximumWantedLevel(6);
++	CWanted::SetMaximumWantedLevel(6);
++
++	// Show the hud message
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++}
++
++// Never wanted test
++// I finally got this working!
++// 8-22-2024 @ 12:43AM
++// I refactored this a bit 2-19-2025 @ 6:55PM
++void
++PlayerCheats::NeverWantedCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CWanted *cWanted = new CWanted();
++	if(!pPed->m_pWanted->m_bIgnoredByCops) {
++		PlayerCheats::EnableNeverWanted();
++	} else {
++		PlayerCheats::DisableNeverWanted();
++	}
++}
+\ No newline at end of file
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+new file mode 100644
+index 00000000..5631beff
+--- /dev/null
++++ b/src/extras/cheats/player_cheats.h
+@@ -0,0 +1,20 @@
++#pragma once
++class PlayerCheats
++{
++public:
++	static void InfiniteHealthCheat();
++	static void SuicideCheat();
++	static void GivePlayerWeapon();
++
++	// Wanted
++	static void RaiseWantedLevel();
++	static void LowerWantedLevel();
++
++	// Toggles, TODO Move these into private function, I only want the Toggle functions down here if they work.
++	void EnableInfiniteHealth();
++	void DisableInfiniteHealth();
++
++	static void EnableNeverWanted();
++	static void DisableNeverWanted();
++	static void NeverWantedCheat();
++};
+diff --git a/src/extras/cheats/vehicle_cheats.cpp b/src/extras/cheats/vehicle_cheats.cpp
+new file mode 100644
+index 00000000..de3b917d
+--- /dev/null
++++ b/src/extras/cheats/vehicle_cheats.cpp
+@@ -0,0 +1,272 @@
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++#ifdef XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++
++#include "vehicle_cheats.h"
++
++// Vehicle functions
++#include "extras/functions/vehicle_functions.h"
++
++// #include "Pad.h"
++// #include "ControllerConfig.h"
++// #include "Timer.h"
++// #include "Frontend.h"
++#include "Camera.h"
++#include "CarCtrl.h"
++#include "CutsceneMgr.h"
++#include "Fluff.h"
++#include "Font.h"
++#include "Game.h"
++#include "Gangs.h"
++#include "General.h"
++#include "Hud.h"
++#include "PathFind.h"
++#include "Ped.h"
++#include "Population.h"
++#include "Record.h"
++#include "Replay.h"
++#include "Stats.h"
++#include "Streaming.h"
++#include "Text.h"
++#include "Timer.h"
++#include "TrafficLights.h"
++#include "Vehicle.h"
++#include "Wanted.h"
++#include "WaterLevel.h"
++#include "Weather.h"
++#include "World.h"
++#include "platform.h"
++
++#include "Remote.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerInfo.h"
++
++#include "CopPed.h"
++
++#include "Heli.h"
++#include "Bike.h"
++
++// TODO Figure out how to move this into vehicle_functions.cpp without errors
++
++/// <summary>
++/// Enable invincibility for the vehicle
++/// </summary>
++/// <param name="veh"></param>
++void
++VehicleCheats::EnableVehicleInvincibility(CVehicle *veh)
++{
++	veh->m_fHealth = 1000.0f;
++	veh->bBulletProof = true;
++	veh->bCollisionProof = true;
++	veh->bExplosionProof = true;
++	veh->bFireProof = true;
++	veh->bMeleeProof = true;
++
++	veh->bTyresDontBurst = true;
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++}
++
++/// <summary>
++/// Disable the current vehicles invincibility
++/// </summary>
++/// <param name="veh"></param>
++void
++VehicleCheats::DisableVehicleInvincibility(CVehicle *veh)
++{
++	veh->bBulletProof = false;
++	veh->bCollisionProof = false;
++	veh->bExplosionProof = false;
++	veh->bFireProof = false;
++	veh->bMeleeProof = false;
++
++	veh->bTyresDontBurst = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
++}
++
++// Adds a toggle for the invincible vehicle.
++static bool bVehicleInvincible = false;
++
++/// <summary>
++/// Toggle the vehicle invincibility status.
++/// Toggles Bullet Proof, Collision Proof, Explosion Proof, Fire Proof, Melee Proof,
++/// and make tires not burst.
++/// Seems to work on Cars, Bikes, Boats, and Helicopters
++/// </summary>
++/// <param name="veh">The vehicle to toggle for.</param>
++static void
++ToggleVehicleInvincible(CVehicle *veh)
++
++{
++	// This is the toggle for this function
++	bVehicleInvincible = !bVehicleInvincible;
++
++	// I switched this from using the complicated thing here.
++	// if(!veh->bBulletProof && !veh->bCollisionProof && !veh->bExplosionProof && !veh->bFireProof && !veh->bMeleeProof) {
++	if(bVehicleInvincible) {
++		// This one seems to work
++
++		switch(veh->m_vehType) {
++		case VEHICLE_TYPE_CAR: {
++			((CAutomobile *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++			((CAutomobile *)veh)->Fix();
++			break;
++		}
++
++		// Oops, I had this defined in the InvincibleVehicleCheat function which is what
++		// My debug menu calls to run this.. I was wondering why it wasn't working on bikes.
++		case VEHICLE_TYPE_BIKE: {
++			//	// This doesn't seem to exist on CBike.
++			//((CBike *)FindPlayerVehicle())->Damage.SetEngineStatus(0);
++			((CBike *)veh)->Fix();
++			break;
++		}
++
++		// These work now.
++		case VEHICLE_TYPE_BOAT: {
++			// TODO Figure out how to repair the boats
++			//((CBoat *)veh)->Fix();
++
++			break;
++		}
++
++		case VEHICLE_TYPE_HELI: {
++			// TODO Figure out how to repair the helicopters
++			//((CHeli *)veh)->Fix();
++
++			break;
++		}
++		}
++
++		// Enable the invincibility
++		VehicleCheats::EnableVehicleInvincibility(veh);
++	} else {
++		// Disable the invincibility
++		VehicleCheats::DisableVehicleInvincibility(veh);
++	}
++}
++//
++
++// Invincible car
++
++/// <summary>
++/// I got this working with a toggle.
++/// TODO Setup this to disable for the previous vehicle if a player was in one.
++/// So if it is toggled on for a different vehicle, it'll disable the invincibility on the old one.
++/// So far this is tested and working for Cars, Bikes, and Helicopters.
++/// I still need to test the Boats for it.
++/// </summary>
++void
++VehicleCheats::InvincibleVehicleCheat()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	// This just crashes on a bike or anything other then a car so I added a check for that.
++	// Not sure how to get it to work on other vehicles
++	if(!pPed->EnteringCar() && pPed->bInVehicle) {
++
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		// TODO Possibly remove this switch, I'm doing this in the ToggleVehicleInvincible function.
++		switch(currentVeh->m_vehType) {
++
++		case VEHICLE_TYPE_CAR: {
++			// This could be useful for getting a vehicles coords.
++			// CVector vehPos = veh->GetPosition();
++			/*CVehicle *currentVeh = pPed->m_pMyVehicle;*/
++			// VehicleFunctions::ToggleVehicleInvincible(currentVeh);
++			ToggleVehicleInvincible(currentVeh);
++			break;
++		}
++
++		// These work now
++		case VEHICLE_TYPE_BIKE: {
++			ToggleVehicleInvincible(currentVeh);
++			break;
++		}
++
++		case VEHICLE_TYPE_BOAT: {
++			ToggleVehicleInvincible(currentVeh);
++			break;
++		}
++
++		case VEHICLE_TYPE_HELI: {
++			ToggleVehicleInvincible(currentVeh);
++			break;
++		}
++		}
++
++		if(currentVeh->m_vehType == VEHICLE_TYPE_CAR) {}
++		//}
++	}
++}
++
++// Will this work?
++// I never did get this working.
++// void
++////ToggleVehicleUpsideDownBlowUp()
++//{
++//	//CPlayerInfo::vehUpsidedownExplode != CPlayerInfo::vehUpsidedownExplode;
++//	//if(CPlayerInfo::vehUpsidedownExplode)
++//	//{
++//	//	wchar w = *"Test";
++//	//	//CHud::SetBigMessage("S", "");
++//	//	CHud::SetMessage(&w);
++//	//}
++//}
++
++// I got this started on 3-26-2024 @ 2:50AM, it isn't confirmed to work yet.
++void
++VehicleCheats::NoUpsideDownBlowUpCheat(bool toggle)
++{
++	// Base for cheat that toggles cars blowing up when they are flipped over on/off.
++	// I'm not exactly sure how or if this would be possible.
++	// bool toggle = true;
++
++	// https://stackoverflow.com/questions/9818515/what-does-error-a-nonstatic-member-reference-must-be-relative-to-a-specific-o
++	CPlayerInfo *cPlayerInfo = new CPlayerInfo();
++
++	// Normal
++	if(!toggle) {
++		// Do nothing
++		// return;
++
++		// This just gives an unresolved linker error
++		cPlayerInfo->vehUpsidedownExplode = false;
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++
++		// playerInfo.m_nUpsideDownCounter += 2;
++
++		// This doesn't work, this is the code from PlayerInfo.cpp on lines 436-440
++		// if(FindPlayerVehicle()) {
++		//	CVehicle *veh = FindPlayerVehicle();
++
++		//	if(veh->GetUp().z < -0.5f) {
++		// m_nUpsideDownCounter += 2;
++		//	} else {
++		//		CPlayerInfo::m_nUpsideDownCounter++;
++		//}
++
++		//}
++		// No blow up test, will this work?
++	} else {
++
++		// This just gives an unresolved linker error
++		cPlayerInfo->vehUpsidedownExplode = true;
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++		// if(FindPlayerVehicle()) {
++		//	while(toggle) { playerInfo.m_nUpsideDownCounter = 0; }
++		// }
++	}
++}
+\ No newline at end of file
+diff --git a/src/extras/cheats/vehicle_cheats.h b/src/extras/cheats/vehicle_cheats.h
+new file mode 100644
+index 00000000..46bc78de
+--- /dev/null
++++ b/src/extras/cheats/vehicle_cheats.h
+@@ -0,0 +1,19 @@
++#pragma once
++
++// It just compiled with this? This is from CarAI.h, what is this doing?
++class CVehicle;
++
++class VehicleCheats
++{
++public:
++	// Vehicle
++	// Invincibility
++	static void InvincibleVehicleCheat();
++	static void EnableVehicleInvincibility(CVehicle *veh);
++	static void DisableVehicleInvincibility(CVehicle *veh);
++
++	static void NoUpsideDownBlowUpCheat(bool toggle);
++
++
++
++};
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 803abb3f..6bbc0f10 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -69,7 +69,8 @@
+ #include "..\extras\test\enums\model_ids.h"
+ #include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+-#include "extras\test\cheats\custom_cheats.h"
++//#include "extras\test\cheats\custom_cheats.h"
++#include "extras/cheats/custom_cheats.h"
+ 
+ #include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+-- 
+2.45.1.windows.1
+

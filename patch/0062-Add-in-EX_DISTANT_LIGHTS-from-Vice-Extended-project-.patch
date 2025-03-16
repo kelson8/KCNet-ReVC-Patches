@@ -1,0 +1,938 @@
+From 09c619f93245fd2880cfe6c217f36fc64154224d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 28 Feb 2025 13:52:43 -0500
+Subject: [PATCH 062/101] Add in EX_DISTANT_LIGHTS from Vice Extended project,
+ disable some code that isn't implemented yet. Add weapon cheats into
+ custom_cheats.cpp for cleo redux.
+
+---
+ src/buildings/Building.cpp               | 198 +++++++++++++++++++++++
+ src/buildings/Building.h                 |   4 +
+ src/core/Cam.cpp                         |  23 ++-
+ src/core/common.h                        |   4 +
+ src/core/config.h                        |  31 +++-
+ src/entities/Dummy.cpp                   | 193 ++++++++++++++++++++++
+ src/entities/Dummy.h                     |   4 +
+ src/extras/functions/ini_functions.cpp   |   4 +
+ src/extras/test/cheats/custom_cheats.cpp | 146 +++++++++++++++++
+ src/extras/test/cheats/custom_cheats.h   |  11 ++
+ src/peds/PlayerPed.cpp                   |  56 +++++--
+ 11 files changed, 653 insertions(+), 21 deletions(-)
+
+diff --git a/src/buildings/Building.cpp b/src/buildings/Building.cpp
+index 92c787e5..c52ad74f 100644
+--- a/src/buildings/Building.cpp
++++ b/src/buildings/Building.cpp
+@@ -4,6 +4,15 @@
+ #include "Streaming.h"
+ #include "Pools.h"
+ 
++#ifdef EX_DISTANT_LIGHTS
++#include "Clock.h"
++#include "Bridge.h"
++#include "Weather.h"
++#include "Coronas.h"
++#include "Timecycle.h"
++#include "Camera.h"
++#endif
++
+ void *CBuilding::operator new(size_t sz) throw() { return CPools::GetBuildingPool()->New();  }
+ void CBuilding::operator delete(void *p, size_t sz) throw() { CPools::GetBuildingPool()->Delete((CBuilding*)p); }
+ 
+@@ -21,6 +30,195 @@ CBuilding::ReplaceWithNewModel(int32 id)
+ 			CStreaming::RequestModel(id, STREAMFLAGS_DONT_REMOVE);
+ }
+ 
++#ifdef EX_DISTANT_LIGHTS
++void CBuilding::ProcessDistantLights()
++{
++	if (m_area != AREA_MAIN_MAP)
++		return;
++
++	if (m_modelIndex == 2292 || m_modelIndex == 392 || m_modelIndex == 401 || m_modelIndex == 391 || 
++		m_modelIndex == 1337 || m_modelIndex == 1335 || m_modelIndex == 1334) {
++
++		return;
++	}
++
++	uint32 flashTimer1, flashTimer2, flashTimer3;
++	flashTimer1 = 0;
++	flashTimer2 = 0;
++	flashTimer3 = 0;
++
++	int numEffects = CModelInfo::GetModelInfo(GetModelIndex())->GetNum2dEffects();
++	for(int i = 0; i < numEffects; i++, flashTimer1 += 0x80, flashTimer2 += 0x100, flashTimer3 += 0x200){
++		C2dEffect* effect = CModelInfo::GetModelInfo(GetModelIndex())->Get2dEffect(i);
++
++		if (effect->type != EFFECT_LIGHT)
++			continue;
++
++		if (effect->light.flareType == 1)
++			continue;
++
++		if (effect->light.size == 0.0f)
++			continue;
++
++		CVector pos = GetMatrix() * effect->pos;
++
++		if (pos.z < 0.0f || pos.z > 530.0f)
++			continue;
++
++		bool lightOn = false;
++		bool lightFlickering = false;
++		switch(effect->light.lightType){
++		case LIGHT_ON:
++			lightOn = true;
++			break;
++		case LIGHT_ON_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				lightOn = true;
++			break;
++		case LIGHT_FLICKER:
++			if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed) & 0x60)
++				lightOn = true;
++			else
++				lightFlickering = true;
++			if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed) & 3)
++				lightOn = true;
++			break;
++		case LIGHT_FLICKER_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7 || CWeather::WetRoads > 0.5f){
++				if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed) & 0x60)
++					lightOn = true;
++				else
++					lightFlickering = true;
++				if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed) & 3)
++					lightOn = true;
++			}
++			break;
++		case LIGHT_FLASH1:
++			if((CTimer::GetTimeInMilliseconds() + flashTimer1) & 0x200)
++				lightOn = true;
++			break;
++		case LIGHT_FLASH1_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				if((CTimer::GetTimeInMilliseconds() + flashTimer1) & 0x200)
++					lightOn = true;
++			break;
++		case LIGHT_FLASH2:
++			if((CTimer::GetTimeInMilliseconds() + flashTimer2) & 0x400)
++				lightOn = true;
++			break;
++		case LIGHT_FLASH2_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				if((CTimer::GetTimeInMilliseconds() + flashTimer2) & 0x400)
++					lightOn = true;
++			break;
++		case LIGHT_FLASH3:
++			if((CTimer::GetTimeInMilliseconds() + flashTimer3) & 0x800)
++				lightOn = true;
++			break;
++		case LIGHT_FLASH3_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				if((CTimer::GetTimeInMilliseconds() + flashTimer3) & 0x800)
++					lightOn = true;
++			break;
++		case LIGHT_RANDOM_FLICKER:
++			if(m_randomSeed > 16)
++				lightOn = true;
++			else{
++				if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed*8) & 0x60)
++					lightOn = true;
++				else
++					lightFlickering = true;
++				if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed*8) & 3)
++					lightOn = true;
++			}
++			break;
++		case LIGHT_RANDOM_FLICKER_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7){
++				if(m_randomSeed > 16)
++					lightOn = true;
++				else{
++					if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed*8) & 0x60)
++						lightOn = true;
++					else
++						lightFlickering = true;
++					if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed*8) & 3)
++						lightOn = true;
++				}
++			}
++			break;
++		case LIGHT_BRIDGE_FLASH1:
++			if(CBridge::ShouldLightsBeFlashing() && CTimer::GetTimeInMilliseconds() & 0x200)
++				lightOn = true;
++			break;
++		case LIGHT_BRIDGE_FLASH2:
++			if(CBridge::ShouldLightsBeFlashing() && (CTimer::GetTimeInMilliseconds() & 0x1FF) < 60)
++				lightOn = true;
++			break;
++		}
++
++		/*if(effect->light.flags & LIGHTFLAG_HIDE_OBJECT){
++			if(lightOn)
++				bDoNotRender = false;
++			else
++				bDoNotRender = true;
++			return;
++		}*/
++
++		if (!lightOn && !lightFlickering)
++			continue;
++
++		unsigned int	bAlpha;
++		float	        fRadius;
++		unsigned int	nTime = CClock::GetHours() * 60 + CClock::GetMinutes();
++		unsigned int    curMin = CClock::GetMinutes();
++		float CoronaFarClip = CTimeCycle::GetFarClip();
++
++		if (CoronaFarClip > 1650.0f)
++			CoronaFarClip = 1650.0f;
++
++		if (nTime >= 19 * 60)
++			bAlpha = (1.0f / 2.0f) * nTime - 570.0f; // http://goo.gl/3rI2tc
++		else if (nTime < 3 * 60)
++			bAlpha = 150;
++		else
++			bAlpha = (-5.0f / 8.0f) * nTime + 262.5f; // http://goo.gl/M8Dev9
++
++		CVector camPos = TheCamera.GetPosition();
++
++		if (Distance(pos, camPos) > CoronaFarClip)
++			continue;
++
++		if (!TheCamera.IsSphereVisible(pos, 5.0f))
++			continue;
++
++		float fDistSqr = (camPos.x - pos.x) * (camPos.x - pos.x) + (camPos.y - pos.y) * (camPos.y - pos.y) + (camPos.z - pos.z) * (camPos.z - pos.z);
++
++		//if ((fDistSqr <= 250.0f * 250.0f || fDistSqr >= CoronaFarClip * CoronaFarClip))
++		if ((fDistSqr <= effect->light.dist * effect->light.dist || fDistSqr >= CoronaFarClip * CoronaFarClip))
++			continue;
++
++		//fRadius = (fDistSqr < 300.0f * 300.0f) ? (0.07f) * sqrt(fDistSqr) - 17.5f : 3.5f;
++		fRadius = (fDistSqr < (effect->light.dist - 50.0f) * (effect->light.dist - 50.0f)) ? (0.07f) * sqrt(fDistSqr) - 17.5f : 3.5f;
++
++		fRadius *= Min((0.0025f) * sqrt(fDistSqr) + 0.25f, 4.0f); // http://goo.gl/3kDpnC
++
++		// Corona
++		if(lightOn)
++			CCoronas::RegisterCorona((uintptr)this + i + numEffects,
++				effect->col.r, effect->col.g, effect->col.b, bAlpha,
++				pos, fRadius, effect->light.dist + CoronaFarClip,
++				effect->light.corona, effect->light.flareType, effect->light.roadReflection,
++				effect->light.flags & LIGHTFLAG_LOSCHECK, CCoronas::STREAK_OFF, 0.0f);
++		else if(lightFlickering)
++			CCoronas::RegisterCorona((uintptr)this + i + numEffects,
++				0, 0, 0, 255,
++				pos, fRadius, CoronaFarClip,
++				effect->light.corona, effect->light.flareType, effect->light.roadReflection,
++				effect->light.flags & LIGHTFLAG_LOSCHECK, CCoronas::STREAK_OFF, 0.0f);
++	}
++}
++#endif
++
+ bool
+ IsBuildingPointerValid(CBuilding* pBuilding)
+ {
+diff --git a/src/buildings/Building.h b/src/buildings/Building.h
+index f8ddfa46..5d465e5e 100644
+--- a/src/buildings/Building.h
++++ b/src/buildings/Building.h
+@@ -15,6 +15,10 @@ public:
+ 	void ReplaceWithNewModel(int32 id);
+ 
+ 	virtual bool GetIsATreadable(void) { return false; }
++
++#ifdef EX_DISTANT_LIGHTS
++	void ProcessDistantLights();
++#endif
+ };
+ 
+ bool IsBuildingPointerValid(CBuilding*);
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index c198a33b..afb5463c 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -383,6 +383,8 @@ CCam::Process(void)
+ 					TheCamera.m_bJust_Switched = true;
+ 				DirectionWasLooking = LOOKING_FORWARD;
+ 
++				// TODO Enable this later
++#ifdef _DISABLED_CODE
+ #ifdef FIRING_AND_AIMING
+ 			}else if(CPad::GetPad(0)->GetLookLeft() && (!CPad::GetPad(0)->IsAffectedByController || 
+ 					(CPad::GetPad(0)->IsAffectedByController &&
+@@ -391,7 +393,8 @@ CCam::Process(void)
+ 					CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot == WEAPONSLOT_HANDGUN && ped->GetWeapon()->m_eWeaponType == WEAPONTYPE_PYTHON)))){
+ #else
+ 			}else if(CPad::GetPad(0)->GetLookLeft()){
+-#endif
++#endif //FIRING_AND_AIMING
++#endif //_DISABLED_CODE
+ 				LookLeft();
+ 
+ 				if(DirectionWasLooking != LOOKING_LEFT)
+@@ -413,7 +416,11 @@ CCam::Process(void)
+ 		}
+ 
+ 		if(Mode == MODE_FOLLOWPED && CamTargetEntity->IsPed()){
+-			#ifdef FIRING_AND_AIMING // make it possible to turn back when looking back and pressing the aim button
++			// TODO Enable this later
++#ifdef _DISABLED_CODE
++#ifdef FIRING_AND_AIMING // make it possible to turn back when looking back and pressing the aim button
++
++
+ 			if(CPad::GetPad(0)->GetLookBehindForPed() && !m_bAimingWhileLookBehind && (!ped->bIsPlayerAiming || DirectionWasLooking != LOOKING_FORWARD)){
+ 				if (CPad::GetPad(0)->GetTarget()) {
+ 					m_bAimingWhileLookBehind = true;
+@@ -437,6 +444,8 @@ CCam::Process(void)
+ 				if (!CPad::GetPad(0)->GetLookBehindForPed() && m_bAimingWhileLookBehind)
+ 					m_bAimingWhileLookBehind = false;
+ 			}
++
++#endif // FIRING_AND_AIMING
+ #else
+ 			if(CPad::GetPad(0)->GetLookBehindForPed()){
+ 				LookBehind();
+@@ -446,7 +455,7 @@ CCam::Process(void)
+ 			} else {
+ 				DirectionWasLooking = LOOKING_FORWARD;
+ 			}
+-#endif
++#endif // _DISABLED_CODE
+ 		}
+ 	}
+ 
+@@ -4325,10 +4334,13 @@ CCam::Process_Real_1st_Person(const CVector& CameraTarget, float TargetOrientati
+ 	TargetCoors = CameraTarget;
+ 	TargetCoors.z += fTranslateCamUp;
+ 
++#ifdef CROUCH
+ 	float newZ = InterpFloat(m_fCurrentCameraOffsetZ, m_fTargetCameraPosZ, 8.0f);
+ 	m_fCurrentCameraOffsetZ = newZ;
+ 	TargetCoors.z -= m_fCurrentCameraOffsetZ;
+ 
++	#endif
++
+ 	float AlphaOffset, BetaOffset;
+ 	bool UseMouse = false;
+ 	float MouseX = CPad::GetPad(0)->GetMouseX();
+@@ -4376,6 +4388,9 @@ CCam::Process_Real_1st_Person(const CVector& CameraTarget, float TargetOrientati
+ 	while(Beta >= PI) Beta -= 2*PI;
+ 	while(Beta < -PI) Beta += 2*PI;
+ 
++
++				// TODO Fix this, swimming code
++#ifdef _DISABLED_CODE
+ 	if (ped->bIsSwimming) {
+ 		if (Alpha > DEGTORAD(89.0f)) Alpha = DEGTORAD(89.0f);
+ 		else if (Alpha < -DEGTORAD(30.0f)) Alpha = -DEGTORAD(30.0f);
+@@ -4408,6 +4423,8 @@ CCam::Process_Real_1st_Person(const CVector& CameraTarget, float TargetOrientati
+ 		}
+ 	}
+ 
++#endif
++
+ 	CamDist = TheCamera.m_fPedZoomValue + fAngleDist;
+ 
+ 	if(TheCamera.m_bUseTransitionBeta)
+diff --git a/src/core/common.h b/src/core/common.h
+index d803488c..bbedc282 100644
+--- a/src/core/common.h
++++ b/src/core/common.h
+@@ -354,6 +354,10 @@ extern bool bEnableSwimming;
+ extern CRGBA WaypointColor;
+ #endif
+ 
++#ifdef EX_DISTANT_LIGHTS
++extern bool bEnableDistantLights;
++#endif
++
+ // TODO Set this up later
+ #ifdef EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+ extern bool bRocketLauncherThirdPersonAiming;
+diff --git a/src/core/config.h b/src/core/config.h
+index e3ad868d..b2dc5796 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -63,9 +63,7 @@
+ 
+ // Begin disable these when done testing.
+ 
+-// The code for these are copied in
+-// Enable better crouching support
+-// #define CROUCH
++
+ 
+ // // Enable better climbing
+ // #define CLIMBING
+@@ -73,9 +71,30 @@
+ // Test for third person aim using the rocket launcher, from Extended Vice project
+ // I will still need to add these defines to make this work.
+ // // This seems to also need the first person define.
++
++// I disabled some code for these and finally got them to build!
++// Now to test it.
++// Well because I don't have the modloader, the animations and stuff aren't loading in for this I guess.
++// Not sure where these files will go:
++// It crashes after the load screen
++// TODO Fix this to work and figure out how to get the modloader to work,
++// that should be the final step in getting this complete.
++// anims.dir, anims.img
++// objects.dir, objects.img
++// peds.dir, peds.img
++// player.dir, player.img
++// vehicles.dir, vehicles.img
++// weapons.dir, weapons.img
++//
+ // #define FIRING_AND_AIMING 
+ // // I think I mostly got this one completed also.
+ // #define FIRST_PERSON
++// The code for these are copied in
++// Enable better crouching support
++// #define CROUCH
++
++// TODO Fix this
++// #define MODLOADER
+ 
+ 
+ // I will need to add this to PlayerPed.cpp and Hud.cpp
+@@ -102,6 +121,12 @@
+ // Test a couple features from here, mostly for photo mode.
+ #define IMPROVED_TECH_PART
+ 
++// I added in the code for this
++// thank https://github.com/ThirteenAG/III.VC.SA.IV.Project2DFX/releases/tag/gtavc
++// Not sure what exactly it changes, possibly at night time.
++// Also, I'm not sure if the features.ini is being loaded in for this.
++#define EX_DISTANT_LIGHTS
++
+ /*********************** End partially complete code  ******************/
+ 
+ // End disable these when done testing.
+diff --git a/src/entities/Dummy.cpp b/src/entities/Dummy.cpp
+index d62d2434..d569c8ad 100644
+--- a/src/entities/Dummy.cpp
++++ b/src/entities/Dummy.cpp
+@@ -4,6 +4,15 @@
+ #include "World.h"
+ #include "Dummy.h"
+ 
++#ifdef EX_DISTANT_LIGHTS
++#include "Clock.h"
++#include "Bridge.h"
++#include "Weather.h"
++#include "Coronas.h"
++#include "Timecycle.h"
++#include "Camera.h"
++#endif
++
+ void *CDummy::operator new(size_t sz) throw() { return CPools::GetDummyPool()->New();  }
+ void CDummy::operator delete(void *p, size_t sz) throw() { CPools::GetDummyPool()->Delete((CDummy*)p); }
+ 
+@@ -51,6 +60,190 @@ CDummy::Remove(void)
+ 	}
+ }
+ 
++#ifdef EX_DISTANT_LIGHTS
++void CDummy::ProcessDistantLights()
++{
++	if (m_area != AREA_MAIN_MAP)
++		return;
++
++	uint32 flashTimer1, flashTimer2, flashTimer3;
++	flashTimer1 = 0;
++	flashTimer2 = 0;
++	flashTimer3 = 0;
++
++	int numEffects = CModelInfo::GetModelInfo(GetModelIndex())->GetNum2dEffects();
++	for(int i = 0; i < numEffects; i++, flashTimer1 += 0x80, flashTimer2 += 0x100, flashTimer3 += 0x200){
++		C2dEffect* effect = CModelInfo::GetModelInfo(GetModelIndex())->Get2dEffect(i);
++
++		if (effect->type != EFFECT_LIGHT)
++			continue;
++
++		if (effect->light.flareType == 1)
++			continue;
++
++		if (effect->light.size == 0.0f)
++			continue;
++
++		CVector pos = GetMatrix() * effect->pos;
++
++		if (pos.z < 0.0f || pos.z > 530.0f)
++			continue;
++
++		bool lightOn = false;
++		bool lightFlickering = false;
++		switch(effect->light.lightType){
++		case LIGHT_ON:
++			lightOn = true;
++			break;
++		case LIGHT_ON_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				lightOn = true;
++			break;
++		case LIGHT_FLICKER:
++			if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed) & 0x60)
++				lightOn = true;
++			else
++				lightFlickering = true;
++			if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed) & 3)
++				lightOn = true;
++			break;
++		case LIGHT_FLICKER_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7 || CWeather::WetRoads > 0.5f){
++				if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed) & 0x60)
++					lightOn = true;
++				else
++					lightFlickering = true;
++				if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed) & 3)
++					lightOn = true;
++			}
++			break;
++		case LIGHT_FLASH1:
++			if((CTimer::GetTimeInMilliseconds() + flashTimer1) & 0x200)
++				lightOn = true;
++			break;
++		case LIGHT_FLASH1_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				if((CTimer::GetTimeInMilliseconds() + flashTimer1) & 0x200)
++					lightOn = true;
++			break;
++		case LIGHT_FLASH2:
++			if((CTimer::GetTimeInMilliseconds() + flashTimer2) & 0x400)
++				lightOn = true;
++			break;
++		case LIGHT_FLASH2_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				if((CTimer::GetTimeInMilliseconds() + flashTimer2) & 0x400)
++					lightOn = true;
++			break;
++		case LIGHT_FLASH3:
++			if((CTimer::GetTimeInMilliseconds() + flashTimer3) & 0x800)
++				lightOn = true;
++			break;
++		case LIGHT_FLASH3_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7)
++				if((CTimer::GetTimeInMilliseconds() + flashTimer3) & 0x800)
++					lightOn = true;
++			break;
++		case LIGHT_RANDOM_FLICKER:
++			if(m_randomSeed > 16)
++				lightOn = true;
++			else{
++				if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed*8) & 0x60)
++					lightOn = true;
++				else
++					lightFlickering = true;
++				if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed*8) & 3)
++					lightOn = true;
++			}
++			break;
++		case LIGHT_RANDOM_FLICKER_NIGHT:
++			if(CClock::GetHours() > 18 || CClock::GetHours() < 7){
++				if(m_randomSeed > 16)
++					lightOn = true;
++				else{
++					if((CTimer::GetTimeInMilliseconds() ^ m_randomSeed*8) & 0x60)
++						lightOn = true;
++					else
++						lightFlickering = true;
++					if((CTimer::GetTimeInMilliseconds()>>11 ^ m_randomSeed*8) & 3)
++						lightOn = true;
++				}
++			}
++			break;
++		case LIGHT_BRIDGE_FLASH1:
++			if(CBridge::ShouldLightsBeFlashing() && CTimer::GetTimeInMilliseconds() & 0x200)
++				lightOn = true;
++			break;
++		case LIGHT_BRIDGE_FLASH2:
++			if(CBridge::ShouldLightsBeFlashing() && (CTimer::GetTimeInMilliseconds() & 0x1FF) < 60)
++				lightOn = true;
++			break;
++		}
++
++		if(effect->light.flags & LIGHTFLAG_HIDE_OBJECT){
++			if(lightOn)
++				bDoNotRender = false;
++			else
++				bDoNotRender = true;
++			continue;
++		}
++
++		if (!lightOn && !lightFlickering)
++			continue;
++
++		unsigned int	bAlpha;
++		float	        fRadius;
++		unsigned int	nTime = CClock::GetHours() * 60 + CClock::GetMinutes();
++		float CoronaFarClip = CTimeCycle::GetFarClip();
++
++		if (CoronaFarClip > 1650.0f)
++			CoronaFarClip = 1650.0f;
++
++		if (nTime >= 19 * 60)
++			bAlpha = (1.0f / 2.0f) * nTime - 570.0f; // http://goo.gl/3rI2tc
++		else if (nTime < 3 * 60)
++			bAlpha = 150;
++		else
++			bAlpha = (-5.0f / 8.0f) * nTime + 262.5f; // http://goo.gl/M8Dev9
++
++		CVector camPos = TheCamera.GetPosition();
++
++		if (Distance(pos, camPos) > CoronaFarClip)
++			continue;
++
++		if (!TheCamera.IsSphereVisible(pos, 5.0f))
++			continue;
++
++		float fDistSqr = (camPos.x - pos.x) * (camPos.x - pos.x) + (camPos.y - pos.y) * (camPos.y - pos.y) + (camPos.z - pos.z) * (camPos.z - pos.z);
++
++		//if ((fDistSqr <= 250.0f * 250.0f || fDistSqr >= CoronaFarClip * CoronaFarClip))
++		if ((fDistSqr <= effect->light.dist * effect->light.dist || fDistSqr >= CoronaFarClip * CoronaFarClip))
++			continue;
++
++		//fRadius = (fDistSqr < 300.0f * 300.0f) ? (0.07f) * sqrt(fDistSqr) - 17.5f : 3.5f;
++		fRadius = (fDistSqr < (effect->light.dist - 50.0f) * (effect->light.dist - 50.0f)) ? (0.07f) * sqrt(fDistSqr) - 17.5f : 3.5f;
++
++		fRadius *= Min((0.0025f) * sqrt(fDistSqr) + 0.25f, 4.0f); // http://goo.gl/3kDpnC
++
++		// Corona
++		if(lightOn)
++			CCoronas::RegisterCorona((uintptr)this + i + numEffects,
++				effect->col.r, effect->col.g, effect->col.b, bAlpha,
++				pos, fRadius, CoronaFarClip,
++				effect->light.corona, effect->light.flareType, effect->light.roadReflection,
++				effect->light.flags & LIGHTFLAG_LOSCHECK, CCoronas::STREAK_OFF, 0.0f,
++				!!(effect->light.flags&LIGHTFLAG_LONG_DIST));
++		else if(lightFlickering)
++			CCoronas::RegisterCorona((uintptr)this + i + numEffects,
++				0, 0, 0, 255,
++				pos, fRadius, CoronaFarClip,
++				effect->light.corona, effect->light.flareType, effect->light.roadReflection,
++				effect->light.flags & LIGHTFLAG_LOSCHECK, CCoronas::STREAK_OFF, 0.0f,
++				!!(effect->light.flags&LIGHTFLAG_LONG_DIST));
++	}
++}
++#endif
++
+ bool
+ IsDummyPointerValid(CDummy* pDummy)
+ {
+diff --git a/src/entities/Dummy.h b/src/entities/Dummy.h
+index 9b73eefc..99ab0374 100644
+--- a/src/entities/Dummy.h
++++ b/src/entities/Dummy.h
+@@ -12,6 +12,10 @@ public:
+ 	void Add(void);
+ 	void Remove(void);
+ 
++#ifdef EX_DISTANT_LIGHTS
++	void ProcessDistantLights();
++#endif
++
+ 	static void *operator new(size_t) throw();
+ 	static void operator delete(void*, size_t) throw();
+ };
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 48f14235..163a932e 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -151,6 +151,10 @@ CRGBA ReadAndGetWaypointColor(const char* key)
+ 	CRGBA WaypointColor = ReadAndGetWaypointColor("WaypointColorRGB");
+ #endif
+ 
++#ifdef EX_DISTANT_LIGHTS
++extern bool bEnableDistantLights = ReadAndGetFeature("EnableDistantLights");
++#endif
++
+ bool
+ ReadIniIfExists(const char *cat, const char *key, uint32 *out)
+ {
+diff --git a/src/extras/test/cheats/custom_cheats.cpp b/src/extras/test/cheats/custom_cheats.cpp
+index 819d42f6..6efe7edf 100644
+--- a/src/extras/test/cheats/custom_cheats.cpp
++++ b/src/extras/test/cheats/custom_cheats.cpp
+@@ -764,6 +764,152 @@ CustomCheats::NeverWantedCheat()
+ 	}
+ }
+ 
++//--------------------
++// Begin Weapon cheats from pad.cpp
++//--------------------
++
++/// <summary>
++/// Give the player brass knuckles, baseball bat, molotovs,
++/// a colt45 pistol, a regular shotgun, tec9, ruger, sniper, and flamethrower.
++/// </summary>
++void
++CustomCheats::WeaponCheat1()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT2"), true);
++
++	CStreaming::RequestModel(MI_BRASS_KNUCKLES, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_BASEBALL_BAT, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_MOLOTOV, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_COLT45, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_SHOTGUN, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_TEC9, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_RUGER, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_SNIPERRIFLE, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_FLAMETHROWER, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(false);
++
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_BRASSKNUCKLE, 1);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_BASEBALLBAT, 1);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_MOLOTOV, 10);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_COLT45, 100);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_SHOTGUN, 50);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_TEC9, 150);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_RUGER, 120);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_SNIPERRIFLE, 25);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_FLAMETHROWER, 200);
++
++	CStreaming::SetModelIsDeletable(MI_BRASS_KNUCKLES);
++	CStreaming::SetModelIsDeletable(MI_BASEBALL_BAT);
++	CStreaming::SetModelIsDeletable(MI_MOLOTOV);
++	CStreaming::SetModelIsDeletable(MI_COLT45);
++	CStreaming::SetModelIsDeletable(MI_SHOTGUN);
++	CStreaming::SetModelIsDeletable(MI_TEC9);
++	CStreaming::SetModelIsDeletable(MI_RUGER);
++	CStreaming::SetModelIsDeletable(MI_SNIPERRIFLE);
++	CStreaming::SetModelIsDeletable(MI_FLAMETHROWER);
++#ifdef MOBILE_IMPROVEMENTS
++	if(FindPlayerVehicle()) { FindPlayerPed()->RemoveWeaponWhenEnteringVehicle(); }
++#endif
++}
++
++/// <summary>
++/// Give the player a Katana, Grenades, Denenator grenades, Pistol, Stubby shotgun, M4, and Rocket Launcher
++/// </summary>
++void
++CustomCheats::WeaponCheat2()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT2"), true);
++
++	CStreaming::RequestModel(MI_KATANA, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_GRENADE, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_BOMB, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_PYTHON, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_STUBBY_SHOTGUN, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_SILENCEDINGRAM, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_M4, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_LASERSCOPE, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_ROCKETLAUNCHER, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(false);
++
++#ifdef FIX_BUGS
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_KATANA, 1);
++#else
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_KATANA, 0);
++#endif
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_DETONATOR_GRENADE, 10);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_PYTHON, 40);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_STUBBY_SHOTGUN, 25);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_SILENCED_INGRAM, 100);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_M4, 150);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_LASERSCOPE, 21);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_ROCKETLAUNCHER, 5);
++
++	CStreaming::SetModelIsDeletable(MI_KATANA);
++	CStreaming::SetModelIsDeletable(MI_GRENADE);
++	CStreaming::SetModelIsDeletable(MI_BOMB);
++	CStreaming::SetModelIsDeletable(MI_PYTHON);
++	CStreaming::SetModelIsDeletable(MI_STUBBY_SHOTGUN);
++	CStreaming::SetModelIsDeletable(MI_SILENCEDINGRAM);
++	CStreaming::SetModelIsDeletable(MI_M4);
++	CStreaming::SetModelIsDeletable(MI_LASERSCOPE);
++	CStreaming::SetModelIsDeletable(MI_ROCKETLAUNCHER);
++#ifdef MOBILE_IMPROVEMENTS
++	if(FindPlayerVehicle()) { FindPlayerPed()->RemoveWeaponWhenEnteringVehicle(); }
++#endif
++}
++
++/// <summary>
++/// Give the player a chainsaw, grenades, python pistol, spas12 shotgun,
++/// mp5, m4, and a minigun.
++/// </summary>
++void
++CustomCheats::WeaponCheat3()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT2"), true);
++
++	CStreaming::RequestModel(MI_CHAINSAW, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_GRENADE, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_PYTHON, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_SPAS12_SHOTGUN, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_MP5, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_M4, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_LASERSCOPE, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_MINIGUN, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::RequestModel(MI_MINIGUN2, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(false);
++
++#ifdef FIX_BUGS
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_CHAINSAW, 1);
++#else
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_CHAINSAW, 0);
++#endif
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_GRENADE, 10);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_PYTHON, 40);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 30);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_MP5, 100);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_M4, 150);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_LASERSCOPE, 21);
++	FindPlayerPed()->GiveWeapon(WEAPONTYPE_MINIGUN, 500);
++
++	CStreaming::SetModelIsDeletable(MI_CHAINSAW);
++	CStreaming::SetModelIsDeletable(MI_GRENADE);
++	CStreaming::SetModelIsDeletable(MI_PYTHON);
++	CStreaming::SetModelIsDeletable(MI_SPAS12_SHOTGUN);
++	CStreaming::SetModelIsDeletable(MI_MP5);
++	CStreaming::SetModelIsDeletable(MI_M4);
++	CStreaming::SetModelIsDeletable(MI_LASERSCOPE);
++	CStreaming::SetModelIsDeletable(MI_MINIGUN);
++	CStreaming::SetModelIsDeletable(MI_MINIGUN2);
++
++#ifdef MOBILE_IMPROVEMENTS
++	if(FindPlayerVehicle()) { FindPlayerPed()->RemoveWeaponWhenEnteringVehicle(); }
++#endif
++}
++
++//--------------------
++// End Weapon cheats from pad.cpp
++//--------------------
++
+ // TODO Figure out how to move this into vehicle_functions.cpp without errors
+ 
+ /// <summary>
+diff --git a/src/extras/test/cheats/custom_cheats.h b/src/extras/test/cheats/custom_cheats.h
+index ce9ccf00..d88ec923 100644
+--- a/src/extras/test/cheats/custom_cheats.h
++++ b/src/extras/test/cheats/custom_cheats.h
+@@ -88,6 +88,17 @@ public:
+ 	static void TogglePoliceSpikeStrips();
+ 	#endif //EX_COP_FUNCTIONS
+ 
++	//--------------------
++	// Begin Weapon cheats from pad.cpp
++	//--------------------
++	// Weapon cheats
++	static void WeaponCheat1();
++	static void WeaponCheat2();
++	static void WeaponCheat3();
++
++	//--------------------
++	// End Weapon cheats from pad.cpp
++	//--------------------
+ 
+ 
+ 	#endif //_TEST
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index b31d7e7b..de443828 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -30,6 +30,11 @@
+ #include "Particle.h"
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // Fix for the FrontEndMenuManager not being recognized
++#include "Frontend.h"
++#endif
++//
++
+ #define PAD_MOVE_TO_GAME_WORLD_MOVE 60.0f
+ 
+ bool CPlayerPed::bDontAllowWeaponChange;
+@@ -512,21 +517,22 @@ void CPlayerPed::ProcessSwimming(void)
+ #ifdef FIRING_AND_AIMING
+ void CPlayerPed::ProcessAiming(void)
+ {
+-	if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_STARTWALK))
+-		delete RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_STARTWALK);
++	//if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_STARTWALK))
++	if (RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_STARTWALK))
++		delete RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_STARTWALK);
+ 
+-	CAnimBlendAssociation* curGunMoveBackwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_BWD);
+-	CAnimBlendAssociation* curGunMoveForwardAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_FWD);
+-	CAnimBlendAssociation* curGunMoveLeftAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_L);
+-	CAnimBlendAssociation* curGunMoveRightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUNMOVE_R);
+-	CAnimBlendAssociation* curGunStandAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_GUN_STAND);
++	CAnimBlendAssociation *curGunMoveBackwardAssoc = RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_GUNMOVE_BWD);
++	CAnimBlendAssociation *curGunMoveForwardAssoc = RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_GUNMOVE_FWD);
++	CAnimBlendAssociation *curGunMoveLeftAssoc = RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_GUNMOVE_L);
++	CAnimBlendAssociation *curGunMoveRightAssoc = RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_GUNMOVE_R);
++	CAnimBlendAssociation *curGunStandAssoc = RpAnimBlendClumpGetAssociation(FindPlayerPed()->GetClump(), ANIM_STD_GUN_STAND);
+ 
+ 	CPad* pad = GetPadFromPlayer(this);
+ 	int16 padUpDown = pad->GetPedWalkUpDown();
+ 	int16 padLeftRight = pad->GetPedWalkLeftRight();
+ 
+ 	if (padLeftRight == 0 && padUpDown == 0 && !curGunStandAssoc)
+-		curGunStandAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_GUN_STAND, 4.0f);
++		curGunStandAssoc = CAnimManager::BlendAnimation(FindPlayerPed()->GetClump(), ASSOCGRP_STD, ANIM_STD_GUN_STAND, 4.0f);
+ 
+ 	float animSpeed;
+ 
+@@ -1858,7 +1864,14 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 				SetAttack(nil);
+ 			}
+ 
+-			if ((padUsed->GetTarget() || IsDoomMode()) && bIsPlayerAiming && !cantFire && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING && !bIsAutoAiming) {
++			// TODO Fix this
++#ifdef _DISABLED_CODE
++			if((padUsed->GetTarget() || IsDoomMode()) && bIsPlayerAiming && !cantFire && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING &&
++			   !bIsAutoAiming) {
++
++#else
++			if ((padUsed->GetTarget() || IsDoomMode()) && bIsPlayerAiming && !cantFire && GetWeapon()->m_eWeaponState != WEAPONSTATE_RELOADING) {
++#endif
+ 				if (!IsDoomMode()) {
+ #ifdef EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+ 					if (weapon == WEAPONTYPE_ROCKETLAUNCHER && !bRocketLauncherThirdPersonAiming)
+@@ -1888,8 +1901,13 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 						if (CWorld::ProcessLineOfSight(TheCamera.GetPosition(), TheCamera.GetPosition() + TheCamera.GetForward() * 20.0f, CColPoint{}, hitEntityRaycast, true, false, true, false, false, true)) {
+ 							if (hitEntityRaycast->IsPed()) {
+ 								CPed* hitPed = (CPed*)hitEntityRaycast;
+-								if ((hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType != PEDTYPE_COP) ||
+-									(hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType == PEDTYPE_COP && !FindPlayerPed()->m_pWanted->IsPlayerHides())) {
++								if ((hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType != PEDTYPE_COP))
++								   #ifdef _DISABLED_CODE
++								   || (hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType == PEDTYPE_COP &&
++								    !FindPlayerPed()->m_pWanted->IsPlayerHides())) {
++								#else
++									{
++								#endif
+ 									m_pPointGunAt = hitPed;
+ 
+ 									Say(SOUND_PED_AIMING);
+@@ -1911,10 +1929,18 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 							continue;
+ 						}
+ 
+-						if (hitEntityShapecast->IsPed()) {
+-							CPed* hitPed = (CPed*)hitEntityShapecast;
+-							if ((hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType != PEDTYPE_COP) ||
+-								(hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType == PEDTYPE_COP && !FindPlayerPed()->m_pWanted->IsPlayerHides())) {
++						if(hitEntityShapecast->IsPed()) {
++							CPed *hitPed = (CPed *)hitEntityShapecast;
++							if((hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType != PEDTYPE_COP) 
++								#ifdef _DISABLED_CODE
++								||
++							   (hitPed->CanSeeEntity(this, DEGTORAD(80.0f)) && hitPed->m_nPedType == PEDTYPE_COP &&
++							    !FindPlayerPed()->m_pWanted->IsPlayerHides())) {
++								
++								#else
++							){
++								#endif
++
+ 								m_pPointGunAt = hitPed;
+ 
+ 								Say(SOUND_PED_AIMING);
+-- 
+2.45.1.windows.1
+

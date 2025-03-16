@@ -1,0 +1,89 @@
+From 0b5ec7f7f1a32fc58d76c30df90db68e8ade8adf Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Mar 2025 16:03:27 -0400
+Subject: [PATCH 091/101] Add a guide for some custom items in the KCNet ReVC
+ test.
+
+---
+ kcnet/guides.md | 69 +++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+ create mode 100644 kcnet/guides.md
+
+diff --git a/kcnet/guides.md b/kcnet/guides.md
+new file mode 100644
+index 00000000..0d0238b9
+--- /dev/null
++++ b/kcnet/guides.md
+@@ -0,0 +1,69 @@
++### How to add imgui menus
++1. Create a menu in extras/menus, example menu file name: chaos_menu.cpp, and chaos_menu.h
++2. In the menu, add some text, buttons, checkboxes or whatever is needed for the menu, you need to be familiar with ImGui for this I would suggest looking into the [ImGui Demo](https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp) on their github for help
++
++
++2. Go into imgui_main_menu.cpp in extras/functions
++
++Add the menu header into the includes:
++```
++#include "menu_name.h"
++```
++
++Add this under one of the begin tab items in (ImGuiMenus::Menu::MainMenu):
++```
++
++		// Setup this, the tabs aren't set to static.
++		TabMenu tabMenu = tabMenu();
++		// Tab that adds something
++		if(ImGui::BeginTabItem("Name")) { 
++			<tabMenu>.AboutTab();
++			ImGui::EndTabItem();
++		}
++```
++
++
++### How to add global variables to my ReVC for use in the debug menu and changing the default game functions.
++ 
++#### Add this to main.cpp:
++```
++Example for using this:
++
++#ifdef <NAME>
++bool gbFastLoader
++
++#endif //<NAME>
++```
++
++
++### Add this to main.h
++```
++Example for using this:
++
++#ifdef <NAME>
++extern bool gbFastLoader
++
++#endif //<NAME>
++
++```
++
++### If an ini option is needed:
++Add this to ini_functions.cpp:
++The first option is the menu title it goes under, the 2nd option is the name, and the last option
++is the bool that is stored in main.h and main.cpp.
++This one takes a reference to the bool but the StoreIni one does not
++
++Add this under LoadINISettings
++```
++#ifdef <NAME>
++	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
++#endif //<NAME>
++```
++
++Add this under SaveINISettings:
++```
++#ifdef <NAME>
++	StoreIni("General", "FastLoader", gbFastLoader);
++#endif //<NAME>
++```
++
+-- 
+2.45.1.windows.1
+

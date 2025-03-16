@@ -1,0 +1,397 @@
+From 248cd686bd819a0ab3cb32c13abb058d3f51c2cd Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Mar 2025 14:22:25 -0400
+Subject: [PATCH 089/101] Add proper working car spawner which grabs some
+ values from the list, it's somewhat messy for now. Make car spawner clear the
+ area with a radius of 10. Add blow up all cars to vehicle menu. Add drop bomb
+ to misc menu. Add get player money, set player money with custom amount and
+ default amount into cheat menu. Add money cheat into custom_cheats. Add
+ chaos_functions, not in use yet.
+
+---
+ src/extras/cheats/custom_cheats.cpp      |  20 +++++
+ src/extras/cheats/custom_cheats.h        |   5 ++
+ src/extras/functions/chaos_functions.cpp | 103 +++++++++++++++++++++++
+ src/extras/functions/chaos_functions.h   |   4 +
+ src/extras/menus/cheat_menu.cpp          |  59 +++++++++++++
+ src/extras/menus/misc_menu.cpp           |   8 ++
+ src/extras/menus/vehicle_menu.cpp        |  63 ++++++++++++--
+ 7 files changed, 253 insertions(+), 9 deletions(-)
+ create mode 100644 src/extras/functions/chaos_functions.cpp
+ create mode 100644 src/extras/functions/chaos_functions.h
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index d44cf9ef..4bc51a2d 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -140,6 +140,26 @@ commandTest1()
+ //void
+ //BlowUpCarsCheat();
+ 
++/// <summary>
++/// Money cheat, copied from Pad.cpp for modifications.
++/// </summary>
++void 
++CustomCheats::MoneyCheat(int value)
++{
++	//CWorld::Players[CWorld::PlayerInFocus].m_nMoney += 250000;
++	CWorld::Players[CWorld::PlayerInFocus].m_nMoney += value;
++	CHud::SetHelpMessage(TheText.Get("CHEAT6"), true);
++}
++
++/// <summary>
++/// Set the players money to 0 for testing.
++/// </summary>
++void
++CustomCheats::SetMoneyToZero()
++{
++	CWorld::Players[CWorld::PlayerInFocus].m_nMoney = 0;
++}
++
+ /// <summary>
+ /// Play the bridge open and close announcements
+ /// </summary>
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index d2e97d65..2c20d7f1 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -79,6 +79,11 @@ public:
+ 	static void BlowUpAllCars();
+ 	static void PlayAnnouncementTest(int value);
+ 
++	// Money cheat from Pad.cpp
++	static void MoneyCheat(int value);
++	// Set the players money to zero for testing
++	static void SetMoneyToZero();
++
+ 	// Loading cutscene test
+ 	static void LoadCutscene(const char *name);
+ 
+diff --git a/src/extras/functions/chaos_functions.cpp b/src/extras/functions/chaos_functions.cpp
+new file mode 100644
+index 00000000..c61cc311
+--- /dev/null
++++ b/src/extras/functions/chaos_functions.cpp
+@@ -0,0 +1,103 @@
++#include "chaos_functions.h"
++
++#include <iomanip>
++
++// Lua test
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++//
++
++#include <iostream>
++
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "./extras/test/enums/model_ids.h"
++
++#include "defines.h"
++//
++
++#include "Camera.h"
++#include "CarCtrl.h"
++#include "CutsceneMgr.h"
++#include "Fluff.h"
++#include "Font.h"
++#include "Game.h"
++#include "Gangs.h"
++#include "General.h"
++#include "Hud.h"
++#include "PathFind.h"
++#include "Ped.h"
++#include "Population.h"
++#include "Record.h"
++#include "Replay.h"
++#include "Stats.h"
++#include "Streaming.h"
++#include "Text.h"
++#include "Timer.h"
++#include "TrafficLights.h"
++#include "Vehicle.h"
++#include "Wanted.h"
++#include "WaterLevel.h"
++#include "Weather.h"
++#include "World.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++#include "Timer.h"
++
++#include "Wanted.h"
++
++#include "Pad.h"
++
++// Here I will add some testing functions for chaos mode or something.
++// Not sure what I'll add to this yet
++
++// TODO Test these later
++
++/// <summary>
++/// Copied from MayhemCheat in Pad.cpp
++/// </summary>
++void
++//ChaosFunctions::MakePedsAttackPlayer()
++MayhemMode()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++	for(int i = PEDTYPE_CIVMALE; i < PEDTYPE_SPECIAL; i++)
++		CPedType::SetThreats(i, PED_FLAG_PLAYER1 | PED_FLAG_PLAYER2 | PED_FLAG_PLAYER3 | PED_FLAG_PLAYER4 | PED_FLAG_CIVMALE | PED_FLAG_CIVFEMALE |
++		                            PED_FLAG_COP | PED_FLAG_GANG1 | PED_FLAG_GANG2 | PED_FLAG_GANG3 | PED_FLAG_GANG4 | PED_FLAG_GANG5 | PED_FLAG_GANG6 |
++		                            PED_FLAG_GANG7 | PED_FLAG_GANG8 | PED_FLAG_GANG9 | PED_FLAG_EMERGENCY | PED_FLAG_PROSTITUTE | PED_FLAG_CRIMINAL |
++		                            PED_FLAG_SPECIAL);
++}
++
++void
++MakePedsAttackPlayer()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++	for(int i = PEDTYPE_CIVMALE; i < PEDTYPE_SPECIAL; i++) CPedType::AddThreat(i, PED_FLAG_PLAYER1);
++}
++
++/// <summary>
++/// Copied from WeaponsForAllCheat in Pad.cpp
++/// </summary>
++void
++weaponsForAll()
++{
++	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++	CPopulation::ms_bGivePedsWeapons = !CPopulation::ms_bGivePedsWeapons;
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/chaos_functions.h b/src/extras/functions/chaos_functions.h
+new file mode 100644
+index 00000000..b5525e63
+--- /dev/null
++++ b/src/extras/functions/chaos_functions.h
+@@ -0,0 +1,4 @@
++#pragma once
++class ChaosFunctions
++{
++};
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index f611c670..1c47ec6a 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -29,6 +29,8 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++#include "World.h"
++
+ 
+ #include "Pad.h"
+ 
+@@ -49,6 +51,29 @@ toggleNeverWanted()
+ 	}
+ }
+ 
++//----------- Money cheats ----------//
++// Variables for money
++bool customAmount = false;
++
++int defaultMoneyValue = 250000;
++static char moneyBuffer[25] = "";
++
++static int moneyInt = 0;
++// If the players money is shown in the menu.
++bool showPlayerMoney = false;
++
++/// <summary>
++/// Idea obtained from GameLogic, this works well.
++/// </summary>
++/// <returns></returns>
++int32
++GetPlayerMoney()
++{
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	return pPlayerInfo.m_nMoney;
++}
++
+ void CheatMenu::CheatTab()
+ {
+ 	if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
+@@ -57,6 +82,40 @@ void CheatMenu::CheatTab()
+ 
+ 	if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
+ 
++	// Money cheats
++
++	ImGui::Separator();
++	ImGui::Text("Money");
++	// This input int works well, got the idea from imgui_demo.cpp.
++	ImGui::InputInt("Amount of Money", &moneyInt);
++	//ImGui::InputText("Amount of Money", moneyBuffer, IM_ARRAYSIZE(moneyBuffer));
++	// 
++
++	ImGui::Text("If custom amount isn't set, it gives you the default cheat amount of $250,000");
++	ImGui::Checkbox("Custom amount", &customAmount);
++	//if (ImGui::Checkbox("Custom amount", &customAmount)) { 
++	//	toggleCustomAmount();
++	//}
++
++	if(ImGui::Button("Money")) { 
++		if (customAmount) { 
++			CustomCheats::MoneyCheat(moneyInt);
++		} else {
++			CustomCheats::MoneyCheat(defaultMoneyValue);
++		}
++	}
++
++	// Show the players current money on the screen.
++	ImGui::Checkbox("Show money", &showPlayerMoney);
++
++	if (showPlayerMoney) { 
++		std::string totalMoney = "$" + std::to_string(GetPlayerMoney());
++
++		ImGui::Text(totalMoney.c_str());
++	}
++
++	ImGui::Separator();
++
+ 	// Police cheats
+ 	ImGui::Text("Police");
+ 
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 8f758108..35b7d07c 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -235,6 +235,14 @@ void MiscMenu::MiscTab()
+ 		toggleHud();
+ 	}
+ 
++	ImGui::Separator();
++	// Fun functions
++	ImGui::Text("Fun functions");
++
++	if(ImGui::Button("Drop bomb")) { 
++		CustomCheats::ExplosionCheat();
++	}
++
+ 	// TODO Test this
+ 	// Well this didn't do anything
+ 	//if(ImGui::Button("Save Game")) { 
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index b1f2a3e0..470f59b8 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -42,6 +42,8 @@ bool showVehicleListBox = false;
+ const char *vehicles[] = {"Rhino", "Cheetah", "Infernus"};
+ int currentItem = 150;
+ 
++bool showCurrentItem = false;
++
+ void
+ toggleVehicleInvincible()
+ {
+@@ -132,31 +134,65 @@ toggleHighVehicleMass()
+ void
+ VehicleMenu::VehicleTab()
+ {
++	CustomCheats customCheats = CustomCheats();
++
+ 	if(ImGui::Button("Toggle vehicle list")) 
+ 	{ 
+ 		showVehicleListBox = !showVehicleListBox; 
+ 	}
+ 
+ 	// Add a test for spawning in the car
+-	// TODO Add a list of vehicles to spawn into
+ 	ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
+ 
+-	// TODO Figure out how to make this start from 130 instead of 1.
++	// I got this working with the switch statements below.
+ 	if(showVehicleListBox) 
+ 	{ 
+ 		ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
+ 	}
+ 
++	ImGui::Checkbox("Show current item", &showCurrentItem);
++	if (showCurrentItem)
++	{ 
++		ImGui::Text(std::to_string(currentItem).c_str());
++	}
++
+ 	if(ImGui::Button("Spawn Vehicle")) {
++		// TODO Make this configurable
++		// This works! Now the cars won't spawn on top of each other and crash the game.
++		customCheats.ClearItemsFromArea(10);
++		
+ 		if(spawnInCar) {
+-			// VehicleFunctions::SpawnVehicle(150, true, true);
+-			VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true);
+-
+-			// VehicleFunctions::SpawnVehicle(*currentItemPtr, true, true);
++			switch(currentItem) {
++				
++			case 0: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true);
++				break;
++
++			case 1: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); 
++				break;
++
++			case 2: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, true, true);
++				break;
++			}
++
++			// Not spawning in vehicle
+ 		} else {
+-			// TRACE("currentItem %d", currentItem);
+-			// VehicleFunctions::SpawnVehicle(150, false, false);
+-			VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
++			switch(currentItem) {
++
++			case 0: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, false, false); 
++				break;
++
++			case 1: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
++				break;
++
++			case 2: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, false, false); 
++				break;
++			}
+ 		}
+ 	}
+ 
+@@ -170,4 +206,13 @@ VehicleMenu::VehicleTab()
+ 	{
+ 		toggleVehicleInvincible(); 
+ 	}
++
++	ImGui::Separator();
++	// Fun functions
++	ImGui::Text("Fun functions");
++	// This should blow up all cars.
++	if(ImGui::Button("Blow up all cars")) 
++	{ 
++		CustomCheats::BlowUpAllCars(); 
++	}
+ }
+-- 
+2.45.1.windows.1
+

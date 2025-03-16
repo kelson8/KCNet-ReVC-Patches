@@ -1,0 +1,434 @@
+From 6b7df637d6a332f006db9fb9702d1bb3aebaa362 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 21:35:05 -0500
+Subject: [PATCH 058/101] Add EX_WEAPON_SIGHT, this doesn't seem to do anything
+ so I disabled it.
+
+---
+ src/core/Frontend.cpp                  | 34 +++++++++++
+ src/core/Frontend.h                    |  8 +++
+ src/core/MenuScreensCustom.cpp         |  4 ++
+ src/core/config.h                      |  8 ++-
+ src/extras/functions/ini_functions.cpp |  8 +++
+ src/renderer/Hud.cpp                   | 78 ++++++++++++++++++++++++++
+ src/renderer/Hud.h                     | 19 +++++++
+ src/weapons/WeaponInfo.cpp             | 38 +++++++++++++
+ src/weapons/WeaponInfo.h               |  4 ++
+ 9 files changed, 198 insertions(+), 3 deletions(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 76149e75..73e7be55 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -607,8 +607,14 @@ CMenuManager::CMenuManager()
+ 	m_PrefsDoomMode_FP = false;
+ #endif
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++	m_PrefsWeaponSight = 2;
++#endif
++
+ }
+ 
++
++
+ void
+ CMenuManager::SetFrontEndRenderStates(void)
+ {
+@@ -1480,6 +1486,19 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						rightText = TheText.Get("FEA_NM3");
+ 					}
+ 					break;
++
++
++#ifdef EX_WEAPON_SIGHT // Menu
++				case MENUACTION_WEAPONSIGHT:
++					if (m_PrefsWeaponSight == 2)
++						rightText = TheText.Get("FEM_COM");
++					else if (m_PrefsWeaponSight == 1)
++						rightText = TheText.Get("FEM_SIM");
++					else
++						rightText = TheText.Get("FEM_DEF");
++					break;
++#endif
++			
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 				case MENUACTION_CFO_DYNAMIC:
+ 				case MENUACTION_CFO_SELECT:
+@@ -5248,6 +5267,10 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 					m_PrefsGPS = true;
+ #endif
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++					m_PrefsWeaponSight = 2;
++#endif
++
+ 					SaveSettings();
+ #ifdef LOAD_INI_SETTINGS
+ 					SaveINIControllerSettings();
+@@ -5516,6 +5539,17 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 		break;
+ #endif // EX_GPS
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++	case MENUACTION_WEAPONSIGHT:
++		if (m_PrefsWeaponSight == 2)
++			m_PrefsWeaponSight = 0;
++		else
++			m_PrefsWeaponSight++;
++
++		SaveSettings();
++		break;
++#endif
++
+ // TODO Rename define to MENU_TEST, to be more in line with Re3.
+ // This is where the toggles go, I think I messed up in the beginning.
+ #ifdef _FAST_LOADER
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index dd9244df..bcc56461 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -348,6 +348,10 @@ enum eMenuAction
+ #endif
+ 
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++	MENUACTION_WEAPONSIGHT,
++#endif
++
+ #ifdef MENU_TEST
+ 	MENUACTION_GENERALMENU,
+ 	MENUACTION_TEST,
+@@ -818,6 +822,10 @@ public:
+ 	bool m_PrefsDoomMode_FP;
+ #endif
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++	int m_PrefsWeaponSight;
++#endif
++
+ #ifdef GAMEPAD_MENU
+ 	enum
+ 	{
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 274e12b7..6e9d7aa3 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -482,6 +482,10 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_HUD,			"FED_HUD", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_SUBTITLES,	"FED_SUB", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++		MENUACTION_WEAPONSIGHT,	"FED_WST", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++#endif
++
+ #ifdef EX_GPS
+ 		MENUACTION_GPS,			"FED_GPS", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ #endif
+diff --git a/src/core/config.h b/src/core/config.h
+index a235ff52..ae2caab2 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -85,6 +85,10 @@
+ // // TODO Test this
+ // #define SWIMMING
+ 
++// It seems to build with this now.
++// TODO Fix this to work, it shows in the menu but doesn't seem to change the weapon sights.
++// #define EX_WEAPON_SIGHT
++
+ // It seems to build with these two enabled!!!
+ // TODO Test photo mode once I get IMPROVED_MENU_AND_INPUT complete.
+ #define EX_MORE_BUTTON_ICONS
+@@ -92,7 +96,7 @@
+ 
+ // TODO Implement the defines below to possibly make photo mode build.
+ // #define IMPROVED_MENU_AND_INPUT
+-// #define IMPROVE_TECH_PART
++// #define IMPROVED_TECH_PART
+ // #define EX_PHOTO_MODE
+ 
+ /*********************** End partially complete code  ******************/
+@@ -101,9 +105,7 @@
+ 
+ // TODO Implement these into my mod.
+ // This is required for something above
+-// #define IMPROVED_MENU_AND_INPUT
+ // #define WANTED_PATHS
+-// #define IMPROVED_TECH_PART
+ //
+ 
+ // Enable util functions
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 77960f5f..2581930c 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -614,6 +614,10 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++	ReadIniIfExists("Display", "WeaponSight", &FrontEndMenuManager.m_PrefsWeaponSight);
++#endif
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	bool migrate = cfg.get("FrontendOptions").size() != 0;
+ 	for(int i = 0; i < MENUPAGES; i++) {
+@@ -731,6 +735,10 @@ SaveINISettings()
+ 	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
+ #endif
+ 
++#ifdef EX_WEAPON_SIGHT // Menu
++	StoreIni("Display", "WeaponSight", FrontEndMenuManager.m_PrefsWeaponSight);
++#endif
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	for(int i = 0; i < MENUPAGES; i++) {
+ 		for(int j = 0; j < NUM_MENUROWS; j++) {
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index e3ed93cc..0d92ae42 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -150,6 +150,10 @@ uint32 CHud::m_LastTimeEnergyLost;
+ 
+ CSprite2d CHud::Sprites[NUM_HUD_SPRITES];
+ 
++#ifdef EX_WEAPON_SIGHT
++CSprite2d CHud::WeaponSights[NUM_WEAPON_SIGHTS];
++#endif
++
+ struct
+ {
+ 	const char *name;
+@@ -326,12 +330,58 @@ void CHud::Draw()
+ 				if (Mode == CCam::MODE_M16_1STPERSON ||
+ 				    Mode == CCam::MODE_M16_1STPERSON_RUNABOUT ||
+ 				    Mode == CCam::MODE_HELICANNON_1STPERSON) {
++
++
++
++
++				//
++
++
++#ifdef EX_WEAPON_SIGHT // Draw
++					CWeaponInfo* weaponInfo = CWeaponInfo::GetWeaponInfo((eWeaponType)WeaponType);
++					if (FrontEndMenuManager.m_PrefsWeaponSight > 0 && weaponInfo->m_nWeaponSight != 0) {
++						int weaponSightID = weaponInfo->m_nWeaponSight - 1;
++
++						float scaleMultiplier = 0.3f;
++
++						if (FrontEndMenuManager.m_PrefsWeaponSight == 1) {
++							weaponSightID = 0;
++							scaleMultiplier = 0.15f;
++						}
++
++						rect.left = (SCREEN_WIDTH / 2) - SCREEN_SCALE_X(32.0f * scaleMultiplier);
++						rect.top = (SCREEN_HEIGHT / 2) - SCREEN_SCALE_Y(32.0f * scaleMultiplier);
++						rect.right = (SCREEN_WIDTH / 2) + SCREEN_SCALE_X(32.0f * scaleMultiplier);
++						rect.bottom = (SCREEN_HEIGHT / 2) + SCREEN_SCALE_Y(32.0f * scaleMultiplier);
++
++						if (playerPed->GetWeapon()->m_eWeaponState >= WEAPONSTATE_RELOADING) {
++							WeaponSights[weaponSightID].Draw(CRect(rect), CRGBA(150, 150, 150, 255),
++								0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
++						} else {
++							WeaponSights[weaponSightID].Draw(CRect(rect), CRGBA(255, 255, 255, 255),
++								0.0f, 0.0f,  1.0f, 0.0f,  0.0f, 1.0f,  1.0f, 1.0f);
++						}
++					} else {
++						rect.left = (SCREEN_WIDTH / 2) - SCREEN_SCALE_X(32.0f);
++						rect.top = (SCREEN_HEIGHT / 2) - SCREEN_SCALE_Y(32.0f);
++						rect.right = (SCREEN_WIDTH / 2) + SCREEN_SCALE_X(32.0f);
++						rect.bottom = (SCREEN_HEIGHT / 2) + SCREEN_SCALE_Y(32.0f);
++						Sprites[HUD_SITEM16].Draw(CRect(rect), CRGBA(255, 255, 255, 255),
++							0.0f, 0.0f,  1.0f, 0.0f,  0.0f, 1.0f,  1.0f, 1.0f);
++					}
++#else
+ 					rect.left = (SCREEN_WIDTH / 2) - SCREEN_SCALE_X(32.0f);
+ 					rect.top = (SCREEN_HEIGHT / 2) - SCREEN_SCALE_Y(32.0f);
+ 					rect.right = (SCREEN_WIDTH / 2) + SCREEN_SCALE_X(32.0f);
+ 					rect.bottom = (SCREEN_HEIGHT / 2) + SCREEN_SCALE_Y(32.0f);
+ 					Sprites[HUD_SITEM16].Draw(CRect(rect), CRGBA(255, 255, 255, 255),
+ 						0.0f, 0.0f,  1.0f, 0.0f,  0.0f, 1.0f,  1.0f, 1.0f);
++#endif
++				
++				
++				
++				//
++
+ 				}
+ 				else if (Mode == CCam::MODE_1STPERSON_RUNABOUT) {
+ 					rect.left = (SCREEN_WIDTH / 2) - SCREEN_SCALE_X(32.0f * 0.7f);
+@@ -1854,6 +1904,25 @@ void CHud::Initialise()
+ 	VarConsole.Add("Draw HUD", &m_Wants_To_Draw_Hud, false);
+ #endif
+ 	CTxdStore::PopCurrentTxd();
++
++
++#ifdef EX_WEAPON_SIGHT // TXD: Load
++	int sightsTXD = CTxdStore::AddTxdSlot("weaponSights");
++	CTxdStore::LoadTxd(sightsTXD, "ViceExtended/MODELS/weaponSights.TXD");
++	CTxdStore::AddRef(sightsTXD);
++	CTxdStore::PopCurrentTxd();
++	CTxdStore::SetCurrentTxd(sightsTXD);
++
++	WeaponSights[SIGHT_DOT].SetTexture("sightDot", "sightDotA");
++	WeaponSights[SIGHT_PISTOL].SetTexture("sightPistol", "sightPistolA");
++	WeaponSights[SIGHT_SMG].SetTexture("sightSMG", "sightSMGA");
++	WeaponSights[SIGHT_SHOTGUN].SetTexture("sightShotgun", "sightShotgunA");
++	WeaponSights[SIGHT_RIFLE].SetTexture("sightRifle", "sightRifleA");
++	WeaponSights[SIGHT_HEAVY].SetTexture("sightHeavy", "sightHeavyA");
++	WeaponSights[SIGHT_ROCKET].SetTexture("sightRocket", "sightRocketA");
++
++	CTxdStore::PopCurrentTxd();
++#endif
+ }
+ 
+ void CHud::ReInitialise() {
+@@ -2066,6 +2135,15 @@ void CHud::Shutdown()
+ 
+ 	int HudTXD = CTxdStore::FindTxdSlot("hud");
+ 	CTxdStore::RemoveTxdSlot(HudTXD);
++
++#ifdef EX_WEAPON_SIGHT // TXD: Shutdown
++	for (int i = 0; i < NUM_WEAPON_SIGHTS; ++i) {
++		WeaponSights[i].Delete();
++	}
++
++	int sightTXD = CTxdStore::FindTxdSlot("weaponSights");
++	CTxdStore::RemoveTxdSlot(sightTXD);
++#endif
+ }
+ 
+ /// <summary>
+diff --git a/src/renderer/Hud.h b/src/renderer/Hud.h
+index db715d8d..980f6c07 100644
+--- a/src/renderer/Hud.h
++++ b/src/renderer/Hud.h
+@@ -47,10 +47,29 @@ enum eSprites
+ 	NUM_HUD_SPRITES = 69,
+ };
+ 
++#ifdef EX_WEAPON_SIGHT
++enum eWeaponSights
++{
++	SIGHT_DOT,
++	SIGHT_PISTOL,
++	SIGHT_SMG,
++	SIGHT_SHOTGUN,
++	SIGHT_RIFLE,
++	SIGHT_HEAVY,
++	SIGHT_ROCKET,
++	NUM_WEAPON_SIGHTS,
++};
++#endif
++
+ class CHud
+ {
+ public:
+ 	static CSprite2d Sprites[NUM_HUD_SPRITES];
++
++#ifdef EX_WEAPON_SIGHT
++	static CSprite2d WeaponSights[NUM_WEAPON_SIGHTS];
++#endif
++
+ 	static wchar m_HelpMessage[HELP_MSG_LENGTH];
+ 	static wchar m_LastHelpMessage[HELP_MSG_LENGTH];
+ 	static uint32 m_HelpMessageState;
+diff --git a/src/weapons/WeaponInfo.cpp b/src/weapons/WeaponInfo.cpp
+index 985b6e04..e3b48bec 100644
+--- a/src/weapons/WeaponInfo.cpp
++++ b/src/weapons/WeaponInfo.cpp
+@@ -135,6 +135,10 @@ CWeaponInfo::Initialise(void)
+ 		aWeaponInfo[i].m_fAnimBreakout = 0.0f;
+ 		aWeaponInfo[i].m_Flags = WEAPONFLAG_USE_GRAVITY | WEAPONFLAG_SLOWS_DOWN | WEAPONFLAG_RAND_SPEED | WEAPONFLAG_EXPANDS | WEAPONFLAG_EXPLODES;
+ 		aWeaponInfo[i].m_nWeaponSlot = WEAPONSLOT_UNARMED;
++
++#ifdef EX_WEAPON_SIGHT // weapon.dat
++		aWeaponInfo[i].m_nWeaponSight = 0;
++#endif
+ 	}
+ 	debug("Loading weapon data...\n");
+ 	LoadWeaponData();
+@@ -153,6 +157,10 @@ CWeaponInfo::LoadWeaponData(void)
+ 	char line[256], weaponName[32], fireType[32];
+ 	char animToPlay[32];
+ 
++#ifdef EX_WEAPON_SIGHT // weapon.dat
++	int weaponSight;
++#endif
++
+ 	size_t bp, buflen;
+ 	int lp, linelen;
+ 
+@@ -200,7 +208,19 @@ CWeaponInfo::LoadWeaponData(void)
+ 		fireOffsetZ = 0.0f;
+ 		sscanf(
+ 			&line[lp],
++
++#if defined EX_IMPROVED_WEAPONS && defined EX_WEAPON_SIGHT // weapon.dat
++			"%s %s %f %d %d %d %d %f %f %f %f %f %f %f %s %f %f %f %f %f %f %f %d %d %x %d %s %d",
++#elif defined EX_IMPROVED_WEAPONS // weapon.dat
++			"%s %s %f %d %d %d %d %f %f %f %f %f %f %f %s %f %f %f %f %f %f %f %d %d %x %d %s",
++#elif defined EX_WEAPON_SIGHT // weapon.dat
++			"%s %s %f %d %d %d %d %f %f %f %f %f %f %f %s %f %f %f %f %f %f %f %d %d %x %d %d",
++#else
+ 			"%s %s %f %d %d %d %d %f %f %f %f %f %f %f %s %f %f %f %f %f %f %f %d %d %x %d",
++#endif
++
++
++
+ 			weaponName,
+ 			fireType,
+ 			&range,
+@@ -226,7 +246,21 @@ CWeaponInfo::LoadWeaponData(void)
+ 			&modelId,
+ 			&modelId2,
+ 			&flags,
++
++
++#if defined EX_IMPROVED_WEAPONS && defined EX_WEAPON_SIGHT // weapon.dat
++			&weaponSlot,
++			animForWeaponToPlay,
++			&weaponSight);
++#elif defined EX_IMPROVED_WEAPONS // weapon.dat
++			&weaponSlot,
++			animForWeaponToPlay);
++#elif defined EX_WEAPON_SIGHT // weapon.dat
++			&weaponSlot,
++			&weaponSight);
++#else
+ 			&weaponSlot);
++#endif
+ 
+ 		if (strncmp(weaponName, "ENDWEAPONDATA", 13) == 0)
+ 			return;
+@@ -257,6 +291,10 @@ CWeaponInfo::LoadWeaponData(void)
+ 		aWeaponInfo[weaponType].m_nModel2Id = modelId2;
+ 		aWeaponInfo[weaponType].m_Flags = flags;
+ 		aWeaponInfo[weaponType].m_nWeaponSlot = weaponSlot;
++	
++#ifdef EX_WEAPON_SIGHT // weapon.dat
++		aWeaponInfo[weaponType].m_nWeaponSight = weaponSight;
++#endif
+ 
+ 		if (animLoopEnd < 98.0f && weaponType != WEAPONTYPE_FLAMETHROWER && !CWeapon::IsShotgun(weaponType))
+ 			aWeaponInfo[weaponType].m_nFiringRate = ((aWeaponInfo[weaponType].m_fAnimLoopEnd - aWeaponInfo[weaponType].m_fAnimLoopStart) * 900.0f);
+diff --git a/src/weapons/WeaponInfo.h b/src/weapons/WeaponInfo.h
+index d7f1563d..9762506f 100644
+--- a/src/weapons/WeaponInfo.h
++++ b/src/weapons/WeaponInfo.h
+@@ -61,6 +61,10 @@ public:
+ 
+ 	uint32 m_nWeaponSlot;
+ 
++#ifdef EX_WEAPON_SIGHT
++	uint8 m_nWeaponSight;
++#endif
++
+ 	static void Initialise(void);
+ 	static void LoadWeaponData(void);
+ 	static CWeaponInfo *GetWeaponInfo(eWeaponType weaponType);
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,1370 @@
+From c26b6d36449129275c7a777387199bc6a2a62e67 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 10 Mar 2025 03:28:43 -0400
+Subject: [PATCH 079/101] Add partial working imgui. ImGui can be toggled in
+ the debug menu and disabled with right click for now. I will need to fine
+ tune it and make the mouse work. I will also need to make it draw to the game
+ renderer instead of on top of it. Cleanup old ImGui code in win.cpp. Add
+ drawing text as a test to debug_functions.cpp and add imgui toggle. Add extra
+ cop functions as a test for giving them other weapons. Add text functions to
+ custom_cheats. Remove git sha hash from version text and replace it with
+ 'KCNet-ReVC'. Add toggle for imgui test in lua. Add batch script to copy my
+ lua test into the proper folder.
+
+---
+ src/core/main.cpp                        |  40 +-
+ src/extras/cheats/custom_cheats.cpp      | 101 +++-
+ src/extras/cheats/custom_cheats.h        |  10 +
+ src/extras/debug/debug_functions.cpp     |  58 ++
+ src/extras/functions/imgui_functions.cpp |  93 ++++
+ src/extras/functions/imgui_functions.h   |   7 +
+ src/extras/lua/lua_test.cpp              |  39 +-
+ src/skel/win/win.cpp                     | 666 ++++++++---------------
+ utils/lua/test.lua                       |  13 +-
+ utils/lua/update-lua.bat                 |   3 +
+ 10 files changed, 570 insertions(+), 460 deletions(-)
+ create mode 100644 src/extras/functions/imgui_functions.cpp
+ create mode 100644 src/extras/functions/imgui_functions.h
+ create mode 100644 utils/lua/update-lua.bat
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index fa0f2ded..e2d1e22b 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -87,6 +87,11 @@
+ #include "modloader.h"
+ #endif
+ 
++#ifdef CUSTOM_CODE
++// Set Text test.
++#include "custom_cheats.h"
++#endif
++
+ GlobalScene Scene;
+ 
+ uint8 work_buff[55000];
+@@ -430,6 +435,19 @@ DoRWStuffEndOfFrame(void)
+ {
+ 	CDebug::DisplayScreenStrings();	// custom
+ 	CDebug::DebugDisplayTextBuffer();
++
++
++#ifdef CUSTOM_CODE
++	// Toggle the test text from the debug menu
++	// Well this shows the 'Test' text I have setup.
++	
++	// This has a toggle for it under the debug menu in my test submenu.
++	// TODO Add toggle to this in my cleo redux menu.
++	CustomCheats::SetText();
++#endif
++
++
++
+ 	FlushObrsPrintfs();
+ 	RwCameraEndUpdate(Scene.camera);
+ 	RsCameraShowRaster(Scene.camera);
+@@ -1250,8 +1268,16 @@ DisplayGameDebugText()
+ #if defined _DEBUG || defined DEBUG
+ 		    "DEBUG "
+ #endif
++
++		// I don't really care too much about the git sha1 hash.
++		// Replaced this text with my own.
++#ifdef CUSTOM_CODE
++			"KCNet-ReVC"
++#else
+ 		    "%.8s",
+-		    g_GIT_SHA1);
++		    g_GIT_SHA1
++#endif	
++	);
+ 	AsciiToUnicode(verA, ver);
+ 	CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.7f));
+ #else
+@@ -1688,6 +1714,13 @@ Render2dStuffAfterFade(void)
+ 	POP_RENDERGROUP();
+ }
+ 
++// Hmm, this might be where I place the custom menu loading.
++// TODO Add a option to toggle the test text on/off using the debug menu.
++// TODO Figure out how to create a menu that can be interacted with for use with lua.
++
++// TODO Put ImGui draw loop here, this is where the reversed GTA SA project places it.
++// Idk why I didn't try that, and I should probably use the d3device
++// I found somewhere in win.cpp or wherever that was
+ void
+ Idle(void *arg)
+ {
+@@ -1859,6 +1892,9 @@ Idle(void *arg)
+ popret:	POP_MEMID();	// MEMID_RENDER
+ }
+ 
++// TODO Put ImGui draw loop here, this is where the reversed GTA SA project places it.
++// Idk why I didn't try that, and I should probably use the d3device
++// I found somewhere in win.cpp or wherever that was
+ void
+ FrontendIdle(void)
+ {
+@@ -1892,6 +1928,8 @@ FrontendIdle(void)
+ 	Render2dStuffAfterFade();
+ 	CFont::DrawFonts();
+ 	DoRWStuffEndOfFrame();
++
++
+ }
+ 
+ void
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 8b378bea..02284a26 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -551,36 +551,85 @@ CustomCheats::SpawnCarTestCheat()
+ 	VehicleFunctions::SpawnVehicle(vehicleModel, true, true);
+ }
+ 
++//------ Text functions -------//
++
++bool toggleText = false;
++void
++CustomCheats::ToggleText()
++{
++	toggleText = !toggleText;
++}
++
++/// <summary>
++/// TODO Possibly add this to Idle and FrontendIdle in main.cpp
++/// Once I figure out how to make this stay on the screen, 
++/// Make a menu that can be messed with like the pause menu but when not paused for lua.
++/// I added this into DoRWStuffEndOfFrame in main.cpp to test it and it does show up.
++/// </summary>
+ void
+-SetText()
++CustomCheats::SetText()
+ {
+-	char str[200];
+-	wchar ustr[200];
+-	// This seems to be a way to draw to the screen, I could possibly use this in my menus or something
+-	// TODO Look into this.
+-	AsciiToUnicode(str, ustr);
+-
+-	CFont::SetPropOn();
+-	CFont::SetBackgroundOff();
+-
+-	CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
+-	CFont::SetCentreOff();
+-	CFont::SetRightJustifyOff();
+-	CFont::SetJustifyOff();
+-	CFont::SetBackGroundOnlyTextOff();
+-	CFont::SetWrapx(SCREEN_STRETCH_X(DEFAULT_SCREEN_WIDTH));
+-	CFont::SetFontStyle(FONT_STANDARD);
+-	CFont::SetDropColor(CRGBA(0, 0, 0, 255));
+-	CFont::SetDropShadowPosition(2);
+-	CFont::SetColor(CRGBA(0, 0, 0, 255));
+-	// This must be setting where the position is possibly set
+-	CFont::PrintString(41.0f, 41.0f, ustr);
+-
+-	CFont::SetColor(CRGBA(205, 205, 0, 255));
+-	// This must be setting where the position is possibly set
+-	CFont::PrintString(40.0f, 40.0f, ustr);
++	if(toggleText) {
++
++		char str[200];
++		wchar ustr[200];
++		// This seems to be a way to draw to the screen, I could possibly use this in my menus or something
++		// TODO Look into this.
++
++		// Hmm, AsciiToUnicode seems to be converting the regular string into a ascii string, I guess for use in the menus?
++		// Can I do something with this and draw a test menu with the debug menu? Hmm might be possible.
++
++		/* Example from SceneEdit.cpp:
++		sprintf(str, "Selected");
++		AsciiToUnicode(str, wstr);
++		*/
++
++		// sprintf(str, "Test");
++		sprintf(str, "KCNet-ReVC");
++
++		AsciiToUnicode(str, ustr);
++
++		CFont::SetPropOn();
++		CFont::SetBackgroundOff();
++
++		CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
++		//CFont::SetScale(SCREEN_SCALE_X(0.4f), SCREEN_SCALE_Y(0.4f));
++		CFont::SetCentreOff();
++		CFont::SetRightJustifyOff();
++		CFont::SetJustifyOff();
++		CFont::SetBackGroundOnlyTextOff();
++		CFont::SetWrapx(SCREEN_STRETCH_X(DEFAULT_SCREEN_WIDTH));
++
++		// Set font style
++		CFont::SetFontStyle(FONT_STANDARD);
++		// CFont::SetFontStyle(FONT_HEADING);
++
++		// Set the drop color, shadow position
++		CFont::SetDropColor(CRGBA(0, 0, 0, 255));
++		CFont::SetDropShadowPosition(2);
++
++		// Set the black color for the black text on the screen.
++		CFont::SetColor(CRGBA(0, 0, 0, 255));
++
++		// Setting the position to the black part of the text
++		CFont::PrintString(41.0f, 41.0f, ustr);
++
++		// Set the yellow color for the second part of the text
++		CFont::SetColor(CRGBA(205, 205, 0, 255));
++
++		// Setting the position to the yellow part of the text
++		CFont::PrintString(40.0f, 40.0f, ustr);
++
++		// Quite sure this is for drawing the fonts
++		CFont::DrawFonts();
++	}
++
++	// TODO Look into win.cpp, try to use the PrintMemoryUsage function for drawing a menu, modify it a bit
++
+ }
+ 
++//------ End Text functions -------//
++
+ static void
+ TankRapidFireToggle()
+ {
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index 9b60434a..89bd81ce 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -40,6 +40,16 @@ public:
+ 	// Test cheats
+ 	static void TestCheat1();
+ 	static void SpawnPedCheat();
++
++	// Menu text testing.
++	
++	// Text toggle
++	static void ToggleText();
++	// This draws to the menu
++	static void SetText();
++	//
++
++
+ 	//static void GivePlayerWeapon();
+ 	static void SpawnPedTest();
+ 	static void SpawnCarTestCheat();
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 7c39179f..cbd9a488 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -71,6 +71,12 @@
+ // Functions
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
++
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++
++#endif //_IMGUI_TEST
+ //
+ 
+ /////////////////////
+@@ -176,6 +182,15 @@ ExplosionCheat();
+ #endif //!_TEST
+ #undef _TEST
+ 
++#ifdef _IMGUI_TEST
++void
++toggleImGui()
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++}
++#endif
++
+ // This one is accessing it from CGarages::ToggleRespray
+ // void ToggleRespray();
+ //  Oops, this killed it by being defined again :\
+@@ -305,6 +320,12 @@ static const char *carnames[] = {
+     "marquis",  "baggage", "kaufman",  "maverick", "vcnmav",   "rancher",  "fbiranch", "virgo",    "greenwoo", "jetmax",   "hotring", "sandking",
+     "blistac",  "polmav",  "boxville", "benson",   "mesa",     "rcgoblin", "hotrina",  "hotrinb",  "bloodra",  "bloodrb",  "vicechee"};
+ 
++#ifdef EX_COP_FUNCTIONS
++static const char *policeWeaponNames[] = {
++	"colt45", "python", "shotgun", "spaz12-shotgun", "stubby-shotgun", "tec-9", "uzi", "unknown", "mp5", "m4"
++};
++#endif //EX_COP_FUNCTIONS
++
+ static CTweakVar **TweakVarsList;
+ static int TweakVarsListSize = -1;
+ static bool bAddTweakVarsNow = false;
+@@ -417,9 +438,12 @@ DebugMenuPopulate(void)
+ 	// customCheats->InfiniteHealthCheat();
+ 	// customCheats->
+ 	// CustomCheats::InfiniteHealthCheat();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 	if(1) {
++		// Weathers
+ 		static const char *weathers[] = {"Sunny", "Cloudy", "Rainy", "Foggy", "Extrasunny", "Stormy"};
++		// Extra colours
+ 		static const char *extracols[] = {"1 - Malibu club",
+ 		                                  "2 - Strib club",
+ 		                                  "3 - Hotel",
+@@ -444,6 +468,8 @@ DebugMenuPopulate(void)
+ 		                                  "22",
+ 		                                  "23",
+ 		                                  "24"};
++
++		// Oh this is what the e variable was, DebugMenuEntry.
+ 		DebugMenuEntry *e;
+ 
+ 		//*****************
+@@ -1005,6 +1031,38 @@ DebugMenuPopulate(void)
+ 		// Old function
+ 		//DebugMenuAddCmd("Test", "Log test N", LogFunctions::LogTest);
+ 
++		// Menu test, this shows up in the game under DoRWStuffEndOfFrame in main.cpp
++		//DebugMenuAddCmd("Test", "Menu test", CustomCheats::SetText);
++		// Test for toggling the text
++		DebugMenuAddCmd("Test", "Display text", CustomCheats::ToggleText);
++
++		// Test for toggling ImGui, this turns it on but the mouse doesn't show up.
++		// Also I have no way of disabling it lol.
++		// The lua test does nothing for it.
++
++#ifdef _IMGUI_TEST
++		DebugMenuAddCmd("Test", "Toggle ImGui", toggleImGui);
++#endif
++
++
++		// TODO Setup police weapon changing here.
++		// TODO Finish setting this up.
++#ifdef EX_COP_FUNCTIONS
++		// TODO Make this variable public, like my other ones.
++		// streetCopWeaponId
++		static int weaponId = WEAPONTYPE_COLT45;
++		//e = DebugMenuAddVar("Test", "Street cop weapons", &weaponId, nil, 1, WEAPONTYPE_COLT45, WEAPONTYPE_M4, policeWeaponNames);
++		e = DebugMenuAddVar("Test", "Street cop weapons", &weaponId, nil, 1, WEAPONTYPE_COLT45, WEAPONTYPE_M4, policeWeaponNames);
++		DebugMenuEntrySetWrap(e, true);
++
++		
++		// DebugMenuAddCmd("Test", "Set weapons", []() {
++		// 	// Make them not get specifc weapons
++		// 	// if(weaponId == WEAPONTYPE_SILENCED_INGRAM) return;
++		// 	VehicleFunctions::SpawnVehicle(spawnCarId, true, true);
++		// });
++#endif //EX_COP_FUNCTIONS
++
+ 
+ #endif //CUSTOM_CODE
+ 
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+new file mode 100644
+index 00000000..e08cfc61
+--- /dev/null
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -0,0 +1,93 @@
++#include "imgui_functions.h"
++
++//#define NEW_IMGUI_TEST
++// Well this still has linker errors, I'm going to attempt to move the ImGui stuff into here piece by piece and
++// Try to make it work.
++// I can't keep going through it in win.cpp... Too much code..
++#ifdef NEW_IMGUI_TEST
++
++// This might be what I can use for another window using ImGui
++// Obtained from win.cpp
++#define PSGLOBAL(var) (((psGlobalType *)(RsGlobal.ps))->var)
++
++
++// Other
++#include <Windows.h>
++#include <d3d9.h>
++#include <tchar.h>
++
++// Imgui
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++
++
++// 
++//#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++// I don't think the rest of these are needed
++//#ifdef XINPUT
++//#include <xinput.h>
++//#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++//#pragma comment(lib, "Xinput9_1_0.lib")
++//#else
++//#pragma comment(lib, "Xinput.lib")
++//#endif
++//#endif
++
++// Vice City functions
++// These don't work
++#ifdef _TEST1
++
++#include "ControllerConfig.h"
++#include "skeleton.h"
++#endif //_TEST1
++
++#include "ControllerConfig.h"
++
++
++/// <summary>
++/// The idea for this came from UIRenderer.cpp in the Reversed GTA SA project.
++/// The UIRenderer::DrawLoop function
++/// </summary>
++void
++drawImguiLoop()
++{
++	ImGui_ImplWin32_NewFrame();
++	ImGui_ImplDX9_NewFrame();
++	ImGui::NewFrame();
++
++	// ImGui content goes here
++	ImGui::Text("Hello");
++
++	ImGui::EndFrame();
++	ImGui::Render();
++
++	ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++
++
++	// ImGui_ImplDX9_InvalidateDeviceObjects();
++
++	// TODO Figure out what these were for
++	/*
++	PostRenderUpdate();
++
++	// Update and Render additional Platform Windows
++	if(m_ImIO->ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
++		ImGui::UpdatePlatformWindows();
++		ImGui::RenderPlatformWindowsDefault();
++	}
++	*/
++}
++
++
++
++
++
++
++
++#endif // NEW_IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+new file mode 100644
+index 00000000..b60f075a
+--- /dev/null
++++ b/src/extras/functions/imgui_functions.h
+@@ -0,0 +1,7 @@
++#pragma once
++class ImGuiFunctions
++{
++public:
++	static void ImGuiLoop();
++	static bool ImGuiDone;
++};
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index ac77ff01..ba262a87 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -51,6 +51,12 @@ extern "C"
+ #include "vehicle_functions.h"
+ #include "vehicle_cheats.h"
+ 
++// ImGui test
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++#endif
++
+ // VC Specific
+ #include "Radar.h"
+ #include "Hud.h"
+@@ -126,6 +132,16 @@ CheatTest(lua_State* L)
+ 
+ #endif //LUA_CHEAT_TEST
+ 
++#ifdef _IMGUI_TEST
++extern "C" int
++toggleImGuiLua(lua_State *L)
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++	return 1;
++}
++#endif
++
+ // Not sure how exactly to use this, I may need to add it into Pad.cpp
+ // Oh I need to add this somewhere that it will constantly run.
+ // TODO Test this in a loop somewhere, possibly in the main game loop or something.
+@@ -149,6 +165,11 @@ CheatTestNew(lua_State *L)
+ 
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++#endif 
++
+ 	std::string cheatString = lua_tostring(L, 1);
+ 	//const char* cheatString = lua_tostring(L, 1);
+ 
+@@ -159,6 +180,7 @@ CheatTestNew(lua_State *L)
+ 			CVehicle *currentVeh = pPed->m_pMyVehicle;
+ 			currentVeh->m_fHealth = 0;
+ 		}
++
+ 	} else if(cheatString == "KILLME") {
+ 	//} else if(!_CHEATCMP("KILLME")) {
+ 		// Kill the player, print the message "You have been exterminated"
+@@ -167,11 +189,23 @@ CheatTestNew(lua_State *L)
+ 		LogFunctions::LogInfo(Defines::luaLogFile, "Player has been killed");
+ 	} else if(cheatString == "SPAWNCAR") {
+ 		// This works!! I didn't think spawning a car would work.
+-		if (lua_isnumber(L, 2)) {
++		if(lua_isnumber(L, 2)) {
+ 			int vehicleModel = lua_tointeger(L, 2);
+ 			vehicleFunctions.SpawnVehicle(vehicleModel, false, false);
++
++			// Test for toggling the ImGui menu
++		}
++#ifdef _IMGUI_TEST
++	else if(cheatString == "IMGUITG") {
++			//ImGuiFunctions::ImGuiDone = !ImGuiFunctions::ImGuiDone;
++			//imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++			TRACE("Toggled");
++			//toggleImGuiLua();
++			
++			
+ 		}
+ 
++#endif
+ 		
+ 	}
+ 	//switch(cheatString) {
+@@ -332,6 +366,9 @@ LuaTest::InitLua()
+ 
+ 	// Toggle player control
+ 	lua_register(m_luaVM, "toggle_control", TogglePlayerControlLua);
++
++	// Test for ImGui
++	lua_register(m_luaVM, "toggle_imgui", toggleImGuiLua);
+ 	
+ 	
+ 	//
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 0d3d58f2..eb245e9d 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -74,18 +74,19 @@
+ // I have a quick test for this setup under GS_PLAYING_GAME
+ // I got it to show up on a separate window.
+ // But if I attempt to close it it kills the game.
+-//#define _IMGUI_TEST
++#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+-// #include "imgui_test.h"
++ //#include "imgui_test.h"
+ 
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+ #include "imgui_impl_win32.h"
++#include "imgui_functions.h"
+ 
+ // Forward declare message handler from imgui_impl_win32.cpp
+ // Well this pisses off the MainWndProc..
+ // This finally builds like this... Still crashes though
+-// extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ // LRESULT WINAPI
+ // MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ 
+@@ -1041,43 +1042,247 @@ void HandleGraphEvent(void)
+ /*
+  *****************************************************************************
+  */ 
+-//#define _IMGUI_TEST
+-LRESULT CALLBACK
+-MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
++#define _IMGUI_TEST
++
++#ifdef _IMGUI_TEST
++bool done = false;
++
++/// <summary>
++/// This is the test window that shows up.
++/// </summary>
++/// <param name="show_demo_window">Shows the demo window</param>
++/// <param name="show_another_window">Shows the test window</param>
++/// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
++void
++Window1(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
+ {
+-	POINTS points;
+-	static BOOL noMemory = FALSE;
++	ImGuiIO io;
++	static float f = 0.0f;
++	static int counter = 0;
+ 
+-	// TODO Figure out why this is _IMGUI_TEST instead of IMGUI_TEST
+-	
+-	//#define _IMGUI_TEST
+-	#ifdef _IMGUI_TEST
+-	//if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
+-	#endif
+-	#undef _IMGUI_TEST
++	ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+ 
+-	#ifdef _IMGUI_TEST
++	ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
++	ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
++	ImGui::Checkbox("Another Window", &show_another_window);
++
++	ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
++	ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
++
++	if(ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
++		counter++;
++	ImGui::SameLine();
++	ImGui::Text("counter = %d", counter);
++
++	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
++	ImGui::End();
++
++	// 3. Show another simple window.
++	if(show_another_window) {
++		ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++		                                                      // will clear the bool when clicked)
++		ImGui::Text("Hello from another window!");
++		if(ImGui::Button("Close Me")) show_another_window = false;
++		ImGui::End();
++	}
++}
+ 
+-		// Setup Dear ImGui context
++void
++InitImGui(HWND window)
++{
++	// ImGui init.. is this where this goes?
+ 	IMGUI_CHECKVERSION();
+ 	ImGui::CreateContext();
+ 	ImGuiIO &io = ImGui::GetIO();
+ 	(void)io;
+ 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+ 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+-	                                                      // Setup Dear ImGui style
++
++	// Setup Dear ImGui style
+ 	ImGui::StyleColorsDark();
+-	// ImGui::StyleColorsLight();
+ 
+ 	// Setup Platform/Renderer backends
++	// TODO Place this somewhere in win.cpp, possibly in WndMainProc
+ 	ImGui_ImplWin32_Init(window);
+-	// TODO Figure out how to get this, I want to hook this into the games d3d device, not create my own
+-	//ImGui_ImplDX9_Init(g_pd3dDevice);
+-	// Is this right?? From custompipes_d3d9.cpp
++	// Now to figure out where the hell to place this in the MainWndProc
+ 	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
+-	#endif //_IMGUI_TEST
+-	#undef _IMGUI_TEST
++}
++
++void
++shutDownImGui()
++{
++	// Shutdown Imgui, was I forgetting that?
++	// Shutdown DX9 for this and cleanup
++	// This fixes the crashes without the menu being open..
++	// I'm so close on getting this to finally work, it's been so long.
++	ImGui_ImplDX9_Shutdown();
++	ImGui_ImplWin32_Shutdown();
++	ImGui::DestroyContext();
++}
++
++//ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++bool ImGuiFunctions::ImGuiDone = true;
++
++/// <summary>
++/// Draw the ImGui test to the screen
++/// TODO Make this draw to the game window
++/// TODO Fix the mouse to work properly.
++/// TODO Move this into ImGuiFunctions
++/// </summary>
++void
++ImGuiFunctions::ImGuiLoop()
++{
++	//if (ImGuiFunctions::ImGuiDone)
++	//	return;
++
++	bool show_demo_window = true;
++	bool show_another_window = false;
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++
++	//while(!done) {
++	
++	while(!ImGuiFunctions::ImGuiDone) {
++		// Setup the new frames
++		ImGui_ImplDX9_NewFrame();
++		ImGui_ImplWin32_NewFrame();
++		ImGui::NewFrame();
++
++		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
++		if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
++
++		{
++			// https://www.unknowncheats.me/forum/general-programming-and-reversing/505033-imgui-mouse-interaction-video.html
++			ImGuiIO &io = ImGui::GetIO();
++			// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
++			// Hmm, with my new menu setup, the mouse shows up but cannot click on anything.
++			// Something in the code is overriding the mouse.. TODO Fix that.
++			
++			// TODO Make the mouse work properly.
++			 io.MouseDrawCursor = true;
++			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++
++			// TODO Test this.
++			// Well this didn't enable the mouse.
++			//RwVideoMode vm;
++			//RwEngineGetVideoModeInfo(&vm, GcurSelVM);
++			// I've never messed with this before.
++			//vm.flags & rwVIDEOMODEEXCLUSIVE;
++			 
++			// Oops, this seems to kill the mouse in the menu once this is closed..
++			 //FrontEndMenuManager.m_bShowMouse = true;
++
++			//_InputInitialiseMouse(false);
++
++			// POINT p;
++			// GetCursorPos(&p);
++			// io.MousePos = ImVec2(p.x, p.y);
++
++			 //io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++
++			 // This toggles ImGui!!
++			 // Now to figure out how to add a keyboard shortcut to it.
++			 // Also to figure out 
++			  io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++
++			 if (io.MouseDown[1]) { 
++				 ImGuiFunctions::ImGuiDone = true;
++			 }
++			 
++
++			// Moved this into its own method
++			Window1(true, true, clear_color);
++		}
++
++		// Rendering
++		// End the frames
++		ImGui::EndFrame();
++
++		rw::d3d::d3ddevice->SetRenderState(D3DRS_ZENABLE, FALSE);
++		rw::d3d::d3ddevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++		rw::d3d::d3ddevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
++		D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
++		                                      (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
++
++		rw::d3d::d3ddevice->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
++
++		// if(g_pd3dDevice->BeginScene() >= 0) {
++		if(rw::d3d::d3ddevice->BeginScene() >= 0) {
++			ImGui::Render();
++			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++			// g_pd3dDevice->EndScene();
++			rw::d3d::d3ddevice->EndScene();
++		}
++		// HRESULT result = g_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
++		HRESULT result = rw::d3d::d3ddevice->Present(nullptr, nullptr, nullptr, nullptr);
++
++		// Handle loss of D3D9 device
++		// if(result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) ResetDevice();
++	}
++
+ 	
++	shutDownImGui();
++
++	// Reset Pad state
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++
++	// Test
++	// Oops, this seems to kill the mouse in the menu once this is closed..
++	//FrontEndMenuManager.m_bShowMouse = false;
++
++}
++
++#endif
++
++LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
++{
++		POINTS points;
++		static BOOL noMemory = FALSE;
++
++#ifdef _IMGUI_TEST
++		// Hmm.. Will this work in here?
++		if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
++
++
++
++	        /*
++		
++	              
++		*/
++		// I added an extra toggle for this so I don't have to keep fighting with the preprocessors.
++		// This crashes if the ImGui is out of the loop for some reason.
++		bool imguiEnabled = true;
++		if (imguiEnabled)
++		{
++
++			// Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
++			// This shows up!!
++			// It doesn't hook into the game, it just destroys the game window though, I'll need to place this somewhere else.
++			// Possibly move ImGuiLoop into main.cpp under idle.
++			if(RwInitialised && gGameState == GS_PLAYING_GAME) 
++			{
++				// Init ImGui
++				// Well I figured something out, if the ImGuiLoop is disabled below this'll crash...
++				
++			        /*if(!ImGUI_Initialized) { */
++						InitImGui(window); 
++			
++			//}
++
++				// Hmm, is this needed for the mouse?
++				// TODO Make the mouse show up.
++				//ShowCursor(TRUE);
++
++			    // Run the ImGui loop, I probably need to place this somewhere else.
++				// Testing this in GS_PLAYING_GAME.. Idk if that'll work or not, this is in the main window.
++				// TODO Figure out why the init crashes without this...
++			    ImGuiFunctions::ImGuiLoop();
++			}
++
++		}
++
++#endif
++#undef _IMGUI_TEST
++
+ 	switch( message )
+ 	{
+ 		case WM_SETCURSOR:
+@@ -2116,151 +2321,6 @@ void HandleExit()
+ 	}
+ }
+ 
+-//********************
+-// Begin my ImGui test
+-//********************
+-
+-// Well this doesn't crash anymore, it don't do anything but I think I'm getting close to adding this into
+-// ReVC, I just have to figure out where to put it.
+-
+-// I have a better test of this in the imgui_test.cpp, this just complains that stuff is already defined.
+-//#define _IMGUI_TEST
+-
+- //#define _IMGUI_TEST
+-#ifdef _IMGUI_TEST
+-#include "imgui.h"
+-#include "imgui_impl_dx9.h"
+-#include "imgui_impl_win32.h"
+-
+-
+-
+-static void
+-setupImGui()
+-{
+-	// Copied from my ImGui test
+-	// Setup Dear ImGui context
+-	IMGUI_CHECKVERSION();
+-	ImGui::CreateContext();
+-	ImGuiIO &io = ImGui::GetIO();
+-	(void)io;
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+-
+-	// Setup Dear ImGui style to dark mode.
+-	ImGui::StyleColorsDark();
+-}
+-
+-
+-
+-
+-
+-// New
+-// ImGui
+-static LPDIRECT3D9 g_pD3D = nullptr;
+-static LPDIRECT3DDEVICE9 g_pd3dDevice = nullptr;
+-static UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
+-static D3DPRESENT_PARAMETERS g_d3dpp = {};
+-
+-bool
+-CreateDeviceD3D(HWND hWnd)
+-{
+-	if((g_pD3D = Direct3DCreate9(D3D_SDK_VERSION)) == nullptr) return false;
+-
+-	// Create the D3DDevice
+-	ZeroMemory(&g_d3dpp, sizeof(g_d3dpp));
+-	g_d3dpp.Windowed = TRUE;
+-	g_d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+-	g_d3dpp.BackBufferFormat = D3DFMT_UNKNOWN; // Need to use an explicit format with alpha if needing per-pixel alpha composition.
+-	g_d3dpp.EnableAutoDepthStencil = TRUE;
+-	g_d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
+-	g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE; // Present with vsync
+-	// g_d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;   // Present without vsync, maximum unthrottled framerate
+-	if(g_pD3D->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, hWnd, D3DCREATE_HARDWARE_VERTEXPROCESSING, &g_d3dpp, &g_pd3dDevice) < 0) return false;
+-
+-	return true;
+-}
+-
+-void
+-ResetDevice()
+-{
+-	ImGui_ImplDX9_InvalidateDeviceObjects();
+-	HRESULT hr = g_pd3dDevice->Reset(&g_d3dpp);
+-	if(hr == D3DERR_INVALIDCALL) IM_ASSERT(0);
+-	ImGui_ImplDX9_CreateDeviceObjects();
+-}
+-
+-static void
+-Render(ImVec4 clear_color)
+-{
+-//#ifndef _TEST2 //!_TEST2
+-	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+-	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+-	g_pd3dDevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+-	D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
+-	                                      (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
+-	g_pd3dDevice->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
+-	if(g_pd3dDevice->BeginScene() >= 0) {
+-		ImGui::Render();
+-		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+-		g_pd3dDevice->EndScene();
+-	}
+-	HRESULT result = g_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
+-
+-	// Handle loss of D3D9 device
+-	if(result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) 
+-		ResetDevice();
+-}
+-
+-//
+-// Forward declarations of helper functions
+-bool
+-CreateDeviceD3D(HWND hWnd);
+-void
+-CleanupDeviceD3D();
+-void
+-ResetDevice();
+-
+-/// <summary>
+-/// This just crashses the program.
+-/// </summary>
+-/// <param name="hwnd"></param>
+-/// <param name="wc"></param>
+-static void
+-InitializeD3D(HWND hwnd, WNDCLASSEXW wc)
+-{
+-	// Initialize Direct3D
+-
+-#ifndef _TEST2 //!_TEST2
+-	if(!CreateDeviceD3D(hwnd))
+-#else
+-	if(!Helpers::CreateDeviceD3D(hwnd))
+-#endif //!_TEST2
+-	{
+-#ifndef _TEST2 //!_TEST2
+-		CleanupDeviceD3D();
+-#else
+-		Helpers::CleanupDeviceD3D();
+-#endif //!_TEST2
+-		::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+-		// return 1;
+-	}
+-}
+-
+-//
+-
+-
+-
+-
+-
+-#endif // _IMGUI_TEST
+-#undef IMGUI_TEST
+-
+-// #include "imgui_test.h"
+-
+-//********************
+-// End my ImGui test
+-//********************
+-
+ /*
+  *****************************************************************************
+  * Main Thread (Possibly for the dll or exe?)
+@@ -2296,111 +2356,6 @@ CMenuManager cMenuManager = CMenuManager();
+ //luaTest.InitLua();
+ #endif
+ 
+-//********************
+-// Begin my ImGui test
+-//********************
+-
+-// 
+-// Wtf this didn't crash? Hmm... Time to add a keybind to show ImGui and a demo window.
+-// I've been wanting to integrate this into ReVC for a while now.
+-// Well I spoke too soon, I added something else and it crashes again.
+-// TODO Add some of this code to main while loop, check for keybind.
+-
+-// Ohh this isn't even added to the game window, it just creates a separate one.
+-// I wonder how I could add it.
+-
+-
+-
+-//#define _IMGUI_TEST
+-#ifdef _IMGUI_TEST
+-	// Setup Dear ImGui context
+-	IMGUI_CHECKVERSION();
+-	ImGui::CreateContext();
+-	ImGuiIO &io = ImGui::GetIO();
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+-
+-	// TODO Add ImGui into here.
+-	// Initialize ImGui
+-	// Set show window variable
+-	bool show_window = false;
+-
+-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+-	//LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+-
+-
+-	#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-
+-	// Run setup
+-	//setupImGui();
+-
+-	// Copied from my ImGui test
+-	const wchar_t *window_title = L"KCNet ImGui";
+-
+-	// Create application window
+-	// ImGui_ImplWin32_EnableDpiAwareness();
+-	//WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, window_title, nullptr};
+-	WNDCLASSEXW wc = {sizeof(wc), CS_CLASSDC, MainWndProc, 0L, 0L, GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, window_title, nullptr};
+-	::RegisterClassExW(&wc);
+-	HWND hwnd = ::CreateWindowW(wc.lpszClassName, window_title, WS_OVERLAPPEDWINDOW, 100, 100, 1280, 800, nullptr, nullptr, wc.hInstance, nullptr);
+-
+-
+-	// Initialize Direct3D
+-	// TODO Test
+-	//InitializeD3D(hwnd, wc);
+-
+-	// Test
+-	//CreateDeviceD3D(hwnd);
+-
+-	
+-	// Show the window
+-	//::ShowWindow(hwnd, SW_SHOWDEFAULT);
+-	//::UpdateWindow(hwnd);
+-	//
+-
+-	//
+-
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+-
+-	ImGui::StyleColorsDark();
+-	
+-	// TODO Move into the init function that contains HWND and other stuff
+-	ImGui_ImplWin32_Init(hwnd);  // Replace 'hwnd' with your window handle
+-	//ImGui_ImplWin32_Init(window);  // Replace 'hwnd' with your window handle
+-	//ImGui_ImplDX9_Init(g_pd3dDevice); // Replace 'pDevice' with your DirectX 9 device
+-
+-	// I think this should possibly fix it.
+-	ImGui_ImplDX9_Init(rw::d3d::d3ddevice); // Replace 'pDevice' with your DirectX 9 device
+-
+-//#define _DISABLED_CODE
+-// TODO Test moving into loop
+-#ifdef _DISABLED_CODE
+-	ImGui_ImplDX9_NewFrame();
+-	ImGui_ImplWin32_NewFrame();
+-	ImGui::NewFrame();
+-
+-	if(show_window) { 
+-		if(ImGui::Begin("KCNet ReVC Test", nullptr, ImGuiWindowFlags_MenuBar)) { 
+-			ImGui::Text("Hello");
+-		}
+-	}
+-
+-	ImGui::End();
+-
+-	ImGui::EndFrame();
+-	Render(clear_color);
+-
+-#endif //_DISABLED_CODE
+-
+-#endif // _IMGUI_TEST
+-#undef _IMGUI_TEST
+-
+-
+-//********************
+-// End my ImGui test
+-//********************
+-
+ #ifndef MASTER
+ 	if (strstr(cmdLine, "-console"))
+ 	{
+@@ -2902,34 +2857,6 @@ CMenuManager cMenuManager = CMenuManager();
+ 						if (wp.showCmd != SW_SHOWMINIMIZED)
+ 							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
+-
+-													//
+-					        // Quick ImGui test
+-					        // This shows up if I don't have a keybind, cannot be toggled back off though.
+-					         //ImGuiVCTest::CreateImGuiWindow();
+-//#define _TEST1
+-#ifdef _TEST1
+-
+-#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-					        // if (KEYDOWN(rsF9))
+-
+-					        if(ControlsManager.GetIsKeyboardKeyDown(rsF9))
+-
+-					        {
+-						        ImGuiVCTest::done = !ImGuiVCTest::done;
+-						        ImGuiVCTest::CreateImGuiWindow();
+-
+-						        // if (ImGuiVCTest::done)
+-						        //{
+-						        //	ImGuiVCTest::CreateImGuiWindow();
+-						        // }
+-						        //
+-					        }
+-#endif
+-#undef _TEST1
+-					        //
+-					        //
+-
+ 						//************ 
+ 						// Begin Fast Loader 
+ 						// ************/
+@@ -3056,26 +2983,15 @@ CMenuManager cMenuManager = CMenuManager();
+ 						{
+ 							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
+-
++							
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++// 					// Well this dies in here...
++// 					// ImGuiFunctions::ImGuiLoop();
++#endif
++#undef _IMGUI_TEST
+ 
+ #ifdef LUA_TEST
+-							// Possibly try to use something like this for a delay
+-							/*
+-															/*
+-								if(lastkeydown){
+-		if(KEYDOWN(lastkeydown)){
+-			int curtime = CTimer::GetTimeInMilliseconds();
+-			if(curtime - downtime > REPEATDELAY){
+-				if(curtime - repeattime > REPEATINTERVAL){
+-					repeattime = curtime;
+-					*keyptr = 1;
+-				}
+-			}
+-		}else{
+-			lastkeydown = 0;
+-		}
+-	}
+-						                */
+ 
+ 							// Oops, this somewhat slows the game down sometimes it looks like, I wonder why.
+ 						        LuaTest luaTest = LuaTest();
+@@ -3102,113 +3018,6 @@ CMenuManager cMenuManager = CMenuManager();
+ 							                }
+ 						                }
+ #endif //LUA_TEST
+-						
+-
+-
+-						//********************
+-						// Begin my new ImGui test
+-						//********************
+-						
+-						// TODO Possibly add ImGui into this part of loop?
+-
+-							// New test
+-							// This actually works in here!!!!
+-							// I got the ImGui window to show up but I still lose the mouse when I open it.
+-							// And it freezes the game until the ImGui window is closed.
+-														
+-							// 
+-							// TODO Add the code for hooking into the mouse, make it show up when the menu is open
+-							// TODO Fix this to work and not freeze the game
+-							// TODO Fix this to run with multiple keybinds, such as Control + M or something
+-							// TODO Fix this to toggle the window on and off.
+-
+-							// New ImGui test, somewhat works I just need to figure out how to hook into the game itself,
+-							// instead of freezing it.
+-							 //#define _TEST1
+-							#ifdef _TEST1
+-							#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-						        CControllerConfigManager configManager = CControllerConfigManager();
+-								// ImGuiVCTest imguiVCTest = ImGuiVCTest();
+-						        // if (configManager.GetIsKeyboardKeyDown(rsF9))
+-
+-								//CMouseControllerState controllerState = CMouseControllerState();
+-								//controllerState
+-
+-								//CMenuManager menuManager = CMenuManager();
+-
+-								// if(KEYDOWN('F9')) { 
+-								if(KEYDOWN(rsF8)) { 
+-									// This shows up again
+-									ImGuiVCTest::CreateImGuiWindow();
+-							        // ImGuiVCTest::done = !ImGuiVCTest::done;
+-									// if (!ImGuiVCTest::done)
+-									// { 
+-									// 	ImGuiVCTest::CreateImGuiWindow();
+-									// }
+-									// show_window = !show_window; 
+-								}
+-						        // if(configManager.GetIsKeyboardKeyJustDown(rsF9)) { 
+-									//showImGuiWindow = !showImGuiWindow;
+-									//if (showImGuiWindow) { 
+-										// Turn the window on, this doesn't close the window or show a mouse yet.
+-										// ImGuiVCTest::CreateImGuiWindow();
+-										// show_window = !show_window;
+-										// Note to self, probably never use these.
+-										// Woops, these make infinite menu clicking sounds
+-										// That was loud...
+-								        //menuManager.m_bShowMouse = true;
+-									//}
+-									//else {
+-									//	// Will this work?
+-								 //        //ImGuiVCTest::done = true;
+-									//	// This doesn't seem to break out of the loop and kill the window.
+-								 //        imguiVCTest.done = true;
+-									//	// TODO Figure out how to close ImGui window
+-								 //        //menuManager.m_bShowMouse = false;
+-									//}
+-									
+-								// }
+-
+-								#endif //_TEST1
+-								// Disable _TEST1 below this
+-								#undef _TEST1
+-
+-						//********************
+-						// End my new ImGui test
+-						//********************
+-						#undef _IMGUI_TEST
+-						#ifdef _IMGUI_TEST
+-
+-	#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-
+-
+-
+-	//ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)a);
+-	// TODO Test this
+-	// I don't think this works like this
+-	if (KEYDOWN(VK_F9)) {
+-	
+-
+-	ImGui_ImplDX9_NewFrame();
+-	ImGui_ImplWin32_NewFrame();
+-	ImGui::NewFrame();
+-
+-	if(show_window) { 
+-		if(ImGui::Begin("KCNet ReVC Test", nullptr, ImGuiWindowFlags_MenuBar)) { 
+-			ImGui::Text("Hello");
+-		}
+-		ImGui::End();
+-	}
+-
+-	
+-
+-	ImGui::EndFrame();
+-	Render(clear_color);
+-	#endif //_IMGUI_TEST
+-
+-	#ifdef _IMGUI_TEST
+-#undef _IMGUI_TEST // Undefine _IMGUI_TEST
+-#endif             // _IMGUI_TEST
+ 						}
+ 						break;
+ 					}
+@@ -3329,9 +3138,6 @@ CMenuManager cMenuManager = CMenuManager();
+ 		#undef _IMGUI_TEST
+ 
+ 	}
+-	
+-
+-	// TODO Shutdown ImGui once working.
+ 
+ #ifndef MASTER
+ 	if ( gbModelViewer )
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 3c683f53..ae2aecda 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -7,6 +7,9 @@ local healPlayerEnabled = false
+ local cheatTestEnabled = true
+ local playerControlTestEnabled = false
+ 
++-- Test for toggling ImGui, I got the window to show up but not disappear
++local imGuiToggleEnabled = false
++
+ -- TODO Setup these.
+ local airportX = 22
+ local airportY = 22
+@@ -23,6 +26,7 @@ end
+ -- 1. BLOWMEUP (This sets the players vehicle on fire if in one.)
+ -- 2. KILLME (This kills the player.)
+ -- 3. SPAWNCAR {vehicleID} (This spawns a vehicle with the specified vehicle ID)
++-- 4. IMGUITG (Test for toggling ImGui)
+ 
+ -- TODO Figure out how to add cheats to this.
+ -- For now I'll just hard code a couple values to make sure its working.
+@@ -42,13 +46,18 @@ elseif healPlayerEnabled then
+ -- I got this working somehow, Idk what I changed.
+ elseif cheatTestEnabled then
+ 	-- cheat_test("BLOWMEUP")
+-	-- cheat_test("KILLME")
+-	cheat_test("SPAWNCAR", 150)
++	cheat_test("KILLME")
++	-- cheat_test("SPAWNCAR", 150)
++	-- cheat_test("IMGUITG")
+ 
+ 
+ elseif playerControlTestEnabled then
+ 	-- This makes it to where the player controls can be toggled on/off.
+ 	toggle_control()
++
++-- This toggles on but the mouse doesn't work and it isn't able to be turned back off.
++elseif imGuiToggleEnabled then
++	toggle_imgui()
+ 	
+ end
+ 
+diff --git a/utils/lua/update-lua.bat b/utils/lua/update-lua.bat
+new file mode 100644
+index 00000000..c587374f
+--- /dev/null
++++ b/utils/lua/update-lua.bat
+@@ -0,0 +1,3 @@
++@echo off
++:: This just copies the test.lua into the proper folder, useful for updating the script from here.
++copy test.lua "C:\Rockstar Games\GTA Vice City\ViceExtended\lua_scripts"
+-- 
+2.45.1.windows.1
+

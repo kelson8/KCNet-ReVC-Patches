@@ -1,0 +1,601 @@
+From b6bff64d2f1f29877daef8dd512756014f62f804 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 7 Mar 2025 02:18:48 -0500
+Subject: [PATCH 074/101] Add working lua test, so far it just sets the players
+ position with the F8 key. Disable the AddStuff function in the lua file. Add
+ test.lua, and some more imgui testing in win.cpp. Update readme.
+
+---
+ README.md                   |   3 +
+ src/extras/lua/lua_test.cpp | 179 +++++++++++++++++++++++-------------
+ src/extras/lua/lua_test.h   |   1 +
+ src/skel/win/win.cpp        | 144 ++++++++++++++++++++++-------
+ utils/lua/test.lua          |  13 +++
+ 5 files changed, 246 insertions(+), 94 deletions(-)
+ create mode 100644 utils/lua/test.lua
+
+diff --git a/README.md b/README.md
+index b4b9b78c..bdfd1280 100644
+--- a/README.md
++++ b/README.md
+@@ -20,6 +20,8 @@ ImGui initialization and everything has been added to /extras/imgui_test.cpp
+ 
+ ## Changes
+ 
++* Added lua test support, copy utils/lua/test.lua into ReVC-Install/ViceExtended/lua_scripts folder for it to work.
++
+ I have been working on copying most of the changes from the Extended Vice project, it adds swimming, proper crouching support, better firing and aiming, first person and a lot more.
+ 
+ So far I have implemented the marker that draws to the screen, and modified the fast loader that goes to this.
+@@ -33,6 +35,7 @@ Here is a list below of what all I have added from the Vice Extended project, al
+ 
+ * Link to the project most extra code came from: https://github.com/x87/gta-extended
+ 
++
+ ### Cleo menu
+ I have a cleo mod menu here:
+ * https://git.internal.kelsoncraft.net/kelson8/gtavc-scripts
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 0def4fb0..c3ac51b0 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -1,3 +1,7 @@
++ //Well trying to move this to sol didn't work well.
++// I guess it doesn't like C++14 and changing it breaks ReVC.
++
++
+ // VC Specific
+ #define WITHDINPUT
+ #include "common.h"
+@@ -6,6 +10,17 @@
+ 
+ #include "lua_test.h"
+ 
++// This should possibly work for keybinds, I wonder where I would place them.. 
++// Oh wait, maybe in the GS_PLAYING_GAME under win.cpp
++// Have one of them run the addstuff function.
++
++// I got a keybind working for this in win.cpp under GS_PLAYING_GAME
++//#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++// I got this printing to the TRACE in Visual Studio, I wonder how to make a basic chatbox or something for this.
++// It shouldn't be too hard to implement some type of command system.
++
++// It would probably be easier to start off with keybinds.
+ 
+ // Lua
+ extern "C"
+@@ -23,19 +38,19 @@ extern "C"
+ #include <Windows.h>
+ #endif
+ 
++// Add in my log functions.
++#include "log_functions.h"
++#include "defines.h"
++
+ // VC Specific
+ #include "Radar.h"
++#include "Hud.h"
++#include "Text.h"
+ 
+ // Well Entity.h is needed before PlayerInfo.h
+ #include "Entity.h"
+ #include "PlayerInfo.h"
+-
+-
+-
+-
+-
+-// This seems to build, I'll just leave it here until I'm ready.
+-// Mostly copied from my lua_test in LuaTestCPP
++#include "PlayerPed.h"
+ 
+ // Some of this new code was inspired by the MTA SA code
+ // https://github.com/multitheftauto/mtasa-blue/tree/master
+@@ -48,7 +63,7 @@ LuaTest::LuaTest()
+ 	m_luaVM = NULL; 
+ }
+ 
+-// Test, this may or may not work once I get lua working.
++// Test, this may or may not work.
+ void
+ GetBlipIcon()
+ {
+@@ -62,6 +77,54 @@ GetBlipIcon()
+ 	//radar.SetBlipSprite();
+ }
+ 
++/// <summary>
++/// This sets the position in the lua function I have defined as a test.
++/// The values even are able to be changed without restarting the game.
++/// This will be very useful for later once I figure out menus.
++/// lua function: set_position(X, Y, Z)
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int
++SetPlayerPositionLua(lua_State *L)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPlayerPos = FindPlayerCoors();
++
++	// TODO Test these
++	float playerPosX = (float)lua_tonumber(L, 1);
++	float playerPosY = (float)lua_tonumber(L, 2);
++	float playerPosZ = (float)lua_tonumber(L, 3);
++
++	//pPlayerPos.x = playerPosX;
++	//pPlayerPos.y = playerPosY;
++	//pPlayerPos.z = playerPosZ;
++
++	CVector newPlayerPos = CVector(playerPosX, playerPosY, playerPosZ);
++	//FindPlayerPed()->SetPosition(playerPos);
++
++	FindPlayerPed()->SetPosition(newPlayerPos);
++
++	// This is being called?
++	//CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++
++	// Ok, the values are there, this is printing properly it looks like
++	LogFunctions::LogInfo(Defines::luaLogFile, 
++		"X: " + std::to_string(playerPosX) +
++		" Y: " + std::to_string(playerPosY) 
++		+ "Z: " + std::to_string(playerPosZ));
++
++	
++
++	//TRACE("X: %s Y: %s Z: %s", playerPosX, playerPosY, playerPosZ);
++
++	// Test setting the player at random coords
++
++	// Make a random number generator
++	// Make it pick between lists of numbers within the range of the map
++	return 3;
++}
++
+ // Check lua globals, made this into a function
+ bool
+ CheckLua(lua_State *L, int r)
+@@ -69,9 +132,12 @@ CheckLua(lua_State *L, int r)
+ 	// Check if the value is valid
+ 	if(r != LUA_OK) {
+ 		std::string errorMsg = lua_tostring(L, -1);
+-		std::cout << errorMsg << std::endl;
++		//std::cout << errorMsg << std::endl;
++		TRACE("KCNet - Lua Error");
+ 		return false;
+-	}
++	} /*else {
++		TRACE("KCNet - Lua Error");
++	}*/
+ 
+ 	return true;
+ }
+@@ -89,12 +155,15 @@ LuaTest::InitLua()
+ 	// m_pLuaManager->OnLuaMainOpenVM(this, m_luaVM);
+ 
+ 	// So I'll need to try to replicate these files:
+-	// CLuaManager.cpp, CLuaManager.h, 
++	// CLuaManager.cpp, CLuaManager.h,
++
++	// Setup the lua message, this seems to print now, I added this to GGame::Initialise 
++	//TRACE("KCNet - Lua Test started");
++	//
+ 
+ 	// Set the instruction count hook
+ 	// TODO Fix this
+-	//lua_sethook(m_luaVM, InstructionCountHook, LUA_MASKCOUNT, HOOK_INSTRUCTION_COUNT);
+-
++	// lua_sethook(m_luaVM, InstructionCountHook, LUA_MASKCOUNT, HOOK_INSTRUCTION_COUNT);
+ 
+ 	// Load LUA libraries
+ 	luaopen_base(m_luaVM);
+@@ -105,6 +174,40 @@ LuaTest::InitLua()
+ 	luaopen_utf8(m_luaVM);
+ 	luaopen_os(m_luaVM);
+ 
++	// This seems to work now.
++	lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
++	
++	//
++		
++		// I got this working, it shows up in the output now, I thought it wouldn't.
++		//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "src/scripts/test.lua"))) {
++		if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/test.lua"))) {
++		// Run a function in lua
++
++			// Disabled this for now, it will be useful for later.
++		//lua_getglobal(m_luaVM, "AddStuff");
++		//if(lua_isfunction(m_luaVM, -1)) {
++		//	lua_pushnumber(m_luaVM, 3.5f);
++		//	lua_pushnumber(m_luaVM, 7.2f);
++
++		////	// The pcall function executes the function.
++		//	if(CheckLua(m_luaVM, lua_pcall(m_luaVM, 2, 1, 0))) {
++		//		float number1 = (float)lua_tonumber(m_luaVM, -1);
++		//		//TRACE("[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got %f", number1);
++		//		// TODO Figure out how exactly to log this.
++		//		// TODO Figure out a better way to log this.
++		//		std::string addStuffVar = "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got ";
++		//		std::string result = addStuffVar + std::to_string(number1);
++		//		 LogFunctions::LogInfo(Defines::luaLogFile, result);
++		//		//std::cout << "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got " << number1 << std::endl;
++		//		}
++		//	}
++		}
++	        //TRACE("KCNet ReVC - LUA_TEST");
++
++	lua_close(m_luaVM);
++
++
+ 	/* MTA SA, TODO Implement the security from it and other stuff that will be needed for ReVC
+ 	
+ 	// Initialize security restrictions. Very important to prevent lua trojans and viruses!
+@@ -177,56 +280,6 @@ HelloWorldTest(lua_State *L)
+ 		//	std::cout << "Program name: " << programName << std::endl;
+ 		//}
+ 
+-		//// Get the program verrsion
+-		// lua_getglobal(L, "ProgramVersion");
+-		// if (lua_isstring(L, -1))
+-		//{
+-		//	std::string programVersion = (std::string)lua_tostring(L, -1);
+-		//	std::cout << "Program version: " << programVersion << std::endl;
+-		// }
+-
+-		// Get the name from a table in lua.
+-		// lua_getglobal(L, "player");
+-		////if (lua_isstring(L, -1))
+-		// if (lua_istable(L, -1))
+-		//{
+-		//	lua_pushstring(L, "Name");
+-		//	// Look at the top parameter of the stack, find the key value pair, pop the name off the top of the stack and replace it with the value
+-		//	lua_gettable(L, -2);
+-		//	player.name = lua_tostring(L, -1);
+-		//	// This is required
+-		//	lua_pop(L, 1);
+-
+-		//	lua_pushstring(L, "Family");
+-		//	lua_gettable(L, -2);
+-		//	player.family = lua_tostring(L, -1);
+-		//	lua_pop(L, 1);
+-
+-		//	lua_pushstring(L, "Title");
+-		//	lua_gettable(L, -2);
+-		//	player.title = lua_tostring(L, -1);
+-		//	lua_pop(L, 1);
+-
+-		//	lua_pushstring(L, "Level");
+-		//	lua_gettable(L, -2);
+-		//	player.level = lua_tonumber(L, -1);
+-		//	lua_pop(L, 1);
+-
+-		//	std::cout << "Name: " << player.name << "\nTitle: " << player.title
+-		//		<< "\nFamily: " << player.family << "\nLevel: " << player.level << std::endl;
+-		//}
+-
+-		// Number testing
+-		// Get a global, a exists as a global because it is not set to local.
+-		// lua_getglobal(L, "a");
+-
+-		//// Check if the value is a number
+-		// if (lua_isnumber(L, -1))
+-		//{
+-		//	// Cast the value to a float, and convert to a number
+-		//	float a_in_cpp = (float)lua_tonumber(L, -1);
+-		//	std::cout << "a_in_cpp: " << a_in_cpp << std::endl;
+-		// }
+ 	}
+ 
+ 
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 0168ed5e..3e956df2 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -27,6 +27,7 @@ public:
+ 	void InitLua();
+ 
+ private:
++	//lua_State *m_luaVM;
+ 	lua_State *m_luaVM;
+ 
+ 
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index b086b485..5bd1c948 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -74,20 +74,20 @@
+ // I have a quick test for this setup under GS_PLAYING_GAME
+ // I got it to show up on a separate window.
+ // But if I attempt to close it it kills the game.
+-// #define _IMGUI_TEST
++//#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+-#include "imgui_test.h"
++// #include "imgui_test.h"
+ 
+-// #include "imgui.h"
+-// #include "imgui_impl_dx9.h"
+- #include "imgui_impl_win32.h"
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
+ 
+ // Forward declare message handler from imgui_impl_win32.cpp
+ // Well this pisses off the MainWndProc..
+ // This finally builds like this... Still crashes though
+-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+-LRESULT WINAPI
+-MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++// extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++// LRESULT WINAPI
++// MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ 
+ 
+ // #include "imgui.h"
+@@ -96,6 +96,13 @@ MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+ #endif
+ #undef _IMGUI_TEST
+ 
++// Lua test
++#ifdef CUSTOM_CODE
++#include "lua_test.h"
++// Timer for the keybind
++#include "Timer.h"
++#endif //LUA_TEST
++
+ #define MAX_SUBSYSTEMS		(16)
+ 
+ static RwBool		  ForegroundApp = TRUE;
+@@ -835,7 +842,7 @@ psInitialize(void)
+ 	debug("Video memory size %d\n", _dwMemTotalVideo);
+ 	debug("Available video memory %d\n", _dwMemAvailVideo);
+ #endif
+-	
++
+ 	if ( _dwMemAvailVideo < (12 * 1024 * 1024) /*12 MB*/ )
+ 	{
+ 		MessageBoxW(nil,
+@@ -1041,12 +1048,11 @@ MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ 	POINTS points;
+ 	static BOOL noMemory = FALSE;
+ 
+-
+ 	// TODO Figure out why this is _IMGUI_TEST instead of IMGUI_TEST
+ 	
+-	// #define _IMGUI_TEST
++	//#define _IMGUI_TEST
+ 	#ifdef _IMGUI_TEST
+-	if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
++	//if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
+ 	#endif
+ 	#undef _IMGUI_TEST
+ 
+@@ -1067,6 +1073,8 @@ MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ 	ImGui_ImplWin32_Init(window);
+ 	// TODO Figure out how to get this, I want to hook this into the games d3d device, not create my own
+ 	//ImGui_ImplDX9_Init(g_pd3dDevice);
++	// Is this right?? From custompipes_d3d9.cpp
++	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
+ 	#endif //_IMGUI_TEST
+ 	#undef _IMGUI_TEST
+ 	
+@@ -2281,6 +2289,13 @@ CMenuManager cMenuManager = CMenuManager();
+ #endif //CUSTOM_CODE
+ // Test
+ 
++		// Lua test
++// TODO Fix this to work
++#ifdef CUSTOM_CODE
++//LuaTest luaTest = LuaTest();
++//luaTest.InitLua();
++#endif
++
+ //********************
+ // Begin my ImGui test
+ //********************
+@@ -2296,11 +2311,15 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 
+ 
+-
++//#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+-	//IMGUI_CHECKVERSION();
+-	//ImGui::CreateContext();
+-	//ImGuiIO &io = ImGui::GetIO();
++	// Setup Dear ImGui context
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
+ 	// TODO Add ImGui into here.
+ 	// Initialize ImGui
+ 	// Set show window variable
+@@ -2313,7 +2332,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 	#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 
+ 	// Run setup
+-	setupImGui();
++	//setupImGui();
+ 
+ 	// Copied from my ImGui test
+ 	const wchar_t *window_title = L"KCNet ImGui";
+@@ -2331,29 +2350,28 @@ CMenuManager cMenuManager = CMenuManager();
+ 	//InitializeD3D(hwnd, wc);
+ 
+ 	// Test
+-	CreateDeviceD3D(hwnd);
++	//CreateDeviceD3D(hwnd);
+ 
+ 	
+ 	// Show the window
+-	::ShowWindow(hwnd, SW_SHOWDEFAULT);
+-	::UpdateWindow(hwnd);
++	//::ShowWindow(hwnd, SW_SHOWDEFAULT);
++	//::UpdateWindow(hwnd);
+ 	//
+ 
+ 	//
+-	
+-
+-	IMGUI_CHECKVERSION();
+-	ImGui::CreateContext();
+-	//ImGuiIO &io = ImGui::GetIO();
+-	ImGuiIO &io = ImGui::GetIO(); (void)io;
+ 
+ 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+ 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+ 
+ 	ImGui::StyleColorsDark();
+ 	
++	// TODO Move into the init function that contains HWND and other stuff
+ 	ImGui_ImplWin32_Init(hwnd);  // Replace 'hwnd' with your window handle
+-	ImGui_ImplDX9_Init(g_pd3dDevice); // Replace 'pDevice' with your DirectX 9 device
++	//ImGui_ImplWin32_Init(window);  // Replace 'hwnd' with your window handle
++	//ImGui_ImplDX9_Init(g_pd3dDevice); // Replace 'pDevice' with your DirectX 9 device
++
++	// I think this should possibly fix it.
++	ImGui_ImplDX9_Init(rw::d3d::d3ddevice); // Replace 'pDevice' with your DirectX 9 device
+ 
+ //#define _DISABLED_CODE
+ // TODO Test moving into loop
+@@ -2376,6 +2394,8 @@ CMenuManager cMenuManager = CMenuManager();
+ #endif //_DISABLED_CODE
+ 
+ #endif // _IMGUI_TEST
++#undef _IMGUI_TEST
++
+ 
+ //********************
+ // End my ImGui test
+@@ -2600,9 +2620,6 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 
+ 	#endif //_IMGUI_TEST
+-	
+-
+-
+ 
+ 	while ( TRUE )
+ 	{
+@@ -2657,6 +2674,20 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 		#endif // _IMGUI_TEST
+ 		#undef _IMGUI_TEST
++
++		// These give linker error.
++		//#define _IMGUI_TEST
++		#ifdef _IMGUI_TEST
++
++		ImGui_ImplWin32_NewFrame();
++		ImGui_ImplDX9_NewFrame();
++		ImGui::NewFrame();
++
++		// Test
++		ImGui::ShowDemoWindow();
++
++		#endif //_IMGUI_TEST
++#undef _IMGUI_TEST
+ 		
+ 		/* 
+ 		* Set the initial mouse position...
+@@ -3025,6 +3056,47 @@ CMenuManager cMenuManager = CMenuManager();
+ 						{
+ 							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
++
++
++#ifdef CUSTOM_CODE
++							// Possibly try to use something like this for a delay
++							/*
++															/*
++								if(lastkeydown){
++		if(KEYDOWN(lastkeydown)){
++			int curtime = CTimer::GetTimeInMilliseconds();
++			if(curtime - downtime > REPEATDELAY){
++				if(curtime - repeattime > REPEATINTERVAL){
++					repeattime = curtime;
++					*keyptr = 1;
++				}
++			}
++		}else{
++			lastkeydown = 0;
++		}
++	}
++						                */
++
++							// Oops, this somewhat slows the game down sometimes it looks like, I wonder why.
++						        LuaTest luaTest = LuaTest();
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++						        // Oops, forgot to init the variable..
++								static int newTime = 0;
++								// Some of the idea for this test came from here:
++								// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
++								
++								// I think I fixed the delay, I made the newTime variable static.
++								// TODO Do more testing with this later.
++						        if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++								// Wow this seems to work, with a delay now.
++								// I figured out how to output this to a log.
++								
++									newTime = CTimer::GetTimeInMilliseconds();
++							        luaTest.InitLua();
++									
++							}
++#endif //CUSTOM_CODE - LUA_TEST
+ 						
+ 
+ 
+@@ -3109,7 +3181,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 	//ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)a);
+ 	// TODO Test this
+ 	// I don't think this works like this
+-	//if (KEYDOWN(VK_F9)) {
++	if (KEYDOWN(VK_F9)) {
+ 	
+ 
+ 	ImGui_ImplDX9_NewFrame();
+@@ -3241,6 +3313,16 @@ CMenuManager cMenuManager = CMenuManager();
+ 		FrontEndMenuManager.m_bFirstTime = false;
+ 		FrontEndMenuManager.m_bWantToRestart = false;
+ #endif
++
++
++		// I think I almost have this right.
++		//#define _IMGUI_TEST
++		#ifdef _IMGUI_TEST
++		ImGui::Render();
++		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++		#endif
++		#undef _IMGUI_TEST
++
+ 	}
+ 	
+ 
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+new file mode 100644
+index 00000000..75ba4f3d
+--- /dev/null
++++ b/utils/lua/test.lua
+@@ -0,0 +1,13 @@
++print("hello ReVC!")
++
++-- This is disabled in the C++ code.
++function AddStuff(num1, num2)
++	return num1 + num2
++end
++
++-- Test calling function from C++
++-- OMG this works!! I was able to call this function in C++ that sets the players position.
++-- What if i change this file while its running?
++-- I can change this file while it's running!!
++-- That's very useful, I can add menus to this once I figure out how to make them like the debug menu.
++set_position(3,3,30)
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

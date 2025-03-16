@@ -1,0 +1,1067 @@
+From 8a357283515431045f6c598ccc869eb49574382f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Mar 2025 15:09:38 -0400
+Subject: [PATCH 086/101] Move menus into their own files. Refactor
+ imgui_main_menu quite a bit, removing code that I moved. Add incomplete ped
+ model ids, and complete weapon ids to model_ids.h
+
+---
+ src/extras/functions/imgui_main_menu.cpp | 358 ++---------------------
+ src/extras/menus/cheat_menu.cpp          |  76 +++++
+ src/extras/menus/cheat_menu.h            |   7 +
+ src/extras/menus/misc_menu.cpp           |  47 +++
+ src/extras/menus/misc_menu.h             |   7 +
+ src/extras/menus/player_menu.cpp         |  55 ++++
+ src/extras/menus/player_menu.h           |   7 +
+ src/extras/menus/vehicle_menu.cpp        | 173 +++++++++++
+ src/extras/menus/vehicle_menu.h          |   7 +
+ src/extras/menus/warp_menu.cpp           |  72 +++++
+ src/extras/menus/warp_menu.h             |   7 +
+ src/extras/test/enums/model_ids.h        |  58 +++-
+ 12 files changed, 535 insertions(+), 339 deletions(-)
+ create mode 100644 src/extras/menus/cheat_menu.cpp
+ create mode 100644 src/extras/menus/cheat_menu.h
+ create mode 100644 src/extras/menus/misc_menu.cpp
+ create mode 100644 src/extras/menus/misc_menu.h
+ create mode 100644 src/extras/menus/player_menu.cpp
+ create mode 100644 src/extras/menus/player_menu.h
+ create mode 100644 src/extras/menus/vehicle_menu.cpp
+ create mode 100644 src/extras/menus/vehicle_menu.h
+ create mode 100644 src/extras/menus/warp_menu.cpp
+ create mode 100644 src/extras/menus/warp_menu.h
+
+diff --git a/src/extras/functions/imgui_main_menu.cpp b/src/extras/functions/imgui_main_menu.cpp
+index 751e5b99..e53ea76e 100644
+--- a/src/extras/functions/imgui_main_menu.cpp
++++ b/src/extras/functions/imgui_main_menu.cpp
+@@ -33,6 +33,15 @@ extern "C" {
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+ 
++// Menus
++#include "warp_menu.h"
++#include "vehicle_menu.h"
++
++#include "cheat_menu.h"
++#include "player_menu.h"
++#include "misc_menu.h"
++//
++
+ 
+ #include "./extras/test/enums/model_ids.h"
+ 
+@@ -47,108 +56,14 @@ extern "C" {
+ 
+ #include "Pad.h"
+ 
+-bool spawnInCar = false;
+-
+-bool showVehicleListBox = false;
+-const char *vehicles[] = {"Rhino", "Cheetah", "Infernus"};
+-int currentItem = 150;
+-//int currentItem = 150;
+-//int *currentItemPtr = &currentItem;
+-
+ // Test
+ int selectedIndex = 0;
+ bool showMainMenuBar = false;
+-
+-// Player
+-bool neverWanted = false;
+-bool infiniteHealth = false;
+-
+-// Vehicle
+-bool highVehicleMass = false;
+-bool vehicleInvincible = false;
+-
+ // Test from debug_functions.cpp
+ 
+-// Well I figured out how to use the built in cheats without copying them
+-void
+-FastTimeCheat();
+-void
+-SlowTimeCheat();
+-
+-// Test from teleport.cpp in Cheat Menu
+-#define INPUT_BUFFER_SIZE 64
+-char m_LocBuf[INPUT_BUFFER_SIZE], m_InBuf[INPUT_BUFFER_SIZE];
+-//
+-
+-// TODO Separate these menus out, place player into imgui_player_menu.. and so on.
+-
+-
+-//------------
+-// Lua test
+-
+-// Check lua globals, made this into a function
+-//bool
+-//CheckLua(lua_State *L, int r)
+-//{
+-//	// Check if the value is valid
+-//	if(r != LUA_OK) {
+-//		std::string errorMsg = lua_tostring(L, -1);
+-//		// std::cout << errorMsg << std::endl;
+-//		TRACE("KCNet - Lua Error");
+-//		return false;
+-//	} /*else {
+-//	        TRACE("KCNet - Lua Error");
+-//	}*/
+ //
+-//	return true;
+-//}
+-
+-//------------
+-
+-
+-/// <summary>
+-/// Toggle infinite health, moved out of main menu 
+-/// and refactored the checkbox to be under an if statement.
+-/// </summary>
+-void
+-toggleInfiniteHealth()
+-{
+-	PlayerCheats playerCheats = PlayerCheats();
+-	if(infiniteHealth) {
+-		playerCheats.EnableInfiniteHealth();
+-	} else {
+-		playerCheats.DisableInfiniteHealth();
+-	}
+-}
+-
+-void
+-toggleNeverWanted()
+-{
+-	if(neverWanted) {
+-		PlayerCheats::EnableNeverWanted();
+-	} else {
+-		PlayerCheats::DisableNeverWanted();
+-	}
+-}
+-
+-void
+-toggleVehicleInvincible()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-
+-	if(vehicleFunctions.IsPlayerInVehicle()) { 
+-		CVehicle *currentVeh = pPed->m_pMyVehicle;
+-
+-		if(vehicleInvincible) {
+-			VehicleCheats::EnableVehicleInvincibility(currentVeh);
+-		} else {
+-			VehicleCheats::DisableVehicleInvincibility(currentVeh);
+-		}
+-	
+-	}
+ 
+-}
++// I have moved most of these menus into their own files under src/extras/menus
+ 
+ void
+ toggleSecondWindow()
+@@ -160,84 +75,6 @@ toggleSecondWindow()
+ 	}
+ }
+ 
+-/// <summary>
+-/// Well, I created a bug with the high mass lol. I made a fun effect
+-/// TODO Figure out how to reset this back to default
+-/// TODO Figure out how to get these values from lua... Use my lua_test.cpp
+-/// This is fun, although it does crash after a minute since I can't turn it off.
+-/// </summary>
+-void
+-toggleHighVehicleMass()
+-{
+-	LuaTest luaTest = LuaTest();
+-
+-	// Test for lua
+-	lua_State *L = luaL_newstate();
+-	luaL_openlibs(L);
+-
+-	// This makes the vehicle super strong
+-	float vehicleMass = 30000.0f;
+-
+-	// Well I created the spinny effect but sadly it crashes after a minute.
+-	// This creates the spinny effect like from the reddit post I saw.
+-	float vehicleTurnMass = 4.0f;
+-
+-
+-	// This gives off an error too.
+-	//if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) {
+-	//	lua_getglobal(L, "vehicle_mass");
+-	//	if(lua_isnumber(L, 1)) {
+-	//		//if(luaTest.CheckLua(L, 1)) {
+-	//			float vehicleMass = (float)lua_tonumber(L, 1);
+-	//			TRACE("Vehicle mass: %f", vehicleMass);
+-	//		//}
+-	//	}
+-	//}
+-
+-
+-	//lua_close(L);
+-
+-
+-	// Well this just gives off an error
+-	// TODO Figure out how to fix this..
+-	// 
+-	//	float vehicleMass = lua_tonumber(L, 1);
+-	//	TRACE("VehicleMass: %f", vehicleMass);
+-	//}
+-	//
+-	//if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) 
+-	//{ 
+-
+-	//}
+-
+-	//
+-
+-
+-	CPlayerPed *pPed = FindPlayerPed();
+-
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-
+-	if (vehicleFunctions.IsPlayerInVehicle()) { 
+-		CVehicle *currentVeh = pPed->m_pMyVehicle;
+-
+-		if (highVehicleMass)
+-		{ 
+-			//currentVeh->m_fMass = 10000000.0f;
+-			
+-			//currentVeh->m_fMass = 10000.0f;
+-
+-
+-			// This makes the vehicle super strong
+-			currentVeh->m_fMass = vehicleMass;
+-
+-			// Spinny effect
+-			currentVeh->m_fTurnMass = vehicleTurnMass;
+-		}
+-		
+-	}
+-
+-}
+-
+ /// <summary>
+ /// This is the test window that shows up.
+ /// </summary>
+@@ -255,6 +92,12 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	Defines defines = Defines();
+ 
++	WarpMenu warpMenu = WarpMenu();
++	VehicleMenu vehicleMenu = VehicleMenu();
++	PlayerMenu playerMenu = PlayerMenu();
++	CheatMenu cheatMenu = CheatMenu();
++	MiscMenu miscMenu = MiscMenu();
++
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	float playerX = playerCoords.x;
+ 	float playerY = playerCoords.y;
+@@ -272,27 +115,7 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 
+ 		// Player
+ 		if (ImGui::BeginTabItem("Player")) {
+-			if (ImGui::Button("Heal")) {
+-				PlayerCheats::HealPlayer();
+-			}
+-
+-			ImGui::SameLine();
+-
+-			if (ImGui::Button("Suicide")) {
+-				PlayerCheats::SuicideCheat();
+-			}
+-
+-			if (ImGui::Checkbox("Infinite health", &infiniteHealth)) {
+-				toggleInfiniteHealth();
+-			}
+-
+-
+-
+-			// TODO Set these up
+-			//ImGui::Text("Warps");
+-			//if (ImGui::Button("Airport")) {
+-
+-			//}
++			playerMenu.PlayerTab();
+ 
+ 			ImGui::EndTabItem();
+ 		}
+@@ -300,167 +123,28 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 
+ 		// Vehicle
+ 		if (ImGui::BeginTabItem("Vehicle")) {
+-
+-			if (ImGui::Button("Toggle vehicle list")) { 
+-				showVehicleListBox = !showVehicleListBox; 
+-			}
+-
+-			// Add a test for spawning in the car
+-			// TODO Add a list of vehicles to spawn into
+-			ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
+-
+-			// TODO Figure out how to make this start from 130 instead of 1.
+-			if (showVehicleListBox) { 
+-				ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
+-			}
+-
+-			if (ImGui::Button("Spawn Vehicle")) {
+-				if (spawnInCar) {
+-					//VehicleFunctions::SpawnVehicle(150, true, true);
+-					VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true);
+-
+-					// VehicleFunctions::SpawnVehicle(*currentItemPtr, true, true);
+-				}
+-				else {
+-					//TRACE("currentItem %d", currentItem);
+-					//VehicleFunctions::SpawnVehicle(150, false, false);
+-					VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
+-				}
+-			}
+-
+-			ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
+-			if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) { 
+-				toggleHighVehicleMass();
+-			}
+-
+-			if(ImGui::Checkbox("Toggle invincibility", &vehicleInvincible)) { 
+-				toggleVehicleInvincible();
+-			}
++			vehicleMenu.VehicleTab();
+ 
+ 			ImGui::EndTabItem();
+ 		}
+ 
+ 		// Cheats
+ 		if (ImGui::BeginTabItem("Cheats")) {
+-
+-			if (ImGui::Button("Weapon1")) {
+-				CustomCheats::WeaponCheat1();
+-			}
+-
+-			if (ImGui::Button("Weapon2")) {
+-				CustomCheats::WeaponCheat2();
+-			}
+-
+-			if (ImGui::Button("Weapon3")) {
+-				CustomCheats::WeaponCheat3();
+-			}
+-
+-			// Police cheats
+-			ImGui::Text("Police");
+-
+-			if (ImGui::Button("Raise Wanted Level")) {
+-				PlayerCheats::RaiseWantedLevel();
+-			}
+-
+-			if (ImGui::Button("Lower Wanted Level")) {
+-				PlayerCheats::LowerWantedLevel();
+-			}
+-
+-			//ImGui::Checkbox("Never wanted", &neverWanted);
+-			if(ImGui::Checkbox("Never wanted", &neverWanted)) { 
+-				toggleNeverWanted();
+-			}
+-
+-			// Time cheats
+-			ImGui::Text("Time");
+-
+-			if(ImGui::Button("Faster time")) { 
+-				FastTimeCheat(); 
+-			}
+-
+-			if(ImGui::Button("Slower time")) { 
+-				SlowTimeCheat(); 
+-			}
+-
+-			
+-			//if(ImGui::Button("Nev")) { PlayerCheats::RaiseWantedLevel(); }
++			cheatMenu.CheatTab();
+ 
+ 			ImGui::EndTabItem();
+ 		}
+ 
+-
+ 		// Warps
+ 		if(ImGui::BeginTabItem("Warps")) {
+-			// Coords
+-			ImGui::InputTextWithHint("Coordinates", "x, y, z", m_InBuf, INPUT_BUFFER_SIZE);
+-			ImGui::Spacing();
+-
+-			// I got this to work, I took the idea from teleport.cpp in the Cheat Menu.
+-			if(ImGui::Button("Teleport")) { 
+-				CVector pos{0, 0, 10};
+-				if (sscanf(m_InBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) { 
+-					pos.z += 1.0f;
+-					PlayerCheats::WarpPlayer(pos, 0);
+-
+-#ifdef EXTRA_LOGGING
+-					CVector teleportPos{pos.x, pos.y, pos.z};
+-					std::string warpMessage = "Player has warped to " 
+-						+ std::to_string(teleportPos.x) 
+-						+ std::to_string(teleportPos.y) + 
+-						std::to_string(teleportPos.z);
+-
+-					if(gbExtraLogging) { 
+-						LogFunctions::LogInfo(defines.logFile, warpMessage);
+-						TRACE("X: %f, Y: %f, Z: %f", pos.x, pos.y, pos.z);
+-					}
+-
+-#endif
+-
+-					
+-				}
+-			}
+-
+-
+-			// This seems to show up the current coordinates on the screen.
+-			std::string playerPositionMessage = "Player position X: " 
+-				+ std::to_string(playerX) 
+-				+ "Y: " + std::to_string(playerY) 
+-				+ "Z: " + std::to_string(playerZ);
+-			ImGui::Text(playerPositionMessage.c_str());
++			warpMenu.WarpTab();
+ 
+ 			ImGui::EndTabItem();
+-
+-
+-
+ 		}
+ 
+ 		// Misc
+ 		if(ImGui::BeginTabItem("Misc")) { 
+-			ImGui::Text("Sounds");
+-			// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+-			if(ImGui::Button("Play bridge open")) { 
+-				CustomCheats::PlayAnnouncementTest(1);
+-			}
+-			if(ImGui::Button("Play bridge closed")) { 
+-				CustomCheats::PlayAnnouncementTest(2);
+-			}
+-
+-
+-
+-			ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+-
+-			//if (ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow)) { 
+-			if(ImGuiFunctions::ShowSecondWindow) { 
+-				ImGuiFunctions::ShowSecondWindow = true;
+-			} else {
+-				ImGuiFunctions::ShowSecondWindow = false;
+-			}
+-
+-			// Cutscene test, well this didn't work, breaks the menu and stuff.
+-			// Well this loads like the Cleo Redux one, I need to add more to it.
+-			//if(ImGui::Button("Cutscene #1")) { 
+-			//	CustomCheats::LoadCutscene("bank_1");
+-			//}
++			miscMenu.MiscTab();
+ 
+ 			ImGui::EndTabItem();
+ 		}
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+new file mode 100644
+index 00000000..f611c670
+--- /dev/null
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -0,0 +1,76 @@
++#include "cheat_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++#include "Pad.h"
++
++bool neverWanted = false;
++// Well I figured out how to use the built in cheats without copying them
++void
++FastTimeCheat();
++void
++SlowTimeCheat();
++
++void
++toggleNeverWanted()
++{
++	if(neverWanted) {
++		PlayerCheats::EnableNeverWanted();
++	} else {
++		PlayerCheats::DisableNeverWanted();
++	}
++}
++
++void CheatMenu::CheatTab()
++{
++	if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
++
++	if(ImGui::Button("Weapon2")) { CustomCheats::WeaponCheat2(); }
++
++	if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
++
++	// Police cheats
++	ImGui::Text("Police");
++
++	if(ImGui::Button("Raise Wanted Level")) { PlayerCheats::RaiseWantedLevel(); }
++
++	if(ImGui::Button("Lower Wanted Level")) { PlayerCheats::LowerWantedLevel(); }
++
++	// ImGui::Checkbox("Never wanted", &neverWanted);
++	if(ImGui::Checkbox("Never wanted", &neverWanted)) { toggleNeverWanted(); }
++
++	// Time cheats
++	ImGui::Text("Time");
++
++	if(ImGui::Button("Faster time")) { FastTimeCheat(); }
++
++	if(ImGui::Button("Slower time")) { SlowTimeCheat(); }
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/cheat_menu.h b/src/extras/menus/cheat_menu.h
+new file mode 100644
+index 00000000..8c1f4084
+--- /dev/null
++++ b/src/extras/menus/cheat_menu.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++class CheatMenu
++{
++public:
++	void CheatTab();
++};
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+new file mode 100644
+index 00000000..10cd43b3
+--- /dev/null
++++ b/src/extras/menus/misc_menu.cpp
+@@ -0,0 +1,47 @@
++#include "misc_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++void MiscMenu::MiscTab()
++{
++	ImGui::Text("Sounds");
++	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
++	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
++	if(ImGui::Button("Play bridge closed")) { CustomCheats::PlayAnnouncementTest(2); }
++
++	ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
++
++	// if (ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow)) {
++	if(ImGuiFunctions::ShowSecondWindow) {
++		ImGuiFunctions::ShowSecondWindow = true;
++	} else {
++		ImGuiFunctions::ShowSecondWindow = false;
++	}
++}
+diff --git a/src/extras/menus/misc_menu.h b/src/extras/menus/misc_menu.h
+new file mode 100644
+index 00000000..075bd74a
+--- /dev/null
++++ b/src/extras/menus/misc_menu.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++class MiscMenu
++{
++public:
++	void MiscTab();
++};
+\ No newline at end of file
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+new file mode 100644
+index 00000000..82407495
+--- /dev/null
++++ b/src/extras/menus/player_menu.cpp
+@@ -0,0 +1,55 @@
++#include "player_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++// Player
++bool infiniteHealth = false;
++
++void
++toggleInfiniteHealth()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(infiniteHealth) {
++		playerCheats.EnableInfiniteHealth();
++	} else {
++		playerCheats.DisableInfiniteHealth();
++	}
++}
++
++void PlayerMenu::PlayerTab()
++{
++	if(ImGui::Button("Heal")) { PlayerCheats::HealPlayer(); }
++
++	ImGui::SameLine();
++
++	if(ImGui::Button("Suicide")) { PlayerCheats::SuicideCheat(); }
++
++	if(ImGui::Checkbox("Infinite health", &infiniteHealth)) { toggleInfiniteHealth(); }
++}
+diff --git a/src/extras/menus/player_menu.h b/src/extras/menus/player_menu.h
+new file mode 100644
+index 00000000..44299622
+--- /dev/null
++++ b/src/extras/menus/player_menu.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++class PlayerMenu
++{
++public:
++	void PlayerTab();
++};
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+new file mode 100644
+index 00000000..b1f2a3e0
+--- /dev/null
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -0,0 +1,173 @@
++#include "vehicle_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++
++
++// Vehicle
++bool highVehicleMass = false;
++bool vehicleInvincible = false;
++
++bool spawnInCar = false;
++
++bool showVehicleListBox = false;
++const char *vehicles[] = {"Rhino", "Cheetah", "Infernus"};
++int currentItem = 150;
++
++void
++toggleVehicleInvincible()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		if(vehicleInvincible) {
++			VehicleCheats::EnableVehicleInvincibility(currentVeh);
++		} else {
++			VehicleCheats::DisableVehicleInvincibility(currentVeh);
++		}
++	}
++}
++
++/// <summary>
++/// Well, I created a bug with the high mass lol. I made a fun effect
++/// TODO Figure out how to reset this back to default
++/// TODO Figure out how to get these values from lua... Use my lua_test.cpp
++/// This is fun, although it does crash after a minute since I can't turn it off.
++/// </summary>
++void
++toggleHighVehicleMass()
++{
++	//LuaTest luaTest = LuaTest();
++
++	//// Test for lua
++	//lua_State *L = luaL_newstate();
++	//luaL_openlibs(L);
++
++	// This makes the vehicle super strong
++	float vehicleMass = 30000.0f;
++
++	// Well I created the spinny effect but sadly it crashes after a minute.
++	// This creates the spinny effect like from the reddit post I saw.
++	float vehicleTurnMass = 4.0f;
++
++	// This gives off an error too.
++	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) {
++	//	lua_getglobal(L, "vehicle_mass");
++	//	if(lua_isnumber(L, 1)) {
++	//		//if(luaTest.CheckLua(L, 1)) {
++	//			float vehicleMass = (float)lua_tonumber(L, 1);
++	//			TRACE("Vehicle mass: %f", vehicleMass);
++	//		//}
++	//	}
++	//}
++
++	// lua_close(L);
++
++	// Well this just gives off an error
++	// TODO Figure out how to fix this..
++	//
++	//	float vehicleMass = lua_tonumber(L, 1);
++	//	TRACE("VehicleMass: %f", vehicleMass);
++	//}
++	//
++	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua")))
++	//{
++
++	//}
++
++	//
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		if(highVehicleMass) {
++			// currentVeh->m_fMass = 10000000.0f;
++
++			// currentVeh->m_fMass = 10000.0f;
++
++			// This makes the vehicle super strong
++			currentVeh->m_fMass = vehicleMass;
++
++			// Spinny effect
++			currentVeh->m_fTurnMass = vehicleTurnMass;
++		}
++	}
++}
++
++void
++VehicleMenu::VehicleTab()
++{
++	if(ImGui::Button("Toggle vehicle list")) 
++	{ 
++		showVehicleListBox = !showVehicleListBox; 
++	}
++
++	// Add a test for spawning in the car
++	// TODO Add a list of vehicles to spawn into
++	ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
++
++	// TODO Figure out how to make this start from 130 instead of 1.
++	if(showVehicleListBox) 
++	{ 
++		ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
++	}
++
++	if(ImGui::Button("Spawn Vehicle")) {
++		if(spawnInCar) {
++			// VehicleFunctions::SpawnVehicle(150, true, true);
++			VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true);
++
++			// VehicleFunctions::SpawnVehicle(*currentItemPtr, true, true);
++		} else {
++			// TRACE("currentItem %d", currentItem);
++			// VehicleFunctions::SpawnVehicle(150, false, false);
++			VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
++		}
++	}
++
++	ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
++	if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) 
++	{ 
++		toggleHighVehicleMass(); 
++	}
++
++	if(ImGui::Checkbox("Toggle invincibility", &vehicleInvincible)) 
++	{
++		toggleVehicleInvincible(); 
++	}
++}
+diff --git a/src/extras/menus/vehicle_menu.h b/src/extras/menus/vehicle_menu.h
+new file mode 100644
+index 00000000..2de150e7
+--- /dev/null
++++ b/src/extras/menus/vehicle_menu.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++class VehicleMenu
++{
++public:
++	void VehicleTab();
++};
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+new file mode 100644
+index 00000000..4001bbfe
+--- /dev/null
++++ b/src/extras/menus/warp_menu.cpp
+@@ -0,0 +1,72 @@
++#include "warp_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++// Test from teleport.cpp in Cheat Menu
++#define INPUT_BUFFER_SIZE 64
++char m_LocBuf[INPUT_BUFFER_SIZE], m_InBuf[INPUT_BUFFER_SIZE];
++
++void
++WarpMenu::WarpTab()
++{
++	Defines defines = Defines();
++	CVector playerCoords = FindPlayerPed()->GetPosition();
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++
++
++	// Coords
++	ImGui::InputTextWithHint("Coordinates", "x, y, z", m_InBuf, INPUT_BUFFER_SIZE);
++	ImGui::Spacing();
++
++	// I got this to work, I took the idea from teleport.cpp in the Cheat Menu.
++	if(ImGui::Button("Teleport")) {
++		CVector pos{0, 0, 10};
++		if(sscanf(m_InBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) {
++			pos.z += 1.0f;
++			PlayerCheats::WarpPlayer(pos, 0);
++
++#ifdef EXTRA_LOGGING
++			CVector teleportPos{pos.x, pos.y, pos.z};
++			std::string warpMessage =
++			    "Player has warped to " + std::to_string(teleportPos.x) + std::to_string(teleportPos.y) + std::to_string(teleportPos.z);
++
++			if(gbExtraLogging) {
++				LogFunctions::LogInfo(defines.logFile, warpMessage);
++				TRACE("X: %f, Y: %f, Z: %f", pos.x, pos.y, pos.z);
++			}
++
++#endif
++		}
++	}
++
++	// This seems to show up the current coordinates on the screen.
++	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + "Y: " + std::to_string(playerY) + "Z: " + std::to_string(playerZ);
++	ImGui::Text(playerPositionMessage.c_str());
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.h b/src/extras/menus/warp_menu.h
+new file mode 100644
+index 00000000..b08615a9
+--- /dev/null
++++ b/src/extras/menus/warp_menu.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++class WarpMenu
++{
++public:
++	void WarpTab();
++};
+\ No newline at end of file
+diff --git a/src/extras/test/enums/model_ids.h b/src/extras/test/enums/model_ids.h
+index 2e047171..d18beab7 100644
+--- a/src/extras/test/enums/model_ids.h
++++ b/src/extras/test/enums/model_ids.h
+@@ -121,16 +121,70 @@ public:
+ 
+ class PedModels
+ {
++	// So many named random guy and random lady from this list:
++	// https://wiki.gtaconnected.com/Resources/GTAVC/PedSkins
+ public:
+ 	enum ModelIds {
++		POLICE = 1,
++		SWAT = 2,
++		FBI = 3,
++		ARMY = 4,
++		PARAMEDIC = 5,
++		FIREMAN = 6,
++		GOLFER = 7,
++		// 8 = UNKNOWN
++		RANDOM_LADY = 9,
++		BUM = 10,
++		GREASER = 11,
++		RANDOM_GUY1 = 12,
++		RANDOM_GUY2 = 13,
++		RANDOM_LADY2 = 14,
++		RANDOM_GUY3 = 15,
++		RANDOM_GUY4 = 16,
+ 
+ 	};
+ };
+ 
+ class WeaponModels
+ {
++	// https://wiki.gtaconnected.com/Resources/GTAVC/Weapons
+ public:
+-	enum ModelIds {
+-	
++	enum WeaponIds {
++		FIST = 0,
++		BRASS_KNUCKLES = 1,
++		SCREWDRIVER = 2,
++		GOLF_CLUB = 3,
++		NIGHTSTICK = 4,
++		KNIFE = 5,
++		BASEBALL_BAT = 6,
++		HAMMER = 7,
++		MEAT_CLEAVER = 8,
++		MACHETE = 9,
++		KATANA = 10,
++		CHAINSAW = 11,
++		GRENADE = 12,
++		REMOTE_GRENADE = 13,
++		TEARGAS = 14,
++		MOLOTOV = 15,
++		//ROCKET_UNFIREABLE = 16, // This one will possibly crash.
++		COLT45 = 17,
++		PYTHON = 18,
++		SHOTGUN = 19,
++		SPAZ_SHOTGUN = 20,
++		STUBBY_SHOTGUN = 21,
++		TEC9 = 22,
++		UZI = 23,
++		INGRAM = 24,
++		MP5 = 25,
++		M4 = 26,
++		RUGER = 27,
++		SNIPER_RIFLE = 28,
++		LASER_SNIPER = 29,
++		RPG = 30,
++		FLAME_THROWER = 31,
++		M60 = 32,
++		MINIGUN = 33,
++		CAMERA = 34,
++		DETONATOR = 36
+ 	};
+ };
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

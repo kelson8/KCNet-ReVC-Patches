@@ -1,0 +1,125 @@
+From dcb23ad54d98b8662ce696df7924d7ccef489ae7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 10 Mar 2025 23:36:30 -0400
+Subject: [PATCH 081/101] Fix broken mouse in the imgui menu.
+
+---
+ src/skel/win/win.cpp | 64 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 64 insertions(+)
+
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 6028cf87..0b424b0a 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -86,6 +86,9 @@
+ bool bInit = false;
+ HWND mainWindow = nullptr;
+ 
++// Set the resize variables
++static int g_ResizeWidth = 0, g_ResizeHeight = 0;
++
+ // Forward declare message handler from imgui_impl_win32.cpp
+ // Well this pisses off the MainWndProc..
+ // This finally builds like this... Still crashes though
+@@ -354,6 +357,16 @@ psTimer(void)
+ void
+ psMouseSetPos(RwV2d *pos)
+ {
++	// Well... Placing this here seems to have fixed the mouse being locked.
++	// I just guessed where this was and it works!
++	#define _IMGUI_TEST
++	#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	if (!imGuiFunctions.ImGuiDone) {
++		return;
++	}
++	#endif
++	#undef _IMGUI_TEST
+ 	POINT point;
+ 
+ 	point.x = (RwInt32) pos->x;
+@@ -1278,6 +1291,8 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 		// Hmm.. Will this work in here?
+ 		if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
+ 
++		ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
+ 
+ 
+ 	        /*
+@@ -1311,6 +1326,17 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 
+ 			if (RwInitialised && r.h > 0 && r.w > 0)
+ 			{
++				#define _IMGUI_TEST
++				#ifdef _IMGUI_TEST
++				if (!imGuiFunctions.ImGuiDone) {
++				        if(rw::d3d::d3ddevice != NULL && wParam != SIZE_MINIMIZED) {
++					        g_ResizeWidth = LOWORD(lParam);
++					        g_ResizeHeight = HIWORD(lParam);
++				        }
++				   }
++				#endif
++				#undef _IMGUI_TEST
++
+ 				RsEventHandler(rsCAMERASIZE, &r);
+ 
+ 				if (r.w != LOWORD(lParam) && r.h != HIWORD(lParam))
+@@ -2577,6 +2603,9 @@ CMenuManager cMenuManager = CMenuManager();
+ 	 #define _IMGUI_TEST
+ 	#ifdef _IMGUI_TEST
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
+ 
+ 
+ 	#endif //_IMGUI_TEST
+@@ -2973,9 +3002,44 @@ CMenuManager cMenuManager = CMenuManager();
+ // 					// Well this dies in here...
+ // 					// ImGuiFunctions::ImGuiLoop();
+ 
++								// Resize check
++								// TODO Figure out how to get this.
++								// This should fix the resize being buggy but other then that this menu seems to work.
++							//if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
++							//        rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
++							//        g_d3dpp.BackBufferHeight = g_ResizeHeight;
++							//        g_ResizeWidth = g_ResizeHeight = 0;
++							//        ResetDevice();
++						 //       }
++
+ 							// This disables the players control but the mouse is still locked when ImGui is open...
+ 							if (!imGuiFunctions.ImGuiDone) {
+ 							        CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++							        
++
++
++									// TODO Test this
++									// Well this didn't work.
++
++									//_InputShutdownMouse();
++		/*							if(_InputMouseNeedsExclusive()) {
++								        _InputShutdownMouse();
++								        _InputInitialiseMouse(false);
++							        }*/
++
++									// TODO Test these
++							        pad->DisablePlayerControls = 1;
++									
++									pad->ClearMouseHistory();
++							        pad->NewState.DPadUp = 0;
++							        pad->OldState.DPadUp = 0;
++							        pad->NewState.DPadDown = 0;
++							        pad->OldState.DPadDown = 0;
++
++									//CPad::UpdatePads();
++
++									// Well this breaks the menu from being toggled.
++							        //cpad.Clear(true);
+ 
+ 							}
+ 							else {
+-- 
+2.45.1.windows.1
+

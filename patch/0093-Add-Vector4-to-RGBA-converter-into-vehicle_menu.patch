@@ -1,0 +1,799 @@
+From 2fcba39142fd6e1eb4e81365cc69ae170eee786f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Mar 2025 04:01:50 -0400
+Subject: [PATCH 093/101] Add Vector4 to RGBA converter into vehicle_menu. Add
+ test for vehicle colors, logging the colors. Add a new vehicle list test,
+ currently it's disabled. Add mall warp and some guides on where to place
+ warps. Fix listbox to automatically get size of the warps. Add display
+ counter and clear counter tests, text doesn't show up in it. Add plugin sdk
+ test, this doesn't work but I could work on it. Add test for toggling peds
+ talking, doesn't work yet. Add new vehicle list box, setter for value, and
+ getter for value into imgui_functions.
+
+---
+ src/core/main.cpp                        |   4 +
+ src/core/main.h                          |   4 +
+ src/extras/functions/imgui_functions.cpp | 165 +++++++++--------------
+ src/extras/functions/imgui_functions.h   |  24 ++++
+ src/extras/menus/cheat_menu.cpp          |  31 ++++-
+ src/extras/menus/misc_menu.cpp           | 142 ++++++++++++++++++-
+ src/extras/menus/vehicle_menu.cpp        | 103 +++++++++++++-
+ src/extras/menus/warp_menu.cpp           |  37 ++++-
+ 8 files changed, 394 insertions(+), 116 deletions(-)
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 2af0b7da..e7b63024 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -133,6 +133,10 @@ uint8 gbGameSaveOnStartup = 0;
+ bool gbLuaTest;
+ #endif //LUA_TEST
+ 
++#ifdef CUSTOM_CODE // Ped speech toggle
++bool gbPedSpeech;
++#endif
++
+ // TODO Fix this to work.
+ // This should change the police weapons to any from a list once I figure it out
+ //#ifdef CHANGE_POLICE_WEAPONS
+diff --git a/src/core/main.h b/src/core/main.h
+index d8ab0a98..a9256728 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -103,6 +103,10 @@ extern bool gbLuaTest;
+ extern bool gbDisplayPosn;
+ #endif
+ 
++#ifdef CUSTOM_CODE
++extern bool gbPedSpeech;
++#endif
++
+ // TODO Fix this to work
+ // This should change the police weapons to any from a list once I figure it out
+ //#ifdef CHANGE_POLICE_WEAPONS
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 4293a7ff..a8c008f7 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -12,108 +12,13 @@
+ 
+ #include "defines.h"
+ 
++#include <vector>
++#include <sstream>
++
++
++// I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with
++// Through 
+ 
+-//
+-//// TODO Move ImGui functions for use in here.
+-//
+-///// <summary>
+-///// Destory the ImGui window
+-///// </summary>
+-///// <param name="hwnd"></param>
+-///// <param name="wc"></param>
+-//void ImGuiFunctions::Main::DestroyWindow(HWND hwnd, WNDCLASSEXW wc)
+-//{
+-//	::DestroyWindow(hwnd);
+-//	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+-//}
+-//
+-///// <summary>
+-///// Shutdown ImGui
+-///// </summary>
+-//void ImGuiFunctions::Main::ShutDown()
+-//{
+-//	// Shutdown ImGui
+-//	ImGui_ImplDX9_Shutdown();
+-//	ImGui_ImplWin32_Shutdown();
+-//	// Destroy ImGui Context
+-//	ImGui::DestroyContext();
+-//}
+-//
+-///// <summary>
+-///// Show the ImGui Window
+-///// </summary>
+-///// <param name="hwnd"></param>
+-//void ImGuiFunctions::Main::ShowWindow(HWND hwnd)
+-//{
+-//	// Show the window
+-//	::ShowWindow(hwnd, SW_SHOWDEFAULT);
+-//	::UpdateWindow(hwnd);
+-//}
+-//
+-//// imgui_demo line 256
+-//// TODO What's this for? Seems like it's not needed
+-////static void ImGuiFunctions::Main::ShowWindow(bool* p_open)
+-////{
+-////	static bool show_main_menu = false;
+-////
+-////	if (show_main_menu)
+-////	{
+-////		if (ImGui::Begin("Test"))
+-////		{
+-////			ImGui::Text("Hello World!");
+-////		}
+-////	}
+-////
+-////	if (!ImGui::Begin("Test", p_open))
+-////	{
+-////
+-////		ImGui::End();
+-////		return;
+-////	}
+-////}
+-//
+-///// <summary>
+-///// Setup ImGui
+-///// </summary>
+-//void ImGuiFunctions::Main::SetupContext()
+-//{
+-//    //bool oldFont = false;
+-//
+-//	// Setup Dear ImGui context
+-//	IMGUI_CHECKVERSION();
+-//	ImGui::CreateContext();
+-//	ImGuiIO& io = ImGui::GetIO(); (void)io;
+-//	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+-//	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+-//
+-//	// Load Fonts
+-//	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
+-//	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
+-//	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
+-//	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
+-//	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
+-//	// - Read 'docs/FONTS.md' for more instructions and details.
+-//	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
+-//	io.Fonts->AddFontDefault();
+-//
+-//    //if (oldFont) {
+-//    //    io.Fonts->AddFontFromFileTTF("./lib/ImGui/misc/fonts/DroidSans.ttf", 16.0f);
+-//    //}
+-//    //else {
+-//        // New font, from the Cheat Menu here https://github.com/user-grinch/Cheat-Menu/tree/master/resource/addon
+-//        io.Fonts->AddFontFromFileTTF("./ViceExtended/fonts/cheat_menu.ttf", 1.15f);
+-//    //}
+-//	//
+-//
+-//	
+-//    // Here are some other fonts
+-//	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
+-//	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
+-//	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
+-//	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
+-//	//IM_ASSERT(font != nullptr);
+-//}
+-//
+ ///// <summary>
+ ///// Add a help marker
+ ///// </summary>
+@@ -132,6 +37,64 @@
+ //
+ 
+ 
++/// <summary>
++/// Well I was going to replicate the re3 function but
++/// I found this which outputs to the Debug Output in VS 2022
++/// https://stackoverflow.com/questions/14858262/stdcout-wont-print#comment114525319_53813283
++/// </summary>
++/// <param name="text">The text to output to VS 2022 or debugger.</param>
++void
++ImGuiFunctions::PrintToOutput(const char* text)
++{
++	OutputDebugString(text);
++}
++
++// Test from Google Gemini
++// TODO Learn exactly how this is working
++// This works for displaying a list of numbers which could be used for vehicle ids.
++void
++ImGuiFunctions::VehiclesListBox(int &selectedItem)
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	int minValue = 130;
++	int maxValue = 250;
++
++	std::vector<std::string> items;
++	for(int i = minValue; i <= maxValue; ++i) {
++		std::stringstream ss;
++		ss << i;
++		items.push_back(ss.str());
++	}
++
++	// I had no idea you could do all this with ImGui Listbox
++	if(ImGui::ListBox(
++	       "Vehicles Listbox", &selectedItem,
++	       [](void *data, int idx, const char **out_text) {
++		       std::vector<std::string> *items = static_cast<std::vector<std::string> *>(data);
++		       if(idx >= 0 && idx < items->size()) {
++			       *out_text = items->at(idx).c_str();
++			       return true;
++		       }
++		       return false;
++	       },
++	       (void *)&items, items.size())) {
++		// Listbox was changed, selectedItem now contains the index.
++		// To get the selected value back into an int.
++		int selectedValue = std::stoi(items[selectedItem]);
++		// Do what you need with the selected value.
++		//TRACE("Selected value %i", selectedValue);
++		// TODO Test this, output the value somewhere else.
++		
++		imGuiFunctions.setSelectedVehicleId(selectedValue);
++
++		// 
++		//imGuiFunctions.selectedVehicleId = selectedValue;
++		// std::cout << "Selected value: " << selectedValue << std::endl;
++	}
++}
++
++
+ 
+ void
+ ImGuiFunctions::SetupFonts(ImGuiIO &io)
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index e59e77f1..7b3f1a5a 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -28,6 +28,8 @@ private:
+ 	// Setup ImGui fonts, this isn't used outside of this class
+ 	static void SetupFonts(ImGuiIO &io);
+ 
++	int selectedVehicleId;
++
+ public:
+ 	// Setup ImGui context.
+ 	static void SetupContext();
+@@ -39,9 +41,31 @@ public:
+ 
+ 	static void ApplyStyle();
+ 
++	// This is a test I got from Google Gemini, I need to learn how it works.
++	// Show a vehicle list box, ids only for now.
++	static void VehiclesListBox(int &selectedItem);
++	
++	// https://www.w3schools.com/cpp/cpp_encapsulation.asp
++	// This format seems nice to use.
++	// Why does this always show 0? I don't think I'm doing it right.
++	void setSelectedVehicleId(int id) 
++	{ 
++		selectedVehicleId = id;
++	}
++
++	int getSelectedVehicleId()
++	{ 
++		return selectedVehicleId;
++	}
++	//
++
++
+ 	static bool ShowSecondWindow;
+ 	static bool ImGuiDone;
+ 
++	// This prints to a VS 2022 debug output window.
++	static void PrintToOutput(const char *text);
++
+ #ifdef _MOVE_CODE
+ 	static void RunImGui();
+ 
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index b3195805..0d26bce7 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -113,6 +113,24 @@ GetPlayerMoney()
+ 	return pPlayerInfo.m_nMoney;
+ }
+ 
++
++bool pedSpeech = true;
++//----------- Ped speech enable/disable ----------//
++void
++togglePedSpeech()
++{
++	if(pedSpeech) 
++	{
++		gbPedSpeech = false;
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++	} else {
++		gbPedSpeech = true;
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++	}
++}
++
++
++//----------- Cheat tab ----------//
+ void CheatMenu::CheatTab()
+ {
+ 	if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
+@@ -206,9 +224,12 @@ void CheatMenu::CheatTab()
+ 		toggleTrafficFunc();
+ 	}
+ 
+-	// TODO Setup these
+-	//if(ImGui::Button("Enable peds")) 
+-	//{
+-	//
+-	//}
++	// Ped speech
++	ImGui::Text("Ped talking toggle");
++
++	if (ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) 
++	{ 
++		togglePedSpeech();
++	}
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 35b7d07c..93ced7f1 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -22,6 +22,10 @@
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
++// TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
++#ifdef PLUGIN_SDK_TEST
++#include "../test/scriptcommands_test.h"
++#endif
+ 
+ // ReVC
+ #include "Entity.h"
+@@ -30,7 +34,12 @@
+ #include "PlayerInfo.h"
+ 
+ #include "Frontend.h"
++#include "Text.h"
+ 
++#include "Script.h"
++
++// CUserDisplay
++#include "User.h"
+ 
+ 
+ // Extras
+@@ -151,6 +160,111 @@ static std::vector<std::string> m_WeatherNames {
+ //	}
+ //}
+ 
++// TODO Figure out how to replicate this
++
++/// <summary>
++/// Values from Script4.cpp, and OnscreenTimer.h
++/// 	COUNTER_DISPLAY_NUMBER,
++///		COUNTER_DISPLAY_BAR,
++    /// </summary>
++	/// 
++
++//----------- Counter tests and progress bars ----------//
++
++// Copied from script.h
++#define KEY_LENGTH_IN_SCRIPT 8
++
++// Inital value set to 0, this gets set in the displayCounterOnScreen function.
++uint16 counterVar = 0;
++
++// Replicated these from Script4.cpp.
++
++/// <summary>
++/// Clear the counter that was on the screen
++/// </summary>
++void
++clearCounterOnScreen()
++{
++	// if (!counterEnabled)
++	//{
++	//  16 should be the right number, set in the var value of the function above.
++	//CUserDisplay::OnscnTimer.ClearCounter(16);
++	// TODO Make this grab from my new value setup
++	CUserDisplay::OnscnTimer.ClearCounter(counterVar);
++	//}
++}
++
++bool counterEnabled = false;
++/// <summary>
++/// This works, but doesn't display the proper text.
++/// </summary>
++void displayCounterOnScreen()
++{
++	// TODO Figure out how to fix the text, it doesn't get the right text.
++	if (counterEnabled) 
++	{
++		char onscreen_str[KEY_LENGTH_IN_SCRIPT];
++		// TODO Figure out what the var value is
++		//uint16 var = 16;
++		counterVar = 16;
++		// Extra Logging, placeholder message
++		wchar *text = TheText.Get("KCEXLOG");
++		// Hmm, how is this working? It's converting the wchar into a char
++		// strncpy(onscreen_str, (char*)&CTheScripts::ScriptSpace[m_nIp], KEY_LENGTH_IN_SCRIPT);
++		strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
++		//CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++	} else {
++		clearCounterOnScreen();
++	}
++
++}
++
++//----------- Plugin sdk test ----------//
++#ifdef PLUGIN_SDK_TEST
++//void
++//commandTest1()
++//{
++//	static CRunningScript script;
++//	script.m_bIsMissionScript = false;
++//	int8 retval = -1;
++//	++CTheScripts::CommandsExecuted;
++//	// int32 command = (uint16)CTheScripts::Read2BytesFromScript(&CRunningScript::m_nIp);
++//	// script.m_bNotFlag = (command & 0x8000);
++//	// command &= 0x7FFF;
++//	script.ProcessOneCommand();
++//	// script.m_bNotFlag =
++//}
++
++
++using namespace plugin;
++
++// I highly doubt this will work.
++
++// Basically trying to recreate what the plugin sdk does in ReVC
++void
++CommandTest1()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
++	// Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++
++	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
++}
++
++#endif
++
++
++//----------- Debug texts ----------//
++
++/// <summary>
++/// TODO Figure out how to create a progress bar for chaos mode stuff.
++/// </summary>
++//void toggleTestProgressBar()
++//{
++//	//CRect
++//}
+ 
+ /// <summary>
+ /// Toggle the customized version text on the screen
+@@ -181,6 +295,8 @@ toggleDisplayPosn()
+ 		
+ }
+ 
++
++//----------- Hud and radar toggles ----------//
+ // TODO Add show/hide radar
+ // TODO Add show/hide hud
+ 
+@@ -213,6 +329,7 @@ toggleHud()
+ 	}
+ }
+ 
++//----------- Misc tab ----------//
+ void MiscMenu::MiscTab()
+ {
+ 	ImGui::Text("Sounds");
+@@ -223,11 +340,13 @@ void MiscMenu::MiscTab()
+ 	ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+ 
+ 	// I got this working like in the debug menu.
+-	if(ImGui::Checkbox("Toggle position on screen", &gbDisplayPosn)) { 
++	if(ImGui::Checkbox("Toggle position on screen", &gbDisplayPosn)) 
++	{ 
+ 		toggleDisplayPosn();
+ 	}
+ 	// Toggle the version text like in the debug menu.
+-	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) { 
++	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) 
++	{ 
+ 		toggleVersionText();
+ 	}
+ 
+@@ -235,13 +354,30 @@ void MiscMenu::MiscTab()
+ 		toggleHud();
+ 	}
+ 
++	// TODO Test this, it'll probably crash or something.
++	// Well this displays just doesn't display the text and I cannot get rid of it
++	if(ImGui::Checkbox("Display counter test", &counterEnabled)) 
++	{ 
++		displayCounterOnScreen();
++	}
++
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
+ 
+-	if(ImGui::Button("Drop bomb")) { 
++	if(ImGui::Button("Drop bomb")) 
++	{ 
+ 		CustomCheats::ExplosionCheat();
+ 	}
++	
++
++#ifdef PLUGIN_SDK_TEST
++	ImGui::Text("Plugin sdk test");
++	if(ImGui::Button("Blow up player")) 
++	{ 
++		CommandTest1();
++	}
++#endif
+ 
+ 	// TODO Test this
+ 	// Well this didn't do anything
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 470f59b8..a2d4c4f7 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -39,11 +39,13 @@ bool vehicleInvincible = false;
+ bool spawnInCar = false;
+ 
+ bool showVehicleListBox = false;
+-const char *vehicles[] = {"Rhino", "Cheetah", "Infernus"};
++const char *vehicles[] = {"Rhino", "Cheetah", "Infernus", "Comet"};
+ int currentItem = 150;
+ 
+ bool showCurrentItem = false;
+ 
++bool newVehicleListBoxEnabled = false;
++
+ void
+ toggleVehicleInvincible()
+ {
+@@ -131,10 +133,49 @@ toggleHighVehicleMass()
+ 	}
+ }
+ 
++// TODO Move this into a misc functions file
++// Convert ImVec4 to RGBA
++
++// Reverse this function: https://github.com/ocornut/imgui/issues/5102
++
++float r_color = 0;
++float g_color = 0;
++float b_color = 0;
++float a_color = 0;
++
++// Well now, chatgpt helps again, I can use the color variable, and multiply it by 255 to get the RGBA.
++void
++IV4toRGBA(ImVec4 color)
++{
++	Defines defines = Defines();
++	//ImVec4(color);
++	r_color = static_cast<int>(color.x * 255.0f);
++	g_color = static_cast<int>(color.y * 255.0f);
++	b_color = static_cast<int>(color.z * 255.0f);
++	a_color = static_cast<int>(color.w * 255.0f);
++
++	std::string colorString = "Colors (RGBA): R: " + std::to_string(r_color) 
++		+ " G: " + std::to_string(g_color) 
++		+ " B: " + std::to_string(b_color) 
++		+ " A: " + std::to_string(a_color);
++
++	LogFunctions::LogInfo(defines.logFile, colorString);
++
++}
++
++//
++
++//
++
+ void
+ VehicleMenu::VehicleTab()
+ {
+ 	CustomCheats customCheats = CustomCheats();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	// This should store the current vehicle id from the listbox
++	//int currentVehicleID = imGuiFunctions.selectedVehicleId;
++	int currentVehicleID = imGuiFunctions.getSelectedVehicleId();
+ 
+ 	if(ImGui::Button("Toggle vehicle list")) 
+ 	{ 
+@@ -147,7 +188,8 @@ VehicleMenu::VehicleTab()
+ 	// I got this working with the switch statements below.
+ 	if(showVehicleListBox) 
+ 	{ 
+-		ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
++		//ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
++		ImGui::ListBox("Vehicles", &currentItem, vehicles, IM_ARRAYSIZE(vehicles)); 
+ 	}
+ 
+ 	ImGui::Checkbox("Show current item", &showCurrentItem);
+@@ -161,6 +203,8 @@ VehicleMenu::VehicleTab()
+ 		// This works! Now the cars won't spawn on top of each other and crash the game.
+ 		customCheats.ClearItemsFromArea(10);
+ 		
++		// TODO Come up with a better solution then this.
++
+ 		if(spawnInCar) {
+ 			switch(currentItem) {
+ 				
+@@ -175,8 +219,13 @@ VehicleMenu::VehicleTab()
+ 			case 2: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, true, true);
+ 				break;
++			case 3: 
++				VehicleFunctions::SpawnVehicle(VehicleModels::COMET, true, true); 
++				break;
++			
+ 			}
+ 
++
+ 			// Not spawning in vehicle
+ 		} else {
+ 			switch(currentItem) {
+@@ -192,6 +241,9 @@ VehicleMenu::VehicleTab()
+ 			case 2: 
+ 				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, false, false); 
+ 				break;
++			case 3:
++				VehicleFunctions::SpawnVehicle(VehicleModels::COMET, false, false);
++				break;
+ 			}
+ 		}
+ 	}
+@@ -207,6 +259,24 @@ VehicleMenu::VehicleTab()
+ 		toggleVehicleInvincible(); 
+ 	}
+ 
++	// TODO Convert ImVec4 to float for vehicle color testing.
++	// TODO Fix this to work, I just need to figure out how to complete this part in ImGui.
++
++	static ImVec4 color = ImVec4(114.0f / 255.0f, 144.0f / 255.0f, 154.0f / 255.0f, 200.0f / 255.0f);
++	static ImGuiColorEditFlags base_flags = ImGuiColorEditFlags_None;
++
++	ImGui::Text("Vehicle colors");
++	ImGui::ColorEdit3("Test", (float*)& color, base_flags);
++
++
++	if (ImGui::Button("Log color")) { 
++		IV4toRGBA(color);
++		ImGuiFunctions::PrintToOutput("This should show up.");
++	}
++
++	////std::string colorString = std::to_string((float*)&color);
++	//ImGui::Text("");
++
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
+@@ -215,4 +285,31 @@ VehicleMenu::VehicleTab()
+ 	{ 
+ 		CustomCheats::BlowUpAllCars(); 
+ 	}
+-}
++
++	// Test
++
++	//ImGui::Separator();
++	//ImGui::Text("Vehicle list test");
++
++	//ImGui::Checkbox("New Vehicle Listbox", &newVehicleListBoxEnabled);
++	//if(ImGui::Checkbox("New Vehicle Listbox", &newVehicleListBoxEnabled)) { 	}
++
++	// TODO Fix these, I cannot get the currentVehicleID from above showing up yet, it always shows 0.
++	//int testInt = 130;
++	// ImGuiFunctions::VehiclesListBox(testInt);
++	//if(newVehicleListBoxEnabled) 
++	//{ 
++	//	imGuiFunctions.VehiclesListBox(testInt); 
++	//}
++
++	//// Uses the output to debug function that doesn't require re3 code.
++	//// This is now using getters and setters in the imgui_functions.h
++	//if (ImGui::Button("Log vehicle id")) 
++	//{ 
++	//	
++	//	std::string vehicleIdString = "Vehicle ID: " + std::to_string(currentVehicleID);
++	//	imGuiFunctions.PrintToOutput(vehicleIdString.c_str());
++	//}
++
++
++ }
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index ea2a88f3..97eb1210 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -1,6 +1,10 @@
+ #include "warp_menu.h"
+ #include "imgui.h"
+ 
++#include <vector>
++#include <string>
++#include <sstream>
++
+ #define WITHDINPUT
+ #include "common.h"
+ #include "crossplatform.h"
+@@ -27,7 +31,8 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
+-const char *warps[] = {"Airport", "Mansion", "Beach"};
++// To add a warp, first add its name to this list.
++const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
+ int currentWarp = 0;
+ bool showWarps = false;
+ bool showCurrentWarp = false;
+@@ -55,14 +60,24 @@ float beachX = 267.8;
+ float beachY = -1503.1;
+ float beachZ = 12.5;
+ 
++float mallX = 317.2;
++float mallY = 1122.6;
++float mallZ = 20.1;
++
++// Set new warp locations below
++//
++
++// Add new warp locations in here, incrementing the previous number.
+ enum warpLocations { 
+ 	AIRPORT = 0,
+ 	MANSION = 1,
+ 	BEACH = 2,
++	MALL = 3,
+ };
+ 
+ /// <summary>
+-/// Test for logging current coords to file.
++/// Log the current coords to the log file.
++/// Useful for marking locations quickly.
+ /// </summary>
+ void
+ logCurrentCoords()
+@@ -84,6 +99,10 @@ logCurrentCoords()
+ 	LogFunctions::LogInfo(Defines::logFile, playerCoordsString);
+ }
+ 
++
++
++//
++
+ void
+ WarpMenu::WarpTab()
+ {
+@@ -128,8 +147,12 @@ WarpMenu::WarpTab()
+ 	ImGui::Separator();
+ 	ImGui::Text("Warps");
+ 	ImGui::Checkbox("Show warps", &showWarps);
+-	// TODO Automatically get the size of this
+-	if(showWarps) { ImGui::ListBox("Warps", &currentWarp, warps, 3); }
++	
++	if(showWarps) { ImGui::ListBox("Warps", &currentWarp, warps, IM_ARRAYSIZE(warps)); }
++
++	//if(showWarps) { 
++	//	WarpListBox(currentWarp);
++	//}
+ 
+ 	ImGui::Checkbox("Show current warp", &showCurrentWarp);
+ 	if(showCurrentWarp) { ImGui::Text(std::to_string(currentWarp).c_str()); }
+@@ -147,7 +170,13 @@ WarpMenu::WarpTab()
+ 		case BEACH: 
+ 			PlayerCheats::SetPlayerPosition(beachX, beachY, beachZ); 
+ 			break;
++
++		case MALL:
++			PlayerCheats::SetPlayerPosition(mallX, mallY, mallZ); 
++			break;
+ 		}
++
++
+ 	}
+ 
+ 	ImGui::Separator();
+-- 
+2.45.1.windows.1
+

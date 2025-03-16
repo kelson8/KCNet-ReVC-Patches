@@ -1,0 +1,322 @@
+From cdf71a32dbe6b6b22713cbb6c17e54025d0d8ae4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Mar 2025 16:02:47 -0400
+Subject: [PATCH 090/101] Add proper warp menu, add airport, mansion, and beach
+ warps. Add option to log current coords to the log file. Move some items
+ around and label stuff in imgui. Add ped density, and traffic density toggle
+ in cheat menu. Add SetPlayerPosition in player_cheats. Add blank datastore
+ file, for use later.
+
+---
+ src/extras/cheats/player_cheats.cpp | 18 ++++++
+ src/extras/cheats/player_cheats.h   |  2 +
+ src/extras/menus/cheat_menu.cpp     | 79 ++++++++++++++++++++++++++
+ src/extras/menus/warp_menu.cpp      | 88 +++++++++++++++++++++++++++--
+ src/extras/utils/datastore.cpp      |  4 ++
+ src/extras/utils/datastore.h        |  7 +++
+ 6 files changed, 193 insertions(+), 5 deletions(-)
+ create mode 100644 src/extras/utils/datastore.cpp
+ create mode 100644 src/extras/utils/datastore.h
+
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index e2475747..a45a7a0f 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -60,6 +60,24 @@
+ #include "defines.h"
+ 
+ 
++/// <summary>
++/// Set the player position to the x, y, z
++/// </summary>
++/// <param name="x"></param>
++/// <param name="y"></param>
++/// <param name="z"></param>
++void
++PlayerCheats::SetPlayerPosition(float x, float y, float z)
++{
++	// Mostly copied from TeleportToWaypoint in debug_functions.cpp.
++	CEntity *pEntityToTeleport = FindPlayerEntity();
++	CVector vNewPos = CVector(x, y, z);
++	CStreaming::LoadScene(vNewPos);
++	CStreaming::LoadSceneCollision(vNewPos);
++	vNewPos.z = CWorld::FindGroundZForCoord(vNewPos.x, vNewPos.y) + pEntityToTeleport->GetDistanceFromCentreOfMassToBaseOfModel();
++	pEntityToTeleport->Teleport(vNewPos);
++}
++
+ void
+ PlayerCheats::HealPlayer()
+ {
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index c72af8ec..40e4f79d 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -6,6 +6,8 @@ class PlayerCheats
+ {
+ public:
+ 	static void HealPlayer();
++	// Teleport player to position, this works.
++	static void SetPlayerPosition(float x, float y, float z);
+ 
+ 	static void InfiniteHealthCheat();
+ 	static void SuicideCheat();
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index 1c47ec6a..b3195805 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -33,6 +33,10 @@
+ 
+ 
+ #include "Pad.h"
++#include "Population.h"
++#include "CarCtrl.h"
++#include "Hud.h"
++#include "Text.h"
+ 
+ bool neverWanted = false;
+ // Well I figured out how to use the built in cheats without copying them
+@@ -51,6 +55,41 @@ toggleNeverWanted()
+ 	}
+ }
+ 
++//----------- Ped Density -----------//
++// If these are false, it should turn off the peds and traffic.
++bool togglePeds = true;
++bool toggleTraffic = true;
++
++void
++togglePedsFunc()
++{
++	if(!togglePeds) 
++	{
++		CPopulation::PedDensityMultiplier = 0.0f;
++		// Peds Disabled
++		CHud::SetHelpMessage(TheText.Get("PED_DIS"), false, false);
++	} else {
++		CPopulation::PedDensityMultiplier = 1.0f;
++		// Peds Enabled
++		CHud::SetHelpMessage(TheText.Get("PED_EN"), false, false);
++	}
++}
++
++void
++toggleTrafficFunc()
++{
++	if (!toggleTraffic)
++	{
++		CCarCtrl::CarDensityMultiplier = 0.0f;
++		// Traffic Disabled
++		CHud::SetHelpMessage(TheText.Get("VEH_DIS"), false, false);
++	} else {
++		CCarCtrl::CarDensityMultiplier = 1.0f;
++		// Traffic Enabled
++		CHud::SetHelpMessage(TheText.Get("VEH_EN"), false, false);
++	}
++}
++
+ //----------- Money cheats ----------//
+ // Variables for money
+ bool customAmount = false;
+@@ -127,9 +166,49 @@ void CheatMenu::CheatTab()
+ 	if(ImGui::Checkbox("Never wanted", &neverWanted)) { toggleNeverWanted(); }
+ 
+ 	// Time cheats
++	ImGui::Separator();
+ 	ImGui::Text("Time");
+ 
+ 	if(ImGui::Button("Faster time")) { FastTimeCheat(); }
+ 
+ 	if(ImGui::Button("Slower time")) { SlowTimeCheat(); }
++
++	// Density cheats
++	ImGui::Separator();
++	ImGui::Text("Population density");
++
++	// TODO Fix these to work, not sure how to do it this spams the game with the text.
++	
++	
++	if(ImGui::Checkbox("Toggle peds", &togglePeds)) 
++	{ 
++		togglePedsFunc();
++	}
++	
++	//if (!togglePeds) { 
++	//	CPopulation::PedDensityMultiplier = 0.0f;
++	//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++	//} else {
++	//	CPopulation::PedDensityMultiplier = 1.0f;
++	//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++	//}
++
++	//if (!toggleTraffic) { 
++	//	CCarCtrl::CarDensityMultiplier = 0.0f;
++	//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++	//} else {
++	//	CCarCtrl::CarDensityMultiplier = 1.0f;
++	//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++	//}
++
++	if(ImGui::Checkbox("Toggle traffic", &toggleTraffic)) 
++	{ 
++		toggleTrafficFunc();
++	}
++
++	// TODO Setup these
++	//if(ImGui::Button("Enable peds")) 
++	//{
++	//
++	//}
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 083e0293..ea2a88f3 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -27,6 +27,11 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++const char *warps[] = {"Airport", "Mansion", "Beach"};
++int currentWarp = 0;
++bool showWarps = false;
++bool showCurrentWarp = false;
++
+ // TODO Setup this to warp to locations from the locations.toml in the Cheat Menu once I figure that out.
+ 
+ // Removed static from the void in debug_functions using a preprocessor.
+@@ -37,6 +42,48 @@ void TeleportToWaypoint(void);
+ #define INPUT_BUFFER_SIZE 64
+ char m_LocBuf[INPUT_BUFFER_SIZE], m_InBuf[INPUT_BUFFER_SIZE];
+ 
++// Locations, possibly move these somewhere else later
++float airportX = -1515.1;
++float airportY = -1182.1;
++float airportZ = 16.5;
++
++float mansionX = -373.6;
++float mansionY = -519.5;
++float mansionZ = 13.6;
++
++float beachX = 267.8;
++float beachY = -1503.1;
++float beachZ = 12.5;
++
++enum warpLocations { 
++	AIRPORT = 0,
++	MANSION = 1,
++	BEACH = 2,
++};
++
++/// <summary>
++/// Test for logging current coords to file.
++/// </summary>
++void
++logCurrentCoords()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector playerCoords = pPed->GetPosition();
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++
++
++
++	std::string playerCoordsString = "Player coords X: " +
++	    std::to_string(playerX) + 
++		+" Y: " + std::to_string(playerY) + 
++		+" Z: " +  std::to_string(playerZ);
++
++	//LogFunctions::LogInfo(Defines::logFile, "Player coords: X: Y: Z:");
++	LogFunctions::LogInfo(Defines::logFile, playerCoordsString);
++}
++
+ void
+ WarpMenu::WarpTab()
+ {
+@@ -46,8 +93,8 @@ WarpMenu::WarpTab()
+ 	float playerY = playerCoords.y;
+ 	float playerZ = playerCoords.z;
+ 
+-
+ 	// Coords
++	ImGui::Text("Teleports");
+ 	ImGui::InputTextWithHint("Coordinates", "x, y, z", m_InBuf, INPUT_BUFFER_SIZE);
+ 	ImGui::Spacing();
+ 
+@@ -72,12 +119,43 @@ WarpMenu::WarpTab()
+ 		}
+ 	}
+ 
++	if(ImGui::Button("Marker")) { TeleportToWaypoint(); }
++
++	if(ImGui::Button("Log Coords")) { 
++		logCurrentCoords();
++	}
++
++	ImGui::Separator();
++	ImGui::Text("Warps");
++	ImGui::Checkbox("Show warps", &showWarps);
++	// TODO Automatically get the size of this
++	if(showWarps) { ImGui::ListBox("Warps", &currentWarp, warps, 3); }
++
++	ImGui::Checkbox("Show current warp", &showCurrentWarp);
++	if(showCurrentWarp) { ImGui::Text(std::to_string(currentWarp).c_str()); }
++
++	if(ImGui::Button("Teleport to Warp")) {
++		switch(currentWarp) {
++		case AIRPORT:
++			// Set player position.
++			 PlayerCheats::SetPlayerPosition(airportX, airportY, airportZ);
++			break;
++		case MANSION: 
++			PlayerCheats::SetPlayerPosition(mansionX, mansionY, mansionZ); 
++			break;
++
++		case BEACH: 
++			PlayerCheats::SetPlayerPosition(beachX, beachY, beachZ); 
++			break;
++		}
++	}
++
++	ImGui::Separator();
++	ImGui::Text("Position");
+ 	// This seems to show up the current coordinates on the screen.
+ 	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + "Y: " + std::to_string(playerY) + "Z: " + std::to_string(playerZ);
+ 	ImGui::Text(playerPositionMessage.c_str());
+ 
+-	if(ImGui::Button("Marker")) 
+-	{ 
+-		TeleportToWaypoint();
+-	}
++	
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/utils/datastore.cpp b/src/extras/utils/datastore.cpp
+new file mode 100644
+index 00000000..89571892
+--- /dev/null
++++ b/src/extras/utils/datastore.cpp
+@@ -0,0 +1,4 @@
++#include "datastore.h"
++
++// TODO Set this up like the cheat menu, make it store the toggled values.
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/datastore.cpp
+\ No newline at end of file
+diff --git a/src/extras/utils/datastore.h b/src/extras/utils/datastore.h
+new file mode 100644
+index 00000000..d973bf9e
+--- /dev/null
++++ b/src/extras/utils/datastore.h
+@@ -0,0 +1,7 @@
++#pragma once
++
++// TODO Set this up like the cheat menu, make it store the toggled values.
++class DataStore
++{
++
++};
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

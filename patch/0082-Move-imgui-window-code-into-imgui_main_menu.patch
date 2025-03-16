@@ -1,0 +1,335 @@
+From 91ea6d84ae9bd4a3b5b184f147689fc104d5e94f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 11 Mar 2025 00:38:16 -0400
+Subject: [PATCH 082/101] Move imgui window code into imgui_main_menu. Add test
+ for vehicle spawner.
+
+---
+ src/extras/functions/imgui_main_menu.cpp |  77 ++++++++++
+ src/extras/functions/imgui_main_menu.h   |  15 ++
+ src/skel/win/win.cpp                     | 177 +----------------------
+ 3 files changed, 99 insertions(+), 170 deletions(-)
+ create mode 100644 src/extras/functions/imgui_main_menu.cpp
+ create mode 100644 src/extras/functions/imgui_main_menu.h
+
+diff --git a/src/extras/functions/imgui_main_menu.cpp b/src/extras/functions/imgui_main_menu.cpp
+new file mode 100644
+index 00000000..06fa41a6
+--- /dev/null
++++ b/src/extras/functions/imgui_main_menu.cpp
+@@ -0,0 +1,77 @@
++#include "imgui_main_menu.h"
++#include "imgui.h"
++
++#include "vehicle_functions.h"
++#include "vehicle_cheats.h"
++
++bool spawnInCar = false;
++
++bool showVehicleListBox = false;
++const char *vehicles[] = {"Rhino", "Cheetah", "Infernus"};
++int currentItem = 150;
++int *currentItemPtr = &currentItem;
++
++/// <summary>
++/// This is the test window that shows up.
++/// </summary>
++/// <param name="show_demo_window">Shows the demo window</param>
++/// <param name="show_another_window">Shows the test window</param>
++/// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
++void
++//MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
++ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
++{
++	ImGuiIO io;
++	static float f = 0.0f;
++	static int counter = 0;
++
++	ImGui::Begin("KCNet ReVC ImGui");
++
++	if (ImGui::Button("Toggle vehicle list")) { 
++		showVehicleListBox = !showVehicleListBox;
++	}
++
++	// Add a test for spawning in the car
++	// TODO Add a list of vehicles to spawn into
++	ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
++
++	if (showVehicleListBox) { 
++		ImGui::ListBox("Vehicles", currentItemPtr, vehicles, 3);
++	}
++	
++
++	if (ImGui::Button("Spawn Vehicle")) {
++		if (spawnInCar) { 
++			VehicleFunctions::SpawnVehicle(150, true, true);
++			//VehicleFunctions::SpawnVehicle(*currentItemPtr, true, true);
++		} else {
++			VehicleFunctions::SpawnVehicle(150, false, false);
++		}
++		
++	}
++	
++
++	//ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
++	//ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
++	//ImGui::Checkbox("Another Window", &show_another_window);
++
++	//ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
++	//ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
++
++	//if(ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
++	//	counter++;
++	//ImGui::SameLine();
++	//ImGui::Text("counter = %d", counter);
++
++	//ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
++	ImGui::End();
++
++	// 3. Show another simple window.
++	if(show_another_window) {
++		ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++		                                                      // will clear the bool when clicked)
++		ImGui::Text("Hello from another window!");
++		if(ImGui::Button("Close Me")) show_another_window = false;
++		ImGui::End();
++	}
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_main_menu.h b/src/extras/functions/imgui_main_menu.h
+new file mode 100644
+index 00000000..ffab39c8
+--- /dev/null
++++ b/src/extras/functions/imgui_main_menu.h
+@@ -0,0 +1,15 @@
++#pragma once
++#include "imgui.h"
++
++namespace ImGuiMenus
++{
++namespace Menu
++{
++void
++MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color);
++}
++}
++
++//class MainMenu
++//{
++//};
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 0b424b0a..cd9440d3 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -81,7 +81,9 @@
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+ #include "imgui_impl_win32.h"
++
+ #include "imgui_functions.h"
++#include "imgui_main_menu.h"
+ 
+ bool bInit = false;
+ HWND mainWindow = nullptr;
+@@ -1061,47 +1063,7 @@ void HandleGraphEvent(void)
+ #define _IMGUI_TEST
+ 
+ #ifdef _IMGUI_TEST
+-bool done = false;
+-
+-/// <summary>
+-/// This is the test window that shows up.
+-/// </summary>
+-/// <param name="show_demo_window">Shows the demo window</param>
+-/// <param name="show_another_window">Shows the test window</param>
+-/// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
+-void
+-Window1(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
+-{
+-	ImGuiIO io;
+-	static float f = 0.0f;
+-	static int counter = 0;
+-
+-	ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+-
+-	ImGui::Text("This is some useful text.");          // Display some text (you can use a format strings too)
+-	ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
+-	ImGui::Checkbox("Another Window", &show_another_window);
+-
+-	ImGui::SliderFloat("float", &f, 0.0f, 1.0f);             // Edit 1 float using a slider from 0.0f to 1.0f
+-	ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+-
+-	if(ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
+-		counter++;
+-	ImGui::SameLine();
+-	ImGui::Text("counter = %d", counter);
+-
+-	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+-	ImGui::End();
+-
+-	// 3. Show another simple window.
+-	if(show_another_window) {
+-		ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
+-		                                                      // will clear the bool when clicked)
+-		ImGui::Text("Hello from another window!");
+-		if(ImGui::Button("Close Me")) show_another_window = false;
+-		ImGui::End();
+-	}
+-}
++//bool done = false;
+ 
+ void
+ InitImGui(HWND window)
+@@ -1147,138 +1109,9 @@ shutDownImGui()
+ //ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ bool ImGuiFunctions::ImGuiDone = false;
+ 
+-/// <summary>
+-/// Draw the ImGui test to the screen
+-/// TODO Make this draw to the game window
+-/// TODO Fix the mouse to work properly.
+-/// TODO Move this into ImGuiFunctions
+-/// I moved this function before EndScene in d3ddevice.cpp
+-/// </summary>
+-void
+-ImGuiFunctions::ImGuiLoop()
+-{
+-	//if (ImGuiFunctions::ImGuiDone)
+-	//	return;
+-
+-	bool show_demo_window = true;
+-	bool show_another_window = false;
+-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+-
+-	//while(!done) {
+-	
+-	IDirect3DStateBlock9 *pStateBlock = NULL;
+-	rw::d3d::d3ddevice->CreateStateBlock(D3DSBT_ALL, &pStateBlock);
+-	pStateBlock->Capture();
+-
+-	while(!ImGuiFunctions::ImGuiDone) {
+-		// Setup the new frames
+-		ImGui_ImplDX9_NewFrame();
+-		ImGui_ImplWin32_NewFrame();
+-		ImGui::NewFrame();
+-
+-		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+-		if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+-
+-		{
+-			// https://www.unknowncheats.me/forum/general-programming-and-reversing/505033-imgui-mouse-interaction-video.html
+-			ImGuiIO &io = ImGui::GetIO();
+-			// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
+-			// Hmm, with my new menu setup, the mouse shows up but cannot click on anything.
+-			// Something in the code is overriding the mouse.. TODO Fix that.
+-			
+-			// TODO Make the mouse work properly.
+-			 io.MouseDrawCursor = true;
+-			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-
+-			// TODO Test this.
+-			// Well this didn't enable the mouse.
+-			//RwVideoMode vm;
+-			//RwEngineGetVideoModeInfo(&vm, GcurSelVM);
+-			// I've never messed with this before.
+-			//vm.flags & rwVIDEOMODEEXCLUSIVE;
+-			 
+-			// Oops, this seems to kill the mouse in the menu once this is closed..
+-			 //FrontEndMenuManager.m_bShowMouse = true;
+-
+-			// TODO Test this
+-			CPad::UpdatePads();
+-			CPad::NewMouseControllerState.x = 0;
+-			CPad::NewMouseControllerState.y = 0;
+-
+-			CPad::GetPad(0)->ClearMouseHistory();
+-			CPad::GetPad(0)->NewState.DPadUp = 0;
+-			CPad::GetPad(0)->OldState.DPadUp = 0;
+-			CPad::GetPad(0)->NewState.DPadDown = 0;
+-			CPad::GetPad(0)->OldState.DPadDown = 0;
+ 
+-			//
+ 
+-			//_InputInitialiseMouse(false);
+ 
+-			// POINT p;
+-			// GetCursorPos(&p);
+-			// io.MousePos = ImVec2(p.x, p.y);
+-
+-			 //io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+-
+-			 // This toggles ImGui!!
+-			 // Now to figure out how to add a keyboard shortcut to it.
+-			 // Also to figure out 
+-			  io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+-
+-			 if (io.MouseDown[1]) { 
+-				 ImGuiFunctions::ImGuiDone = true;
+-			 }
+-			 
+-
+-			// Moved this into its own method
+-			Window1(true, true, clear_color);
+-		}
+-
+-		// Rendering
+-		// End the frames
+-		ImGui::EndFrame();
+-
+-		rw::d3d::d3ddevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+-		rw::d3d::d3ddevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+-		rw::d3d::d3ddevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+-		D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
+-		                                      (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
+-
+-		rw::d3d::d3ddevice->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, clear_col_dx, 1.0f, 0);
+-
+-		// if(g_pd3dDevice->BeginScene() >= 0) {
+-		if(rw::d3d::d3ddevice->BeginScene() >= 0) {
+-			ImGui::Render();
+-			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+-			// g_pd3dDevice->EndScene();
+-			rw::d3d::d3ddevice->EndScene();
+-		}
+-		// HRESULT result = g_pd3dDevice->Present(nullptr, nullptr, nullptr, nullptr);
+-		HRESULT result = rw::d3d::d3ddevice->Present(nullptr, nullptr, nullptr, nullptr);
+-
+-		// Handle loss of D3D9 device
+-		// if(result == D3DERR_DEVICELOST && g_pd3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) ResetDevice();
+-	}
+-
+-	
+-	// Shut down ImGui
+-	shutDownImGui();
+-
+-	// Restore d3d render states, google Gemini
+-	pStateBlock->Apply();
+-	pStateBlock->Release();
+-
+-	// Reset Pad state
+-	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-
+-	// Test
+-	// Oops, this seems to kill the mouse in the menu once this is closed..
+-	//FrontEndMenuManager.m_bShowMouse = false;
+-
+-}
+-
+-#endif
+ 
+ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+@@ -4055,6 +3888,10 @@ int strncasecmp(const char *str1, const char *str2, size_t len)
+ 	return _strnicmp(str1, str2, len);
+ }
+ #endif
++
++// I don't know what removed this...
+ #endif
+ 
++#endif 
++
+ #endif //!_SPLIT_WIN_FILE
+-- 
+2.45.1.windows.1
+

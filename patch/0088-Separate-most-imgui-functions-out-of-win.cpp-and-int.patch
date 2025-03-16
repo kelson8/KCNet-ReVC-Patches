@@ -1,0 +1,767 @@
+From 5cf74bbdc27fb56a2773e93b7dd879dbe35999fb Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Mar 2025 01:12:17 -0400
+Subject: [PATCH 088/101] Separate most imgui functions out of win.cpp and into
+ imgui_functions.cpp. Add SetupFonts, SetupContext, and ShutdownImGui to
+ ImGuiFunctions. Add font file and menu name into defines. Add about menu,
+ credit author for font and menu style. Fix some spelling mistakes. Auto
+ enable a few things in lua on game startup if toggled in test.lua. Add ped
+ density and vehicle density cheats. Add lua auto load into GS_PLAYING_GAME, I
+ need a toggle for it.
+
+---
+ src/extras/cheats/custom_cheats.cpp      | 14 ++++
+ src/extras/cheats/custom_cheats.h        |  5 ++
+ src/extras/defines.cpp                   |  7 ++
+ src/extras/defines.h                     |  4 +
+ src/extras/functions/imgui_functions.cpp | 59 ++++++++++++++
+ src/extras/functions/imgui_functions.h   | 13 ++++
+ src/extras/functions/imgui_main_menu.cpp |  7 ++
+ src/extras/lua/lua_test.cpp              | 81 ++++++++++++++++++++
+ src/extras/menus/about_menu.cpp          | 61 +++++++++++++++
+ src/extras/menus/about_menu.h            |  6 ++
+ src/extras/menus/player_menu.cpp         |  4 +-
+ src/skel/win/win.cpp                     | 98 ++++++++++++++++--------
+ utils/lua/test.lua                       | 77 +++++++++++++++++--
+ 13 files changed, 395 insertions(+), 41 deletions(-)
+ create mode 100644 src/extras/menus/about_menu.cpp
+ create mode 100644 src/extras/menus/about_menu.h
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 508ab352..d44cf9ef 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -195,6 +195,20 @@ CGameLogic::SetUpShortCut(
+ 
+ */
+ 
++
++// TODO Test these later.
++void
++CustomCheats::SetPedDensityMultiplier(float value)
++{
++	CPopulation::PedDensityMultiplier = value;
++}
++
++void
++CustomCheats::SetVehicleDensityMultiplier(float value)
++{
++	CCarCtrl::CarDensityMultiplier = value;
++}
++
+ void
+ CustomCheats::LoadCutscene(const char* name)
+ {
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index e39c4f93..d2e97d65 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -83,6 +83,11 @@ public:
+ 	static void LoadCutscene(const char *name);
+ 
+ 
++	// Test for setting ped density and vehicle density
++	static void SetPedDensityMultiplier(float value);
++
++	static void SetVehicleDensityMultiplier(float value);
++
+ 	// Rc Car test
+ 	static void GiveRcCar();
+ 
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index f23a2747..1bfbbb8e 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -6,9 +6,16 @@ std::string Defines::logFile = "KCNet-ReVC.log";
+ 
+ std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
+ 
++// Fonts
++std::string Defines::fontFile = "cheat_menu.ttf";
++
+ // 
+ std::string Defines::modificationName = "KCNet-ReVC";
+ 
++std::string Defines::menuName = "KCNet-ReVC-ImGui";
++
++
++
+ // TODO Display these somewhere, possibly in a pop up under the debug menu.
+ // Set the program modification author
+ std::string Defines::modificationAuthor = "kelson8";
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 1f173086..42ded836 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -13,8 +13,12 @@ public:
+ 	static std::string logFile;
+ 	static std::string luaLogFile;
+ 
++	// Files
++	static std::string fontFile;
++
+ 	// Program info
+ 	static std::string modificationName;
++	static std::string menuName;
+ 	static std::string modificationAuthor;
+ 	static std::string programVersion;
+ };
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index efa83cb1..4293a7ff 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -7,6 +7,11 @@
+ 
+ #include "imgui_main_menu.h"
+ 
++#include <string>
++#include <iostream>
++
++#include "defines.h"
++
+ 
+ //
+ //// TODO Move ImGui functions for use in here.
+@@ -126,6 +131,60 @@
+ //}
+ //
+ 
++
++
++void
++ImGuiFunctions::SetupFonts(ImGuiIO &io)
++{
++
++	std::string viceExtendedPath = "ViceExtended\\";
++	// Add fonts to the path.
++	std::string fontsPath = viceExtendedPath + "fonts\\";
++
++	Defines defines = Defines();
++
++	// Load Fonts
++	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
++	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
++	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display
++	// an error and quit).
++	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(),
++	// which ImGui_ImplXXXX_NewFrame below will call.
++	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
++	// - Read 'docs/FONTS.md' for more instructions and details.
++	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
++
++	// TODO Test this
++	io.Fonts->AddFontDefault();
++	std::string fontFilePath = fontsPath + defines.fontFile;
++	io.Fonts->AddFontFromFileTTF(fontFilePath.c_str(), 1.15f);
++}
++
++void
++ImGuiFunctions::SetupContext()
++{
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	(void)io;
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
++	ImGuiFunctions::SetupFonts(io);
++}
++
++void
++ImGuiFunctions::ShutdownImGui()
++{
++	// Shutdown Imgui, was I forgetting that?
++	// Shutdown DX9 for this and cleanup
++	// This fixes the crashes without the menu being open..
++	// I'm so close on getting this to finally work, it's been so long.
++	ImGui_ImplDX9_Shutdown();
++	ImGui_ImplWin32_Shutdown();
++	ImGui::DestroyContext();
++}
++
+ // Credit to user-grinch on github for the style code here.
+ // https://github.com/user-grinch/Cheat-Menu/blob/master/src/cheatmenu.cpp#L271-L335
+ void ImGuiFunctions::ApplyStyle()
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index fc62fad6..e59e77f1 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -4,6 +4,8 @@
+ #include <Windows.h>
+ #endif
+ 
++#include "imgui.h"
++
+ //namespace ImGuiFunctions {
+ //	namespace Main {
+ //		static void HelpMarker(const char* desc);
+@@ -22,8 +24,19 @@
+ 
+ class ImGuiFunctions
+ {
++private:
++	// Setup ImGui fonts, this isn't used outside of this class
++	static void SetupFonts(ImGuiIO &io);
++
+ public:
++	// Setup ImGui context.
++	static void SetupContext();
++
++	// Shutdown ImGui
++	static void ShutdownImGui();
++
+ 	static void ImGuiLoop();
++
+ 	static void ApplyStyle();
+ 
+ 	static bool ShowSecondWindow;
+diff --git a/src/extras/functions/imgui_main_menu.cpp b/src/extras/functions/imgui_main_menu.cpp
+index e53ea76e..c3599534 100644
+--- a/src/extras/functions/imgui_main_menu.cpp
++++ b/src/extras/functions/imgui_main_menu.cpp
+@@ -40,6 +40,7 @@ extern "C" {
+ #include "cheat_menu.h"
+ #include "player_menu.h"
+ #include "misc_menu.h"
++#include "about_menu.h"
+ //
+ 
+ 
+@@ -97,6 +98,7 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 	PlayerMenu playerMenu = PlayerMenu();
+ 	CheatMenu cheatMenu = CheatMenu();
+ 	MiscMenu miscMenu = MiscMenu();
++	AboutMenu aboutMenu = AboutMenu();
+ 
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	float playerX = playerCoords.x;
+@@ -149,6 +151,11 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 			ImGui::EndTabItem();
+ 		}
+ 
++		if(ImGui::BeginTabItem("About")) { 
++			aboutMenu.AboutTab();
++			ImGui::EndTabItem();
++		}
++
+ 		ImGui::EndTabBar();
+ 	}
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index a309fa28..7378e090 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -9,6 +9,9 @@
+ #include "platform.h"
+ 
+ #include "lua_test.h"
++#include <iostream>
++
++#include <vector>
+ 
+ // This should possibly work for keybinds, I wonder where I would place them.. 
+ // Oh wait, maybe in the GS_PLAYING_GAME under win.cpp
+@@ -51,6 +54,9 @@ extern "C"
+ #include "vehicle_functions.h"
+ #include "vehicle_cheats.h"
+ 
++#include "custom_cheats.h"
++#include "player_cheats.h"
++
+ // ImGui test
+ #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+@@ -74,6 +80,9 @@ extern "C"
+ #include "PlayerInfo.h"
+ #include "PlayerPed.h"
+ 
++#include "Population.h"
++#include "CarCtrl.h"
++
+ // Some of this new code was inspired by the MTA SA code
+ // https://github.com/multitheftauto/mtasa-blue/tree/master
+ 
+@@ -304,6 +313,46 @@ HealPlayerLua(lua_State *L)
+ 	return 1;
+ }
+ 
++extern "C" int
++enableNeverWantedLua(lua_State *L)
++{
++	PlayerCheats::EnableNeverWanted();
++	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
++
++	return 1;
++}
++
++extern "C" int
++enablePlayerInfiniteHealthLua(lua_State *L)
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	playerCheats.EnableInfiniteHealth();
++	LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was enabled");
++
++	return 1;
++}
++
++extern "C" int
++disablePedsLua(lua_State *L)
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	CPopulation::PedDensityMultiplier = 0.0f;
++	LogFunctions::LogInfo(Defines::luaLogFile, "Peds have been disabled");
++
++	return 1;
++}
++
++
++extern "C" int
++disableVehiclesLua(lua_State *L)
++{
++	CCarCtrl::CarDensityMultiplier = 0.0f;
++	LogFunctions::LogInfo(Defines::luaLogFile, "Vehicles have been disabled");
++
++	return 1;
++}
++
++
+ //------- End cheat functions --------//
+ 
+ // Check lua globals, made this into a function
+@@ -368,6 +417,16 @@ LuaTest::InitLua()
+ 
+ 	// Test for ImGui
+ 	lua_register(m_luaVM, "toggle_imgui", toggleImGuiLua);
++
++	// Auto enable never wanted in the lua script
++	lua_register(m_luaVM, "enable_never_wanted", enableNeverWantedLua);
++
++	// Auto enable infinite health in the lua script
++	lua_register(m_luaVM, "enable_infinite_health", enablePlayerInfiniteHealthLua);
++
++	// Auto disable peds and vehicles in the lua script
++	lua_register(m_luaVM, "disable_peds", disablePedsLua);
++	lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
+ 	
+ 	// TODO Setup this for ImGui later.
+ 	// I could use something like this so I don't have to keep changing the code.
+@@ -383,6 +442,28 @@ LuaTest::InitLua()
+ 	
+ 	//
+ 		
++	// Test a new file
++										// New script
++	//std::vector<const char *> files = {"ViceExtended/lua_scripts/setup_game.lua", 
++	//									// Main script
++	//									"ViceExtended/lua_scripts/test.lua"};
++
++	//for (const char* file : files) {
++	//	if (luaL_dofile(m_luaVM, file) != 0) { 
++	//		lua_pop(m_luaVM, 1);
++	//	}
++	//}
++
++	// if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/setup_game.lua"))) {
++	//
++	//}
++
++		// Load locations.lua
++
++	//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/locations.lua"))) {
++	//
++	//}
++
+ 		// I got this working, it shows up in the output now, I thought it wouldn't.
+ 		//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "src/scripts/test.lua"))) {
+ 		//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/test.lua"))) {
+diff --git a/src/extras/menus/about_menu.cpp b/src/extras/menus/about_menu.cpp
+new file mode 100644
+index 00000000..9aa8562b
+--- /dev/null
++++ b/src/extras/menus/about_menu.cpp
+@@ -0,0 +1,61 @@
++#include "about_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++#include "Pad.h"
++
++void
++AboutMenu::AboutTab()
++{
++	Defines defines = Defines();
++	std::string menuName = "Menu Name: " + defines.menuName;
++
++	std::string modificationAuthor = "Modification author: " + defines.modificationAuthor;
++	ImGui::Text(modificationAuthor.c_str());
++
++	std::string programVersion = "Program version: " + defines.programVersion;
++	ImGui::Text(programVersion.c_str());
++	
++	std::string logFileName = "Log File Name: " + defines.logFile;
++	ImGui::Text(logFileName.c_str());
++
++	//std::string luaLogFileName = "Lua Log File Name: " + defines.luaLogFile;
++	//ImGui::Text(luaLogFileName.c_str());
++
++	ImGui::Separator();
++	ImGui::Text("Credits");
++
++	std::string credits = "Credit to user-grinch on github for the style, fonts, and the idea for this new ImGui menu.";
++	ImGui::Text(credits.c_str());
++
++	std::string creditsUrl = "Here is a link to the original modification: https://github.com/user-grinch/Cheat-Menu";
++	ImGui::Text(creditsUrl.c_str());
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/about_menu.h b/src/extras/menus/about_menu.h
+new file mode 100644
+index 00000000..2f0dac04
+--- /dev/null
++++ b/src/extras/menus/about_menu.h
+@@ -0,0 +1,6 @@
++#pragma once
++class AboutMenu
++{
++public:
++	void AboutTab();
++};
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 87dd9c5b..3178bcba 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -101,7 +101,7 @@ PlayerMenu::PlayerTab()
+ 	ImGui::Text("For not having to pay when getting out of hospital and getting busted.");
+ 	// TODO Make these not take away weapons when dying/getting busted.
+ 
+-	if(ImGui::Checkbox("Get ouf of hospital free", &getOutOfHospitalFree)) { toggleGetOfHospitalFree(); }
++	if(ImGui::Checkbox("Get out of hospital free", &getOutOfHospitalFree)) { toggleGetOfHospitalFree(); }
+ 
+-	if(ImGui::Checkbox("Get ouf of jail free", &getOutOfJailFree)) { toggleGetOfJailFree(); }
++	if(ImGui::Checkbox("Get out of jail free", &getOutOfJailFree)) { toggleGetOfJailFree(); }
+ }
+\ No newline at end of file
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 9f8d3a22..9843ba3a 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -113,6 +113,7 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ #include "lua_test.h"
+ // Timer for the keybind
+ #include "Timer.h"
++#include "defines.h"
+ #endif //LUA_TEST
+ 
+ #define MAX_SUBSYSTEMS		(16)
+@@ -1067,9 +1068,14 @@ void HandleGraphEvent(void)
+ 
+ #ifdef _IMGUI_TEST
+ 
++
++
+ void
+ InitImGui(HWND window)
+ {
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	Defines defines = Defines();
+ 	// Check if the DirectX9 device is valid
+ 
+ 	if (rw::d3d::d3ddevice == nullptr) {
+@@ -1078,13 +1084,8 @@ InitImGui(HWND window)
+ 		return;
+ 	}
+ 
+-	// ImGui init.. is this where this goes?
+-	IMGUI_CHECKVERSION();
+-	ImGui::CreateContext();
+-	ImGuiIO &io = ImGui::GetIO();
+-	(void)io;
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++	// Setup ImGui Context, and setup fonts.
++	imGuiFunctions.SetupContext();
+ 
+ 	// Setup Dear ImGui style
+ 	ImGui::StyleColorsDark();
+@@ -1094,30 +1095,23 @@ InitImGui(HWND window)
+ 	ImGuiFunctions::ApplyStyle();
+ 
+ 	// Setup Platform/Renderer backends
+-	// TODO Place this somewhere in win.cpp, possibly in WndMainProc
+ 	ImGui_ImplWin32_Init(window);
+-	// Now to figure out where the hell to place this in the MainWndProc
+ 	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
+ }
+ 
++/// <summary>
++/// This doesn't seem to be in use in here.
++/// </summary>
+ void
+ shutDownImGui()
+ {
+ 	// Shutdown Imgui, was I forgetting that?
+ 	// Shutdown DX9 for this and cleanup
+-	// This fixes the crashes without the menu being open..
+-	// I'm so close on getting this to finally work, it's been so long.
+ 	ImGui_ImplDX9_Shutdown();
+ 	ImGui_ImplWin32_Shutdown();
+ 	ImGui::DestroyContext();
+ }
+ 
+-
+-
+-
+-
+-
+-
+ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+ 		POINTS points;
+@@ -2218,6 +2212,11 @@ CMenuManager cMenuManager = CMenuManager();
+ //luaTest.InitLua();
+ #endif
+ 
++#ifdef LUA_TEST
++// Test for making a lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
++bool	luaInit = false;
++#endif
++
+ #ifndef MASTER
+ 	if (strstr(cmdLine, "-console"))
+ 	{
+@@ -2810,6 +2809,19 @@ CMenuManager cMenuManager = CMenuManager();
+ 						{
+ 							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
++
++
++							// Init the lua game variables.
++
++#ifdef LUA_TEST
++							// This works well!
++							// TODO Make a separate lua file for auto load variables like these.
++						    LuaTest luaTest = LuaTest();
++							if (!luaInit) {
++							    luaTest.InitLua();
++								luaInit = true;
++							}
++#endif
+ 							
+ #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+@@ -2864,37 +2876,57 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ #ifdef LUA_TEST
+ 
+-						        LuaTest luaTest = LuaTest();
++						       
+ #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 
++								// TODO Test this without lua
++						        static int newTime = 0;
++
++						        if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++							        newTime = CTimer::GetTimeInMilliseconds();
++
++									// TODO Test this
++									imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++								}
++								
++
+ 								// TODO Figure out how to make this use Control + M
+ //#define CTRLJUSTDOWN(key)                                                                                                                                      \
+ //	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ //#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ 
+-						        // Oops, forgot to init the variable..
+-								static int newTime = 0;
++
++								// static int newTime = 0;
+ 								// Some of the idea for this test came from here:
+ 								// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
+ 								
+ 								// I think I fixed the delay, I made the newTime variable static.
+ 								// TODO Do more testing with this later.
+ 
++								
++
++
++								// I moved the ImGui test above outside of the lua test.
++								// TODO Make this lua test auto run on startup, it can set infinite health and never wanted by default.
+ 								// I added this to the ReVC.ini file.
+ 								// If this is enabled in there, this will run otherwise it does nothing.
+-						                if(gbLuaTest) {
+-
+-							                //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
+-							                if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-											// TODO Figure out how to make this use Control + M
+-							                //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-								                // Wow this seems to work, with a delay now.
+-								                // I figured out how to output this to a log.
+-
+-								                newTime = CTimer::GetTimeInMilliseconds();
+-								                luaTest.InitLua();
+-							                }
+-						                }
++								// 
++								
++								// I have disabled the lua keybind for now, right now it is setup to 
++								// auto teleport the player, setup never wanted and setup infinte health on game startup if enabled.
++						     //           if(gbLuaTest) {
++
++							    //            //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++							    //            if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++											//// TODO Figure out how to make this use Control + M
++							    //            //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++								   //             // Wow this seems to work, with a delay now.
++								   //             // I figured out how to output this to a log.
++
++								   //             newTime = CTimer::GetTimeInMilliseconds();
++								   //             luaTest.InitLua();
++							    //            }
++						     //           }
+ #endif //LUA_TEST
+ 						}
+ 						break;
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 51b2eed1..1bca9faf 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -1,3 +1,5 @@
++-- I have remapped this Lua mod from F8 to F9
++
+ -- print("hello ReVC!")
+ 
+ local setPositionEnabled = false
+@@ -7,13 +9,74 @@ local healPlayerEnabled = false
+ local cheatTestEnabled = false
+ local playerControlTestEnabled = false
+ 
++-- I got this to auto start in win.cpp by adding the initLua 
++-- function into the GS_PLAYING_GAME loop, once toggled on it shouldn't run anymore.
++-- So anything I run in this file now will auto start, I may just disable the keybind for now.
++local enableNeverWanted = false
++local enableInfiniteHealth = false
++
++-- Setup auto teleports to locations when the game starts
++-- Teleport the player to a random spawn I setup.
++local teleportPlayerToSpawn = false
++-- Teleport the player to the airport.
++local teleportPlayerToAirport = false
++
++-- These seem to work.
++
++-- Set ped density to 0.0
++local disablePeds = false
++-- Set vehicle density to 0.0
++local disableVehicles = false
++
++-- -- Locations
++-- -- TODO Figure out how to move these into another file
++
++local spawnX = -258.1
++local spawnY = -453.1
++local spawnZ = 13.5
++
++local airportX = -1515.1
++local airportY = -1182.1
++local airportZ = 16.5
++
++-- TODO Test this
++-- dofile("locations.lua")
++--
++
++-- -- This works for an auto spawn system, TODO Make this grab random values from lua
++if teleportPlayerToSpawn then
++	set_position(spawnX, spawnY, spawnZ)
++elseif teleportPlayerToAirport then
++	set_position(airportX, airportY, airportZ)
++	-- set_heading(spawnHeading)
++end
++
++-- Turn the ped density multiplier to 0.0
++if disablePeds then
++	disable_peds()
++end
++
++-- Turn the vehicle density multiplier to 0.0
++if disableVehicles then
++	disable_vehicles()
++end
++
++if enableNeverWanted then
++	enable_never_wanted()
++end
++
++if enableInfiniteHealth then
++	enable_infinite_health()
++end
++
+ -- Test for toggling ImGui, I got the window to show up but not disappear
+-local imGuiToggleEnabled = true
++-- Moved this into the C++ code under F8
++local imGuiToggleEnabled = false
++
++
+ 
+--- TODO Setup these.
+-local airportX = 22
+-local airportY = 22
+-local airportZ = 22
++-- Test for imgui_main_menu.cpp
++vehicle_mass = 1000.2
+ 
+ 
+ -- This is disabled in the C++ code.
+@@ -21,6 +84,8 @@ function AddStuff(num1, num2)
+ 	return num1 + num2
+ end
+ 
++
++
+ -- Here is a list of stuff to be used for cheat_test
+ -- cheat_test activates a list of cheats defined in my ReVC C++ code.
+ -- 1. BLOWMEUP (This sets the players vehicle on fire if in one.)
+@@ -55,7 +120,7 @@ elseif playerControlTestEnabled then
+ 	-- This makes it to where the player controls can be toggled on/off.
+ 	toggle_control()
+ 
+--- This toggles on but the mouse doesn't work and it isn't able to be turned back off.
++-- This toggles on and off properly.
+ elseif imGuiToggleEnabled then
+ 	toggle_imgui()
+ 	
+-- 
+2.45.1.windows.1
+

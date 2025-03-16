@@ -1,0 +1,156 @@
+From a81726c22d257419feb3601cf6b9aa8373c120e5 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 7 Mar 2025 03:12:18 -0500
+Subject: [PATCH 075/101] Add gbLuaTest boolean for ReVC.ini, under LuaTest in
+ ini. Add missing luaLogFile into defines. Rename lua test preprocessor to
+ LUA_TEST. Update readme.
+
+---
+ src/core/main.cpp                      | 11 +++++++++++
+ src/core/main.h                        | 11 +++++++++++
+ src/extras/defines.cpp                 |  2 ++
+ src/extras/defines.h                   |  2 ++
+ src/extras/functions/ini_functions.cpp |  8 ++++++++
+ src/skel/win/win.cpp                   | 25 +++++++++++++++----------
+ 6 files changed, 49 insertions(+), 10 deletions(-)
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 1c716a31..fa0f2ded 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -121,6 +121,17 @@ bool gbExtraLogging;
+ uint8 gbGameSaveOnStartup = 0;
+ #endif
+ 
++#ifdef LUA_TEST
++bool gbLuaTest;
++#endif //LUA_TEST
++
++// TODO Fix this to work.
++// This should change the police weapons to any from a list once I figure it out
++//#ifdef CHANGE_POLICE_WEAPONS
++//int streetCopWeaponId;
++//////eWeaponType streetCopWeaponId;
++//#endif // CHANGE_POLICE_WEAPONS
++
+ volatile int32 frameCount;
+ 
+ RwRGBA gColourTop;
+diff --git a/src/core/main.h b/src/core/main.h
+index 9e69694f..59f5996d 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -94,3 +94,14 @@ extern bool gbExtraLogging;
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ extern uint8 gbGameSaveOnStartup;
+ #endif //EX_LOADING_GAME_SAVE_ON_STARTUP
++
++#ifdef LUA_TEST
++extern bool gbLuaTest;
++#endif
++
++// TODO Fix this to work
++// This should change the police weapons to any from a list once I figure it out
++//#ifdef CHANGE_POLICE_WEAPONS
++//extern int streetCopWeaponId;
++////eWeaponType streetCopWeaponId;
++//#endif // CHANGE_POLICE_WEAPONS
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 283a03d6..06011642 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -4,6 +4,8 @@
+ // Set the log file path
+ std::string Defines::logFile = "KCNet-ReVC.log";
+ 
++std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
++
+ // TODO Display these somewhere, possibly in a pop up under the debug menu.
+ // Set the program modification author
+ std::string Defines::modificationAuthor = "kelson8";
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 2af1633b..50305255 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -9,7 +9,9 @@ class Defines
+ public:
+ 	// Files
+ 	//const char *logFile = "KCNet-ReVC.log";
++	// Logs
+ 	static std::string logFile;
++	static std::string luaLogFile;
+ 
+ 	// Program info
+ 	static std::string modificationAuthor;
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index ab6e69cf..a3fbc323 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -621,6 +621,10 @@ LoadINISettings()
+ 	ReadIniIfExists("KCNet", "ExtraLogging", &gbExtraLogging);
+ #endif
+ 
++#ifdef LUA_TEST
++	ReadIniIfExists("KCNet", "LuaTest", &gbLuaTest);
++#endif
++
+ //
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+@@ -757,6 +761,10 @@ SaveINISettings()
+ 	StoreIni("KCNet", "ExtraLogging", gbExtraLogging);
+ #endif
+ 
++#ifdef LUA_TEST
++	StoreIni("KCNet", "LuaTest", gbLuaTest);
++#endif
++
+ //
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 5bd1c948..0d3d58f2 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -3058,7 +3058,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
+ 
+ 
+-#ifdef CUSTOM_CODE
++#ifdef LUA_TEST
+ 							// Possibly try to use something like this for a delay
+ 							/*
+ 															/*
+@@ -3088,15 +3088,20 @@ CMenuManager cMenuManager = CMenuManager();
+ 								
+ 								// I think I fixed the delay, I made the newTime variable static.
+ 								// TODO Do more testing with this later.
+-						        if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
+-								// Wow this seems to work, with a delay now.
+-								// I figured out how to output this to a log.
+-								
+-									newTime = CTimer::GetTimeInMilliseconds();
+-							        luaTest.InitLua();
+-									
+-							}
+-#endif //CUSTOM_CODE - LUA_TEST
++
++								// I added this to the ReVC.ini file.
++								// If this is enabled in there, this will run otherwise it does nothing.
++						                if(gbLuaTest) {
++
++							                if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++								                // Wow this seems to work, with a delay now.
++								                // I figured out how to output this to a log.
++
++								                newTime = CTimer::GetTimeInMilliseconds();
++								                luaTest.InitLua();
++							                }
++						                }
++#endif //LUA_TEST
+ 						
+ 
+ 
+-- 
+2.45.1.windows.1
+

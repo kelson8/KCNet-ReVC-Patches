@@ -1,0 +1,24 @@
+From 4e44abf873879739b325a4eff96d88c8f32d6983 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 7 Mar 2025 03:13:32 -0500
+Subject: [PATCH 076/101] Oops forgot the readme update.
+
+---
+ README.md | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/README.md b/README.md
+index bdfd1280..5167c7f4 100644
+--- a/README.md
++++ b/README.md
+@@ -21,6 +21,7 @@ ImGui initialization and everything has been added to /extras/imgui_test.cpp
+ ## Changes
+ 
+ * Added lua test support, copy utils/lua/test.lua into ReVC-Install/ViceExtended/lua_scripts folder for it to work.
++Lua support is now toggleable in the ReVC.ini, if 'LuaTest' is set to 1 it'll run the lua file.
+ 
+ I have been working on copying most of the changes from the Extended Vice project, it adds swimming, proper crouching support, better firing and aiming, first person and a lot more.
+ 
+-- 
+2.45.1.windows.1
+

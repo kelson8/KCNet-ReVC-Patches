@@ -1,0 +1,544 @@
+From 6bc505d31898db12843dc711b6677ce9ced2e2ad Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 28 Feb 2025 16:00:54 -0500
+Subject: [PATCH 065/101] Disable FIRING_AND_AIMING FIRST_PERSON and CROUCH,
+ they break the rocket launcher. Add stuff to implement. Add missing changes
+ for FIRING_AND_AIMING and FIRST_PERSON
+
+---
+ src/core/MenuScreensCustom.cpp | 11 +++++
+ src/core/config.h              | 87 ++++++++++++++++++++--------------
+ src/peds/Ped.cpp               | 31 ++++++++++--
+ src/peds/PedFight.cpp          | 27 +++++++++++
+ src/peds/PedIK.cpp             | 63 ++++++++++++++++++++++--
+ src/peds/PlayerPed.cpp         | 42 ++++++++++++----
+ src/renderer/Hud.cpp           | 38 +++++++++++++++
+ 7 files changed, 244 insertions(+), 55 deletions(-)
+
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 08b8e861..2fee4c6d 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -909,6 +909,17 @@ CMenuScreenCustom aScreens[] = {
+ 
+ #endif
+ 
++#if defined FIRST_PERSON && defined FIRING_AND_AIMING
++	// MENUPAGE_FIRST_PERSON = 51
++	{ "FEC_FPC", MENUPAGE_CONTROLLER_PC, nil, nil,
++		MENUACTION_FOV_FP, "FEC_FOV", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 40, 155, MENUALIGN_LEFT,
++		MENUACTION_AUTOCENTER_IN_VEHICLE_FP, "FEC_ACV", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_RELATIVE_CAM_IN_VEHICLE_DB_FP, "FEC_RVD", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_DOOM_MODE_FP, "FEC_DOM", { nil, SAVESLOT_NONE, MENUPAGE_CONTROLLER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_GOBACK, "FEDS_TB", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 0, 0, MENUALIGN_LEFT,
++	},
++#endif
++
+ };
+ 
+ #endif
+diff --git a/src/core/config.h b/src/core/config.h
+index d2b84abe..20754d08 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -85,12 +85,17 @@
+ // I finally got these working, not the modloader though.
+ // I had to add the data from anims.img into the gta3.img because of the modloader not working..
+ // TODO Fix modloader
+-#define FIRING_AND_AIMING 
++
++// TODO Add toggle for these in debug menu if possible.
++// TODO Fix these to work with the rocket launcher, I may need to fully fix up EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++// The rocket launcher won't fire with these enabled.
++
++// #define FIRING_AND_AIMING
+ // // I think I mostly got this one completed also.
+-#define FIRST_PERSON
++// #define FIRST_PERSON
+ // The code for these are copied in
+ // Enable better crouching support
+-#define CROUCH
++// #define CROUCH
+ 
+ // I got the code for this implemented into here
+ // Well either this or the climbing breaks it lol.
+@@ -100,20 +105,54 @@
+ // Enable better climbing
+ // #define CLIMBING
+ 
+-// Well this just breaks the rocket launcher, I'm not too worried about it
+-// #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++// TODO Implement these
++// #define EX_PED_ANIMS_IN_CAR
++// #define EX_DISPLAYED_COLLECTIBLES
++/*
++	#ifdef EX_EXPERIMENTAL
++		#define EX_OUTER_SPACE
++	#endif
++*/
++
++// #if defined UTILS && defined EX_EXPERIMENTAL
++// #define EX_BRYX_LIGHTS
++// #endif
++/*
++	#define IMPROVED_TECH_PART
++	#define WANTED_PATHS
++
++	#define VEHICLE_MODS
++	#define IMPROVED_VEHICLES
++	#define IMPROVED_VEHICLES_2
++	#define NEW_VEHICLE_LOADER
++
++	#define TRIANGLE_FOR_MOUSE_RECRUIT
++	#define IMPROVED_MENU_AND_INPUT
++
++	#define EX_EXPERIMENTAL
++	#define EX_SECOND_SAMPLE_BANK // ViceEx.RAW and ViceEx.SDT
++
++	#define EX_OPCODES
++
++
++*/
++
++//
++
++
+ 
+ // TODO Fix this
+ // Errors out on ModLoader_GetCdStreamPath_Unsafe, I possibly am missing something for the modloader.
+ // It is a bit complicated.
+ // #define MODLOADER
+ 
+-
+-
+ // It seems to build with this now.
+ // TODO Fix this to work, it shows in the menu but doesn't seem to change the weapon sights.
+ // #define EX_WEAPON_SIGHT
+ 
++// Well this just breaks the rocket launcher, I'm not too worried about it
++// #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++
+ // It seems to build with these two enabled!!!
+ // TODO Test photo mode once I get IMPROVED_MENU_AND_INPUT complete.
+ #define EX_MORE_BUTTON_ICONS
+@@ -122,7 +161,11 @@
+ // Photo mode works now, I have a few things to pull in from these changes.
+ // #define IMPROVED_MENU_AND_INPUT
+ // #define IMPROVED_TECH_PART
+-#define EX_PHOTO_MODE
++
++#if defined EX_MORE_BUTTON_ICONS && defined EX_PC_KEY_ICONS
++	#define EX_PHOTO_MODE
++#endif
++// #define EX_PHOTO_MODE
+ 
+ // Test a couple features from here, mostly for photo mode.
+ #define IMPROVED_TECH_PART
+@@ -176,30 +219,13 @@
+ 
+ 	#define EX_OPCODES
+ 
+-	#define CROUCH
+-	#define FIRING_AND_AIMING
+-	#define FIRST_PERSON
+-
+-	#define TRIANGLE_FOR_MOUSE_RECRUIT
+ 	#define IMPROVED_MENU_AND_INPUT
+-	//#define NEW_MENU
+-	#define EX_RADIO_ICONS
+-	#define EX_WEAPON_SIGHT
+ 
+ 	#define IMPROVED_TECH_PART
+ 	#define WANTED_PATHS
+ 
+-	#define VEHICLE_MODS
+-	#define IMPROVED_VEHICLES
+-	#define IMPROVED_VEHICLES_2
+-	#define NEW_VEHICLE_LOADER
+-
+ 	#define FEATURES_INI
+ 	#ifdef FEATURES_INI
+-		#define CLIMBING
+-		#define SWIMMING
+-		#define EX_DISTANT_LIGHTS // thank https://github.com/ThirteenAG/III.VC.SA.IV.Project2DFX/releases/tag/gtavc
+-		#define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+ 		#ifdef VEHICLE_MODS
+ 			#define EX_RANDOM_VEHICLE_MODS_IN_TRAFFIC
+ 		#endif
+@@ -217,13 +243,6 @@
+ 
+ 	#define EX_PARTICLES
+ 
+-	/*#define EX_CLUMP_WEAPON_MODELS
+-	#ifdef EX_CLUMP_WEAPON_MODELS
+-		#define EX_IMPROVED_WEAPONS
+-	#endif*/
+-
+-	/*
+-
+ 	#define NEW_CHEATS
+ 
+ 	#define VICE_CRY
+@@ -231,10 +250,6 @@
+ 	#define EX_MORE_BUTTON_ICONS
+ 	#define EX_PC_KEY_ICONS
+ 
+-	#if defined EX_MORE_BUTTON_ICONS && defined EX_PC_KEY_ICONS
+-		#define EX_PHOTO_MODE
+-	#endif
+-
+ 	#if defined UTILS && defined EX_EXPERIMENTAL
+ 		#define EX_BRYX_LIGHTS
+ 	#endif
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 6a6e9ed2..b2d177f9 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -1643,7 +1643,20 @@ CPed::CalculateNewVelocity(void)
+ 		m_moved = m_moved * (1 / 100.0f);
+ 	}
+ 
++ #if defined IMPROVED_MENU_AND_INPUT && defined FIRST_PERSON && defined FIRING_AND_AIMING
++ 	if (((!TheCamera.Cams[0].Using3rdPersonMouseCam() && !FindPlayerPed()->bIsPlayerAiming) && !CPad::GetPad(0)->IsAffectedByController || 
++ 		(bIsDucking && TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_REAL_1ST_PERSON)) || 
++ 		FindPlayerPed()->bIsPlayerAiming &&
++ 		(
++ 			GetWeapon()->m_eWeaponType == WEAPONTYPE_PYTHON
++ #ifdef EX_WEAPON_DEAGLE // Legs don't move while aiming
++ 			|| GetWeapon()->m_eWeaponType == WEAPONTYPE_DEAGLE
++ #endif
++ 		)
++ #else
+ 	if ((!TheCamera.Cams[TheCamera.ActiveCam].GetWeaponFirstPersonOn() && !TheCamera.Cams[0].Using3rdPersonMouseCam())
++ #endif
++
+ 		|| FindPlayerPed() != this || !CanStrafeOrMouseControl()) {
+ 
+ 		if (FindPlayerPed() == this)
+@@ -1675,6 +1688,12 @@ CPed::CalculateNewVelocity(void)
+ 	if(!fightAssoc)
+ 		fightAssoc = RpAnimBlendClumpGetAssociation(GetClump(), ANIM_MELEE_IDLE_FIGHTMODE);
+ 
++#if defined CROUCH && defined FIRING_AND_AIMING
++	if ((!idleAssoc || idleAssoc->blendAmount < 0.5f) && !fightAssoc || FindPlayerPed()->bIsPlayerAiming) {
++#else
++	if ((!idleAssoc || idleAssoc->blendAmount < 0.5f) && !fightAssoc && !bIsDucking) {
++#endif
++
+ 	if ((!idleAssoc || idleAssoc->blendAmount < 0.5f) && !fightAssoc && !bIsDucking) {
+ 		LimbOrientation newUpperLegs;
+ 		newUpperLegs.yaw = localWalkAngle;
+@@ -1685,14 +1704,14 @@ CPed::CalculateNewVelocity(void)
+ 			newUpperLegs.yaw -= PI;
+ 		}
+ 
+-		if (newUpperLegs.yaw > -DEGTORAD(50.0f) && newUpperLegs.yaw < DEGTORAD(50.0f)) {
++		if(newUpperLegs.yaw > -DEGTORAD(50.0f) && newUpperLegs.yaw < DEGTORAD(50.0f)) {
+ 			newUpperLegs.pitch = 0.1f;
+-			RwV3d Xaxis = { 1.0f, 0.0f, 0.0f };
+-			RwV3d Zaxis = { 0.0f, 0.0f, 1.0f };
++			RwV3d Xaxis = {1.0f, 0.0f, 0.0f};
++			RwV3d Zaxis = {0.0f, 0.0f, 1.0f};
+ 
+ #ifdef FIRING_AND_AIMING
+-			if (FindPlayerPed() == this && !FindPlayerPed()->bIsDucking && FindPlayerPed()->bIsPlayerAiming && 
+-				Abs(CPad::GetPad(0)->GetPedWalkLeftRight()) > 64 && !CanWeRunAndFireWithWeapon()) {
++			if(FindPlayerPed() == this && !FindPlayerPed()->bIsDucking && FindPlayerPed()->bIsPlayerAiming &&
++			   Abs(CPad::GetPad(0)->GetPedWalkLeftRight()) > 64 && !CanWeRunAndFireWithWeapon()) {
+ 
+ 				newUpperLegs.pitch = -newUpperLegs.pitch;
+ 				newUpperLegs.yaw = -newUpperLegs.yaw;
+@@ -1704,6 +1723,8 @@ CPed::CalculateNewVelocity(void)
+ 			RtQuatRotate(&m_pFrames[PED_UPPERLEGR]->hanimFrame->q, &Zaxis, RADTODEG(newUpperLegs.pitch), rwCOMBINEPOSTCONCAT);
+ 			RtQuatRotate(&m_pFrames[PED_UPPERLEGR]->hanimFrame->q, &Xaxis, RADTODEG(newUpperLegs.yaw), rwCOMBINEPOSTCONCAT);
+ 			bDontAcceptIKLookAts = true;
++			// The hell, why was this missing?
++			}
+ 		}
+ 	}
+ }
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index 83d2f627..17579e55 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -198,7 +198,17 @@ CPed::SetPointGunAt(CEntity *to)
+ 		if (bCrouchWhenShooting && bIsDucking && GetCrouchFireAnim(curWeapon)) {
+ 			aimAssoc = CAnimManager::BlendAnimation(GetClump(), curWeapon->m_AnimToPlay, GetCrouchFireAnim(curWeapon), 4.0f);
+ 		} else {
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++			AssocGroupId animToPlay = curWeapon->m_AnimToPlay;
++			if (IsPlayer() && !bIsDucking && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON && animToPlay == ASSOCGRP_BUDDY)
++				animToPlay = ASSOCGRP_RIFLE;
++			else if (InVehicle())
++				animToPlay = ASSOCGRP_COLT;
++
++			aimAssoc = CAnimManager::AddAnimation(GetClump(), animToPlay, ANIM_WEAPON_FIRE);
++#else
+ 			aimAssoc = CAnimManager::AddAnimation(GetClump(), curWeapon->m_AnimToPlay, ANIM_WEAPON_FIRE);
++#endif
+ 		}
+ 
+ 		aimAssoc->blendAmount = 0.0f;
+@@ -468,6 +478,21 @@ CPed::SetAttack(CEntity *victim)
+ 					fireAnim = GetFireAnimNotDucking(curWeapon);
+ 				}
+ 
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++				AssocGroupId animToPlay = curWeapon->m_AnimToPlay;
++				if (IsPlayer() && !bIsDucking && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON && animToPlay == ASSOCGRP_BUDDY)
++					animToPlay = ASSOCGRP_RIFLE;
++				else if (InVehicle())
++					animToPlay = ASSOCGRP_COLT;
++
++				CAnimBlendAssociation* curFireAssoc = RpAnimBlendClumpGetAssociation(GetClump(), fireAnim);
++				if (curFireAssoc) {
++					if (strcmp(CAnimManager::GetAnimAssociation(animToPlay, fireAnim)->hierarchy->name, curFireAssoc->hierarchy->name) != 0) {
++						delete curFireAssoc;
++					}
++				}
++				animAssoc = CAnimManager::BlendAnimation(GetClump(), animToPlay, fireAnim, animDelta);
++#else
+ 				CAnimBlendAssociation* curFireAssoc = RpAnimBlendClumpGetAssociation(GetClump(), fireAnim);
+ 				if (curFireAssoc) {
+ 					if (strcmp(CAnimManager::GetAnimAssociation(curWeapon->m_AnimToPlay, fireAnim)->hierarchy->name, curFireAssoc->hierarchy->name) != 0) {
+@@ -475,6 +500,8 @@ CPed::SetAttack(CEntity *victim)
+ 					}
+ 				}
+ 				animAssoc = CAnimManager::BlendAnimation(GetClump(), curWeapon->m_AnimToPlay, fireAnim, animDelta);
++#endif
++			
+ 			}
+ 
+ 			animAssoc->SetRun();
+diff --git a/src/peds/PedIK.cpp b/src/peds/PedIK.cpp
+index 01b92b83..8d1ff4d2 100644
+--- a/src/peds/PedIK.cpp
++++ b/src/peds/PedIK.cpp
+@@ -196,9 +196,30 @@ CPedIK::PointGunInDirection(float targetYaw, float targetPitch)
+ 		armPointedToGun = PointGunInDirectionUsingArm(targetYaw, targetPitch);
+ 		targetYaw = CGeneral::LimitRadianAngle(targetYaw - (m_upperArmOrient.yaw + m_lowerArmOrient.yaw));
+ 	}
+-	if (armPointedToGun) {
++#if defined FIRST_PERSON && defined FIRING_AND_AIMING // change hand position while aiming
++	if (armPointedToGun || (m_ped->IsPlayer() && m_ped->InVehicle() && TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON)) {
++		if (m_ped->IsPlayer()) {
++			if (m_ped->InVehicle()) {
++				if (TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++					ms_upperArmInfo.maxYaw = DEGTORAD(140.0f);
++					ms_upperArmInfo.minYaw = DEGTORAD(-140.0f);
++				}
++			} else {
++				ms_upperArmInfo.maxYaw = DEGTORAD(5.0f);
++				ms_upperArmInfo.minYaw = DEGTORAD(-120.0f);
++			}
++		}
++
+ 		if (m_flags & AIMS_WITH_ARM && m_torsoOrient.yaw * m_upperArmOrient.yaw < 0.0f)
+ 			MoveLimb(m_torsoOrient, 0.0f, m_torsoOrient.pitch, ms_torsoInfo);
++#else
++	if(armPointedToGun) {
++		if(m_flags & AIMS_WITH_ARM && m_torsoOrient.yaw * m_upperArmOrient.yaw < 0.0f) 
++			MoveLimb(m_torsoOrient, 0.0f, m_torsoOrient.pitch, ms_torsoInfo);
++#endif
++
++
++
+ 	} else {
+ 		// Unused code
+ 		RwMatrix *matrix;
+@@ -208,18 +229,50 @@ CPedIK::PointGunInDirection(float targetYaw, float targetPitch)
+ 		ExtractYawAndPitchWorld(matrix, &yaw, &pitch);
+ 		RwMatrixDestroy(matrix);
+ 
+-		if(m_flags & AIMS_WITH_ARM){
++		if(m_flags & AIMS_WITH_ARM) {
++
+ 			if(targetPitch > 0.0f)
+ 				targetPitch = Max(targetPitch - Abs(targetYaw), 0.0f);
+ 			else
+ 				targetPitch = Min(targetPitch + Abs(targetYaw), 0.0f);
+ 		}
++
++#if defined FIRST_PERSON && defined FIRING_AND_AIMING // change hand position while aiming
++		if(m_ped->IsPlayer()) {
++			if(TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON && m_ped->InVehicle() &&
++			   ((CPlayerPed *)m_ped)->bIsPlayerAiming) {
++				m_torsoOrient.pitch = targetPitch;
++				m_torsoOrient.yaw = targetYaw;
++			}
++
++			if(m_ped->InVehicle()) {
++				if(TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++					ms_upperArmInfo.maxYaw = DEGTORAD(140.0f);
++					ms_upperArmInfo.minYaw = DEGTORAD(-140.0f);
++				} else if(((CPlayerPed *)m_ped)->bIsPlayerAiming) {
++					ms_upperArmInfo.maxYaw = DEGTORAD(5.0f);
++					ms_upperArmInfo.minYaw = DEGTORAD(-180.0f);
++				}
++			} else {
++				ms_upperArmInfo.maxYaw = DEGTORAD(5.0f);
++				ms_upperArmInfo.minYaw = DEGTORAD(-120.0f);
++			}
++		}
++
++		LimbMoveStatus status = MoveLimb(m_torsoOrient, targetYaw, targetPitch, ms_torsoInfo);
++		if(m_ped->IsPlayer() && m_ped->InVehicle() || status == ANGLES_SET_EXACTLY)
++			m_flags |= GUN_POINTED_SUCCESSFULLY;
++		else if(status == ANGLES_SET_TO_MAX)
++			result = false;
++#else
+ 		LimbMoveStatus status = MoveLimb(m_torsoOrient, targetYaw, targetPitch, ms_torsoInfo);
+-		if (status == ANGLES_SET_TO_MAX)
++		if(status == ANGLES_SET_TO_MAX)
+ 			result = false;
+-		else if (status == ANGLES_SET_EXACTLY)
++		else if(status == ANGLES_SET_EXACTLY) {
+ 			m_flags |= GUN_POINTED_SUCCESSFULLY;
+-	}
++		}
++#endif
++}
+ 
+ 	// Game uses index 2 directly, which happens to be identical to BONE_spine
+ #ifdef FIX_BUGS
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index de443828..9a899f0c 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -648,7 +648,16 @@ CPlayerPed::MakeChangesForNewWeapon(eWeaponType weapon)
+ 
+ 	GetWeapon()->m_nAmmoInClip = Min(GetWeapon()->m_nAmmoTotal, CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->m_nAmountofAmmunition);
+ 
++#if defined FIRING_AND_AIMING && defined FIRST_PERSON
++	if (IsDoomMode() && GetWeapon()->GetInfo()->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM))
++		StopAimingAnims();
++
++	if (CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM) || IsDoomMode())
++#else
+ 	if (CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->IsFlagSet(WEAPONFLAG_CANAIM))
++#endif
++
++
+ 		ClearWeaponTarget();
+ 
+ 	// WEAPONTYPE_SNIPERRIFLE? Wut?
+@@ -1315,6 +1324,7 @@ CPlayerPed::PlayerControlM16(CPad *padUsed)
+ 	ProcessWeaponSwitch(padUsed);
+ 	TheCamera.PlayerExhaustion = (1.0f - (m_fCurrentStamina - -150.0f) / 300.0f) * 0.9f + 0.1f;
+ 
++#ifndef FIRING_AND_AIMING
+ 	if (padUsed->DuckJustDown() && !bIsDucking && m_nMoveState != PEDMOVE_SPRINT) {
+ 		bCrouchWhenShooting = true;
+ 		SetDuck(60000, true);
+@@ -1322,6 +1332,7 @@ CPlayerPed::PlayerControlM16(CPad *padUsed)
+ 		ClearDuck(true);
+ 		bCrouchWhenShooting = false;
+ 	}
++#endif
+ 
+ 	if (!padUsed->GetTarget() && !m_attachedTo) {
+ 		RestorePreviousState();
+@@ -2245,6 +2256,13 @@ CPlayerPed::PlayerControlZelda(CPad *padUsed)
+ 	float padMoveInGameUnit;
+ 	bool smoothSprayWithoutMove = false;
+ 
++#ifndef FIRING_AND_AIMING // it's need for right movement during aiming
++	if (MovementDisabledBecauseOfTargeting()) {
++		upDown = 0.0f;
++		leftRight = 0.0f;
++	}
++#endif
++
+ 	if (MovementDisabledBecauseOfTargeting()) {
+ 		upDown = 0.0f;
+ 		leftRight = 0.0f;
+@@ -2583,6 +2601,20 @@ CPlayerPed::ProcessControl(void)
+ 	if (bIsLanding)
+ 		RunningLand(padUsed);
+ 
++
++#ifndef FIRING_AND_AIMING
++	if (padUsed && padUsed->WeaponJustDown() && !TheCamera.Using1stPersonWeaponMode()) {
++		// ...Really?
++		eWeaponType playerWeapon = FindPlayerPed()->GetWeapon()->m_eWeaponType;
++		if (playerWeapon == WEAPONTYPE_SNIPERRIFLE || playerWeapon == WEAPONTYPE_LASERSCOPE) {
++			DMAudio.PlayFrontEndSound(SOUND_WEAPON_SNIPER_SHOT_NO_ZOOM, 0);
++		} else if (playerWeapon == WEAPONTYPE_ROCKETLAUNCHER) {
++			DMAudio.PlayFrontEndSound(SOUND_WEAPON_ROCKET_SHOT_NO_ZOOM, 0);
++		}
++	}
++#endif
++
++
+ #ifdef CROUCH
+ 	if (m_nPedState == PED_ROLL && !bIsStanding) {
+ 		RestorePreviousState();
+@@ -2622,15 +2654,7 @@ CPlayerPed::ProcessControl(void)
+ #define IMPROVED_TECH_PART
+ 
+ 
+-	if (padUsed && padUsed->WeaponJustDown() && !TheCamera.Using1stPersonWeaponMode()) {
+-		// ...Really?
+-		eWeaponType playerWeapon = FindPlayerPed()->GetWeapon()->m_eWeaponType;
+-		if (playerWeapon == WEAPONTYPE_SNIPERRIFLE || playerWeapon == WEAPONTYPE_LASERSCOPE) {
+-			DMAudio.PlayFrontEndSound(SOUND_WEAPON_SNIPER_SHOT_NO_ZOOM, 0);
+-		} else if (playerWeapon == WEAPONTYPE_ROCKETLAUNCHER) {
+-			DMAudio.PlayFrontEndSound(SOUND_WEAPON_ROCKET_SHOT_NO_ZOOM, 0);
+-		}
+-	}
++
+ 
+ 
+ 
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index a32e48a9..ea85b24e 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -319,6 +319,44 @@ void CHud::Draw()
+ #ifdef ASPECT_RATIO_SCALE
+ 				f3rdY -= SCREEN_SCALE_Y(2.0f);
+ #endif
++
++
++//
++#ifdef EX_WEAPON_SIGHT // Draw
++				CWeaponInfo* weaponInfo = CWeaponInfo::GetWeaponInfo((eWeaponType)WeaponType);
++				if (FrontEndMenuManager.m_PrefsWeaponSight > 0 && weaponInfo->m_nWeaponSight != 0) {
++					int weaponSightID = weaponInfo->m_nWeaponSight - 1;
++
++					float scaleMultiplier = 0.3f;
++
++					if (FrontEndMenuManager.m_PrefsWeaponSight == 1) {
++						weaponSightID = 0;
++						scaleMultiplier = 0.15f;
++					} else if (weaponSightID == SIGHT_ROCKET) {
++						scaleMultiplier = 0.4f;
++					} else if (weaponSightID == SIGHT_SHOTGUN) {
++						scaleMultiplier = 0.5f;
++					}
++
++					rect.left = f3rdX - SCREEN_SCALE_X(32.0f * scaleMultiplier);
++					rect.top = f3rdY - SCREEN_SCALE_Y(32.0f  * scaleMultiplier);
++					rect.right = f3rdX + SCREEN_SCALE_X(32.0f * scaleMultiplier);
++					rect.bottom = f3rdY + SCREEN_SCALE_Y(32.0f  * scaleMultiplier);
++
++					if (playerPed->GetWeapon()->m_eWeaponState >= WEAPONSTATE_RELOADING) {
++						WeaponSights[weaponSightID].Draw(CRect(rect), CRGBA(150, 150, 150, 255),
++							0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
++					} else {
++						WeaponSights[weaponSightID].Draw(CRect(rect), CRGBA(255, 255, 255, 255),
++							0.0f, 0.0f,  1.0f, 0.0f,  0.0f, 1.0f,  1.0f, 1.0f);
++					}
++				}
++				else
++#endif
++
++//
++
++
+ 				if (playerPed && (WeaponType == WEAPONTYPE_M4 || WeaponType == WEAPONTYPE_RUGER || WeaponType == WEAPONTYPE_M60)) {
+ 					rect.left = f3rdX - SCREEN_SCALE_X(32.0f * 0.6f);
+ 					rect.top = f3rdY - SCREEN_SCALE_Y(32.0f  * 0.6f);
+-- 
+2.45.1.windows.1
+

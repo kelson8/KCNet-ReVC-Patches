@@ -1,0 +1,66 @@
+From 05625080615e063233acb1249c2a11b92bc869bb Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Mar 2025 23:29:23 -0400
+Subject: [PATCH 098/101] Well I disabled the new menu and input, it broke the
+ shooting so the player cannot shoot anything anymore. Fix broken build, add a
+ missing part of the new menu and input
+
+---
+ src/core/Cam.cpp      | 8 ++++++++
+ src/core/Frontend.cpp | 3 ++-
+ src/core/config.h     | 3 ++-
+ 3 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index a460a891..07989c27 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -5875,8 +5875,16 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 			TheCamera.m_bCamDirectlyInFront = true;
+ 
+ 	// Taken from RotCamIfInFrontCar, because we don't call it anymore
++
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++	if (!(bLookBehindForCar || pad->GetLookBehindForPed() || bLookLeft || bLookRight))
++#else
+ 	if (!(pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight()))
++#endif
++
++
+ 		if (DirectionWasLooking != LOOKING_FORWARD)
++
+ 			TheCamera.m_bCamDirectlyBehind = true;
+ 
+ 	// Called when we just entered the car, just started to look behind or returned back from looking left, right or behind
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 88c1d794..3f4070d3 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -1734,8 +1734,9 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						action == MENUACTION_MOUSELOOKSENSX || action == MENUACTION_MOUSEAIMSENSX ||
+ 						action == MENUACTION_PADLOOKSENSX || action == MENUACTION_PADAIMSENSX ||
+ 						action == MENUACTION_MOUSELOOKSENSY || action == MENUACTION_MOUSEAIMSENSY ||
+-						action == MENUACTION_PADLOOKSENSY || action == MENUACTION_PADAIMSENSY ||
++						action == MENUACTION_PADLOOKSENSY || action == MENUACTION_PADAIMSENSY
+ #endif
++						||
+ 
+ #ifdef FIRST_PERSON
+ 						action == MENUACTION_FOV_FP
+diff --git a/src/core/config.h b/src/core/config.h
+index f483c59e..c918c39a 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -104,7 +104,8 @@
+ #define CROUCH
+ 
+ // Copied in changes from this define
+-#define IMPROVED_MENU_AND_INPUT
++// Well this breaks shooting, I cannot shoot if I have this defined for some reason
++// #define IMPROVED_MENU_AND_INPUT
+ 
+ // Copied in changes from these three defines, they don't work so I disabled all this for now.
+ // #define VEHICLE_MODS
+-- 
+2.45.1.windows.1
+

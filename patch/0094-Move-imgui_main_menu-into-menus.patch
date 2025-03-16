@@ -1,0 +1,789 @@
+From 40bc57965bb395d53440ca6148d7b820280ce565 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Mar 2025 07:32:42 -0400
+Subject: [PATCH 094/101] Move imgui_main_menu into menus. Add controller
+ button testing in misc menu. Add ped menu, I need to figure out how to spawn
+ them. Add ped functions, add SetText from custom cheats into imgui menu. Add
+ controller test in CustomCheats::SetText
+
+---
+ src/extras/cheats/custom_cheats.cpp           |  14 +-
+ src/extras/functions/imgui_functions.cpp      |   3 +-
+ src/extras/functions/imgui_functions.h        |   1 +
+ src/extras/functions/imgui_main_menu.h        |  15 --
+ src/extras/functions/ped_functions.cpp        | 231 ++++++++++++++++++
+ src/extras/functions/ped_functions.h          |  14 ++
+ .../{functions => menus}/imgui_main_menu.cpp  |  67 +++--
+ src/extras/menus/imgui_main_menu.h            |  25 ++
+ src/extras/menus/misc_menu.cpp                | 100 +++++++-
+ src/extras/menus/ped_menu.cpp                 |  59 +++++
+ src/extras/menus/ped_menu.h                   |   6 +
+ src/extras/menus/vehicle_menu.cpp             |   2 +-
+ 12 files changed, 484 insertions(+), 53 deletions(-)
+ delete mode 100644 src/extras/functions/imgui_main_menu.h
+ create mode 100644 src/extras/functions/ped_functions.cpp
+ create mode 100644 src/extras/functions/ped_functions.h
+ rename src/extras/{functions => menus}/imgui_main_menu.cpp (72%)
+ create mode 100644 src/extras/menus/imgui_main_menu.h
+ create mode 100644 src/extras/menus/ped_menu.cpp
+ create mode 100644 src/extras/menus/ped_menu.h
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 4bc51a2d..d6a9f57d 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -11,6 +11,8 @@
+ #endif
+ #endif
+ 
++#include <string>
++
+ #include "custom_cheats.h"
+ 
+ // Vehicle functions
+@@ -48,6 +50,8 @@
+ 
+ #include "Remote.h"
+ 
++#include "ControllerConfig.h"
++
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerInfo.h"
+@@ -56,6 +60,8 @@
+ 
+ #include "DMAudio.h"
+ 
++
++
+ #define CUSTOM_CODE1
+ 
+ // Extra
+@@ -682,8 +688,14 @@ CustomCheats::SetText()
+ 		AsciiToUnicode(str, wstr);
+ 		*/
+ 
++		// TODO Test this
++		CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
++		int controllerButton = cControllerConfigManager.GetJoyButtonJustDown();
++		std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
++
+ 		// sprintf(str, "Test");
+-		sprintf(str, "KCNet-ReVC");
++		sprintf(str, controllerButtonMessage.c_str());
++		//sprintf(str, "KCNet-ReVC");
+ 
+ 		AsciiToUnicode(str, ustr);
+ 
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index a8c008f7..3fed76b9 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -16,8 +16,7 @@
+ #include <sstream>
+ 
+ 
+-// I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with
+-// Through 
++// I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with myself.
+ 
+ ///// <summary>
+ ///// Add a help marker
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 7b3f1a5a..48ec1e49 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -64,6 +64,7 @@ public:
+ 	static bool ImGuiDone;
+ 
+ 	// This prints to a VS 2022 debug output window.
++	// TODO Move this somewhere else
+ 	static void PrintToOutput(const char *text);
+ 
+ #ifdef _MOVE_CODE
+diff --git a/src/extras/functions/imgui_main_menu.h b/src/extras/functions/imgui_main_menu.h
+deleted file mode 100644
+index 34bfc751..00000000
+--- a/src/extras/functions/imgui_main_menu.h
++++ /dev/null
+@@ -1,15 +0,0 @@
+-#pragma once
+-#include "imgui.h"
+-
+-namespace ImGuiMenus
+-{
+-	namespace Menu
+-	{
+-	void
+-	MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color);
+-	}
+-}
+-
+-//class MainMenu
+-//{
+-//};
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+new file mode 100644
+index 00000000..0389c5a3
+--- /dev/null
++++ b/src/extras/functions/ped_functions.cpp
+@@ -0,0 +1,231 @@
++#include "ped_functions.h"
++
++#include "CopPed.h"
++#include "EmergencyPed.h"
++#include "CivilianPed.h"
++
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++#include "Entity.h"
++
++#include "World.h"
++
++#include "Script.h"
++#include "Zones.h"
++#include "Population.h"
++
++#include "Streaming.h"
++
++// TODO Replicate these into C++
++
++// https://wiki.gtaconnected.com/File:Model-Ped-VC-12.png
++
++
++/// <summary>
++/// This should create a ped
++/// I got this to not crash, but it doesn't do anything.
++/// TODO Fix this to work.
++/// </summary>
++/// <param name="pedType">The ped type from the ePedType enum</param>
++/// <param name="modelIndex">The model index, found here https://wiki.gtaconnected.com/Resources/GTAVC/PedSkins</param>
++void
++PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
++{
++
++    // Raise the values in here.
++    CVector playerPedPos = FindPlayerPed()->GetPosition();
++	float playerX = playerPedPos.x + 3;
++	float playerY = playerPedPos.x + 3;
++	float playerZ = playerPedPos.z;
++
++    CVector playerPosNew = CVector(playerX, playerY, playerZ);
++
++    // Possibly use this to load the model in.
++    // int mi = ped->GetModelIndex();
++    CStreaming::RequestModel(modelIndex, 0);
++    CStreaming::LoadAllRequestedModels(false);
++
++	CPed *ped;
++	if(pedType == PEDTYPE_COP) 
++        ped = new CCopPed((eCopType)COP_STREET);
++
++    else if (pedType == PEDTYPE_EMERGENCY || pedType == PEDTYPE_FIREMAN)
++		ped = new CEmergencyPed(pedType);
++    else
++	    ped = new CCivilianPed((ePedType)PEDTYPE_CIVMALE, modelIndex);
++
++
++
++    // Setup the ped
++
++    ped->CharCreatedBy = MISSION_CHAR;
++    ped->bRespondsToThreats = false;
++    ped->bAllowMedicsToReviveMe = false;
++    ped->bIsPlayerFriend = false;
++
++    CVector pos = playerPosNew;
++
++   if(pos.z <= MAP_Z_LOW_LIMIT) 
++       pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
++   pos.z += 1.0f;
++   ped->SetPosition(pos);
++   ped->SetOrientation(0.0f, 0.0f, 0.0f);
++
++   // Clear space for the mission entity
++   //CTheScripts::ClearSpaceForMissionEntity(pos, ped);
++
++   // Add the ped to the world
++   CWorld::Add(ped);
++
++   //ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
++   //
++   //CPopulation::ms_nTotalMissionPeds++;
++    
++}
++
++/* case COMMAND_CREATE_CHAR:
++* 
++
++
++        {
++                CollectParameters(&m_nIp, 5);
++                switch (ScriptParams[1]) {
++                case MI_COP:
++                        if (ScriptParams[0] == PEDTYPE_COP)
++                                ScriptParams[1] = COP_STREET;
++                        break;
++                case MI_SWAT:
++                        if (ScriptParams[0] == PEDTYPE_COP)
++                                ScriptParams[1] = COP_SWAT;
++                        break;
++                case MI_FBI:
++                        if (ScriptParams[0] == PEDTYPE_COP)
++                                ScriptParams[1] = COP_FBI;
++                        break;
++                case MI_ARMY:
++                        if (ScriptParams[0] == PEDTYPE_COP)
++                                ScriptParams[1] = COP_ARMY;
++                        break;
++                case MI_MEDIC:
++                        if (ScriptParams[0] == PEDTYPE_EMERGENCY)
++                                ScriptParams[1] = PEDTYPE_EMERGENCY;
++                        break;
++                case MI_FIREMAN:
++                        if (ScriptParams[0] == PEDTYPE_FIREMAN)
++                                ScriptParams[1] = PEDTYPE_FIREMAN;
++                        break;
++                default:
++                        break;
++                }
++                CPed* ped;
++                if (ScriptParams[0] == PEDTYPE_COP)
++                        ped = new CCopPed((eCopType)ScriptParams[1]);
++                else if (ScriptParams[0] == PEDTYPE_EMERGENCY || ScriptParams[0] == PEDTYPE_FIREMAN)
++                        ped = new CEmergencyPed(ScriptParams[1]);
++                else
++                        ped = new CCivilianPed((ePedType)ScriptParams[0], ScriptParams[1]);
++                ped->CharCreatedBy = MISSION_CHAR;
++                ped->bRespondsToThreats = false;
++                ped->bAllowMedicsToReviveMe = false;
++                ped->bIsPlayerFriend = false;
++                CVector pos = *(CVector*)&ScriptParams[2];
++                if (pos.z <= MAP_Z_LOW_LIMIT)
++                        pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++                pos.z += 1.0f;
++                ped->SetPosition(pos);
++                ped->SetOrientation(0.0f, 0.0f, 0.0f);
++                CTheScripts::ClearSpaceForMissionEntity(pos, ped);
++                if (m_bIsMissionScript)
++                        ped->bIsStaticWaitingForCollision = true;
++                CWorld::Add(ped);
++                ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
++                CPopulation::ms_nTotalMissionPeds++;
++                ScriptParams[0] = CPools::GetPedPool()->GetIndex(ped);
++                StoreParameters(&m_nIp, 1);
++                if (m_bIsMissionScript)
++                        CTheScripts::MissionCleanUp.AddEntityToList(ScriptParams[0], CLEANUP_CHAR);
++                return 0;
++        }
++        case COMMAND_DELETE_CHAR:
++        {
++                CollectParameters(&m_nIp, 1);
++                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
++                CTheScripts::RemoveThisPed(ped);
++                if (m_bIsMissionScript)
++                        CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_CHAR);
++                return 0;
++        }
++        case COMMAND_CHAR_WANDER_DIR:
++        {
++                CollectParameters(&m_nIp, 2);
++                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
++                script_assert(ped);
++                ped->ClearAll();
++                int8 path = ScriptParams[1];
++                if (ScriptParams[1] < 0 || ScriptParams[1] > 7)
++                        // Max number GetRandomNumberInRange returns is max-1
++#ifdef FIX_BUGS
++                        path = CGeneral::GetRandomNumberInRange(0, 8);
++#else
++                        path = CGeneral::GetRandomNumberInRange(0, 7);
++#endif
++
++                ped->SetWanderPath(path);
++                return 0;
++        }
++        //case COMMAND_CHAR_WANDER_RANGE:
++        case COMMAND_CHAR_FOLLOW_PATH:
++        {
++                CollectParameters(&m_nIp, 6);
++                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
++                script_assert(ped);
++                if (ped->GetPedState() == PED_ATTACK || ped->GetPedState() == PED_FIGHT || !ped->IsPedInControl())
++                        return 0;
++                CVector pos = *(CVector*)&ScriptParams[1];
++                if (pos.z <= MAP_Z_LOW_LIMIT)
++                        pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++                float radius = *(float*)&ScriptParams[4];
++                eMoveState state;
++                switch (ScriptParams[5]) {
++                case 0: state = PEDMOVE_WALK; break;
++                case 1: state = PEDMOVE_RUN; break;
++                default: assert(0);
++                }
++                ped->ClearAll();
++                ped->m_pathNodeTimer = 0;
++                ped->SetFollowPath(pos, radius, state, nil, nil, 999999);
++                return 0;
++        }
++        case COMMAND_CHAR_SET_IDLE:
++        {
++                CollectParameters(&m_nIp, 1);
++                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
++                script_assert(ped);
++                ped->bScriptObjectiveCompleted = false;
++                ped->SetObjective(OBJECTIVE_WAIT_ON_FOOT);
++                return 0;
++        }
++        case COMMAND_GET_CHAR_COORDINATES:
++        {
++                CollectParameters(&m_nIp, 1);
++                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
++                script_assert(ped);
++                CVehicle* vehicle;
++                CVector pos;
++                /* Seems a bit clumsy but I'll leave original flow */
++
++/*
++if(ped->bInVehicle)
++	vehicle = ped->m_pMyVehicle;
++else
++	vehicle = nil;
++if(vehicle)
++	pos = vehicle->GetPosition();
++else
++	pos = ped->GetPosition();
++*(CVector *)&ScriptParams[0] = pos;
++StoreParameters(&m_nIp, 3);
++return 0;
++}
++*/    
+\ No newline at end of file
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+new file mode 100644
+index 00000000..e6d86121
+--- /dev/null
++++ b/src/extras/functions/ped_functions.h
+@@ -0,0 +1,14 @@
++#pragma once
++
++#define WITHDINPUT
++#include "common.h"
++#include "platform.h"
++
++#include "Ped.h"
++#include "PedType.h"
++
++class PedFunctions
++{
++public:
++	void CreatePed(ePedType pedType, uint32 modelIndex);
++};
+diff --git a/src/extras/functions/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+similarity index 72%
+rename from src/extras/functions/imgui_main_menu.cpp
+rename to src/extras/menus/imgui_main_menu.cpp
+index c3599534..ccfc91b6 100644
+--- a/src/extras/functions/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -41,6 +41,7 @@ extern "C" {
+ #include "player_menu.h"
+ #include "misc_menu.h"
+ #include "about_menu.h"
++#include "ped_menu.h"
+ //
+ 
+ 
+@@ -76,15 +77,37 @@ toggleSecondWindow()
+ 	}
+ }
+ 
++//bool ImGuiMenus::ShowWindow2;
++bool ImGuiMenus::ShowWindow2 = false;
++
++void
++ShowDemoWindow()
++{
++	
++}
++
++// This is disabled in the code.
++void
++Window2()
++{
++	//ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++	ImGui::Begin("Another Window", &ImGuiMenus::ShowWindow2); // Pass a pointer to our bool variable (the window will have a closing button that
++	                                                      // will clear the bool when clicked)
++	ImGui::Text("Hello from another window!");
++	//if(ImGui::Button("Close Me")) show_another_window = false;
++	if(ImGui::Button("Close Me")) 
++		ImGuiMenus::ShowWindow2 = false;
++	ImGui::End();
++}
++
++
++
+ /// <summary>
+ /// This is the test window that shows up.
+ /// </summary>
+-/// <param name="show_demo_window">Shows the demo window</param>
+-/// <param name="show_another_window">Shows the test window</param>
+ /// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
+ void
+-//MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
+-ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
++ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
+ {
+ 	ImGuiIO io;
+ 	static float f = 0.0f;
+@@ -99,6 +122,7 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 	CheatMenu cheatMenu = CheatMenu();
+ 	MiscMenu miscMenu = MiscMenu();
+ 	AboutMenu aboutMenu = AboutMenu();
++	PedMenu pedMenu = PedMenu();
+ 
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	float playerX = playerCoords.x;
+@@ -151,36 +175,29 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 			ImGui::EndTabItem();
+ 		}
+ 
++		// Ped menu
++		// Need to work on this one a bit more, disabled
++		//if(ImGui::BeginTabItem("Peds")) { 
++		//	pedMenu.PedTab();
++		//	
++		//	ImGui::EndTabItem();
++		//}
++
++		// About
+ 		if(ImGui::BeginTabItem("About")) { 
+ 			aboutMenu.AboutTab();
++
+ 			ImGui::EndTabItem();
+ 		}
+ 
+ 		ImGui::EndTabBar();
+ 	}
+ 
+-	// https://edw.is/using-imgui-with-sfml-pt2/#combobox-listbox
+-	//if(ImGui::BeginCombo("Test Combobox", "Test")) { 
+-	//	for (int i = 0; i < strlen(*vehicles); i++) { 
+-	//		const bool isSelected = (selectedIndex == i);
+-	//		if (ImGui::Selectable(vehicles[i], isSelected)) { 
+-	//			selectedIndex = i;
+-	//		}
+-
+-	//		// Set the inital focus when opening the combo
+-	//		if(isSelected) { 
+-	//			ImGui::SetItemDefaultFocus();
+-	//		}
+-
+-
+ 	ImGui::End();
+ 
+ 	// 3. Show another simple window.
+-	if(show_another_window) {
+-		ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
+-		                                                      // will clear the bool when clicked)
+-		ImGui::Text("Hello from another window!");
+-		if(ImGui::Button("Close Me")) show_another_window = false;
+-		ImGui::End();
+-	}
++	// TODO Fix this to work like this, could be useful for something
++	//if(ImGuiMenus::ShowWindow2) { 
++	//	Window2();
++	//}
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/imgui_main_menu.h b/src/extras/menus/imgui_main_menu.h
+new file mode 100644
+index 00000000..ebd70dbf
+--- /dev/null
++++ b/src/extras/menus/imgui_main_menu.h
+@@ -0,0 +1,25 @@
++#pragma once
++#include "imgui.h"
++
++namespace ImGuiMenus
++{
++
++	// I added extern to this
++	// This isn't in use currently, couldn't figure out how to make it work here.
++	extern bool ShowWindow2;
++
++	// TODO Setup toggle for demo window
++	
++
++	namespace Menu
++	{
++	void
++	MainMenu(ImVec4 clear_color);
++
++	
++	}
++}
++
++//class MainMenu
++//{
++//};
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 93ced7f1..63ac5989 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -8,6 +8,9 @@
+ 
+ #include "main.h"
+ 
++// Menus
++#include "imgui_main_menu.h"
++
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+@@ -19,9 +22,15 @@
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+ 
++// Spawning a ped so far, doesn't work.
++#include "ped_functions.h"
++
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
++#include "ControllerConfig.h"
++#include "Pad.h"
++
+ // TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
+ #ifdef PLUGIN_SDK_TEST
+ #include "../test/scriptcommands_test.h"
+@@ -48,7 +57,11 @@
+ #include <format>
+ 
+ bool showHud = true;
++// This will toggle the controller button that is shown in ImGui
++bool toggleControllerText = false;
+ 
++// This will toggle the custom text I setup in CustomCheats::SetText
++bool drawKcNetText = false;
+ 
+ 
+ 
+@@ -329,26 +342,62 @@ toggleHud()
+ 	}
+ }
+ 
++// This didn't show anything, just showed 0.
++void
++logJoyButtonJustDown()
++{
++	Defines defines = Defines();
++
++	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
++	int controllerButton = cControllerConfigManager.GetJoyButtonJustDown();
++
++	std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
++	LogFunctions::LogInfo(defines.logFile, controllerButtonMessage);
++
++}
++
+ //----------- Misc tab ----------//
+ void MiscMenu::MiscTab()
+ {
++	PedFunctions pedFunctions = PedFunctions();
++	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
++	
++
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+ 	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
+ 	if(ImGui::Button("Play bridge closed")) { CustomCheats::PlayAnnouncementTest(2); }
+ 
+-	ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
++	// I have disabled this for now, broke it when moving into its own function.
++	//ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+ 
+ 	// I got this working like in the debug menu.
+ 	if(ImGui::Checkbox("Toggle position on screen", &gbDisplayPosn)) 
+ 	{ 
+-		toggleDisplayPosn();
++		// TODO Fix this to not show up if the other texts are active
++		if(!drawKcNetText && !gbDrawVersionText)
++			toggleDisplayPosn();
+ 	}
+ 	// Toggle the version text like in the debug menu.
+ 	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) 
+ 	{ 
+-		toggleVersionText();
++		// TODO Fix this to not show up if the other texts are active
++		if(!drawKcNetText && !gbDisplayPosn)
++			toggleVersionText();
++	}
++
++	
++
++	if(ImGui::Checkbox("Draw KCNet test", &drawKcNetText))
++	{ 
++		// TODO Fix this to not show up if the other texts are active
++		if(!gbDrawVersionText && !gbDisplayPosn)
++			CustomCheats::ToggleText();
+ 	}
++	//if (ImGui::Button("Draw KCNet test")) 
++	//{ 
++	//	CustomCheats::ToggleText();
++	//}
+ 
+ 	if(ImGui::Checkbox("Toggle hud", &showHud)) { 
+ 		toggleHud();
+@@ -369,7 +418,33 @@ void MiscMenu::MiscTab()
+ 	{ 
+ 		CustomCheats::ExplosionCheat();
+ 	}
+-	
++
++	//if (ImGui::Button("Log Button pressed")) 
++	//{ 
++	//	logJoyButtonJustDown();
++	//}
++
++	//ImGui::Checkbox("Toggle controller text", &toggleControllerText);
++	//
++	//		
++
++	//if(toggleControllerText) { 
++
++	//	// This didn't work either.
++	//	if(ControlsManager.m_aButtonStates[rsPADDPADRIGHT] == true) { ImGui::Text("Right DPad button pressed"); }
++		
++		// Well this didn't do anything.
++		//if(&CControllerState::CheckForInput) {
++		//	ImGui::Text("Input detected for CControllerState");
++		//    } else {
++		//		ImGui::Text("Input not detected for CControllerState");
++		//	}
++
++		// TODO Figure out how to get the controller button, check if RB + DPAD Right is pressed and toggle ImGui menu.
++		// The controller works in it.
++		//std::string controllerButtonStr = "Controller Button: " + std::to_string(controllerButton);
++		//ImGui::Text(controllerButtonStr.c_str());
++	//}
+ 
+ #ifdef PLUGIN_SDK_TEST
+ 	ImGui::Text("Plugin sdk test");
+@@ -386,9 +461,16 @@ void MiscMenu::MiscTab()
+ 	//}
+ 
+ 	// if (ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow)) {
+-	if(ImGuiFunctions::ShowSecondWindow) {
+-		ImGuiFunctions::ShowSecondWindow = true;
+-	} else {
+-		ImGuiFunctions::ShowSecondWindow = false;
+-	}
++	//if(ImGuiFunctions::ShowSecondWindow) {
++	//	ImGuiFunctions::ShowSecondWindow = true;
++	//} else {
++	//	ImGuiFunctions::ShowSecondWindow = false;
++	// 
++	
++	// TODO Fix this to work
++	//if(ImGuiMenus::ShowWindow2) {
++	//	ImGuiMenus::ShowWindow2 = true;
++	//} else {
++	//	ImGuiMenus::ShowWindow2 = false;
++	//}
+ }
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+new file mode 100644
+index 00000000..7db6d4a5
+--- /dev/null
++++ b/src/extras/menus/ped_menu.cpp
+@@ -0,0 +1,59 @@
++#include "ped_menu.h"
++
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++#include "ped_functions.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "World.h"
++
++
++#include "Pad.h"
++#include "Population.h"
++#include "CarCtrl.h"
++#include "Hud.h"
++#include "Text.h"
++
++
++
++/// <summary>
++/// Show the ped tab, disabled in imgui_main_menu.cpp
++/// </summary>
++void
++PedMenu::PedTab()
++{
++	PedFunctions pedFunctions = PedFunctions();
++
++	//----------- Ped Spawning -----------//
++	// This is broken, and needs to be worked on.
++	ImGui::Text("This is broken, doesn't work.");
++	ImGui::Text("Ped spawner");
++	if(ImGui::Button("Spawn ped")) { 
++		pedFunctions.CreatePed(PEDTYPE_CIVMALE, 12); }
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/ped_menu.h b/src/extras/menus/ped_menu.h
+new file mode 100644
+index 00000000..92c76435
+--- /dev/null
++++ b/src/extras/menus/ped_menu.h
+@@ -0,0 +1,6 @@
++#pragma once
++class PedMenu
++{
++public:
++	void PedTab();
++};
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index a2d4c4f7..f34d35f2 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -143,7 +143,7 @@ float g_color = 0;
+ float b_color = 0;
+ float a_color = 0;
+ 
+-// Well now, chatgpt helps again, I can use the color variable, and multiply it by 255 to get the RGBA.
++// Well now, Google Gemini helps again, I can use the color variable, and multiply it by 255 to get the RGBA.
+ void
+ IV4toRGBA(ImVec4 color)
+ {
+-- 
+2.45.1.windows.1
+

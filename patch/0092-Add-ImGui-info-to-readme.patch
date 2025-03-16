@@ -1,0 +1,42 @@
+From 78e65460383f3d38499fe0abb36a4546096a6a4d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 14 Mar 2025 16:09:56 -0400
+Subject: [PATCH 092/101] Add ImGui info to readme.
+
+---
+ README.md | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 5167c7f4..c8c29861 100644
+--- a/README.md
++++ b/README.md
+@@ -8,9 +8,11 @@
+ ## New features
+ kelson8
+ 
+-I have been working on getting ImGui working for a mod menu, so far I have a basic test with ImGui showing up, use the F9 key to open it.
+-For now though there is no mouse showing on the screen for it, and it cannot be closed with the F9 keybind.
+-I still need to work on it and make it right
++I have a ImGui menu fully working now, I will add screenshots and demos of it later. It has tons of features.
++
++I am trying to replicate a lot of features from the [Cheat Menu](https://github.com/user-grinch/Cheat-Menu/tree/master) that was on GTA San Andreas, 3, and Vice City
++
++Keybind for ImGui menu: F8
+ 
+ ImGui keybind and start code has been added to /skel/win/win.cpp [here](https://git.internal.kelsoncraft.net/kelson8/re3/src/branch/miami/src/skel/win/win.cpp)
+ It is on GS_PLAYING_GAME in the main loop under the gGameState switch state, so it won't show up in the main menu or anything for now.
+@@ -18,6 +20,10 @@ It is on GS_PLAYING_GAME in the main loop under the gGameState switch state, so
+ 
+ ImGui initialization and everything has been added to /extras/imgui_test.cpp
+ 
++ImGui has also been added to d3ddevice.cpp in librw before the games EndScene to show up.
++
++I still need to work on getting the menu moving on the screen, it is somewhat glitchy when moving it around but all the functions work in it.
++
+ ## Changes
+ 
+ * Added lua test support, copy utils/lua/test.lua into ReVC-Install/ViceExtended/lua_scripts folder for it to work.
+-- 
+2.45.1.windows.1
+

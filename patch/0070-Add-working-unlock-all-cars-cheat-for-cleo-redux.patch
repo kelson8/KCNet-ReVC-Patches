@@ -1,0 +1,69 @@
+From 762bf1d18c3b908a9ef701f8093c13219c598982 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 1 Mar 2025 14:41:05 -0500
+Subject: [PATCH 070/101] Add working unlock all cars cheat for cleo redux. Add
+ unlock all vehicles function to debug menu.
+
+---
+ src/extras/debug/debug_functions.cpp       |  1 +
+ src/extras/functions/vehicle_functions.cpp | 19 +++++++++++++++++++
+ src/extras/functions/vehicle_functions.h   |  1 +
+ 3 files changed, 21 insertions(+)
+
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 6abadc32..fd7b0de5 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -962,6 +962,7 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Vehicle", "Lock Doors", CustomCheats::LockDoors);
+ 		DebugMenuAddCmd("Vehicle", "Unlock Doors", CustomCheats::UnlockDoors);
+ 		DebugMenuAddCmd("Vehicle", "Remove vehicle", VehicleFunctions::RemoveCurrentVehicleFromWorld);
++		DebugMenuAddCmd("Vehicle", "Unlock all doors", VehicleFunctions::UnlockAllCarDoorsInPlayerArea);
+ 
+ 		#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 		DebugMenuAddCmd("Vehicle", "Upside down explosions", VehicleFunctions::ToggleUpsideDownExplosions);
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 6bbc0f10..622af6bf 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -169,6 +169,25 @@ VehicleFunctions::UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY,
+ 	}
+ }
+ 
++/// <summary>
++/// Unlock all car doors in an area around the player
++/// + 20 and -20 from the X and Y
++/// </summary>
++void
++VehicleFunctions::UnlockAllCarDoorsInPlayerArea()
++{
++	CPed *pPed = FindPlayerPed();
++	CVector pPedCoords = FindPlayerCoors();
++	float playerXMin = pPedCoords.x - 20;
++	float playerYMin = pPedCoords.y - 20;
++
++	float playerXMax = pPedCoords.x + 20;
++	float playerYMax = pPedCoords.y + 20;
++
++	VehicleFunctions::UnlockAllCarDoorsInArea(playerXMin, playerYMin, playerXMax, playerYMax);
++	CHud::SetHelpMessage(TheText.Get("KCCARUK"), false, false);
++}
++
+ // TODO Replicate this function, I might be able to use it for unlocking the players vehicle.
+ /*
+         case COMMAND_STORE_CAR_PLAYER_IS_IN_NO_SAVE:
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index a6a7df3f..2c8d0786 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -33,6 +33,7 @@ public:
+ 
+ 	// TODO Test this
+ 	static void UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY);
++	static void UnlockAllCarDoorsInPlayerArea();
+ 
+ 	// Repair vehicle
+ 	static void RepairCurrentVehicle();
+-- 
+2.45.1.windows.1
+

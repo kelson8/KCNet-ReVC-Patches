@@ -1,0 +1,269 @@
+From 076518725fa38970924d09b094fe581cd36e3712 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Feb 2025 22:33:01 -0500
+Subject: [PATCH 061/101] I fully implemented the code for the PhotoMode from
+ the Vice Extended project. Add a option in the pause menu for photo mode, it
+ opens up a photo viewer for the game.
+
+---
+ src/core/Frontend.cpp                  | 34 ++++++++++++++++++++++++++
+ src/core/Frontend.h                    | 14 +++++++++++
+ src/core/MenuScreensCustom.cpp         | 12 +++++++++
+ src/core/config.h                      |  5 +++-
+ src/core/main.cpp                      |  3 +++
+ src/extras/functions/ini_functions.cpp | 10 ++++++++
+ src/peds/PlayerPed.cpp                 |  7 ++++++
+ src/weapons/Weapon.cpp                 |  5 ++++
+ 8 files changed, 89 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 73e7be55..fefa1d68 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -611,6 +611,11 @@ CMenuManager::CMenuManager()
+ 	m_PrefsWeaponSight = 2;
+ #endif
+ 
++
++#ifdef IMPROVED_TECH_PART // Other settings
++	// m_PrefsAutosave = true; // Auto save
++	m_PrefsStoreGalleryPhotos = true;
++#endif
+ }
+ 
+ 
+@@ -1291,6 +1296,19 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						rightText = TheText.Get("FEC_INC");
+ 					break;
+ #endif
++
++//
++#ifdef IMPROVED_TECH_PART
++				case MENUACTION_GALLERY:
++					if (m_PrefsStoreGalleryPhotos)
++						rightText = TheText.Get("FEM_ON");
++					else
++						rightText = TheText.Get("FEM_OFF");
++				break;
++#endif
++
++//
++
+ 				case MENUACTION_FRAMESYNC:
+ 					rightText = TheText.Get(m_PrefsVsyncDisp ? "FEM_ON" : "FEM_OFF");
+ 					break;
+@@ -5276,6 +5294,10 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 					SaveINIControllerSettings();
+ #endif
+ 				}
++
++#ifdef IMPROVED_TECH_PART
++				m_PrefsStoreGalleryPhotos = true;
++#endif
+ 				SetHelperText(2);
+ 				break;
+ 			case MENUACTION_CTRLMETHOD:
+@@ -5587,6 +5609,18 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 
+ #endif // GAMEPAD_MENU
+ 
++#ifdef IMPROVED_TECH_PART // Other settings
++		// Auto save
++		// case MENUACTION_AUTOSAVE:
++			// m_PrefsAutosave = !m_PrefsAutosave;
++			// SaveSettings();
++			// break;
++		case MENUACTION_GALLERY:
++			m_PrefsStoreGalleryPhotos = !m_PrefsStoreGalleryPhotos;
++			SaveSettings();
++		break;
++#endif
++
+ 
+ 	case MENUACTION_INVERTPADY:
+ 		CPad::bInvertLook4Pad = !CPad::bInvertLook4Pad;
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index bcc56461..c164a7e1 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -256,6 +256,11 @@ enum eMenuScreen
+ #ifdef FIRST_PERSON
+ 	MENUPAGE_FIRST_PERSON,
+ #endif
++
++#ifdef IMPROVED_TECH_PART // Other settings
++	MENUPAGE_OTHER_SETTINGS,
++#endif
++
+ 	MENUPAGES
+ };
+ 
+@@ -347,6 +352,10 @@ enum eMenuAction
+ 	MENUACTION_PHOTO_MODE,
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // Other settings
++	// MENUACTION_AUTOSAVE, // Auto save
++	MENUACTION_GALLERY,
++#endif
+ 
+ #ifdef EX_WEAPON_SIGHT // Menu
+ 	MENUACTION_WEAPONSIGHT,
+@@ -822,6 +831,11 @@ public:
+ 	bool m_PrefsDoomMode_FP;
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // Other settings
++	bool m_PrefsAutosave;
++	bool m_PrefsStoreGalleryPhotos;
++#endif
++
+ #ifdef EX_WEAPON_SIGHT // Menu
+ 	int m_PrefsWeaponSight;
+ #endif
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 6e9d7aa3..08b8e861 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -897,6 +897,18 @@ CMenuScreenCustom aScreens[] = {
+ 
+ 		MENUACTION_GOBACK,			"FEDS_TB",   {nil, SAVESLOT_NONE, MENUPAGE_NONE}, 0, 0, MENUALIGN_LEFT,
+ 	},
++
++#ifdef IMPROVED_TECH_PART // Other settings
++	// MENUPAGE_OTHER_SETTINGS = 50
++	{ "FEO_OTH", MENUPAGE_OPTIONS, nil, nil,
++		MENUACTION_NOTHING, "", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 40, 150, MENUALIGN_LEFT,
++		// MENUACTION_AUTOSAVE, "FET_AUT", { nil, SAVESLOT_NONE, MENUPAGE_OTHER_SETTINGS }, 0, 0, MENUALIGN_LEFT, // Auto save
++		MENUACTION_GALLERY, "FET_SGP", { nil, SAVESLOT_NONE, MENUPAGE_OTHER_SETTINGS }, 0, 0, MENUALIGN_LEFT,
++		MENUACTION_GOBACK, "FEDS_TB", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 0, 0, MENUALIGN_LEFT,
++	},
++
++#endif
++
+ };
+ 
+ #endif
+diff --git a/src/core/config.h b/src/core/config.h
+index 990bb3d5..e3ad868d 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -94,11 +94,14 @@
+ #define EX_MORE_BUTTON_ICONS
+ #define EX_PC_KEY_ICONS
+ 
+-// TODO Implement the defines below to possibly make photo mode build.
++// Photo mode works now, I have a few things to pull in from these changes.
+ // #define IMPROVED_MENU_AND_INPUT
+ // #define IMPROVED_TECH_PART
+ #define EX_PHOTO_MODE
+ 
++// Test a couple features from here, mostly for photo mode.
++#define IMPROVED_TECH_PART
++
+ /*********************** End partially complete code  ******************/
+ 
+ // End disable these when done testing.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 47c61767..c397bc50 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -130,6 +130,8 @@ float NumberOfChunksLoaded;
+ bool g_SlowMode = false;
+ char version_name[64];
+ 
++// TODO Figure out what is disabling this..
++#define IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering
+ uint32 newScreenNumber = 0;
+ #endif
+@@ -372,6 +374,7 @@ RwGrabScreen(RwCamera *camera, RwChar *filename)
+ 	return result;
+ }
+ 
++// TODO Figure out what is disabling this..
+ #ifdef IMPROVED_TECH_PART // New screenshot folder and numbering (thanks to Shagg_E)
+ void TakeAndSaveScreenshot() {
+ 	char s[48];
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 2581930c..48f14235 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -614,6 +614,11 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // Other settings
++// ReadIniIfExists("Other", "Autosave", &FrontEndMenuManager.m_PrefsAutosave);
++ReadIniIfExists("Other", "StoreGalleryPhotos", &FrontEndMenuManager.m_PrefsStoreGalleryPhotos);
++#endif
++
+ #ifdef EX_WEAPON_SIGHT // Menu
+ 	ReadIniIfExists("Display", "WeaponSight", &FrontEndMenuManager.m_PrefsWeaponSight);
+ #endif
+@@ -735,6 +740,11 @@ SaveINISettings()
+ 	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // Other settings
++	StoreIni("Other", "Autosave", FrontEndMenuManager.m_PrefsAutosave);
++	StoreIni("Other", "StoreGalleryPhotos", FrontEndMenuManager.m_PrefsStoreGalleryPhotos);
++#endif
++
+ #ifdef EX_WEAPON_SIGHT // Menu
+ 	StoreIni("Display", "WeaponSight", FrontEndMenuManager.m_PrefsWeaponSight);
+ #endif
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index d1779270..b31d7e7b 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -127,9 +127,13 @@ CPlayerPed::CPlayerPed(void) : CPed(PEDTYPE_PLAYER1)
+ 	bIsAutoAiming = false;
+ #endif
+ 
++#undef IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // skiped phone calls
+ 	m_bSkipPhoneCall = false;
+ #endif
++
++#define IMPROVED_TECH_PART
++
+ }
+ 
+ /// <summary>
+@@ -2579,6 +2583,7 @@ CPlayerPed::ProcessControl(void)
+ 	}
+ #endif
+ 
++#undef IMPROVED_TECH_PART
+ #ifdef IMPROVED_TECH_PART // skip a phone call
+ 	if (m_nPedState == PED_ANSWER_MOBILE && m_bSkipPhoneCall) {
+ 		for (int slot = 0; slot < MISSION_AUDIO_SLOTS; slot++)
+@@ -2588,6 +2593,8 @@ CPlayerPed::ProcessControl(void)
+ 	}
+ #endif
+ 
++#define IMPROVED_TECH_PART
++
+ 
+ 	if (padUsed && padUsed->WeaponJustDown() && !TheCamera.Using1stPersonWeaponMode()) {
+ 		// ...Really?
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 7c9555de..669db718 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -37,6 +37,11 @@
+ #include "Pickups.h"
+ #include "SaveBuf.h"
+ 
++#ifdef IMPROVED_TECH_PART // Saving a screenshot after taking a photo
++#include "main.h"
++#include "Frontend.h"
++#endif
++
+ float fReloadAnimSampleFraction[5] = {  0.5f,  0.7f,  0.75f,  0.75f,  0.7f };
+ float fSeaSparrowAimingAngle = 10.0f;
+ float fHunterAimingAngle = 30.0f;
+-- 
+2.45.1.windows.1
+

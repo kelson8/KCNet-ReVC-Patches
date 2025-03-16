@@ -1,0 +1,350 @@
+From b8ede6e484a7f672973eabce774b8c68fb63be86 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 1 Mar 2025 13:56:13 -0500
+Subject: [PATCH 069/101] Enable swimming code, it now works since I disabled
+ some climbing code. Add some missing changes for moving custom_cheats.
+
+---
+ src/core/config.h                      | 227 ++++++++++++++++++++++---
+ src/extras/debug/debug_functions.cpp   |  16 +-
+ src/extras/functions/ini_functions.cpp |   2 +-
+ 3 files changed, 212 insertions(+), 33 deletions(-)
+
+diff --git a/src/core/config.h b/src/core/config.h
+index 20754d08..51175e61 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -87,23 +87,50 @@
+ // TODO Fix modloader
+ 
+ // TODO Add toggle for these in debug menu if possible.
+-// TODO Fix these to work with the rocket launcher, I may need to fully fix up EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+-// The rocket launcher won't fire with these enabled.
+ 
+-// #define FIRING_AND_AIMING
+-// // I think I mostly got this one completed also.
+-// #define FIRST_PERSON
++// I had to set "RocketLauncherThirdPersonAiming" to 0 in features.ini under 'ViceExtended' folder.
++// That seems to have fixed the rocket launcher, although that feature should work.
++
++// Begin working
++
++#define FIRING_AND_AIMING
++// I think I mostly got this one completed also.
++#define FIRST_PERSON
+ // The code for these are copied in
+ // Enable better crouching support
+-// #define CROUCH
++#define CROUCH
++
++// It seems to build with this now.
++// TODO Fix this to work, it shows in the menu but doesn't seem to change the weapon sights.
++// This almost works, I think I'm missing the texture somewhere.
++// Hmm...
++#define EX_WEAPON_SIGHT
++
++// This didn't change anything.
++// #define EX_IMPROVED_WEAPONS
++
++// TODO Use this define for new IMPROVED_TECH_PART stuff, so I can enable it seperate.
++// Some of that stuff is in use for photo mode which is working.
++// #define EX_IMPROVED_TECH_PART
++
++// TODO Fix this, if enabled in the features.ini the rocket launcher doesn't have the proper animations, and won't work.
++#define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+ 
+ // I got the code for this implemented into here
+-// Well either this or the climbing breaks it lol.
+-// The player will constantly try to do the swim animation if crouching.
+-// #define SWIMMING
++// This works fine now!
++#define SWIMMING
++
++// End working
++
++// Enable better climbing, this breaks the swimming code above so I disabled it.
++//#define CLIMBING
++
++// TODO Fix this
++// Errors out on ModLoader_GetCdStreamPath_Unsafe, I possibly am missing something for the modloader.
++// It is a bit complicated.
++//#define MODLOADER
++
+ 
+-// Enable better climbing
+-// #define CLIMBING
+ 
+ // TODO Implement these
+ // #define EX_PED_ANIMS_IN_CAR
+@@ -139,20 +166,6 @@
+ 
+ //
+ 
+-
+-
+-// TODO Fix this
+-// Errors out on ModLoader_GetCdStreamPath_Unsafe, I possibly am missing something for the modloader.
+-// It is a bit complicated.
+-// #define MODLOADER
+-
+-// It seems to build with this now.
+-// TODO Fix this to work, it shows in the menu but doesn't seem to change the weapon sights.
+-// #define EX_WEAPON_SIGHT
+-
+-// Well this just breaks the rocket launcher, I'm not too worried about it
+-// #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+-
+ // It seems to build with these two enabled!!!
+ // TODO Test photo mode once I get IMPROVED_MENU_AND_INPUT complete.
+ #define EX_MORE_BUTTON_ICONS
+@@ -313,14 +326,166 @@
+ 
+ */
+ 
++// #ifdef VICE_EXTENDED
++// // Implement the raised limits from Vice Extended.
++// // This should possibly fix the rocket launcher animations in 3rd person
++// enum Config {
++// 	NUMPLAYERS = 1,
++
++// 	NUMCDIMAGES = 6,   // gta3.img duplicates (not used on PC)
++// 	MAX_CDIMAGES = 32, // additional cdimages
++// 	MAX_CDCHANNELS = 5,
++
++// 	MODELINFOSIZE = 10000,
++// 	TXDSTORESIZE = 1485,
++// 	COLSTORESIZE = 100,
++// 	EXTRADIRSIZE = 512,
++// 	CUTSCENEDIRSIZE = 512,
++
++// 	SIMPLEMODELSIZE = 10000,
++// 	TIMEMODELSIZE = 10000,
++// 	CLUMPMODELSIZE = 100,
++// 	WEAPONMODELSIZE = 77,
++// 	PEDMODELSIZE = 130,
++// 	VEHICLEMODELSIZE = 210,
++// 	TWODFXSIZE = 3000,
++
++// 	MAXVEHICLESLOADED = 50, // 70 on mobile
++
++// 	NUMOBJECTINFO = 210,
++
++// 	NUMCUTSCENEOBJECTS = 50, // not a pool in VC
++
++// 	NUMANIMBLOCKS = 40,
++// 	NUMANIMATIONS = 500,
++
++// 	NUMTEMPOBJECTS = 40,
++
++// 	// Path data
++// 	NUM_PATHNODES = 9650,
++// 	NUM_CARPATHLINKS = 3500,
++// 	NUM_MAPOBJECTS = 1250,
++// 	NUM_PATHCONNECTIONS = 20400,
++// 	NUM_WANTEDPATHNODES = 20,
++// 	NUM_WANTEDPATHS = 100,
++
++// 	// Link list lengths
++// 	NUMALPHALIST = 20,
++// 	NUMBOATALPHALIST = 20,
++// 	NUMALPHAENTITYLIST = 2000,
++// 	NUMALPHAUNTERWATERENTITYLIST = 30,
++// 	NUMCOLCACHELINKS = 50,
++// 	NUMREFERENCES = 800,
++
++// 	// Zones
++// 	NUMAUDIOZONES = 14,
++// 	NUMINFOZONES = 169,
++// 	NUMMAPZONES = 39,
++// 	NUMNAVIGZONES = 20,
++
++// 	// Cull zones
++// 	NUMATTRIBZONES = 704,
++
++// 	NUMOCCLUSIONVOLUMES = 350,
++// 	NUMACTIVEOCCLUDERS = 48,
++
++// 	PATHNODESIZE = 4500,
++
++// 	NUMWEATHERS = 7,
++// 	NUMHOURS = 24,
++
++// 	NUMEXTRADIRECTIONALS = 4,
++// 	NUMANTENNAS = 8,
++// 	NUMCORONAS = 2000,
++// 	NUMPOINTLIGHTS = 32,
++// 	NUM3DMARKERS = 32,
++// 	NUMBRIGHTLIGHTS = 32,
++// 	NUMSHINYTEXTS = 32,
++// 	NUMMONEYMESSAGES = 16,
++// 	NUMPICKUPMESSAGES = 16,
++// 	NUMBULLETTRACES = 16,
++// 	NUMMBLURSTREAKS = 4,
++// 	NUMSKIDMARKS = 32,
++
++// 	NUMONSCREENCLOCKS = 1,
++// 	NUMONSCREENCOUNTERS = 3,
++// 	NUMRADARBLIPS = 300,
++// 	NUMGENERALPICKUPS = 320,
++// 	NUMSCRIPTEDPICKUPS = 100,
++// 	NUMPICKUPS = NUMGENERALPICKUPS + NUMSCRIPTEDPICKUPS,
++// 	NUMCOLLECTEDPICKUPS = 100,
++// 	NUMPACMANPICKUPS = 256,
++// 	NUMEVENTS = 64,
++
++// 	NUM_CARGENS = 185,
++
++// 	NUM_PATH_NODES_IN_AUTOPILOT = 8,
++
++// 	NUM_ACCIDENTS = 20,
++// 	NUM_FIRES = 40,
++// 	NUM_GARAGES = 35,
++// 	NUM_PROJECTILES = 32,
++
++// 	NUM_GLASSPANES = 45,
++// 	NUM_GLASSENTITIES = 32,
++// 	NUM_WATERCANNONS = 3,
++
++// 	NUMPEDROUTES = 200,
++// 	NUMPHONES = 50,
++// 	NUMPEDGROUPS = 67,
++// 	NUMMODELSPERPEDGROUP = 16,
++// 	MAXZONEPEDSLOADED = 8,
++// 	NUMSHOTINFOS = 100,
++
++// 	NUMROADBLOCKS = 300,
++// 	NUM_SCRIPT_ROADBLOCKS = 16,
++
++// 	NUMVISIBLEENTITIES = 2000,
++// 	NUMINVISIBLEENTITIES = 150,
++
++// 	NUM_AUDIOENTITY_EVENTS = 4,
++// 	NUM_PED_COMMENTS_SLOTS = 20,
++
++// 	NUM_SOUND_QUEUES = 2,
++// 	NUM_AUDIOENTITIES = 250,
++
++// 	NUM_SCRIPT_MAX_ENTITIES = 40,
++
++// 	NUM_GARAGE_STORED_CARS = 4,
++
++// 	NUM_CRANES = 8,
++// 	NUM_ESCALATORS = 22,
++// 	NUM_WATER_CREATURES = 8,
++
++// 	NUM_EXPLOSIONS = 48,
++
++// 	NUM_SETPIECES = 96,
++// 	NUM_SHORTCUT_START_POINTS = 16,
++
++// 	// Pool sizes
++// 	NUMPTRNODES = 50000,
++// 	NUMBUILDINGS = 7000,
++// 	NUMAUDIOSCRIPTOBJECTS = 192,
++// 	NUMCOLMODELS = 4400,
++// 	NUMDUMMIES = 2340,
++// 	NUMENTRYINFOS = 3200,
++// 	NUMOBJECTS = 460,
++// 	NUMPEDS = 140,
++
++// 	NUMTREADABLES = 1,
++// 	NUMVEHICLES = 110,
++
++
++// };
++// #else
+ enum Config {
+ 	NUMPLAYERS = 1,
+ 
+-	NUMCDIMAGES = 6, // gta3.img duplicates (not used on PC)
++	NUMCDIMAGES = 6,  // gta3.img duplicates (not used on PC)
+ 	MAX_CDIMAGES = 8, // additional cdimages
+ 	MAX_CDCHANNELS = 5,
+ 
+-	MODELINFOSIZE = 6500,	// 4900 on PS2
++	MODELINFOSIZE = 6500, // 4900 on PS2
+ 	TXDSTORESIZE = 1385,
+ 	COLSTORESIZE = 31,
+ 	EXTRADIRSIZE = 256,
+@@ -349,10 +514,15 @@ enum Config {
+ 	NUMDUMMIES = 2340,
+ 	NUMAUDIOSCRIPTOBJECTS = 192,
+ 	NUMCOLMODELS = 4400,
+-	NUMCUTSCENEOBJECTS = 50,	// not a pool in VC
++	NUMCUTSCENEOBJECTS = 50, // not a pool in VC
+ 
+ 	NUMANIMBLOCKS = 35,
++
++	#ifdef VICE_EXTENDED
++	NUMANIMATIONS = 471,
++	#else
+ 	NUMANIMATIONS = 450,
++	#endif
+ 
+ 	NUMTEMPOBJECTS = 40,
+ 
+@@ -455,6 +625,7 @@ enum Config {
+ 	NUM_SETPIECES = 96,
+ 	NUM_SHORTCUT_START_POINTS = 16
+ };
++// #endif
+ 
+ // We don't expect to compile for PS2 or Xbox
+ // but it might be interesting for documentation purposes
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index cf3a4fd8..6abadc32 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -61,7 +61,9 @@
+ // Extra
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+-#include "extras/test/cheats/custom_cheats.h"
++#include "extras/cheats/custom_cheats.h"
++#include "extras/cheats/player_cheats.h"
++#include "extras/cheats/vehicle_cheats.h"
+ 
+ #include "extras/functions/vehicle_functions.h"
+ 
+@@ -408,6 +410,7 @@ void
+ DebugMenuPopulate(void)
+ {
+ 	CustomCheats *customCheats = new CustomCheats();
++	VehicleCheats *vehicleCheats = new VehicleCheats();
+ 	// customCheats->InfiniteHealthCheat();
+ 	// customCheats->
+ 	// CustomCheats::InfiniteHealthCheat();
+@@ -482,9 +485,14 @@ DebugMenuPopulate(void)
+ #define _TEST1
+ // Custom added by kelson8, these can be disabled by commenting out CUSTOM_CODE in config.h
+ #ifdef _TEST1
+-		DebugMenuAddCmd("Cheats", "Infinite Health", CustomCheats::InfiniteHealthCheat);
+-		DebugMenuAddCmd("Cheats", "Never wanted", CustomCheats::NeverWantedCheat);
+-		DebugMenuAddCmd("Cheats", "Invincible Vehicle", customCheats->InvincibleVehicleCheat);
++		//DebugMenuAddCmd("Cheats", "Infinite Health", CustomCheats::InfiniteHealthCheat);
++		//DebugMenuAddCmd("Cheats", "Never wanted", CustomCheats::NeverWantedCheat);
++		DebugMenuAddCmd("Cheats", "Infinite Health", PlayerCheats::InfiniteHealthCheat);
++		DebugMenuAddCmd("Cheats", "Never wanted", PlayerCheats::NeverWantedCheat);
++
++
++		//DebugMenuAddCmd("Cheats", "Invincible Vehicle", customCheats->InvincibleVehicleCheat);
++		DebugMenuAddCmd("Cheats", "Invincible Vehicle", vehicleCheats->InvincibleVehicleCheat);
+ 		DebugMenuAddCmd("Cheats", "Suicide", SuicideCheat);
+ 
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 163a932e..5bdc1c30 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -59,7 +59,7 @@
+ // Extra
+ #include "Garages.h"
+ #include "extras/imgui_test.h"
+-#include "extras/test/cheats/custom_cheats.h"
++#include "extras/cheats/custom_cheats.h"
+ 
+ //#ifdef _TEST1
+ #include "ini_functions.h"
+-- 
+2.45.1.windows.1
+

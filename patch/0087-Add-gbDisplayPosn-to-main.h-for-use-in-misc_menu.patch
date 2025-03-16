@@ -1,0 +1,637 @@
+From 6affccb098006281801305dc33ea14ce116e00db Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Mar 2025 23:10:54 -0400
+Subject: [PATCH 087/101] Add gbDisplayPosn to main.h for use in misc_menu.
+ Make Debug text show modification name and version from the defines file.
+ Change TeleportToWaypoint to not be static. Add show hud test, doesn't work
+ yet. Add timecycle test from Cheat Menu, incomplete. Add toggle version text,
+ toggle display position into misc_menu. Add toggle infinite sprint, toggle
+ get out of hospital free, and toggle get out of jail free. Setup teleport to
+ marker option in warp_menu.
+
+---
+ src/core/main.cpp                    |  55 +++++---
+ src/core/main.h                      |   4 +
+ src/extras/cheats/player_cheats.cpp  |  63 +++++++++
+ src/extras/cheats/player_cheats.h    |  11 ++
+ src/extras/debug/debug_functions.cpp |   8 ++
+ src/extras/defines.cpp               |   3 +
+ src/extras/defines.h                 |   1 +
+ src/extras/menus/misc_menu.cpp       | 203 +++++++++++++++++++++++++++
+ src/extras/menus/player_menu.cpp     |  56 +++++++-
+ src/extras/menus/warp_menu.cpp       |  11 ++
+ 10 files changed, 396 insertions(+), 19 deletions(-)
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e2d1e22b..2af0b7da 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -90,6 +90,9 @@
+ #ifdef CUSTOM_CODE
+ // Set Text test.
+ #include "custom_cheats.h"
++
++// Setup program version and name
++#include "defines.h"
+ #endif
+ 
+ GlobalScene Scene;
+@@ -188,7 +191,11 @@ bool gbNewRenderer;
+ #endif
+ 
+ bool bDisplayNumOfAtomicsRendered = false;
++#ifndef CUSTOM_CODE
+ bool bDisplayPosn = false;
++#else
++bool gbDisplayPosn = false;
++#endif
+ 
+ #ifdef __MWERKS__
+ void
+@@ -621,7 +628,11 @@ Initialise3D(void *param)
+ 
+ #ifndef MASTER
+ 	VarConsole.Add("Display number of atomics rendered", &bDisplayNumOfAtomicsRendered, true);
++#ifdef CUSTOM_CODE
++	VarConsole.Add("Display posn and framerate", &gbDisplayPosn, true);
++#else
+ 	VarConsole.Add("Display posn and framerate", &bDisplayPosn, true);
++#endif
+ #endif
+ 
+ 	if (RsRwInitialize(param))
+@@ -1216,7 +1227,11 @@ DisplayGameDebugText()
+ #ifndef FINAL
+ 	{
+ 		SETTWEAKPATH("Debug");
++#ifdef CUSTOM_CODE
++		TWEAKBOOL(gbDisplayPosn);
++#else
+ 		TWEAKBOOL(bDisplayPosn);
++#endif
+ 		TWEAKBOOL(bDisplayCheatStr);
+ 	}
+ 
+@@ -1236,43 +1251,45 @@ DisplayGameDebugText()
+ 
+ #ifdef USE_OUR_VERSIONING
+ 	char verA[200];
+-	sprintf(verA,
++		sprintf(verA,
+ #if defined _WIN32
+-			"Win "
++		        "Win "
+ #elif defined __linux__
+-		    "Linux "
++		        "Linux "
+ #elif defined __APPLE__
+-		    "Mac OS X "
++		        "Mac OS X "
+ #elif defined __FreeBSD__
+-		    "FreeBSD "
++		        "FreeBSD "
+ #else
+-		    "Posix-compliant "
++		        "Posix-compliant "
+ #endif
+ #if defined __LP64__ || defined _WIN64
+-			"64-bit "
++		        "64-bit "
+ #else
+-			"32-bit "
++		        "32-bit "
+ #endif
+ #if defined RW_D3D9
+-		    "D3D9 "
++		        "D3D9 "
+ #elif defined RWLIBS
+-		    "D3D8 "
++		        "D3D8 "
+ #elif defined RW_GL3
+-		    "OpenGL "
++		        "OpenGL "
+ #endif
+ #if defined AUDIO_OAL
+-		    "OAL "
++		        "OAL "
+ #elif defined AUDIO_MSS
+-		    "MSS "
++		        "MSS "
+ #endif
+ #if defined _DEBUG || defined DEBUG
+-		    "DEBUG "
++		        "DEBUG "
+ #endif
+ 
+ 		// I don't really care too much about the git sha1 hash.
+ 		// Replaced this text with my own.
+-#ifdef CUSTOM_CODE
+-			"KCNet-ReVC"
++#ifdef CUSTOM_CODE  
++				      "%s V: %s",
++			Defines::modificationName.c_str(),	
++			Defines::programVersion.c_str()
+ #else
+ 		    "%.8s",
+ 		    g_GIT_SHA1
+@@ -1316,7 +1333,11 @@ DisplayGameDebugText()
+ 		FrameSamples = 0;
+ 	}
+ 
+-	if ( bDisplayPosn )
++#ifdef CUSTOM_CODE
++	if( gbDisplayPosn )
++#else
++	if(bDisplayPosn)
++	#endif
+ 	{
+ 		CVector pos = FindPlayerCoors();
+ 		int32 ZoneId = ARRAY_SIZE(ZonePrint)-1; // no zone
+diff --git a/src/core/main.h b/src/core/main.h
+index 59f5996d..d8ab0a98 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -99,6 +99,10 @@ extern uint8 gbGameSaveOnStartup;
+ extern bool gbLuaTest;
+ #endif
+ 
++#ifdef CUSTOM_CODE
++extern bool gbDisplayPosn;
++#endif
++
+ // TODO Fix this to work
+ // This should change the police weapons to any from a list once I figure it out
+ //#ifdef CHANGE_POLICE_WEAPONS
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index 7a1d9a1f..e2475747 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -329,4 +329,67 @@ PlayerCheats::WarpPlayer(CVector pos, int interiorID)
+ 
+ 	pPed->m_area = interiorID;
+ 
++}
++
++// TODO Figure out how to do these in here.
++void
++PlayerCheats::EnableInfiniteSprint()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	pPlayerInfo.m_bInfiniteSprint = true;
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++}
++
++void
++PlayerCheats::DisableInfiniteSprint()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	pPlayerInfo.m_bInfiniteSprint = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++	
++}
++
++void
++PlayerCheats::EnableGetOutOfHospitalFree()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	pPlayerInfo.m_bGetOutOfHospitalFree = true;
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++}
++
++void
++PlayerCheats::DisableGetOutOfHospitalFree()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	pPlayerInfo.m_bGetOutOfHospitalFree = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++}
++
++void
++PlayerCheats::EnableGetOutOfJailFree()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	pPlayerInfo.m_bGetOutOfJailFree = true;
++	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++}
++
++void
++PlayerCheats::DisableGetOutOfJailFree()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	pPlayerInfo.m_bGetOutOfJailFree = false;
++	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+ }
+\ No newline at end of file
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index a1513cc9..c72af8ec 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -23,5 +23,16 @@ public:
+ 	static void DisableNeverWanted();
+ 	static void NeverWantedCheat();
+ 
++	static void EnableInfiniteSprint();
++	static void DisableInfiniteSprint();
++
++	static void EnableGetOutOfHospitalFree();
++	static void DisableGetOutOfHospitalFree();
++
++	static void EnableGetOutOfJailFree();
++	static void DisableGetOutOfJailFree();
++
++
++
+ 	static void WarpPlayer(CVector pos, int interiorID);
+ };
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 644779b4..43d10ed1 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -257,8 +257,16 @@ FixCar(void)
+ }
+ 
+ #ifdef MAP_ENHANCEMENTS
++
++// I had to change this from static to use it in my imgui menu.
++#ifdef CUSTOM_CODE
++void
++TeleportToWaypoint(void)
++#else
+ static void
+ TeleportToWaypoint(void)
++#endif
++
+ {
+ 	if(CRadar::TargetMarkerId == -1) return;
+ 	CEntity *pEntityToTeleport = FindPlayerEntity();
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 06011642..f23a2747 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -6,6 +6,9 @@ std::string Defines::logFile = "KCNet-ReVC.log";
+ 
+ std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
+ 
++// 
++std::string Defines::modificationName = "KCNet-ReVC";
++
+ // TODO Display these somewhere, possibly in a pop up under the debug menu.
+ // Set the program modification author
+ std::string Defines::modificationAuthor = "kelson8";
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 50305255..1f173086 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -14,6 +14,7 @@ public:
+ 	static std::string luaLogFile;
+ 
+ 	// Program info
++	static std::string modificationName;
+ 	static std::string modificationAuthor;
+ 	static std::string programVersion;
+ };
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 10cd43b3..8f758108 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -29,6 +29,190 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++#include "Frontend.h"
++
++
++
++// Extras
++#include <iostream>
++#include <vector>
++#include <format>
++
++bool showHud = true;
++
++
++
++
++ // Timecyc stuff
++static int m_nTimecycHour = 8;
++static std::vector<std::string> m_WeatherNames {
++
++	"SUNNY", "CLOUDY", "RAINY", "FOGGY"
++
++	,
++    "EXTRA_SUNNY",
++    "HURRICANE",
++    "EXTRACOLORS"};
++
++#define TOTAL_WEATHERS 7
++
++// TODO Replicate this function from the Cheat Menu
++//template <typename T>
++//int
++//GetTCVal(T *addr, int index)
++//{
++//#ifdef GTASA
++//	T *arr = static_cast<T *>(patch::GetPointer(int(addr)));
++//#else
++//	T *arr = static_cast<T *>(addr);
++//#endif
++//	return static_cast<int>(arr[index]);
++//}
++
++// TODO Replicate this function from the Cheat Menu
++//static void
++//GenerateTimecycFile()
++//{
++//	std::ofstream file = std::ofstream("timecyc.dat");
++//
++//	for(uint i = 0; i < TOTAL_WEATHERS; ++i) {
++//		std::string buffer;
++//		switch(i) {
++//		case 0: buffer = "\n// SUNNY\n"; break;
++//		case 1: buffer = "\n// CLOUDY\n"; break;
++//		case 2: buffer = "\n// RAINY\n"; break;
++//		case 3: buffer = "\n// FOGGY\n";
++//		case 4: buffer = "\n// EXTRA SUNNY\n";
++//		case 5: buffer = "\n// HURRICANE\n";
++//		case 6:
++//			buffer = "\n// EXTRA COLORS (INTERIORS)\n// These colours do not belong to a weather type but can be set by the level designers for "
++//			         "interiors.\n";
++//		}
++//
++//		buffer += "// Amb     Amb_Obj    Amb_bl     Amb_Obj_bl	   Dir          Sky top			Sky bot		SunCore 		"
++//		          "SunCorona   SunSz  SprSz	SprBght Shdw LightShd  PoleShd 	FarClp 	 FogSt 	LightOnGround	LowCloudsRGB TopCloudRGB "
++//		          "BottomCloudRGB		BlurRGB					WaterRGBA";
++//
++//
++//		file << buffer << std::endl;
++//
++//		        for(size_t j = 0; j < 24; ++j) {
++//
++//			if(i == 6) // EXTRA COLORS
++//			{
++//				buffer = "// Extra Color " + std::to_string(j);
++//
++//				static std::string intNames[] = {"Maibu Club",     "Strip Club",     "Hotel",       "Bank",
++//				                                 "Police HQ",      "Mall",           "Rifle Range", "Mansion",
++//				                                 "Dirtring",       "Blood ring",     "Hotring",     "Concert Hall",
++//				                                 "Auntie Poulets", "Intro at Docks", "Biker Bar",   "Intro Cafe Dark Room",
++//				                                 "Studio"};
++//
++//				if(j < 18) 
++//				{ 
++//					buffer += "(" + intNames[j] + ")"; 
++//				}
++//			} 
++//			else 
++//			{
++//				buffer = "// " + std::to_string(j) + " ";
++//				if(j < 12) {
++//					buffer += "AM\n";
++//				} else {
++//					buffer += "PM\n";
++//				}
++//
++//			}
++//
++//
++//			size_t val = TOTAL_WEATHERS * i + j;
++//			buffer += std::format(
++//			    "{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{} "
++//			    "{} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {} {}",
++//			    GetTCVal(m_nAmbientRed, val), GetTCVal(m_nAmbientGreen, val), GetTCVal(m_nAmbientBlue, val), GetTCVal(m_nAmbientRed_Obj, val),
++//			    GetTCVal(m_nAmbientGreen_Obj, val), GetTCVal(m_nAmbientBlue_Obj, val), GetTCVal(m_nAmbientBlRed, val),
++//			    GetTCVal(m_nAmbientBlGreen, val), GetTCVal(m_nAmbientBlBlue, val), GetTCVal(m_nAmbientBlRed_Obj, val),
++//			    GetTCVal(m_nAmbientBlGreen_Obj, val), GetTCVal(m_nAmbientBlBlue_Obj, val), GetTCVal(m_nDirRed, val), GetTCVal(m_nDirGreen, val),
++//			    GetTCVal(m_nDirBlue, val), GetTCVal(m_nSkyTopRed, val), GetTCVal(m_nSkyTopGreen, val), GetTCVal(m_nSkyTopBlue, val),
++//			    GetTCVal(m_nSkyBottomRed, val), GetTCVal(m_nSkyBottomGreen, val), GetTCVal(m_nSkyBottomBlue, val), GetTCVal(m_nSunCoreRed, val),
++//			    GetTCVal(m_nSunCoreGreen, val), GetTCVal(m_nSunCoreBlue, val), GetTCVal(m_nSunCoronaRed, val), GetTCVal(m_nSunCoronaGreen, val),
++//			    GetTCVal(m_nSunCoronaBlue, val), GetTCVal(m_fSunSize, val) / 10.0f, GetTCVal(m_fSpriteSize, val) / 10.0f,
++//			    GetTCVal(m_fSpriteBrightness, val) / 10.0f, GetTCVal(m_nShadowStrength, val), GetTCVal(m_nLightShadowStrength, val),
++//			    GetTCVal(m_nPoleShadowStrength, val), GetTCVal(m_fFarClip, val), GetTCVal(m_fFogStart, val),
++//			    GetTCVal(m_fLightsOnGroundBrightness, val) / 10.0f, GetTCVal(m_nLowCloudsRed, val), GetTCVal(m_nLowCloudsGreen, val),
++//			    GetTCVal(m_nLowCloudsBlue, val), GetTCVal(m_nTopCloudsRed, val), GetTCVal(m_nTopCloudsGreen, val), GetTCVal(m_nTopCloudsBlue, val),
++//			    GetTCVal(m_nBottomCloudsRed, val), GetTCVal(m_nBottomCloudsGreen, val), GetTCVal(m_nBottomCloudsBlue, val),
++//			    GetTCVal(m_nBlurRed, val), GetTCVal(m_nBlurGreen, val), GetTCVal(m_nBlurBlue, val), GetTCVal(m_fWaterRed, val),
++//			    GetTCVal(m_fWaterGreen, val), GetTCVal(m_fWaterBlue, val), GetTCVal(m_fWaterAlpha, val));
++//
++//			file << buffer << std::endl;
++//
++//		}
++//	}
++//}
++
++
++/// <summary>
++/// Toggle the customized version text on the screen
++/// </summary>
++void
++toggleVersionText()
++{
++	if (gbDrawVersionText) { 
++		gbDrawVersionText = true;
++	} else {
++		gbDrawVersionText = false;
++	}
++
++}
++
++/// <summary>
++/// Toggle the position display in game from the debug menu.
++/// </summary>
++void
++toggleDisplayPosn()
++{
++	if(gbDisplayPosn) 
++	{
++		gbDisplayPosn = true;
++	} else {
++		gbDisplayPosn = false;
++	}
++		
++}
++
++// TODO Add show/hide radar
++// TODO Add show/hide hud
++
++// Copied from visual.cpp in Cheat Menu
++
++CMenuManager frontEndMenuManager = CMenuManager();
++
++// TODO Fix these functions
++void
++enableHud()
++{
++	frontEndMenuManager.m_PrefsShowHud = true;
++}
++
++void
++disableHud()
++{
++	frontEndMenuManager.m_PrefsShowHud = false;
++}
++
++void
++toggleHud()
++{
++	// frontEndMenuManager.m_PrefsShowHud = !frontEndMenuManager.m_PrefsShowHud;
++
++	if(showHud) {
++		disableHud();
++	} else {
++		enableHud();
++	}
++}
++
+ void MiscMenu::MiscTab()
+ {
+ 	ImGui::Text("Sounds");
+@@ -38,6 +222,25 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+ 
++	// I got this working like in the debug menu.
++	if(ImGui::Checkbox("Toggle position on screen", &gbDisplayPosn)) { 
++		toggleDisplayPosn();
++	}
++	// Toggle the version text like in the debug menu.
++	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) { 
++		toggleVersionText();
++	}
++
++	if(ImGui::Checkbox("Toggle hud", &showHud)) { 
++		toggleHud();
++	}
++
++	// TODO Test this
++	// Well this didn't do anything
++	//if(ImGui::Button("Save Game")) { 
++	//	FrontEndMenuManager.m_nCurrScreen = MENUPAGE_CHOOSE_SAVE_SLOT;
++	//}
++
+ 	// if (ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow)) {
+ 	if(ImGuiFunctions::ShowSecondWindow) {
+ 		ImGuiFunctions::ShowSecondWindow = true;
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 82407495..87dd9c5b 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -31,6 +31,9 @@
+ 
+ // Player
+ bool infiniteHealth = false;
++bool infiniteSprint = false;
++bool getOutOfHospitalFree = false;
++bool getOutOfJailFree = false;
+ 
+ void
+ toggleInfiniteHealth()
+@@ -43,7 +46,47 @@ toggleInfiniteHealth()
+ 	}
+ }
+ 
+-void PlayerMenu::PlayerTab()
++void
++toggleInfiniteSprint()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if (infiniteSprint) 
++	{ 
++		playerCheats.EnableInfiniteSprint();
++	} else {
++		playerCheats.DisableInfiniteSprint();
++	}
++}
++
++// This was tested and working, it makes it to where the player doesn't have to pay money for the hospital.
++// They still lose their weapons though.
++void
++toggleGetOfHospitalFree()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(getOutOfHospitalFree) { 
++		playerCheats.EnableGetOutOfHospitalFree();
++	} else {
++		playerCheats.DisableGetOutOfHospitalFree();
++	}
++
++}
++
++void
++toggleGetOfJailFree()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(getOutOfJailFree) 
++	{ 
++		playerCheats.EnableGetOutOfJailFree();
++	} else {
++		playerCheats.DisableGetOutOfJailFree();
++	}
++}
++
++
++void
++PlayerMenu::PlayerTab()
+ {
+ 	if(ImGui::Button("Heal")) { PlayerCheats::HealPlayer(); }
+ 
+@@ -52,4 +95,13 @@ void PlayerMenu::PlayerTab()
+ 	if(ImGui::Button("Suicide")) { PlayerCheats::SuicideCheat(); }
+ 
+ 	if(ImGui::Checkbox("Infinite health", &infiniteHealth)) { toggleInfiniteHealth(); }
+-}
++
++	if(ImGui::Checkbox("Infinite sprint", &infiniteSprint)) { toggleInfiniteSprint(); }
++
++	ImGui::Text("For not having to pay when getting out of hospital and getting busted.");
++	// TODO Make these not take away weapons when dying/getting busted.
++
++	if(ImGui::Checkbox("Get ouf of hospital free", &getOutOfHospitalFree)) { toggleGetOfHospitalFree(); }
++
++	if(ImGui::Checkbox("Get ouf of jail free", &getOutOfJailFree)) { toggleGetOfJailFree(); }
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 4001bbfe..083e0293 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -27,6 +27,12 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++// TODO Setup this to warp to locations from the locations.toml in the Cheat Menu once I figure that out.
++
++// Removed static from the void in debug_functions using a preprocessor.
++// This works.
++void TeleportToWaypoint(void);
++
+ // Test from teleport.cpp in Cheat Menu
+ #define INPUT_BUFFER_SIZE 64
+ char m_LocBuf[INPUT_BUFFER_SIZE], m_InBuf[INPUT_BUFFER_SIZE];
+@@ -69,4 +75,9 @@ WarpMenu::WarpTab()
+ 	// This seems to show up the current coordinates on the screen.
+ 	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + "Y: " + std::to_string(playerY) + "Z: " + std::to_string(playerZ);
+ 	ImGui::Text(playerPositionMessage.c_str());
++
++	if(ImGui::Button("Marker")) 
++	{ 
++		TeleportToWaypoint();
++	}
+ }
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,882 @@
+From 44109dfd0df2e860ddf3d76022d12c807eb94887 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Mar 2025 07:38:16 -0400
+Subject: [PATCH 084/101] Add style from user-grinch in Cheat Menu. Add list of
+ functions from my imgui test. Add never wanted, infinite health, high vehicle
+ mass, vehicle infinite health. Add healing the player, base for warps. Make
+ vehicle spawner use my enum. Add weapon cheats, wanted level cheats, add
+ bridge sound announcements on radio. Add toggle for window 2 test in the
+ menu. Add player in vehicle check to vehicle_functions.
+
+---
+ src/extras/functions/imgui_functions.cpp   | 341 +++++++++++++++++----
+ src/extras/functions/imgui_functions.h     |  28 +-
+ src/extras/functions/imgui_main_menu.cpp   | 334 +++++++++++++++++++-
+ src/extras/functions/imgui_main_menu.h     |  10 +-
+ src/extras/functions/vehicle_functions.cpp |  15 +
+ src/extras/functions/vehicle_functions.h   |   2 +
+ 6 files changed, 647 insertions(+), 83 deletions(-)
+
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index e08cfc61..efa83cb1 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -1,93 +1,308 @@
+ #include "imgui_functions.h"
+ 
+-//#define NEW_IMGUI_TEST
+-// Well this still has linker errors, I'm going to attempt to move the ImGui stuff into here piece by piece and
+-// Try to make it work.
+-// I can't keep going through it in win.cpp... Too much code..
+-#ifdef NEW_IMGUI_TEST
+-
+-// This might be what I can use for another window using ImGui
+-// Obtained from win.cpp
+-#define PSGLOBAL(var) (((psGlobalType *)(RsGlobal.ps))->var)
+-
+-
+-// Other
+-#include <Windows.h>
+-#include <d3d9.h>
+-#include <tchar.h>
+-
+-// Imgui
++// ImGui
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+ #include "imgui_impl_win32.h"
+ 
++#include "imgui_main_menu.h"
+ 
+ 
+-// 
+-//#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
++//
++//// TODO Move ImGui functions for use in here.
++//
++///// <summary>
++///// Destory the ImGui window
++///// </summary>
++///// <param name="hwnd"></param>
++///// <param name="wc"></param>
++//void ImGuiFunctions::Main::DestroyWindow(HWND hwnd, WNDCLASSEXW wc)
++//{
++//	::DestroyWindow(hwnd);
++//	::UnregisterClassW(wc.lpszClassName, wc.hInstance);
++//}
++//
++///// <summary>
++///// Shutdown ImGui
++///// </summary>
++//void ImGuiFunctions::Main::ShutDown()
++//{
++//	// Shutdown ImGui
++//	ImGui_ImplDX9_Shutdown();
++//	ImGui_ImplWin32_Shutdown();
++//	// Destroy ImGui Context
++//	ImGui::DestroyContext();
++//}
++//
++///// <summary>
++///// Show the ImGui Window
++///// </summary>
++///// <param name="hwnd"></param>
++//void ImGuiFunctions::Main::ShowWindow(HWND hwnd)
++//{
++//	// Show the window
++//	::ShowWindow(hwnd, SW_SHOWDEFAULT);
++//	::UpdateWindow(hwnd);
++//}
++//
++//// imgui_demo line 256
++//// TODO What's this for? Seems like it's not needed
++////static void ImGuiFunctions::Main::ShowWindow(bool* p_open)
++////{
++////	static bool show_main_menu = false;
++////
++////	if (show_main_menu)
++////	{
++////		if (ImGui::Begin("Test"))
++////		{
++////			ImGui::Text("Hello World!");
++////		}
++////	}
++////
++////	if (!ImGui::Begin("Test", p_open))
++////	{
++////
++////		ImGui::End();
++////		return;
++////	}
++////}
++//
++///// <summary>
++///// Setup ImGui
++///// </summary>
++//void ImGuiFunctions::Main::SetupContext()
++//{
++//    //bool oldFont = false;
++//
++//	// Setup Dear ImGui context
++//	IMGUI_CHECKVERSION();
++//	ImGui::CreateContext();
++//	ImGuiIO& io = ImGui::GetIO(); (void)io;
++//	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
++//	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
++//
++//	// Load Fonts
++//	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
++//	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
++//	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display an error and quit).
++//	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
++//	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
++//	// - Read 'docs/FONTS.md' for more instructions and details.
++//	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
++//	io.Fonts->AddFontDefault();
++//
++//    //if (oldFont) {
++//    //    io.Fonts->AddFontFromFileTTF("./lib/ImGui/misc/fonts/DroidSans.ttf", 16.0f);
++//    //}
++//    //else {
++//        // New font, from the Cheat Menu here https://github.com/user-grinch/Cheat-Menu/tree/master/resource/addon
++//        io.Fonts->AddFontFromFileTTF("./ViceExtended/fonts/cheat_menu.ttf", 1.15f);
++//    //}
++//	//
++//
++//	
++//    // Here are some other fonts
++//	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);
++//	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
++//	//io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
++//	//ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, nullptr, io.Fonts->GetGlyphRangesJapanese());
++//	//IM_ASSERT(font != nullptr);
++//}
++//
++///// <summary>
++///// Add a help marker
++///// </summary>
++///// <param name="desc"></param>
++//static void ImGuiFunctions::Main::HelpMarker(const char* desc)
++//{
++//	ImGui::TextDisabled("(?)");
++//	if (ImGui::BeginItemTooltip())
++//	{
++//		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
++//		ImGui::TextUnformatted(desc);
++//		ImGui::PopTextWrapPos();
++//		ImGui::EndTooltip();
++//	}
++//}
++//
+ 
+-// I don't think the rest of these are needed
+-//#ifdef XINPUT
+-//#include <xinput.h>
+-//#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-//#pragma comment(lib, "Xinput9_1_0.lib")
+-//#else
+-//#pragma comment(lib, "Xinput.lib")
+-//#endif
+-//#endif
++// Credit to user-grinch on github for the style code here.
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/cheatmenu.cpp#L271-L335
++void ImGuiFunctions::ApplyStyle()
++{
++     ImGuiStyle* style = &ImGui::GetStyle();
++     ImVec4* colors = style->Colors;
+ 
+-// Vice City functions
+-// These don't work
+-#ifdef _TEST1
++     style->WindowPadding = ImVec2(8, 8);
++     style->WindowRounding = 5.0f;
++     style->FramePadding = ImVec2(8, 8);
++     style->FrameRounding = 5.0f;
++     style->PopupRounding = 5.0f;
++     style->ItemSpacing = ImVec2(7, 7);
++     style->ItemInnerSpacing = ImVec2(7, 7);
++     style->IndentSpacing = 25.0f;
++     style->ScrollbarSize = 12.0f;
++     style->ScrollbarRounding = 10.0f;
++     style->GrabMinSize = 5.0f;
++     style->GrabRounding = 3.0f;
+ 
+-#include "ControllerConfig.h"
+-#include "skeleton.h"
+-#endif //_TEST1
++     style->ChildBorderSize = 0;
++     style->WindowBorderSize = 0;
++     style->FrameBorderSize = 0;
++     style->TabBorderSize = 0;
++     style->PopupBorderSize = 0;
+ 
+-#include "ControllerConfig.h"
++     style->Colors[ImGuiCol_Text] = ImVec4(0.80f, 0.80f, 0.83f, 1.00f);
++     style->Colors[ImGuiCol_TextDisabled] = ImVec4(0.35f, 0.33f, 0.3f, 1.00f);
++     style->Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.05f, 0.06f, 0.95f);
++     style->Colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
++     style->Colors[ImGuiCol_PopupBg] = ImVec4(0.06f, 0.05f, 0.06f, 0.95f);
++     style->Colors[ImGuiCol_Border] = ImVec4(0.12f, 0.12f, 0.12f, 1.0f);
++     style->Colors[ImGuiCol_BorderShadow] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_FrameBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_FrameBgActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.12f, 0.12f, 0.94f);
++     style->Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(1.00f, 0.98f, 0.95f, 0.75f);
++     style->Colors[ImGuiCol_TitleBgActive] = ImVec4(0.07f, 0.07f, 0.09f, 1.00f);
++     style->Colors[ImGuiCol_MenuBarBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.5f, 0.5f, 0.5f, 0.3f);
++     style->Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.7f, 0.7f, 0.7f, 0.3f);
++     style->Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.9f, 0.9f, 0.9f, 0.3f);
++     style->Colors[ImGuiCol_CheckMark] = ImVec4(0.80f, 0.80f, 0.83f, 0.31f);
++     style->Colors[ImGuiCol_SliderGrab] = ImVec4(0.80f, 0.80f, 0.83f, 0.31f);
++     style->Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.80f, 0.80f, 0.83f, 0.31f);
++     style->Colors[ImGuiCol_Separator] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_Button] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_ButtonActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_Tab] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_TabHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_TabActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
++     style->Colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_HeaderActive] = ImVec4(0.06f, 0.05f, 0.07f, 1.00f);
++     style->Colors[ImGuiCol_ResizeGrip] = ImVec4(0.12f, 0.12f, 0.12f, 0.00f);
++     style->Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_PlotLines] = ImVec4(0.40f, 0.39f, 0.38f, 0.63f);
++     style->Colors[ImGuiCol_PlotLinesHovered] = ImVec4(0.25f, 1.00f, 0.00f, 1.00f);
++     style->Colors[ImGuiCol_PlotHistogram] = ImVec4(0.40f, 0.39f, 0.38f, 0.63f);
++     style->Colors[ImGuiCol_PlotHistogramHovered] = ImVec4(0.25f, 1.00f, 0.00f, 1.00f);
++     style->Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.06f, 0.05f, 0.06f, 0.95f);
++     style->Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.20f, 0.20f, 0.20f, 0.6f);
++ }
+ 
++bool ImGuiFunctions::ShowSecondWindow = false;
+ 
+-/// <summary>
+-/// The idea for this came from UIRenderer.cpp in the Reversed GTA SA project.
+-/// The UIRenderer::DrawLoop function
+-/// </summary>
++// Code moved out of d3ddevice.cpp in librw
++// TODO Make this work later.
++#ifdef _MOVE_CODE
+ void
+-drawImguiLoop()
++ImGuiFunctions::RunImGui()
+ {
+-	ImGui_ImplWin32_NewFrame();
+-	ImGui_ImplDX9_NewFrame();
+-	ImGui::NewFrame();
+ 
+-	// ImGui content goes here
+-	ImGui::Text("Hello");
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	bool show_demo_window = true;
++	bool show_another_window = false;
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++
++	// d3ddevice->EndScene();
++	/*
+ 
+-	ImGui::EndFrame();
+-	ImGui::Render();
++	        rw::d3d::d3ddevice->SetRenderState(D3DRS_ZENABLE, FALSE);
++	        rw::d3d::d3ddevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++	        rw::d3d::d3ddevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
++	        D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
++	                                              (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
++	*/
+ 
+-	ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++	// The while loop was crashing this
++	// while(!ImGuiFunctions::ImGuiDone) {
++	// Setup the new frames
+ 
++	// if (imGuiFunctions.ImGuiEnabled) {
+ 
+-	// ImGui_ImplDX9_InvalidateDeviceObjects();
++	//	}
+ 
+-	// TODO Figure out what these were for
+-	/*
+-	PostRenderUpdate();
++	if(!imGuiFunctions.ImGuiDone) {
+ 
+-	// Update and Render additional Platform Windows
+-	if(m_ImIO->ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+-		ImGui::UpdatePlatformWindows();
+-		ImGui::RenderPlatformWindowsDefault();
+-	}
+-	*/
+-}
++		ImGui_ImplDX9_NewFrame();
++		ImGui_ImplWin32_NewFrame();
++		ImGui::NewFrame();
+ 
++		// Test for mouse
++		ClipCursor(NULL);
++		// if (imGuiFunctions.ImGuiEnabled) {
++		//	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++		//
++		//} else {
++		//
++		//}
+ 
++		//
++		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
++		// if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+ 
++		{
++			// https://www.unknowncheats.me/forum/general-programming-and-reversing/505033-imgui-mouse-interaction-video.html
++			ImGuiIO &io = ImGui::GetIO();
++			// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
++			// Hmm, with my new menu setup, the mouse shows up but cannot click on anything.
++			// Something in the code is overriding the mouse.. TODO Fix that.
+ 
++			// Update mouse position
++			POINT p;
++			GetCursorPos(&p);
++			// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
++			// Idk what I did to break this...
++			// ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
++			io.MousePos = ImVec2(p.x, p.y);
+ 
++			// Update mouse button state
++			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++
++			// Toggle ImGui with right mouse button
++			// if(io.MouseDown[1]) { ImGuiFunctions::ImGuiDone = true; }
++
++			// Draw the cursor to the screen
++			io.MouseDrawCursor = true;
++			//
++
++			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++
++			// This toggles ImGui!!
++			// Now to figure out how to add a keyboard shortcut to it.
++			// Also to figure out
++			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++
++			// if(io.MouseDown[1]) { ImGuiFunctions::ImGuiDone = true; }
++
++			// Moved this into its own method
++			ImGuiMenus::Menu::MainMenu(false, false, clear_color);
++
++			// Save device state
++			IDirect3DStateBlock9 *pStateBlock = NULL;
++			rw::d3d::d3ddevice->CreateStateBlock(D3DSBT_ALL, &pStateBlock);
++			pStateBlock->Capture();
++
++			//
++
++			// ImGui Rendering
++			ImGui::EndFrame();
++			ImGui::Render();
++			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++
++			// Restore device state
++			pStateBlock->Apply();
++			pStateBlock->Release();
++			//
++		}
++		rw::d3d::d3ddevice->Present(NULL, NULL, NULL, NULL);
++	}
++}
+ 
+ 
+-#endif // NEW_IMGUI_TEST
+\ No newline at end of file
++#endif //_MOVE_CODE
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 4cddb46b..fc62fad6 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -1,13 +1,37 @@
+ #pragma once
++
++#ifdef _WIN32
+ #include <Windows.h>
++#endif
++
++//namespace ImGuiFunctions {
++//	namespace Main {
++//		static void HelpMarker(const char* desc);
++//		// TODO What's this for? Seems like it's not needed
++//		//static void ShowWindow(bool* p_open);
++//		void SetupContext();
++//		void ShowWindow(HWND hwnd);
++//		void ShutDown();
++//		void DestroyWindow(HWND hwnd, WNDCLASSEXW wc);
++//		void ApplyStyle();
++//
++//		static bool done;
++//	}
++//}
++
+ 
+ class ImGuiFunctions
+ {
+ public:
+ 	static void ImGuiLoop();
++	static void ApplyStyle();
++
++	static bool ShowSecondWindow;
+ 	static bool ImGuiDone;
+ 
+-	static bool ImGuiEnabled;
++#ifdef _MOVE_CODE
++	static void RunImGui();
+ 
+-	HWND mainWindow;
++#endif
++	
+ };
+diff --git a/src/extras/functions/imgui_main_menu.cpp b/src/extras/functions/imgui_main_menu.cpp
+index 7926ebce..a55ae5f3 100644
+--- a/src/extras/functions/imgui_main_menu.cpp
++++ b/src/extras/functions/imgui_main_menu.cpp
+@@ -1,8 +1,40 @@
+ #include "imgui_main_menu.h"
+ #include "imgui.h"
+ 
+-#include "vehicle_functions.h"
++// Lua test
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "lua_test.h"
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++//
++
++#include <iostream>
++
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
+ #include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++
++
++
++#include "./extras/test/enums/model_ids.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
+ 
+ bool spawnInCar = false;
+ 
+@@ -16,6 +48,172 @@ int currentItem = 150;
+ int selectedIndex = 0;
+ bool showMainMenuBar = false;
+ 
++// Player
++bool neverWanted = false;
++bool infiniteHealth = false;
++
++// Vehicle
++bool highVehicleMass = false;
++bool vehicleInvincible = false;
++
++// TODO Separate these menus out, place player into imgui_player_menu.. and so on.
++
++
++//------------
++// Lua test
++
++// Check lua globals, made this into a function
++//bool
++//CheckLua(lua_State *L, int r)
++//{
++//	// Check if the value is valid
++//	if(r != LUA_OK) {
++//		std::string errorMsg = lua_tostring(L, -1);
++//		// std::cout << errorMsg << std::endl;
++//		TRACE("KCNet - Lua Error");
++//		return false;
++//	} /*else {
++//	        TRACE("KCNet - Lua Error");
++//	}*/
++//
++//	return true;
++//}
++
++//------------
++
++
++/// <summary>
++/// Toggle infinite health, moved out of main menu 
++/// and refactored the checkbox to be under an if statement.
++/// </summary>
++void
++toggleInfiniteHealth()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(infiniteHealth) {
++		playerCheats.EnableInfiniteHealth();
++	} else {
++		playerCheats.DisableInfiniteHealth();
++	}
++}
++
++void
++toggleNeverWanted()
++{
++	if(neverWanted) {
++		PlayerCheats::EnableNeverWanted();
++	} else {
++		PlayerCheats::DisableNeverWanted();
++	}
++}
++
++void
++toggleVehicleInvincible()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) { 
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		if(vehicleInvincible) {
++			VehicleCheats::EnableVehicleInvincibility(currentVeh);
++		} else {
++			VehicleCheats::DisableVehicleInvincibility(currentVeh);
++		}
++	
++	}
++
++}
++
++void
++toggleSecondWindow()
++{
++	if(ImGuiFunctions::ShowSecondWindow) {
++		ImGuiFunctions::ShowSecondWindow = false;
++	} else {
++		ImGuiFunctions::ShowSecondWindow = true;
++	}
++}
++
++/// <summary>
++/// Well, I created a bug with the high mass lol. I made a fun effect
++/// TODO Figure out how to reset this back to default
++/// TODO Figure out how to get these values from lua... Use my lua_test.cpp
++/// This is fun, although it does crash after a minute since I can't turn it off.
++/// </summary>
++void
++toggleHighVehicleMass()
++{
++	LuaTest luaTest = LuaTest();
++
++	// Test for lua
++	lua_State *L = luaL_newstate();
++	luaL_openlibs(L);
++
++	// This makes the vehicle super strong
++	float vehicleMass = 30000.0f;
++
++	// Well I created the spinny effect but sadly it crashes after a minute.
++	// This creates the spinny effect like from the reddit post I saw.
++	float vehicleTurnMass = 4.0f;
++
++
++	// This gives off an error too.
++	//if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) {
++	//	lua_getglobal(L, "vehicle_mass");
++	//	if(lua_isnumber(L, 1)) {
++	//		//if(luaTest.CheckLua(L, 1)) {
++	//			float vehicleMass = (float)lua_tonumber(L, 1);
++	//			TRACE("Vehicle mass: %f", vehicleMass);
++	//		//}
++	//	}
++	//}
++
++
++	//lua_close(L);
++
++
++	// Well this just gives off an error
++	// TODO Figure out how to fix this..
++	// 
++	//	float vehicleMass = lua_tonumber(L, 1);
++	//	TRACE("VehicleMass: %f", vehicleMass);
++	//}
++	//
++	//if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) 
++	//{ 
++
++	//}
++
++	//
++
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if (vehicleFunctions.IsPlayerInVehicle()) { 
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		if (highVehicleMass)
++		{ 
++			//currentVeh->m_fMass = 10000000.0f;
++			
++			//currentVeh->m_fMass = 10000.0f;
++
++
++			// This makes the vehicle super strong
++			currentVeh->m_fMass = vehicleMass;
++
++			// Spinny effect
++			currentVeh->m_fTurnMass = vehicleTurnMass;
++		}
++		
++	}
++
++}
++
+ /// <summary>
+ /// This is the test window that shows up.
+ /// </summary>
+@@ -30,36 +228,146 @@ ImGuiMenus::Menu::MainMenu(bool show_demo_window, bool show_another_window, ImVe
+ 	static float f = 0.0f;
+ 	static int counter = 0;
+ 
++	PlayerCheats playerCheats = PlayerCheats();
++
+ 	ImGui::Begin("KCNet ReVC ImGui");
+ 
+-	if(ImGui::BeginTabBar("Functions")) {
+-		if(ImGui::BeginTabItem("Player")) { 
+-			ImGui::Button("Test");
++	if (ImGui::BeginTabBar("Functions")) {
++
++		// Player
++		if (ImGui::BeginTabItem("Player")) {
++			if (ImGui::Button("Heal")) {
++				PlayerCheats::HealPlayer();
++			}
++
++			ImGui::SameLine();
++
++			if (ImGui::Button("Suicide")) {
++				PlayerCheats::SuicideCheat();
++			}
++
++			if (ImGui::Checkbox("Infinite health", &infiniteHealth)) {
++				toggleInfiniteHealth();
++			}
++
++
++
++			// TODO Set these up
++			//ImGui::Text("Warps");
++			//if (ImGui::Button("Airport")) {
++
++			//}
++
+ 			ImGui::EndTabItem();
+ 		}
+ 
+-		if(ImGui::BeginTabItem("Vehicle")) {
+ 
+-			if(ImGui::Button("Toggle vehicle list")) { showVehicleListBox = !showVehicleListBox; }
++		// Vehicle
++		if (ImGui::BeginTabItem("Vehicle")) {
++
++			if (ImGui::Button("Toggle vehicle list")) { 
++				showVehicleListBox = !showVehicleListBox; 
++			}
+ 
+ 			// Add a test for spawning in the car
+ 			// TODO Add a list of vehicles to spawn into
+ 			ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
+ 
+ 			// TODO Figure out how to make this start from 130 instead of 1.
+-			if(showVehicleListBox) { ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); }
++			if (showVehicleListBox) { 
++				ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
++			}
+ 
+-			if(ImGui::Button("Spawn Vehicle")) {
+-				if(spawnInCar) {
+-					VehicleFunctions::SpawnVehicle(150, true, true);
++			if (ImGui::Button("Spawn Vehicle")) {
++				if (spawnInCar) {
++					//VehicleFunctions::SpawnVehicle(150, true, true);
++					VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true);
+ 
+ 					// VehicleFunctions::SpawnVehicle(*currentItemPtr, true, true);
+-				} else {
+-					TRACE("currentItem %d", currentItem);
+-					VehicleFunctions::SpawnVehicle(150, false, false);
+ 				}
++				else {
++					//TRACE("currentItem %d", currentItem);
++					//VehicleFunctions::SpawnVehicle(150, false, false);
++					VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
++				}
++			}
++
++			if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) { 
++				toggleHighVehicleMass();
+ 			}
+ 
++			if(ImGui::Checkbox("Toggle invincibility", &vehicleInvincible)) { 
++				toggleVehicleInvincible();
++			}
++
++			ImGui::EndTabItem();
++		}
++
++		// Cheats
++		if (ImGui::BeginTabItem("Cheats")) {
++
++			if (ImGui::Button("Weapon1")) {
++				CustomCheats::WeaponCheat1();
++			}
++
++			if (ImGui::Button("Weapon2")) {
++				CustomCheats::WeaponCheat2();
++			}
++
++			if (ImGui::Button("Weapon3")) {
++				CustomCheats::WeaponCheat3();
++			}
++
++			// Police cheats
++			ImGui::Text("Police");
++
++			if (ImGui::Button("Raise Wanted Level")) {
++				PlayerCheats::RaiseWantedLevel();
++			}
++
++			if (ImGui::Button("Lower Wanted Level")) {
++				PlayerCheats::LowerWantedLevel();
++			}
++
++			//ImGui::Checkbox("Never wanted", &neverWanted);
++			if(ImGui::Checkbox("Never wanted", &neverWanted)) { 
++				toggleNeverWanted();
++			}
++
++			
++			//if(ImGui::Button("Nev")) { PlayerCheats::RaiseWantedLevel(); }
++
++			ImGui::EndTabItem();
++		}
++
++		// Misc
++		if(ImGui::BeginTabItem("Misc")) { 
++			ImGui::Text("Sounds");
++			// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
++			if(ImGui::Button("Play bridge open")) { 
++				CustomCheats::PlayAnnouncementTest(1);
++			}
++			if(ImGui::Button("Play bridge closed")) { 
++				CustomCheats::PlayAnnouncementTest(2);
++			}
++
++
++
++			ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
++
++			//if (ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow)) { 
++			if(ImGuiFunctions::ShowSecondWindow) { 
++				ImGuiFunctions::ShowSecondWindow = true;
++			} else {
++				ImGuiFunctions::ShowSecondWindow = false;
++			}
++
++			// Cutscene test, well this didn't work, breaks the menu and stuff.
++			// Well this loads like the Cleo Redux one, I need to add more to it.
++			//if(ImGui::Button("Cutscene #1")) { 
++			//	CustomCheats::LoadCutscene("bank_1");
++			//}
++
+ 			ImGui::EndTabItem();
+ 		}
+ 
+diff --git a/src/extras/functions/imgui_main_menu.h b/src/extras/functions/imgui_main_menu.h
+index ffab39c8..34bfc751 100644
+--- a/src/extras/functions/imgui_main_menu.h
++++ b/src/extras/functions/imgui_main_menu.h
+@@ -3,11 +3,11 @@
+ 
+ namespace ImGuiMenus
+ {
+-namespace Menu
+-{
+-void
+-MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color);
+-}
++	namespace Menu
++	{
++	void
++	MainMenu(bool show_demo_window, bool show_another_window, ImVec4 clear_color);
++	}
+ }
+ 
+ //class MainMenu
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 7bdf703b..81656485 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -76,6 +76,21 @@
+ 
+ //
+ 
++bool
++VehicleFunctions::IsPlayerInVehicle()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	CVehicle *playerVeh = pPed->m_pMyVehicle;
++
++	if(!pPed->EnteringCar() && pPed->bInVehicle) 
++	{ 
++		return true; 
++	}
++
++	return false;
++}
++
+ /// <summary>
+ /// Repair the current players vehicle.
+ /// I added this mostly for use in my Cleo Redux menu.
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 2c8d0786..07ff2192 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -38,6 +38,8 @@ public:
+ 	// Repair vehicle
+ 	static void RepairCurrentVehicle();
+ 
++	bool IsPlayerInVehicle();
++
+ 	#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 	static void EnableUpsideDownExplosions();
+ 	static void DisableUpsideDownExplosions();
+-- 
+2.45.1.windows.1
+

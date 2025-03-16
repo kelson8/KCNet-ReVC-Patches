@@ -1,0 +1,268 @@
+From 67e8487f683278712115df2da7d8d34e77865b3d Mon Sep 17 00:00:00 2001
+From: kelson <chippy889>
+Date: Sun, 16 Mar 2025 01:14:42 -0400
+Subject: [PATCH 099/101] Update premake fix it to work. Add imgui to premake
+ for reVC and librw. Add some reVC headers into librw for premake. Add lua to
+ reVC in premake. Add all my new source file directories into reVC premake.
+
+Add premake-vs2022.cmd
+Comment out some extra stuff that isn't in use.
+
+Add ImGui to submodules, update url for librw to point to my internal one.
+
+To fix this to build: Remove luac.c from lib/lua in the project.
+---
+ .gitmodules                                |   9 +-
+ premake-vs2022.cmd                         |   1 +
+ premake5.lua                               | 109 ++++++++++++++++++++-
+ src/extras/cheats/custom_cheats.cpp        |  24 ++---
+ src/extras/debug/debug_functions.cpp       |   2 +-
+ src/extras/functions/vehicle_functions.cpp |   4 +-
+ 6 files changed, 130 insertions(+), 19 deletions(-)
+ create mode 100644 premake-vs2022.cmd
+
+diff --git a/.gitmodules b/.gitmodules
+index c9a30c95..d1184385 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -12,5 +12,12 @@
+ 	branch = master
+ [submodule "vendor/librw"]
+ 	path = vendor/librw
+-	url = https://github.com/aap/librw.git
++	# original was on github from aap
++	url = https://git.internal.kelsoncraft.net/kelson8/librw.git
++	branch = master
++	
++# ImGui
++[submodule "lib/imgui"]
++	path = lib/imgui
++	url = https://github.com/ocornut/imgui.git
+ 	branch = master
+diff --git a/premake-vs2022.cmd b/premake-vs2022.cmd
+new file mode 100644
+index 00000000..006149ae
+--- /dev/null
++++ b/premake-vs2022.cmd
+@@ -0,0 +1 @@
++.\premake5.exe vs2022 --with-librw
+\ No newline at end of file
+diff --git a/premake5.lua b/premake5.lua
+index 9bb2f52b..e16c6711 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -68,6 +68,31 @@ function getarch(a)
+ 	return a
+ end
+ 
++--local function addSrcFiles( prefix )
++--	return prefix .. "/*cpp", prefix .. "/*.h", prefix .. "/*.c", prefix .. "/*.ico", prefix .. "/*.rc"
++--end
++
++-- TODO Test this new function, from Google Gemini
++-- It should allow me to exclude files using my addSrcFiles in here.
++local function addSrcFiles(prefix, excludes)
++	local files = {
++		prefix .. "/*.cpp",
++		prefix .. "/*.h",
++		prefix .. "/*.c",
++		prefix .. "/*.ico",
++		prefix .. "/*.rc",
++	}
++	
++	if excludes then
++		for _, exclude in ipairs(excludes) do
++			-- This should work..
++			--table.insert(files, { filename = exclude, exclude = true})
++			table.insert(files, { exclude, exclude = true})
++		end
++	end
++	return files
++end
++
+ workspace "reVC"
+ 	language "C++"
+ 	configurations { "Debug", "Release" }
+@@ -207,6 +232,30 @@ project "librw"
+ 		architecture "x86"
+ 
+ 	filter { "platforms:*amd64*" }
++	
++		-- Custom for ImGui in librw
++		-- Lib folders - ImGui
++		files { addSrcFiles("lib/") }
++		files { addSrcFiles("lib/imgui") }
++	
++		-- I don't want all ImGui backend files in here
++	
++		files {
++		"lib/imgui/backends/imgui_impl_dx9.cpp",
++		"lib/imgui/backends/imgui_impl_dx9.h",
++		"lib/imgui/backends/imgui_impl_win32.cpp",
++		"lib/imgui/backends/imgui_impl_win32.h"
++		}
++	
++		-- Lib folders - ImGui
++		includedirs { "lib/" }
++		includedirs { "lib/imgui" }
++		includedirs { "lib/imgui/backends" }
++		
++		-- Extras for ReVC
++		includedirs { "src/extras/menus" }
++		includedirs { "src/extras/functions" }
++		
+ 		architecture "amd64"
+ 
+ 	filter "platforms:win*"
+@@ -239,9 +288,7 @@ project "librw"
+ 	filter  {}
+ end
+ 
+-local function addSrcFiles( prefix )
+-	return prefix .. "/*cpp", prefix .. "/*.h", prefix .. "/*.c", prefix .. "/*.ico", prefix .. "/*.rc"
+-end
++
+ 
+ project "reVC"
+ 	kind "WindowedApp"
+@@ -280,6 +327,62 @@ project "reVC"
+ 	else
+ 		removefiles { "src/extras/GitSHA1.cpp" } -- but it will be everytime after
+ 	end
++	
++	-- New, KCNet extras (Source dirs)
++	files { addSrcFiles("src/extras/cheats") }
++	files { addSrcFiles("src/extras/debug") }
++	files { addSrcFiles("src/extras/functions") }
++	files { addSrcFiles("src/extras/lua") }
++	files { addSrcFiles("src/extras/menus") }
++	files { addSrcFiles("src/extras/test") }
++	files { addSrcFiles("src/extras/utils") }
++
++	
++	-- Lib folders - ImGui and Lua
++	files { addSrcFiles("lib/") }
++	files { addSrcFiles("lib/imgui") }
++	--files { addSrcFiles("lib/lua", {"lib/lua/luac.c"}) }
++	
++	-- This might work for excluding the files
++	files {
++		"lib/lua/*.c",
++		"lib/lua/*.h",
++		{"lib/lua/luac.c", exclude = true} -- This should exclude the extra luac.c file
++	
++	}
++
++
++
++	-- I don't want all ImGui backend files in here
++	
++	files {
++	"lib/imgui/backends/imgui_impl_dx9.cpp",
++	"lib/imgui/backends/imgui_impl_dx9.h",
++	"lib/imgui/backends/imgui_impl_win32.cpp",
++	"lib/imgui/backends/imgui_impl_win32.h"
++	}
++
++	--files { addSrcFiles("lib/imgui/backends") }
++	files { addSrcFiles("lib/lua") }
++	
++	-- New KCNet extras (Include dirs)
++	-- Extras folder
++	includedirs { "src/extras/cheats" }
++	includedirs { "src/extras/debug" }
++	includedirs { "src/extras/functions" }
++	includedirs { "src/extras/lua" }
++	includedirs { "src/extras/menus" }
++	includedirs { "src/extras/test" }
++	includedirs { "src/extras/utils" }
++	
++	-- Lib folders - ImGui and Lua
++	includedirs { "lib/" }
++	includedirs { "lib/imgui" }
++	includedirs { "lib/imgui/backends" }
++	includedirs { "lib/lua" }
++	
++	--
++	
+ 
+ 	includedirs { "src" }
+ 	includedirs { "src/animation" }
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index d6a9f57d..cab61092 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -88,10 +88,10 @@
+ // My code
+ #include "functions/vehicle_functions.h"
+ 
+-#include "extras/test/ped_test.h"
++//#include "extras/test/ped_test.h"
+ 
+ #include "..\extras\test\enums\model_ids.h"
+-#include "..\extras\test\scriptcommands_test.h"
++//#include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+ 
+ // #include "test/scriptcommands_test.h"
+@@ -608,16 +608,16 @@ CustomCheats::TestCheat1()
+ }
+ 
+ // Test spawning a random ped, untested
+-void
+-CustomCheats::SpawnPedCheat()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-
+-	PedTest::SpawnDrivingPed();
+-
+-	// CPed *customPed = PED
+-}
++//void
++//CustomCheats::SpawnPedCheat()
++//{
++//	CPlayerPed *pPed = FindPlayerPed();
++//	CVector pPedCoords = FindPlayerCoors();
++//
++//	PedTest::SpawnDrivingPed();
++//
++//	// CPed *customPed = PED
++//}
+ 
+ void
+ CustomCheats::SpawnPedTest()
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index ef212acd..644b1faf 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -1425,7 +1425,7 @@ DebugMenuPopulate(void)
+ 
+ 		DebugMenuAddCmd("Cheats", "Drop a bomb", CustomCheats::ExplosionCheat);
+ 
+-		DebugMenuAddCmd("Cheats", "Spawn Ped", CustomCheats::SpawnPedCheat);
++		//DebugMenuAddCmd("Cheats", "Spawn Ped", CustomCheats::SpawnPedCheat);
+ #else
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", InfiniteHealthCheat);
+ 		DebugMenuAddCmd("Cheats", "Never wanted", NeverWantedCheat);
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 81656485..1fe4dc88 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -67,11 +67,11 @@
+ 
+ // My code
+ #include "..\extras\test\enums\model_ids.h"
+-#include "..\extras\test\scriptcommands_test.h"
++//#include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+ #include "custom_cheats.h"
+ 
+-#include "test/scriptcommands_test.h"
++//#include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+ 
+ //
+-- 
+2.45.1.windows.1
+

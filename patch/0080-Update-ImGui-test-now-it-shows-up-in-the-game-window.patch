@@ -1,0 +1,357 @@
+From 057bbd6c100b7ac21624b3f0d6d0908a26760351 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 10 Mar 2025 15:43:51 -0400
+Subject: [PATCH 080/101] Update ImGui test, now it shows up in the game window
+ and can be toggled. I still need to figure out what is taking the mouse input
+ though. Created a separate repo for librw.
+
+---
+ src/extras/functions/imgui_functions.h |   6 +
+ src/skel/win/win.cpp                   | 200 ++++++++++++-------------
+ utils/lua/test.lua                     |   4 +-
+ 3 files changed, 100 insertions(+), 110 deletions(-)
+
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index b60f075a..4cddb46b 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -1,7 +1,13 @@
+ #pragma once
++#include <Windows.h>
++
+ class ImGuiFunctions
+ {
+ public:
+ 	static void ImGuiLoop();
+ 	static bool ImGuiDone;
++
++	static bool ImGuiEnabled;
++
++	HWND mainWindow;
+ };
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index eb245e9d..6028cf87 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -83,6 +83,9 @@
+ #include "imgui_impl_win32.h"
+ #include "imgui_functions.h"
+ 
++bool bInit = false;
++HWND mainWindow = nullptr;
++
+ // Forward declare message handler from imgui_impl_win32.cpp
+ // Well this pisses off the MainWndProc..
+ // This finally builds like this... Still crashes though
+@@ -1090,6 +1093,14 @@ Window1(bool show_demo_window, bool show_another_window, ImVec4 clear_color)
+ void
+ InitImGui(HWND window)
+ {
++	// Check if the DirectX9 device is valid
++
++	if (rw::d3d::d3ddevice == nullptr) {
++		// Handle the error, return
++		TRACE("\nError: DirectX 9 device is null. ImGui initialization failed.\n");
++		return;
++	}
++
+ 	// ImGui init.. is this where this goes?
+ 	IMGUI_CHECKVERSION();
+ 	ImGui::CreateContext();
+@@ -1121,13 +1132,14 @@ shutDownImGui()
+ }
+ 
+ //ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-bool ImGuiFunctions::ImGuiDone = true;
++bool ImGuiFunctions::ImGuiDone = false;
+ 
+ /// <summary>
+ /// Draw the ImGui test to the screen
+ /// TODO Make this draw to the game window
+ /// TODO Fix the mouse to work properly.
+ /// TODO Move this into ImGuiFunctions
++/// I moved this function before EndScene in d3ddevice.cpp
+ /// </summary>
+ void
+ ImGuiFunctions::ImGuiLoop()
+@@ -1141,6 +1153,10 @@ ImGuiFunctions::ImGuiLoop()
+ 
+ 	//while(!done) {
+ 	
++	IDirect3DStateBlock9 *pStateBlock = NULL;
++	rw::d3d::d3ddevice->CreateStateBlock(D3DSBT_ALL, &pStateBlock);
++	pStateBlock->Capture();
++
+ 	while(!ImGuiFunctions::ImGuiDone) {
+ 		// Setup the new frames
+ 		ImGui_ImplDX9_NewFrame();
+@@ -1171,6 +1187,19 @@ ImGuiFunctions::ImGuiLoop()
+ 			// Oops, this seems to kill the mouse in the menu once this is closed..
+ 			 //FrontEndMenuManager.m_bShowMouse = true;
+ 
++			// TODO Test this
++			CPad::UpdatePads();
++			CPad::NewMouseControllerState.x = 0;
++			CPad::NewMouseControllerState.y = 0;
++
++			CPad::GetPad(0)->ClearMouseHistory();
++			CPad::GetPad(0)->NewState.DPadUp = 0;
++			CPad::GetPad(0)->OldState.DPadUp = 0;
++			CPad::GetPad(0)->NewState.DPadDown = 0;
++			CPad::GetPad(0)->OldState.DPadDown = 0;
++
++			//
++
+ 			//_InputInitialiseMouse(false);
+ 
+ 			// POINT p;
+@@ -1220,8 +1249,13 @@ ImGuiFunctions::ImGuiLoop()
+ 	}
+ 
+ 	
++	// Shut down ImGui
+ 	shutDownImGui();
+ 
++	// Restore d3d render states, google Gemini
++	pStateBlock->Apply();
++	pStateBlock->Release();
++
+ 	// Reset Pad state
+ 	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+ 
+@@ -1238,6 +1272,8 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 		POINTS points;
+ 		static BOOL noMemory = FALSE;
+ 
++		mainWindow = window;
++
+ #ifdef _IMGUI_TEST
+ 		// Hmm.. Will this work in here?
+ 		if(ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam)) { return true; }
+@@ -1248,37 +1284,7 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 		
+ 	              
+ 		*/
+-		// I added an extra toggle for this so I don't have to keep fighting with the preprocessors.
+-		// This crashes if the ImGui is out of the loop for some reason.
+-		bool imguiEnabled = true;
+-		if (imguiEnabled)
+-		{
+-
+-			// Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
+-			// This shows up!!
+-			// It doesn't hook into the game, it just destroys the game window though, I'll need to place this somewhere else.
+-			// Possibly move ImGuiLoop into main.cpp under idle.
+-			if(RwInitialised && gGameState == GS_PLAYING_GAME) 
+-			{
+-				// Init ImGui
+-				// Well I figured something out, if the ImGuiLoop is disabled below this'll crash...
+-				
+-			        /*if(!ImGUI_Initialized) { */
+-						InitImGui(window); 
+-			
+-			//}
+ 
+-				// Hmm, is this needed for the mouse?
+-				// TODO Make the mouse show up.
+-				//ShowCursor(TRUE);
+-
+-			    // Run the ImGui loop, I probably need to place this somewhere else.
+-				// Testing this in GS_PLAYING_GAME.. Idk if that'll work or not, this is in the main window.
+-				// TODO Figure out why the init crashes without this...
+-			    ImGuiFunctions::ImGuiLoop();
+-			}
+-
+-		}
+ 
+ #endif
+ #undef _IMGUI_TEST
+@@ -2568,10 +2574,9 @@ CMenuManager cMenuManager = CMenuManager();
+ 	// 8-7-2024 @ 8:30PM
+ 	// I think I found the main entry point to the program.
+ 	
+-	// #define _IMGUI_TEST
++	 #define _IMGUI_TEST
+ 	#ifdef _IMGUI_TEST
+-	// Run setup
+-	setupImGui();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 
+ 	#endif //_IMGUI_TEST
+@@ -2579,71 +2584,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 	while ( TRUE )
+ 	{
+ 		RwInitialised = TRUE;
+-
+-
+-					// Ok, this test somewhat launches, I don't have a mouse though but this one shows up.
+-		// It's a pain to close out really and is a very early prototype for ImGui
+-
+-		// TODO Fix this keybind to work.
+-//#define _TEST2
+-#ifdef _TEST2
+-#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-
+-#endif //_TEST2
+-#undef _TEST2
+-
+-		// TODO Test this here
+-		// This doesn't seem to do anything
+-
+-		#ifdef _IMGUI_TEST
+-
+-		#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-
+-		bool show_window = false;
+-
+-		// TODO Test this, keybind test
+-		// CKeyboardState keyboardState;
+-		// This just crashes it
+-		//if(CPad::GetPad(0)->GetCharJustDown('F12')) { 
+-		// This doesn't seem to work, I don't think I have this menu setup right.
+-		// if(CPad::GetPad(0)->HornJustDown()) { 
+-		// 	show_window = !show_window; 
+-		// }
+-
+-		//
+-
+-		// ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)a);
+-		// TODO Test this
+-		//if(KEYDOWN(VK_F9)) { 
+-		// if(KEYDOWN('F9')) { 
+-		// 	show_window = !show_window; 
+-		// }
+-
+-		// if(ControlsManager.GetIsKeyboardKeyJustDown(rsF9)) {
+-		// // This didn't work either.
+-		// //if(CPad::GetPad(0)->GetMinusJustDown()){
+-			
+-		// 	std::cout << "- Pressed";
+-		// 	show_window = !show_window;
+-		// }
+-
+-		#endif // _IMGUI_TEST
+-		#undef _IMGUI_TEST
+-
+-		// These give linker error.
+-		//#define _IMGUI_TEST
+-		#ifdef _IMGUI_TEST
+-
+-		ImGui_ImplWin32_NewFrame();
+-		ImGui_ImplDX9_NewFrame();
+-		ImGui::NewFrame();
+-
+-		// Test
+-		ImGui::ShowDemoWindow();
+-
+-		#endif //_IMGUI_TEST
+-#undef _IMGUI_TEST
+-		
++	
+ 		/* 
+ 		* Set the initial mouse position...
+ 		*/
+@@ -2701,6 +2642,49 @@ CMenuManager cMenuManager = CMenuManager();
+ 						gGameState = GS_INIT_LOGO_MPEG;
+ #endif
+ 						TRACE("gGameState = GS_INIT_LOGO_MPEG");
++
++
++												//
++					        // This draws to the game!!!!
++							// What??
++
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++
++					        // I added an extra toggle for this so I don't have to keep fighting with the preprocessors.
++					        // This crashes if the ImGui is out of the loop for some reason.
++					        bool imguiEnabled = true;
++					        if(imguiEnabled) {
++
++						        // Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
++						        // This shows up!!
++						        // It doesn't hook into the game, it just destroys the game window though, I'll need to place this
++						        // somewhere else. Possibly move ImGuiLoop into main.cpp under idle.
++						        // if(RwInitialised && gGameState == GS_PLAYING_GAME) {
++						        if(RwInitialised) {
++							        // Init ImGui
++							        // Well I figured something out, if the ImGuiLoop is disabled below this'll crash...
++
++							        // if(!bInit)
++							        InitImGui(mainWindow);
++
++							        // bInit = true;
++
++							        // Hmm, is this needed for the mouse?
++							        // TODO Make the mouse show up.
++							        // ShowCursor(TRUE);
++
++							        // Run the ImGui loop, I probably need to place this somewhere else.
++							        // Testing this in GS_PLAYING_GAME.. Idk if that'll work or not, this is in the main window.
++							        // TODO Figure out why the init crashes without this...
++							        // ImGuiFunctions::ImGuiLoop();
++						        }
++					        }
++
++#endif
++
++					        //
++
+ 						break;
+ 					}
+ 					
+@@ -2988,6 +2972,15 @@ CMenuManager cMenuManager = CMenuManager();
+ #ifdef _IMGUI_TEST
+ // 					// Well this dies in here...
+ // 					// ImGuiFunctions::ImGuiLoop();
++
++							// This disables the players control but the mouse is still locked when ImGui is open...
++							if (!imGuiFunctions.ImGuiDone) {
++							        CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++
++							}
++							else {
++							        CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++							}
+ #endif
+ #undef _IMGUI_TEST
+ 
+@@ -3128,15 +3121,6 @@ CMenuManager cMenuManager = CMenuManager();
+ 		FrontEndMenuManager.m_bWantToRestart = false;
+ #endif
+ 
+-
+-		// I think I almost have this right.
+-		//#define _IMGUI_TEST
+-		#ifdef _IMGUI_TEST
+-		ImGui::Render();
+-		ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+-		#endif
+-		#undef _IMGUI_TEST
+-
+ 	}
+ 
+ #ifndef MASTER
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index ae2aecda..51b2eed1 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -4,11 +4,11 @@ local setPositionEnabled = false
+ local healPlayerEnabled = false
+ -- This works fine for my new cheat test.
+ -- I would like to eventually make my own menu for my lua functions.
+-local cheatTestEnabled = true
++local cheatTestEnabled = false
+ local playerControlTestEnabled = false
+ 
+ -- Test for toggling ImGui, I got the window to show up but not disappear
+-local imGuiToggleEnabled = false
++local imGuiToggleEnabled = true
+ 
+ -- TODO Setup these.
+ local airportX = 22
+-- 
+2.45.1.windows.1
+
