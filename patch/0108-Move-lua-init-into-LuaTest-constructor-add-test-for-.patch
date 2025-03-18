@@ -1,0 +1,661 @@
+From 17db31e89538a59a060b31225eff0588209321a3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Mar 2025 02:01:41 -0400
+Subject: [PATCH 108/113] Move lua init into LuaTest constructor, add test for
+ registering functions. Add imgui command test, and lua command test. Setup
+ getter and getInstance for lua state. Move lua_close to LuaTest destructor.
+ Setup custom text for Draw KCNet test in misc menu. Make
+ CustomCheats::SetText take a string for the text. Add getter and setter for
+ test text in MiscMenu.
+
+---
+ src/core/main.cpp                       |  19 ++-
+ src/extras/cheats/custom_cheats.cpp     |   7 +-
+ src/extras/cheats/custom_cheats.h       |   4 +-
+ src/extras/functions/imgui_commands.cpp | 172 ++++++++++++++++++++++++
+ src/extras/functions/imgui_commands.h   |   7 +
+ src/extras/lua/lua_test.cpp             | 108 +++++++++++++--
+ src/extras/lua/lua_test.h               |  37 ++++-
+ src/extras/menus/misc_menu.cpp          |  46 ++++++-
+ src/extras/menus/misc_menu.h            |  23 ++++
+ 9 files changed, 402 insertions(+), 21 deletions(-)
+ create mode 100644 src/extras/functions/imgui_commands.cpp
+ create mode 100644 src/extras/functions/imgui_commands.h
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e066f4de..9ba39eb4 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -91,6 +91,9 @@
+ // Set Text test.
+ #include "custom_cheats.h"
+ 
++// Grab test text from menu
++#include "misc_menu.h"
++
+ // Setup program version and name
+ #include "defines.h"
+ #endif
+@@ -449,12 +452,26 @@ DoRWStuffEndOfFrame(void)
+ 
+ 
+ #ifdef CUSTOM_CODE
++	MiscMenu miscMenu = MiscMenu();
+ 	// Toggle the test text from the debug menu
+ 	// Well this shows the 'Test' text I have setup.
+ 	
+ 	// This has a toggle for it under the debug menu in my test submenu.
+ 	// TODO Add toggle to this in my cleo redux menu.
+-	CustomCheats::SetText();
++
++	
++	// TODO Possibly use this later.
++	//std::string menuText = MiscMenu::GetInstance().getTestText();
++
++	// Well this one works..
++	//miscMenu.setTestText("Test set in Misc menu");
++
++	// This works
++	CustomCheats::SetText(MiscMenu::GetInstance().getTestText());
++
++	// Old command
++	//CustomCheats::SetText("Test");
++
+ #endif
+ 
+ 
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index da279b03..a02a455c 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -669,9 +669,11 @@ CustomCheats::ToggleText()
+ /// Once I figure out how to make this stay on the screen, 
+ /// Make a menu that can be messed with like the pause menu but when not paused for lua.
+ /// I added this into DoRWStuffEndOfFrame in main.cpp to test it and it does show up.
++/// Added custom text into this.
++/// <param name="text">The text to </param>
+ /// </summary>
+ void
+-CustomCheats::SetText()
++CustomCheats::SetText(std::string text)
+ {
+ 	if(toggleText) {
+ 
+@@ -694,7 +696,8 @@ CustomCheats::SetText()
+ 		std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
+ 
+ 		// sprintf(str, "Test");
+-		sprintf(str, controllerButtonMessage.c_str());
++		//sprintf(str, controllerButtonMessage.c_str());
++		sprintf(str, text.c_str());
+ 		//sprintf(str, "KCNet-ReVC");
+ 
+ 		AsciiToUnicode(str, ustr);
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index 28c1496c..d6b5a8ef 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <string>
++
+ // Test
+ // It just compiled with this? This is from CarAI.h, what is this doing?
+ class CVehicle;
+@@ -46,7 +48,7 @@ public:
+ 	// Text toggle
+ 	static void ToggleText();
+ 	// This draws to the menu
+-	static void SetText();
++	static void SetText(std::string text);
+ 	//
+ 
+ 
+diff --git a/src/extras/functions/imgui_commands.cpp b/src/extras/functions/imgui_commands.cpp
+new file mode 100644
+index 00000000..276c6817
+--- /dev/null
++++ b/src/extras/functions/imgui_commands.cpp
+@@ -0,0 +1,172 @@
++#include "imgui_commands.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++#include <map>
++#include <functional> // For std::function
++#include <vector>
++
++
++
++#include <sstream>
++#include <iostream>
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++#include "lua_test.h"
++
++/// <summary>
++/// This works as a teleport command in ImGui, I can use the input box and make a command system like in Minecraft.
++/// </summary>
++/// <param name="args"></param>
++void
++command_teleport(const std::vector<std::string>& args)
++{
++	Defines defines = Defines();
++	// Check if the args is 3
++	if(args.size() == 3) {
++		try {
++			float x = std::stof(args[0]);
++			float y = std::stof(args[1]);
++			float z = std::stof(args[2]);
++
++			std::string playerCoordsStr = "Player teleported to: X: " + std::to_string(x)
++				+" Y: " + std::to_string(y) 
++				+ " Z: " + std::to_string(z);
++
++			PlayerCheats::SetPlayerPosition(x, y, z);
++
++
++			LogFunctions::LogInfo(defines.logFile, playerCoordsStr);
++
++		}
++		catch (const std::invalid_argument& e)
++		{
++			LogFunctions::LogError(defines.logFile, "Invalid arguments for teleport.");
++		}
++	} else {
++		LogFunctions::LogInfo(defines.logFile, "Usage: teleport <x> <y> <z>");
++	}
++}
++
++/// <summary>
++/// Blow up vehicles cheat
++/// </summary>
++/// <param name="args"></param>
++void
++command_blowup(const std::vector<std::string> &args)
++{
++	Defines defines = Defines();
++	// Check if the args is 0
++	if(args.size() == 0) 
++	{ 
++		CustomCheats::BlowUpAllCars();
++	}
++}
++
++// Command map
++std::map<std::string, std::function<void(const std::vector<std::string> &)>> commands = {
++    {"teleport", command_teleport}, 
++	{"blowup", command_blowup}
++	//{"heal", command_heal}
++};
++
++void
++ImGuiCommands::ImGuiCommandSystem()
++{
++	ImGui::Separator();
++
++	ImGui::Text("Command System");
++	ImGui::Text("Commands: teleport <x> <y> <z>, blowup (Blow up vehicles)");
++	static char commandInput[256] = "";
++	static std::string commandOutput = "";
++
++	ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput));
++
++	if(ImGui::Button("Execute")) {
++		std::stringstream ss(commandInput);
++		std::string commandName;
++		std::vector<std::string> args;
++
++		ss >> commandName;
++		std::string arg;
++		while(ss >> arg) { args.push_back(arg); }
++
++		if(commands.count(commandName) > 0) {
++			commands[commandName](args);
++			commandOutput = "Command executed.";
++		} else {
++			commandOutput = "Unknown command.";
++		}
++		//std::cout << commandOutput << std::endl; // Output to console as well.
++	}
++
++	ImGui::TextWrapped("%s", commandOutput.c_str());
++}
++
++// Lua test
++void
++ImGuiCommands::ImGuiCommandSystemLua()
++{
++	ImGui::Separator();
++
++	ImGui::Text("Command System Lua");
++	ImGui::Text("This can run a list of custom lua functions");
++	ImGui::Text("For now I just have 'set_position(X, Y, Z)");
++
++	static char commandInput[256] = "";
++	static std::string commandOutput = "";
++
++	ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput));
++
++	if(ImGui::Button("Execute")) {
++		// Build the Lua command string
++		std::string luaCommand = commandInput;
++
++		lua_State *L = LuaTest::GetInstance().GetLuaState();
++
++		// Run the Lua command
++		//int error = luaL_dostring(L, luaCommand.c_str());
++		int error = luaL_dostring(L, luaCommand.c_str());
++
++		if(error) {
++			std::cerr << "Lua error: " << lua_tostring(L, -1) << std::endl;
++			commandOutput = "Lua error: " + std::string(lua_tostring(L, -1));
++			lua_pop(L, 1); // Pop the error message from the stack
++		} else {
++			commandOutput = "Command executed.";
++		}
++	}
++
++	ImGui::TextWrapped("%s", commandOutput.c_str());
++
++	ImGui::Separator();
++}
++
++//
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_commands.h b/src/extras/functions/imgui_commands.h
+new file mode 100644
+index 00000000..dc3dacc9
+--- /dev/null
++++ b/src/extras/functions/imgui_commands.h
+@@ -0,0 +1,7 @@
++#pragma once
++class ImGuiCommands
++{
++public:
++	void ImGuiCommandSystem();
++	void ImGuiCommandSystemLua();
++};
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 6a703947..a29457a5 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -93,9 +93,24 @@ extern "C" {
+ // https://github.com/multitheftauto/mtasa-blue/tree/master
+ 
+ /// <summary>
+-/// Constructor test, so far just initialize the variable m_luaVM
++/// Constructor test, so far just initialize the variable m_luaVM, setup lua libraries.
++/// Well I moved the init and loading the lua libraries into the constructor.
++/// Create a new VM, fixes the null issue in imgui_commands
+ /// </summary>
+-LuaTest::LuaTest() { m_luaVM = NULL; }
++
++LuaTest::LuaTest() { 
++	m_luaVM = luaL_newstate(); 
++
++	// Load LUA libraries
++	luaopen_base(m_luaVM);
++	luaopen_math(m_luaVM);
++	luaopen_string(m_luaVM);
++	luaopen_table(m_luaVM);
++	luaopen_debug(m_luaVM);
++	luaopen_utf8(m_luaVM);
++	luaopen_os(m_luaVM);
++
++}
+ 
+ //------- Begin cheat functions --------//
+ 
+@@ -461,9 +476,61 @@ printTable(lua_State *L, int index)
+ 	}
+ }
+ 
++/// <summary>
++/// I had to add this to the class to fix it.
++/// TODO Setup this to run instead of the init function every time.
++/// </summary>
++void
++LuaTest::RegisterLuaFunctions()
++{
++	// This seems to work now.
++	//lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
++	lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
++
++	lua_register(m_luaVM, "heal_player", HealPlayerLua);
++
++	// Cheat test
++	lua_register(m_luaVM, "cheat_test", CheatTestNew);
++
++	// Toggle player control
++	lua_register(m_luaVM, "toggle_control", TogglePlayerControlLua);
++
++	// Test for ImGui
++	lua_register(m_luaVM, "toggle_imgui", toggleImGuiLua);
++
++	// Auto enable never wanted in the lua script
++	lua_register(m_luaVM, "enable_never_wanted", enableNeverWantedLua);
++
++	// Auto enable infinite health in the lua script
++	lua_register(m_luaVM, "enable_infinite_health", enablePlayerInfiniteHealthLua);
++
++	// Auto disable peds and vehicles in the lua script
++	lua_register(m_luaVM, "disable_peds", disablePedsLua);
++	lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
++
++	// This works
++	// TODO Get CVector for respawn from file.
++	lua_register(m_luaVM, "set_respawn_point", setRespawnPointLua);
++
++	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
++	lua_register(m_luaVM, "cancel_override_restart", cancelOverrideNextRestartLua);
++
++	// Toggles for losing weapons when dying.
++	// lua_register(m_luaVM, "toggle_lose_weapons_on_death", toggleLoseWeaponsOnDeathLua);
++	lua_register(m_luaVM, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
++	lua_register(m_luaVM, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
++
++	// Test for logging the player coords and heading
++	lua_register(m_luaVM, "log_player_coords", logPlayerCoordsLua);
++	lua_register(m_luaVM, "log_player_heading", logPlayerHeadingLua);
++
++	
++}
++
+ /// <summary>
+ /// Taken idea from this in CLuaMain.cpp within MTA SA.
+ /// https://github.com/multitheftauto/mtasa-blue/blob/master/Client/mods/deathmatch/logic/lua/CLuaMain.cpp
++/// TODO Separate the functions, I should be able to separate the init from the functions
+ /// </summary>
+ void
+ LuaTest::InitLua()
+@@ -472,7 +539,7 @@ LuaTest::InitLua()
+ 	LuaTest luaTest = LuaTest();
+ 
+ 	// Create a new VM
+-	m_luaVM = luaL_newstate();
++	//m_luaVM = luaL_newstate();
+ 	// TODO Implement this from MTA
+ 	// m_pLuaManager->OnLuaMainOpenVM(this, m_luaVM);
+ 
+@@ -487,16 +554,25 @@ LuaTest::InitLua()
+ 	// TODO Fix this
+ 	// lua_sethook(m_luaVM, InstructionCountHook, LUA_MASKCOUNT, HOOK_INSTRUCTION_COUNT);
+ 
+-	// Load LUA libraries
+-	luaopen_base(m_luaVM);
+-	luaopen_math(m_luaVM);
+-	luaopen_string(m_luaVM);
+-	luaopen_table(m_luaVM);
+-	luaopen_debug(m_luaVM);
+-	luaopen_utf8(m_luaVM);
+-	luaopen_os(m_luaVM);
++
++
++
++
++	// Test moving into here
++	// Well this crashes it like this
++	//luaTest.RegisterLuaFunctions();
++
++	lua_State *L = LuaTest::GetInstance().GetLuaState();
+ 
+ 	// This seems to work now.
++	// lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
++	// Well like this it works in the imgui_commands but not on init, I cannot press the keybind for it.. Oh wait..
++	// I got this working as a command in imgui_commands
++	// Usage: set_position(posX, posY, posZ)
++	//lua_register(L, "set_position", SetPlayerPositionLua);
++
++	// Well I disabled the above since it breaks the keybind and respawn features.
++	// I need to fix that.
+ 	lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
+ 
+ 	lua_register(m_luaVM, "heal_player", HealPlayerLua);
+@@ -518,6 +594,7 @@ LuaTest::InitLua()
+ 
+ 	// Auto disable peds and vehicles in the lua script
+ 	lua_register(m_luaVM, "disable_peds", disablePedsLua);
++	//lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
+ 	lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
+ 
+ 	// This works
+@@ -536,6 +613,10 @@ LuaTest::InitLua()
+ 	lua_register(m_luaVM, "log_player_coords", logPlayerCoordsLua);
+ 	lua_register(m_luaVM, "log_player_heading", logPlayerHeadingLua);
+ 
++	// TODO Hook this up to the ImGui command test.
++
++	//----------------
++
+ 	// TODO Setup this for ImGui later.
+ 	// I could use something like this so I don't have to keep changing the code.
+ 	// lua_getglobal(m_luaVM, "vehicle_mass");
+@@ -574,8 +655,8 @@ LuaTest::InitLua()
+ 	// I got this working, it now runs some changes to the C++ code, mostly just respawns.
+ 	// Toggle never wanted, toggle infinite health, toggle vehicles, and toggle peds.
+ 
+-	// if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, "ViceExtended/lua_scripts/test.lua"))) {
+ 	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaScript.c_str()))) {
++	//if(CheckLua(L, luaL_dofile(L, defines.luaScript.c_str()))) {
+ 
+ 		// I was able to output this value to the log.
+ 		// TODO Setup table with locations in this file.
+@@ -726,7 +807,8 @@ LuaTest::InitLua()
+ }
+ // TRACE("KCNet ReVC - LUA_TEST");
+ 
+-	lua_close(m_luaVM);
++	// I think I moved this into a destructor.
++	//lua_close(m_luaVM);
+ 
+ /* MTA SA, TODO Implement the security from it and other stuff that will be needed for ReVC
+ 
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 58ab22a6..347a649f 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -14,8 +14,23 @@ extern "C"
+ #include <fstream>
+ //
+ 
++// TODO Test this out here
++// This breaks it.
++//extern lua_State *m_luaVM;
++
+ class LuaTest
+ {
++private:
++	// lua_State *m_luaVM;
++	lua_State *m_luaVM;
++
++	// This doesn't work right yet, crashes the game.
++	void RegisterLuaFunctions();
++
++	//LuaTest() { 
++	//	m_luaVM = luaL_newstate();
++
++	//}
+ 
+ public:
+ // TODO Fix this, possibly use the same concept from MTA SA, if I can get it to work.
+@@ -54,9 +69,25 @@ public:
+ 	
+ 	bool CheckLua(lua_State *L, int r);
+ 
+-private:
+-	//lua_State *m_luaVM;
+-	lua_State *m_luaVM;
++	// These might work for getting the m_luaVM variable in the private class above.
++	static LuaTest& GetInstance()
++	{ 
++		static LuaTest instance;
++		return instance;
++	}
++
++	lua_State *GetLuaState() 
++	{ 
++		return m_luaVM; 
++	}
++
++	~LuaTest()
++	{
++		if (m_luaVM) 
++		{ 
++			lua_close(m_luaVM);
++		}
++	}
+ 
+ 
+ };
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index b67789ad..7d8889dd 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -25,6 +25,8 @@
+ // Spawning a ped so far, doesn't work.
+ #include "ped_functions.h"
+ 
++#include "imgui_commands.h"
++
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
+@@ -428,6 +430,9 @@ void MiscMenu::MiscTab()
+ 	TomlImGui tomlImgui = TomlImGui();
+ #endif //TOML_TEST
+ 
++	ImGuiCommands imGuiCommands = ImGuiCommands();
++	MiscMenu miscMenu = MiscMenu();
++
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+ 	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
+@@ -474,13 +479,45 @@ void MiscMenu::MiscTab()
+ 			toggleVersionText();
+ 	}
+ 
++	// Create a buffer to hold the input text.
++	std::vector<char> buffer(41); // 40 characters + null terminator
+ 	
++	// Copy the current text from MiscMenu into the buffer.
++	std::string currentText = MiscMenu::GetInstance().getTestText();
++	std::strncpy(buffer.data(), currentText.c_str(), 40);
++	buffer[40] = '\0'; // Ensure null termination
++
++	// Use ImGui::InputText to get input
++	if (ImGui::InputText("Test text", buffer.data(), 41))
++	{ 
++		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
++	}
++
++	if (ImGui::Button("Set test text"))
++	{ 
++		// This works very well.
++		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
++
++		//setTestText("Test from ImGui");
++		// This is being set, I wonder why it doesn't work in main.cpp
++		LogFunctions::LogInfo(defines.logFile, "Test text: " + getTestText());
++	}
+ 
+ 	if(ImGui::Checkbox("Draw KCNet test", &drawKcNetText))
+ 	{ 
++		
+ 		// TODO Fix this to not show up if the other texts are active
+-		if(!gbDrawVersionText && !gbDisplayPosn)
++		if (!gbDrawVersionText && !gbDisplayPosn)
++		{
++
++			// This doesn't work for custom text.
++			//miscMenu.testText = "Test from ImGui";
++			//setTestText("Test from ImGui");
+ 			CustomCheats::ToggleText();
++			CustomCheats::SetText(MiscMenu::GetInstance().getTestText());
++		}
++
++			
+ 	}
+ 	//if (ImGui::Button("Draw KCNet test")) 
+ 	//{ 
+@@ -545,6 +582,13 @@ void MiscMenu::MiscTab()
+ 
+ 	}
+ 
++	// Run the test command system for ImGui.
++	imGuiCommands.ImGuiCommandSystem();
++
++	// Run the test command system in lua for ImGui
++
++	//imGuiCommands.ImGuiCommandSystemLua();
++
+ 
+ // Disable this for now, I would like to use the toml files like Cheat Menu for customization outside of the C++ code.
+ #undef TOML_TEST
+diff --git a/src/extras/menus/misc_menu.h b/src/extras/menus/misc_menu.h
+index 075bd74a..3c834ffb 100644
+--- a/src/extras/menus/misc_menu.h
++++ b/src/extras/menus/misc_menu.h
+@@ -1,7 +1,30 @@
+ #pragma once
+ 
++#include <string>
++
+ class MiscMenu
+ {
++private:
++	std::string m_testText;
+ public:
+ 	void MiscTab();
++
++	// Singleton test
++	static MiscMenu& GetInstance()
++	{ 
++		static MiscMenu instance; // Static instance created once
++		return instance;
++	}
++
++	// Setter
++	void setTestText(const std::string& text)
++	{ 
++		m_testText = text;
++	}
++
++	// Getter
++	const std::string& getTestText() const { 
++		return m_testText;
++	}
++	
+ };
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

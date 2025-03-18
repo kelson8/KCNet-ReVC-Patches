@@ -1,0 +1,235 @@
+From 714047a009203643bf4fb28c9a0b6d6cfe4a15e5 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Mar 2025 11:06:12 -0400
+Subject: [PATCH 110/113] Add ImGui keybind for controller using RB + Right
+ Dpad. Add ImGui-Controls.ini file, only contains controller keybinds for now.
+ Move ini file names from imgui_functions into defines. Add test for
+ warps.ini, it is incomplete. Update HandleControllerInput in win.cpp, now it
+ gets values from the config.
+
+---
+ src/extras/defines.cpp                 |  9 ++++-
+ src/extras/defines.h                   |  8 ++++
+ src/extras/functions/imgui_functions.h |  5 ++-
+ src/extras/functions/ini_functions.cpp | 54 ++++++++++++++++++++++----
+ src/extras/functions/ini_functions.h   |  5 +++
+ src/skel/win/win.cpp                   | 18 +++------
+ 6 files changed, 78 insertions(+), 21 deletions(-)
+
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 325990db..7bb91770 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -33,7 +33,14 @@ std::string Defines::programVersion = "1.0.1";
+ std::string viceExtendedFolder = "ViceExtended/";
+ std::string luaScriptsFolder = viceExtendedFolder + "lua_scripts/";
+ 
+-// This works
++// Lua files, mostly in use in lua_test.cpp
++// TODO Rename file to something else.
+ std::string Defines::luaScript = luaScriptsFolder + "test.lua";
+ std::string Defines::luaLocationsScript = luaScriptsFolder + "locations.lua";
+ 
++// Ini files, ini_functions.cpp is now set to grab the file names from here.
++std::string Defines::mainIniFile = "reVC.ini";
++std::string Defines::imGuiControlsIniFile = viceExtendedFolder + "ImGui-Controls.ini";
++std::string Defines::warpsIniFile = viceExtendedFolder + "warps.ini";
++std::string Defines::featuresIniFile = viceExtendedFolder + "features.ini";
++
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 9ed34258..c4bcd35f 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -24,6 +24,14 @@ public:
+ 	static std::string luaScript;
+ 	static std::string luaLocationsScript;
+ 
++	// Ini
++	static std::string mainIniFile;
++	static std::string imGuiControlsIniFile;
++	static std::string warpsIniFile;
++	// Vice Extended features
++	static std::string featuresIniFile;
++
++
+ 	// Program info
+ 	static std::string modificationName;
+ 	static std::string menuName;
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 5fdf0a66..a9739d67 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -62,7 +62,10 @@ public:
+ 	static void VehiclesListBox(int &selectedItem);
+ 	
+ 
+-	// ImGui Buttons, TODO Setup later
++	// ImGui Buttons, these work now
++
++	// TODO Rename these to ImGuiControllerButton1 and ImGuiControllerButton2
++	// TODO Make this get values for the keyboard input also.
+ 
+ 	void setImGuiButton1(uint16_t button1) 
+ 	{ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 36c3bb3b..83476baf 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -66,6 +66,10 @@
+ 
+ // Needed for ImGui button, it's stored here.
+ #include "imgui_functions.h"
++
++// Needed for Logging the controller values
++#include "log_functions.h"
++#include "defines.h"
+ //#endif //_TEST1
+ 
+ /////////////////////
+@@ -80,14 +84,14 @@
+ #define MINI_CASE_SENSITIVE
+ #include "ini.h"
+ 
+-// TODO Move this value into defines.cpp, make another one for controller input
+-mINI::INIFile ini("reVC.ini");
++// I have moved these values into defines to make it easier to modify them.
++mINI::INIFile ini(Defines::mainIniFile);
+ mINI::INIStructure cfg;
+ 
+ 
+-// TODO Setup later
++// This works fine now
+ // Controller input, New for ImGui
+-mINI::INIFile imguiIni("ViceExtended/ImGui-Controls.ini");
++mINI::INIFile imguiIni(Defines::imGuiControlsIniFile);
+ mINI::INIStructure imguiCfg;
+ 
+ uint16
+@@ -102,12 +106,29 @@ ReadAndGetImGuiConfig(const char* key)
+ }
+ 
+ 
++mINI::INIFile warpsIni(Defines::warpsIniFile);
++mINI::INIStructure warpsCfg;
++uint16
++ReadAndGetWarpsConfig(const char *key)
++{
++	mINI::INIMap<std::string> section = warpsCfg.get("Ammunation");
++	if(section.has(key)) {
++		char *endPtr;
++		return strtol(section.get(key).c_str(), &endPtr, 0);
++	}
++	return 0;
++}
++
++// TODO Setup new one of these for reading warps, convert locations.toml to locations.ini.
++
++
+ 
+ //
+ 
+ // FEATURES_INI
+ #ifdef VICE_EXTENDED
+-mINI::INIFile featuresIni("ViceExtended/features.ini");
++//mINI::INIFile featuresIni("ViceExtended/features.ini");
++mINI::INIFile featuresIni(Defines::featuresIniFile);
+ mINI::INIStructure featuresCfg;
+ 
+ uint8 bInitFeaturesIni = featuresIni.read(featuresCfg);
+@@ -609,16 +630,35 @@ LoadINISettings()
+ 	if(!ini.read(cfg)) return false;
+ 
+ #ifdef CUSTOM_CODE //ImGui controller config
+-	// TODO Setup later
++	// This keybind from the file works now, I had it named wrong in the ini.
++	if(!imguiIni.read(imguiCfg)) return false;
++
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	Defines defines = Defines();
+ 
+-	if(!imguiIni.read(imguiCfg)) return false;
++	// TODO Rename these to ImGuiControllerButton1 and ImGuiControllerButton2
++	// TODO Make this get values for the keyboard input also.
+ 	uint16 toggleImGuiButton1 = ReadAndGetImGuiConfig("ImGuiButton1");
+ 	uint16 toggleImGuiButton2 = ReadAndGetImGuiConfig("ImGuiButton2");
+ 
+ 	imGuiFunctions.setImGuiButton1(toggleImGuiButton1);
+ 	imGuiFunctions.setImGuiButton2(toggleImGuiButton2);
+ 
++	// Read my warps from warps.ini
++	// TODO Setup this, it's not as simple as the others, might be easier to use toml11.
++	//if(!warpsIni.read(warpsCfg)) return false;
++	//CVector ammunationWarps = ReadAndGetWarpsConfig("Ammunation");
++
++	//std::string ammunationWarpString = "Ammunation: " + std::to_string(ammunationWarps); 
++	//LogFunctions::LogInfo(defines.logFile, ammunationWarpString);
++
++	// No wonder, these are being set to 0, I fixed it, the value was named wrong in the ini.
++	//std::string buttonString =
++	//    "Button1: " + std::to_string(imGuiFunctions.getImGuiButton1()) 
++	//	+ " Button2: " + std::to_string(imGuiFunctions.getImGuiButton2());
++
++	//LogFunctions::LogInfo(defines.logFile, buttonString);
++
+ #endif
+ 
+ #ifdef IMPROVED_VIDEOMODE
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index 0a0ff8ce..93077ba3 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -2,8 +2,13 @@
+ 
+ // Hmm I could probably use these elsewhere if needed.
+ 
++#include "defines.h"
++
+ class IniFunctions
+ {
++private:
++	Defines defines;
++
+ public:
+ 	static bool ReadIniIfExists(const char *cat, const char *key, bool *out);
+ 	// static bool ReadIniIfExists(const char *cat, const char *key, uint8 *out);
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 49c73202..86c8f97d 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -1138,10 +1138,10 @@ HandleControllerInput()
+ 	XINPUT_STATE state;
+ 	ZeroMemory(&state, sizeof(XINPUT_STATE));
+ 
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	// ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	// Well this works? I wasn't expecting it to work like this.
++	ImGuiFunctions imGuiFunctions;
+ 
+-	// TODO Setup this later, I almost got it working I think
+-	// TODO Print the values of this to see if it's correct.
+ 	uint16 button1 = imGuiFunctions.getImGuiButton1();
+ 	uint16 button2 = imGuiFunctions.getImGuiButton2();
+ 
+@@ -1153,16 +1153,10 @@ HandleControllerInput()
+ 		// Check for button press (e.g., the 'A' button)
+ 		//if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
+ 		// 
+-		// New test, TODO Fix this to work.
+-		// 
+-		 //if(state.Gamepad.wButtons & button1
+-			//&& state.Gamepad.wButtons & button2 &&
+-		 //  CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-
++		// New test with controller keybinds in 'ViceExtended/ImGui-Controls.ini'
+ 		// 
+-		// Working code
+-		if(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER
+-			&& state.Gamepad.wButtons &XINPUT_GAMEPAD_DPAD_RIGHT &&
++		 if(state.Gamepad.wButtons & button1
++			&& state.Gamepad.wButtons & button2 &&
+ 		   CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 			// Reset timer
+ 			newTime = CTimer::GetTimeInMilliseconds();
+-- 
+2.45.1.windows.1
+

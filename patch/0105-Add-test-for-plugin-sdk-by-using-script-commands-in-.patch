@@ -1,0 +1,522 @@
+From 091f939a54d6ed12d3cc234a55d67db6feeeb9ee Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Mar 2025 16:16:29 -0400
+Subject: [PATCH 105/113] Add test for plugin sdk by using script commands in
+ C++, not working yet. Disable old plugin sdk test code.
+
+---
+ src/control/Script.cpp                        | 34 ++++++++
+ src/core/config.h                             |  7 ++
+ src/extras/cheats/custom_cheats.cpp           | 36 ++++-----
+ src/extras/cheats/custom_cheats.h             |  2 +-
+ src/extras/debug/debug_functions.cpp          |  2 +-
+ src/extras/defines.cpp                        |  2 +
+ src/extras/defines.h                          |  2 +
+ src/extras/menus/misc_menu.cpp                | 75 ++++++++---------
+ src/extras/plugin_sdk_test/plugin_interface.h | 26 ++++++
+ src/extras/plugin_sdk_test/plugin_manager.cpp | 80 +++++++++++++++++++
+ src/extras/plugin_sdk_test/plugin_manager.h   | 29 +++++++
+ src/extras/plugin_sdk_test/script_engine.cpp  | 32 ++++++++
+ src/skel/win/win.cpp                          | 16 ++++
+ 13 files changed, 286 insertions(+), 57 deletions(-)
+ create mode 100644 src/extras/plugin_sdk_test/plugin_interface.h
+ create mode 100644 src/extras/plugin_sdk_test/plugin_manager.cpp
+ create mode 100644 src/extras/plugin_sdk_test/plugin_manager.h
+ create mode 100644 src/extras/plugin_sdk_test/script_engine.cpp
+
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 8ed7ea7f..3910a449 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -57,6 +57,18 @@
+ #include "modloader.h"
+ #endif
+ 
++#ifdef PLUGIN_SDK_TEST
++// https://stackoverflow.com/questions/47332305/c14-generic-lambda-with-generic-stdfunction-as-class-member
++// https://en.cppreference.com/w/cpp/header/unordered_map
++#include <any> //not required for method 1
++#include <functional>
++#include <iostream>
++#include <unordered_map>
++#include <utility>
++
++#include "plugin_manager.h"
++#endif //PLUGIN_SDK_TEST
++
+ uint8 CTheScripts::ScriptSpace[SIZE_SCRIPT_SPACE];
+ CRunningScript CTheScripts::ScriptsArray[MAX_NUM_SCRIPTS];
+ intro_text_line CTheScripts::IntroTextLines[MAX_NUM_INTRO_TEXT_LINES];
+@@ -240,6 +252,28 @@ const uint32 CRunningScript::nSaveStructSize =
+ 	sizeof(CRunningScript);
+ #endif
+ 
++// TODO Test this later.
++#ifdef PLUGIN_SDK_TEST
++// Scripting engine modification (script_engine.cpp)
++std::unordered_map<std::string, std::function<void(std::vector<std::string>)>> commandTable;
++
++void
++RegisterScriptCommand(const std::string &commandName, std::function<void(std::vector<std::string>)> commandFunction)
++{
++	commandTable[commandName] = commandFunction;
++}
++
++void
++ExecuteScriptCommand(const std::string &commandName, const std::vector<std::string> &arguments)
++{
++	if(commandTable.count(commandName)) {
++		commandTable[commandName](arguments);
++	} else {
++		// Handle unknown command
++	}
++}
++#endif
++
+ CMissionCleanup::CMissionCleanup()
+ {
+ 	Init();
+diff --git a/src/core/config.h b/src/core/config.h
+index c918c39a..91d02823 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -103,6 +103,13 @@
+ // Enable better crouching support
+ #define CROUCH
+ 
++// Enable the plugin sdk test
++// I have it in src/extras/plugin_sdk_test
++// Files:
++// plugin_interface.h, plugin_manager.cpp, plugin_manager.h, script_engine.cpp
++// Well this doesn't crash but I don't think I have the dll implementation right, I have disabled this for now.
++// #define PLUGIN_SDK_TEST
++
+ // Copied in changes from this define
+ // Well this breaks shooting, I cannot shoot if I have this defined for some reason
+ // #define IMPROVED_MENU_AND_INPUT
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index cab61092..da279b03 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -396,24 +396,24 @@ CustomCheats::ExplodePed()
+ 	explosion.AddExplosion(nil, nil, eExplosionType::EXPLOSION_CAR, pPedCoords, 32, true);
+ }
+ 
+-#ifdef PLUGIN_SDK_TEST
+-using namespace plugin;
+-
+-// I highly doubt this will work.
+-
+-// Basically trying to recreate what the plugin sdk does in ReVC
+-void
+-CustomCheats::CommandTest1()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
+-	//Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
+-
+-	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
+-}
+-#endif //PLUGIN_SDK_TEST
+-#define _TEST1
++//#ifdef PLUGIN_SDK_TEST
++//using namespace plugin;
++//
++//// I highly doubt this will work.
++//
++//// Basically trying to recreate what the plugin sdk does in ReVC
++//void
++//CustomCheats::CommandTest1()
++//{
++//	CPlayerPed *pPed = FindPlayerPed();
++//	CVector pPedCoords = FindPlayerCoors();
++//	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
++//	//Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++//
++//	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
++//}
++//#endif //PLUGIN_SDK_TEST
++//#define _TEST1
+ 
+ 
+ 
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index 2c20d7f1..28c1496c 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -70,7 +70,7 @@ public:
+ 	static void UnlockDoors();
+ 
+ 	// New test
+-	static void CommandTest1();
++	//static void CommandTest1();
+ 	// Misc testing.
+ 	static void PedTest1();
+ 
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 644b1faf..9f315521 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -1885,7 +1885,7 @@ DebugMenuPopulate(void)
+ 
+ // This now crashes to the error under Read2BytesFromScript in Script.h
+ #ifdef PLUGIN_SDK_TEST
+-		DebugMenuAddCmd("Test", "Plugin sdk command test", CustomCheats::CommandTest1);
++		//DebugMenuAddCmd("Test", "Plugin sdk command test", CustomCheats::CommandTest1);
+ #endif // PLUGIN_SDK_TEST
+ 
+ 		// TODO Setup this
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index a0ca8873..64de6568 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -4,6 +4,8 @@
+ // Set the log file path
+ std::string Defines::logFile = "KCNet-ReVC.log";
+ 
++std::string Defines::pluginSdkTestLog = "KCNet-PluginSdk-Test.log";
++
+ std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
+ 
+ // Fonts
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index cb6eca79..91d750ed 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -12,6 +12,8 @@ public:
+ 	// Logs
+ 	static std::string logFile;
+ 	static std::string luaLogFile;
++	// Plugin sdk test
++	static std::string pluginSdkTestLog;
+ 
+ 	// Files
+ 	static std::string fontFile;
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index fdb60cad..9e217891 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -234,39 +234,40 @@ void displayCounterOnScreen()
+ }
+ 
+ //----------- Plugin sdk test ----------//
+-#ifdef PLUGIN_SDK_TEST
++// Old functions
++//#ifdef PLUGIN_SDK_TEST
++////void
++////commandTest1()
++////{
++////	static CRunningScript script;
++////	script.m_bIsMissionScript = false;
++////	int8 retval = -1;
++////	++CTheScripts::CommandsExecuted;
++////	// int32 command = (uint16)CTheScripts::Read2BytesFromScript(&CRunningScript::m_nIp);
++////	// script.m_bNotFlag = (command & 0x8000);
++////	// command &= 0x7FFF;
++////	script.ProcessOneCommand();
++////	// script.m_bNotFlag =
++////}
++//
++//
++//using namespace plugin;
++//
++//// I highly doubt this will work.
++//
++//// Basically trying to recreate what the plugin sdk does in ReVC
+ //void
+-//commandTest1()
++//CommandTest1()
+ //{
+-//	static CRunningScript script;
+-//	script.m_bIsMissionScript = false;
+-//	int8 retval = -1;
+-//	++CTheScripts::CommandsExecuted;
+-//	// int32 command = (uint16)CTheScripts::Read2BytesFromScript(&CRunningScript::m_nIp);
+-//	// script.m_bNotFlag = (command & 0x8000);
+-//	// command &= 0x7FFF;
+-//	script.ProcessOneCommand();
+-//	// script.m_bNotFlag =
++//	CPlayerPed *pPed = FindPlayerPed();
++//	CVector pPedCoords = FindPlayerCoors();
++//	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
++//	// Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++//
++//	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
+ //}
+-
+-
+-using namespace plugin;
+-
+-// I highly doubt this will work.
+-
+-// Basically trying to recreate what the plugin sdk does in ReVC
+-void
+-CommandTest1()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPedCoords = FindPlayerCoors();
+-	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
+-	// Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
+-
+-	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
+-}
+-
+-#endif
++//
++//#endif
+ 
+ 
+ //----------- Debug texts ----------//
+@@ -490,13 +491,13 @@ void MiscMenu::MiscTab()
+ 		//ImGui::Text(controllerButtonStr.c_str());
+ 	//}
+ 
+-#ifdef PLUGIN_SDK_TEST
+-	ImGui::Text("Plugin sdk test");
+-	if(ImGui::Button("Blow up player")) 
+-	{ 
+-		CommandTest1();
+-	}
+-#endif
++//#ifdef PLUGIN_SDK_TEST
++//	ImGui::Text("Plugin sdk test");
++//	if(ImGui::Button("Blow up player")) 
++//	{ 
++//		CommandTest1();
++//	}
++//#endif
+ 
+ 	// TODO Test this
+ 	// Well this didn't do anything
+diff --git a/src/extras/plugin_sdk_test/plugin_interface.h b/src/extras/plugin_sdk_test/plugin_interface.h
+new file mode 100644
+index 00000000..c886dc5c
+--- /dev/null
++++ b/src/extras/plugin_sdk_test/plugin_interface.h
+@@ -0,0 +1,26 @@
++#pragma once
++
++// TODO Add these to a pch file or something.
++#include <string>
++#include <vector>
++
++#define WITHDINPUT
++#include "common.h"
++#include "platform.h"
++
++#include "main.h"
++
++#ifdef PLUGIN_SDK_TEST
++
++// Idea from Google Gemini
++// Plugin interface (plugin_interface.h)
++class PluginInterface
++{
++public:
++	virtual void Initialize() = 0;
++	virtual void RegisterCommands() = 0;
++	virtual ~PluginInterface() {}
++};
++
++
++#endif
+diff --git a/src/extras/plugin_sdk_test/plugin_manager.cpp b/src/extras/plugin_sdk_test/plugin_manager.cpp
+new file mode 100644
+index 00000000..96796842
+--- /dev/null
++++ b/src/extras/plugin_sdk_test/plugin_manager.cpp
+@@ -0,0 +1,80 @@
++#include "plugin_manager.h"
++#include "log_functions.h"
++#include "defines.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++#include <Windows.h> // For LoadLibrary, GetProcAddress
++#include <iostream>
++
++// TODO Figure out how to use this, it builds!
++
++#ifdef PLUGIN_SDK_TEST
++
++void
++PluginManager::LoadPlugin(const std::string &pluginPath)
++{
++	Defines defines = Defines();
++	HMODULE hModule = LoadLibraryA(pluginPath.c_str());
++	if(hModule) {
++		typedef PluginInterface *(*CreatePluginFunc)();
++		CreatePluginFunc createPlugin = (CreatePluginFunc)GetProcAddress(hModule, "CreatePlugin");
++		if(createPlugin) {
++			PluginInterface *plugin = createPlugin();
++			if(plugin) {
++				plugins.push_back(plugin);
++				std::string pluginLoadedString = "Plugin loaded: " + pluginPath;
++				//LogFunctions::LogInfo(defines.logFile, pluginLoadedString);
++				LogFunctions::LogInfo(defines.pluginSdkTestLog, pluginLoadedString);
++				std::cout << "Plugin loaded: " << pluginPath << std::endl;
++			} else {
++				std::string pluginFailLoadString = "Error: failed to create plugin instance";
++				LogFunctions::LogInfo(defines.pluginSdkTestLog, pluginFailLoadString);
++
++				std::cerr << "Error: Failed to create plugin instance." << std::endl;
++			}
++		} else {
++			std::string pluginFailLoadString = "Error: Failed to find CreatePlugin function in " + pluginPath;
++			LogFunctions::LogInfo(defines.pluginSdkTestLog, pluginFailLoadString);
++
++			std::cerr << "Error: Failed to find CreatePlugin function in " << pluginPath << std::endl;
++			FreeLibrary(hModule);
++		}
++	} else {
++		std::string pluginFailLoadString = "Error: failed to load plugin" + pluginPath;
++		LogFunctions::LogInfo(defines.pluginSdkTestLog, pluginFailLoadString);
++
++		std::cerr << "Error: Failed to load plugin: " << pluginPath << std::endl;
++	}
++}
++
++void
++PluginManager::UnloadPlugin(const std::string &pluginName)
++{
++	Defines defines = Defines();
++	// Implement plugin unloading logic here
++	// iterate through plugins, compare plugin name and free the plugin.
++}
++
++void
++PluginManager::InitializePlugins()
++{
++	for(PluginInterface *plugin : plugins) {
++		if(plugin) { plugin->Initialize(); }
++	}
++}
++
++void
++PluginManager::RegisterPluginCommands()
++{
++	for(PluginInterface *plugin : plugins) {
++		if(plugin) { plugin->RegisterCommands(); }
++	}
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/plugin_sdk_test/plugin_manager.h b/src/extras/plugin_sdk_test/plugin_manager.h
+new file mode 100644
+index 00000000..8778709f
+--- /dev/null
++++ b/src/extras/plugin_sdk_test/plugin_manager.h
+@@ -0,0 +1,29 @@
++#pragma once
++#include "plugin_interface.h"
++// TODO Add these to a pch file or something.
++#include <string>
++#include <vector>
++
++#define WITHDINPUT
++#include "common.h"
++#include "platform.h"
++
++#include "main.h"
++
++#ifdef PLUGIN_SDK_TEST
++
++// Idea from Google Gemini
++// Plugin manager (plugin_manager.h)
++class PluginManager
++{
++public:
++	void LoadPlugin(const std::string &pluginPath);
++	void UnloadPlugin(const std::string &pluginName);
++	void InitializePlugins();
++	void RegisterPluginCommands();
++	// ... other methods
++private:
++	std::vector<PluginInterface *> plugins;
++};
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/plugin_sdk_test/script_engine.cpp b/src/extras/plugin_sdk_test/script_engine.cpp
+new file mode 100644
+index 00000000..c715e067
+--- /dev/null
++++ b/src/extras/plugin_sdk_test/script_engine.cpp
+@@ -0,0 +1,32 @@
++
++
++// TODO Add these to a pch file or something.
++#include <string>
++#include <vector>
++
++//// https://stackoverflow.com/questions/47332305/c14-generic-lambda-with-generic-stdfunction-as-class-member
++//// https://en.cppreference.com/w/cpp/header/unordered_map
++//#include <any> //not required for method 1
++//#include <utility>
++//#include <iostream>
++//#include <functional>
++//#include <unordered_map>
++//
++//// Scripting engine modification (script_engine.cpp)
++//std::unordered_map<std::string, std::function<void(std::vector<std::string>)>> commandTable;
++//
++//void
++//RegisterScriptCommand(const std::string &commandName, std::function<void(std::vector<std::string>)> commandFunction)
++//{
++//	commandTable[commandName] = commandFunction;
++//}
++//
++//void
++//ExecuteScriptCommand(const std::string &commandName, const std::vector<std::string> &arguments)
++//{
++//	if(commandTable.count(commandName)) {
++//		commandTable[commandName](arguments);
++//	} else {
++//		// Handle unknown command
++//	}
++//}
+\ No newline at end of file
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 83bab86f..0a951232 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -108,6 +108,10 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ #endif
+ #undef _IMGUI_TEST
+ 
++#ifdef PLUGIN_SDK_TEST
++#include "plugin_manager.h"
++#endif
++
+ // Lua test
+ #ifdef CUSTOM_CODE
+ #include "lua_test.h"
+@@ -2835,6 +2839,18 @@ bool	luaInit = false;
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
+ 
+ 
++							// TODO Test this later, possibly move to another part of the loop such as the init.
++#ifdef PLUGIN_SDK_TEST
++								// Goes in the main game loop
++								PluginManager pluginManager = PluginManager();
++						        pluginManager.InitializePlugins();
++								pluginManager.RegisterPluginCommands();
++
++								// Goes in the script parsing and execution function, possibly in Script.cpp.
++						        //ExecuteScriptCommand();
++
++
++#endif
+ 							// Init the lua game variables.
+ 
+ #ifdef LUA_TEST
+-- 
+2.45.1.windows.1
+

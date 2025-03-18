@@ -1,0 +1,748 @@
+From e5502c14011d40f25b8a478619a3680e1aa53bab Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Mar 2025 22:43:45 -0400
+Subject: [PATCH 107/113] Move InputIntMax and InputIntClamp into
+ ImGuiFunctions. Add test for better handling cheat in cheat menu. Add vehicle
+ color changes into vehicle_spawn_menu. Add DistanceBetweenPoints from
+ plugin-sdk, add GetClosestCar from Cheat menu in vehicle functions. Add
+ SetColors into vehicle functions, and some extra tests for warping into the
+ vehicle. Cleanup vehicle menu code a bit.
+
+---
+ .vscode/settings.json                      |  20 +-
+ src/extras/functions/imgui_functions.cpp   |  26 +++
+ src/extras/functions/imgui_functions.h     |   6 +
+ src/extras/functions/vehicle_functions.cpp | 104 ++++++++-
+ src/extras/functions/vehicle_functions.h   |   2 +
+ src/extras/menus/cheat_menu.cpp            |  19 +-
+ src/extras/menus/game_menu.cpp             |  45 +---
+ src/extras/menus/vehicle_menu.cpp          |  45 ----
+ src/extras/menus/vehicle_spawn_menu.cpp    | 244 +++++++++++----------
+ 9 files changed, 305 insertions(+), 206 deletions(-)
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index 93c8d205..f30bbe07 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -50,6 +50,24 @@
+     "variant": "cpp",
+     "xmemory": "cpp",
+     "xtr1common": "cpp",
+-    "xutility": "cpp"
++    "xutility": "cpp",
++    "bitset": "cpp",
++    "deque": "cpp",
++    "format": "cpp",
++    "initializer_list": "cpp",
++    "list": "cpp",
++    "queue": "cpp",
++    "random": "cpp",
++    "regex": "cpp",
++    "stack": "cpp",
++    "valarray": "cpp",
++    "vector": "cpp",
++    "xhash": "cpp",
++    "xstring": "cpp",
++    "xtree": "cpp",
++    "algorithm": "cpp",
++    "chrono": "cpp",
++    "optional": "cpp",
++    "xlocmon": "cpp"
+   }
+ }
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 3fed76b9..565d89f6 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -1,5 +1,11 @@
++// https://stackoverflow.com/questions/22744262/cant-call-stdmax-because-minwindef-h-defines-max
++// Fix for std::min and std::max
++#define NOMINMAX
++
+ #include "imgui_functions.h"
+ 
++#include <algorithm> // For std::min
++
+ // ImGui
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+@@ -35,6 +41,26 @@
+ //}
+ //
+ 
++void
++ImGuiFunctions::InputIntMax(const char *label, int *v, int step, int step_fast, int max_value)
++{
++	if(ImGui::InputInt(label, v, step, step_fast)) {
++		*v = std::min(*v, max_value);
++		//return true; // Value changed
++	}
++	//return false; // Value unchanged
++}
++
++// If you also need to set a min value, use this function instead:
++void
++ImGuiFunctions::InputIntClamp(const char *label, int *v, int step, int step_fast, int min_value, int max_value)
++{
++	if(ImGui::InputInt(label, v, step, step_fast)) {
++		*v = std::max(min_value, std::min(*v, max_value));
++		//return true; // Value changed
++	}
++	//return false; // Value unchanged
++}
+ 
+ /// <summary>
+ /// Well I was going to replicate the re3 function but
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 48ec1e49..50bcbaa7 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -67,6 +67,12 @@ public:
+ 	// TODO Move this somewhere else
+ 	static void PrintToOutput(const char *text);
+ 
++	// For setting a min/max value on ImGui::InputInt
++	// Set it to just have a maximum value
++	static void InputIntMax(const char *label, int *v, int step = 1, int step_fast = 10, int max_value = 100);
++	// Set it to have a minimum and maximum value
++	static void InputIntClamp(const char *label, int *v, int step = 1, int step_fast = 10, int min_value = 0, int max_value = 100);
++
+ #ifdef _MOVE_CODE
+ 	static void RunImGui();
+ 
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 1fe4dc88..25d28a1d 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -65,17 +65,74 @@
+ 
+ #include "PlayerInfo.h"
+ 
++
+ // My code
+ #include "..\extras\test\enums\model_ids.h"
+ //#include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+ #include "custom_cheats.h"
+ 
++#include "player_util.h"
++
+ //#include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+ 
+ //
+ 
++// From Cheat Menu
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/util.cpp#L249-L291
++
++// This was copied from the plugin-sdk
++// https://github.com/DK22Pac/plugin-sdk/blob/master/plugin_vc/game_vc/CVector2D.h
++inline float
++DistanceBetweenPoints(const CVector2D &pointOne, const CVector2D &pointTwo)
++{
++	CVector2D diff = pointTwo - pointOne;
++	return diff.Magnitude();
++}
++
++
++
++/// <summary>
++/// implemention of opcode 0AB5 (STORE_CLOSEST_ENTITIES)
++/// https://github.com/cleolibrary/CLEO4/blob/916d400f4a731ba1dd0ff16e52bdb056f42b7038/source/CCustomOpcodeSystem.cpp#L1671
++/// TODO Fix this, I think I got it mostly working.
++/// Try to use this for my vehicle unlock function, and make it to where I can lock vehicles using this.
++/// </summary>
++/// <returns></returns>
++CVehicle* GetClosestCar()
++{
++	CPlayerPed *player = FindPlayerPed();
++
++	CVehicle *pClosestVeh = nullptr;
++	float distance = 999.0f;
++
++	CVector playerPos = player->GetPosition();
++
++	CVehiclePool *vehiclePool = CPools::GetVehiclePool();
++	int poolSize = vehiclePool->GetSize();
++
++	// TODO Figure out how to do this.
++	//for(CVehicle *pVeh : CPools::ms_pVehiclePool) {
++	//for(CVehicle *pVeh : CPools::GetVehiclePool()->GetSize() ) {
++	for(int i = 0; i < poolSize; i++) {
++		CVehicle *pVeh = vehiclePool->GetAt(i);
++		CVector pos = pVeh->GetPosition();
++		float dist = DistanceBetweenPoints(playerPos, pos);
++
++		if(dist < distance) {
++			pClosestVeh = pVeh;
++			distance = dist;
++		}
++	}
++	return pClosestVeh;
++}
++//
++
++/// <summary>
++/// Check if a player is in a vehicle
++/// </summary>
++/// <returns>If the player is in a vehicle.</returns>
+ bool
+ VehicleFunctions::IsPlayerInVehicle()
+ {
+@@ -314,6 +371,24 @@ VehicleFunctions::SpawnVehicle(int id)
+ }
+ #endif //VEHICLE_SPAWN_TEST
+ 
++/// <summary>
++/// Set the vehicle colors
++/// TODO Test this later.
++/// </summary>
++/// <param name="color1"></param>
++/// <param name="color2"></param>
++void VehicleFunctions::SetColors(int color1, int color2)
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++	if (vehicleFunctions.IsPlayerInVehicle()) { 
++		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++		playerVeh->m_currentColour1 = color1;
++		playerVeh->m_currentColour2 = color2;
++	}
++
++}
++
+ /// <summary>
+ /// Taken idea from debug_functions.cpp
+ /// I have slightly modified this and now it has a few more features for my menu.
+@@ -334,6 +409,8 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ {
+ 	// TODO Move this into the function body, so if I want this function to work on the player and other peds it would.
+ 	CPlayerPed *pPed = FindPlayerPed();
++
++	PlayerUtil playerUtil = PlayerUtil();
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
+ 	bool chaosMode = false;
+ 
+@@ -400,7 +477,14 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 			// TODO Fix this to make the player warp out of the vehicle.
+ 			// pPed->SetObjective(OBJECTIVE_FLEE_CAR);
+ 
++			//CVector playerCoords = playerUtil.PlayerCoords();
++			//float playerX = playerCoords.x;
++			//float playerY = playerCoords.y;
++			//float playerZ = playerCoords.z;
++
+ 			pPed->SetObjective(OBJECTIVE_LEAVE_CAR);
++			// Well this didn't work.
++			//pPed->SetPosition(CVector(playerX, playerY, playerZ));
+ 
+ 			// Some extra chaos features
+ 			if (chaosMode) {
+@@ -415,10 +499,26 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 
+ 		// Warp the player into the new vehicle if enabled.
+ 		// This sometimes glitches out and the player will enter and exit the vehicle.
++		// TODO Add a delay or something to this, it's running at the same time as the other option I'm guessing.
++		static int newTime = 0;
++		//if(warpIntoVehicle && CTimer::GetTimeInMilliseconds() - newTime > 500)
+ 		if(warpIntoVehicle)
+ 		{
+-			pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
+-			pPed->WarpPedIntoCar(v);
++			// Extras
++			pPed->bInVehicle = true;
++			pPed->m_pMyVehicle = v;
++			// Will this crash it?
++			pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
++			pPed->m_nPedState = PED_DRIVING;
++
++			// Original function
++			if (CTimer::GetTimeInMilliseconds() - newTime > 500)
++			{
++				newTime = CTimer::GetTimeInMilliseconds();
++				pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
++				pPed->WarpPedIntoCar(v);
++			}
++
+ 		}
+ 	}
+ }
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 07ff2192..a3ec6df2 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -25,6 +25,8 @@ public:
+ 	// static void SpawnVehicle(int id);
+ 	static void SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ 
++	static void SetColors(int color1, int color2);
++
+ 	#ifdef VEHICLE_SPAWN_TEST
+ 	static CVehicle SpawnVehicle(int id);
+ 	#endif //VEHICLE_SPAWN_TEST
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index 88062d2c..ee792857 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -40,13 +40,23 @@
+ 
+ // I didn't like the idea of collapsing headers being everywhere so I disabled them in here.
+ 
++// Booleans
+ bool neverWanted = false;
++bool betterHandling = false;
++
++//----------- Pad.cpp items -----------//
+ // Well I figured out how to use the built in cheats without copying them
+ void
+ FastTimeCheat();
+ void
+ SlowTimeCheat();
+ 
++// Test this, should be the perfect handling cheat.
++void
++SpecialCarCheats();
++
++//----------- Police -----------//
++
+ void
+ toggleNeverWanted()
+ {
+@@ -115,9 +125,8 @@ GetPlayerMoney()
+ 	return pPlayerInfo.m_nMoney;
+ }
+ 
+-
+-bool pedSpeech = true;
+ //----------- Ped speech enable/disable ----------//
++bool pedSpeech = true;
+ void
+ togglePedSpeech()
+ {
+@@ -243,6 +252,12 @@ void CheatMenu::CheatTab()
+ 		ImGui::Text("Ped talking toggle");
+ 
+ 		if(ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) { togglePedSpeech(); }
++	    
++		// TODO Fix this to work, I can't turn it back off.
++		//if(ImGui::Checkbox("Toggle Better Handling", &betterHandling)) 
++		//{ 
++		//		SpecialCarCheats();
++		//}
+ 	//}
+ 
+ 
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index 77af44e6..c29e1dd4 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -59,35 +59,6 @@ setTime(int hour, int minute)
+ int gameMenuHour = 0;
+ int gameMenuMinute = 0;
+ 
+-// TODO Move into imgui functions
+-// TODO Figure out how to make this work
+-// Oh, no wonder something microsoft was overriding it.
+-bool
+-InputIntMax(const char *label, int *v, int step = 1, int step_fast = 10, int max_value = 100)
+-{
+-	if(ImGui::InputInt(label, v, step, step_fast)) {
+-		*v = std::min(*v, max_value);
+-		return true; // Value changed
+-	}
+-	return false; // Value unchanged
+-}
+-
+-
+-// If you also need to set a min value, use this function instead:
+-bool
+-InputIntClamp(const char *label, int *v, int step = 1, int step_fast = 10, int min_value = 0, int max_value = 100)
+-{
+-	if(ImGui::InputInt(label, v, step, step_fast)) {
+-		*v = std::max(min_value, std::min(*v, max_value));
+-		return true; // Value changed
+-	}
+-	return false; // Value unchanged
+-}
+-
+-//
+-
+-
+-
+ void
+ GameMenu::GameTab()
+ {
+@@ -121,21 +92,9 @@ GameMenu::GameTab()
+ 
+ 		ImGui::Text("Hour max: 23, Minute max: 59");
+ 		// TODO Come up with a better solution for this.
+-		//ImGui::InputInt("Hour", &gameMenuHour);
+-		//ImGui::InputInt("Minute", &gameMenuMinute);
+-
+-		//if(InputIntClamp("Hour", &gameMenuHour, 1, 10, 0, 23)) {
+-		//	
+-		//}
+-
+-		// These should work
+-		InputIntClamp("Hour", &gameMenuHour, 1, 10, 0, 23);
+-
+-		InputIntClamp("Minute", &gameMenuMinute, 1, 10, 0, 59);
+-
+-		//if (InputIntMax("Hour", &gameMenuHour, 1, 10, 23)) {
++		ImGuiFunctions::InputIntClamp("Hour", &gameMenuHour, 1, 10, 0, 23);
+ 
+-		//}
++		ImGuiFunctions::InputIntClamp("Minute", &gameMenuMinute, 1, 10, 0, 59);
+ 
+ 		if (ImGui::Button("Set time")) { 
+ 			// Check for invalid values
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index ecf17636..60979481 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -249,24 +249,6 @@ VehicleMenu::VehicleTab()
+ 		toggleVehicleInvincible(); 
+ 	}
+ 
+-	// TODO Convert ImVec4 to float for vehicle color testing.
+-	// TODO Fix this to work, I just need to figure out how to complete this part in ImGui.
+-
+-	static ImVec4 color = ImVec4(114.0f / 255.0f, 144.0f / 255.0f, 154.0f / 255.0f, 200.0f / 255.0f);
+-	static ImGuiColorEditFlags base_flags = ImGuiColorEditFlags_None;
+-
+-	ImGui::Text("Vehicle colors");
+-	ImGui::ColorEdit3("Test", (float*)& color, base_flags);
+-
+-
+-	if (ImGui::Button("Log color")) { 
+-		IV4toRGBA(color);
+-		ImGuiFunctions::PrintToOutput("This should show up.");
+-	}
+-
+-	////std::string colorString = std::to_string((float*)&color);
+-	//ImGui::Text("");
+-
+ 	ImGui::Separator();
+ 	ImGui::Text("Lock/Unlock");
+ 
+@@ -299,31 +281,4 @@ VehicleMenu::VehicleTab()
+ 	{ 
+ 		removeBombFromCar();
+ 	}
+-
+-	// Test
+-
+-	//ImGui::Separator();
+-	//ImGui::Text("Vehicle list test");
+-
+-	//ImGui::Checkbox("New Vehicle Listbox", &newVehicleListBoxEnabled);
+-	//if(ImGui::Checkbox("New Vehicle Listbox", &newVehicleListBoxEnabled)) { 	}
+-
+-	// TODO Fix these, I cannot get the currentVehicleID from above showing up yet, it always shows 0.
+-	//int testInt = 130;
+-	// ImGuiFunctions::VehiclesListBox(testInt);
+-	//if(newVehicleListBoxEnabled) 
+-	//{ 
+-	//	imGuiFunctions.VehiclesListBox(testInt); 
+-	//}
+-
+-	//// Uses the output to debug function that doesn't require re3 code.
+-	//// This is now using getters and setters in the imgui_functions.h
+-	//if (ImGui::Button("Log vehicle id")) 
+-	//{ 
+-	//	
+-	//	std::string vehicleIdString = "Vehicle ID: " + std::to_string(currentVehicleID);
+-	//	imGuiFunctions.PrintToOutput(vehicleIdString.c_str());
+-	//}
+-
+-
+  }
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index c7320956..4cdf3e71 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -56,18 +56,132 @@ spawnVehicle(VehicleModels::ModelIds vehModels)
+ 	};
+ }
+ 
+-// TODO Test this
++
++bool spawnInCar = false;
++// Car colors
++int carColor1 = 0;
++int carColor2 = 0;
++
++// TODO Possibly move into another file
++
++// Vice City Car Colours from https://www.grandtheftwiki.com/Car_Colours
++struct ReVCColor {
++	int r;
++	int g;
++	int b;
++	int index;
++};
++
++const ReVCColor viceCityColors[] = {
++    {0, 0, 0, 0},        // Black
++    {255, 255, 255, 1},  // White
++    {128, 128, 128, 2},  // Grey
++    {255, 0, 0, 3},      // Red
++    {0, 255, 0, 4},      // Green
++    {0, 0, 255, 5},      // Blue
++    {255, 255, 0, 6},    // Yellow
++    {255, 0, 255, 7},    // Magenta
++    {0, 255, 255, 8},    // Cyan
++    {128, 0, 0, 9},      // Maroon
++    {0, 128, 0, 10},     // Dark Green
++    {0, 0, 128, 11},     // Navy
++    {128, 128, 0, 12},   // Olive
++    {128, 0, 128, 13},   // Purple
++    {0, 128, 128, 14},   // Teal
++    {192, 192, 192, 15}, // Silver
++    {255, 128, 0, 16},   // Orange
++    {128, 64, 0, 17},    // Brown
++    {255, 128, 128, 18}, // Light Red
++    {128, 255, 128, 19}, // Light Green
++    {128, 128, 255, 20}, // Light Blue
++    {255, 255, 128, 21}, // Light Yellow
++    {255, 128, 255, 22}, // Light Magenta
++    {128, 255, 255, 23}, // Light Cyan
++};
++
++const int viceCityColorCount = sizeof(viceCityColors) / sizeof(viceCityColors[0]);
++
++// Convert ImVec4 to RGB
++struct RGBColor {
++	int r;
++	int g;
++	int b;
++};
++
++RGBColor
++imVec4ToRGB(const ImVec4 &color)
++{
++	return {static_cast<int>(color.x * 255.0f), static_cast<int>(color.y * 255.0f), static_cast<int>(color.z * 255.0f)};
++}
++
++// Find the closest color in ReVC
++int
++findClosestColorIndex(const RGBColor &rgb)
++{
++	int closestIndex = 0;
++	int closestDistance = INT_MAX;
++
++	for(int i = 0; i < viceCityColorCount; ++i) {
++		int dr = rgb.r - viceCityColors[i].r;
++		int dg = rgb.g - viceCityColors[i].g;
++		int db = rgb.b - viceCityColors[i].b;
++
++		int distance = dr * dr + dg * dg + db * db; // Squared distance for efficiency
++
++		if(distance < closestDistance) {
++			closestDistance = distance;
++			closestIndex = viceCityColors[i].index;
++		}
++	}
++	return closestIndex;
++}
++
++// Function to get ReVC color indices:
++std::pair<int, int>
++getReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
++{
++	RGBColor rgb1 = imVec4ToRGB(color1);
++	RGBColor rgb2 = imVec4ToRGB(color2);
++
++	int index1 = findClosestColorIndex(rgb1);
++	int index2 = findClosestColorIndex(rgb2);
++
++	return {index1, index2};
++}
++
++//
++
++
++void
++ImGuiCarColors()
++{
++	ImGui::Text("Colors");
++	// TODO Make this read from a imgui color box or something.
++
++	// TODO Test this
++	static ImVec4 color1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
++	static ImVec4 color2 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f); // Blue
++
++	ImGui::ColorEdit4("Color 1", (float *)&color1);
++	ImGui::ColorEdit4("Color 2", (float *)&color2);
++
++	if(ImGui::Button("Set colors")) {
++		std::pair<int, int> indices = getReVCColorIndices(color1, color2);
++		int carColor1 = indices.first;
++		int carColor2 = indices.second;
++		// std::cout << "ReVC Color Indices: " << indices.first << ", " << indices.second << std::endl;
++		VehicleFunctions::SetColors(carColor1, carColor2);
++	}
++}
+ 
+ /// <summary>
+ /// This shows up a list box with the vehicles, and has a button on it, I probably won't the switch statement anymore.
+ /// </summary>
+ /// 
+-
+-bool spawnInCar = false;
+-
+ void
+ ImGuiVehicleList()
+ {
++	CustomCheats customCheats = CustomCheats();
+ 	static int selectedVehicle = -1;
+ 	// Add vehicles for the list in here.
+ 	static const char *vehicles[] = {"Rhino",   "Cheetah", "Infernus", "Comet",  "Hotring Racer", "Stinger",
+@@ -105,54 +219,28 @@ ImGuiVehicleList()
+ 	if(ImGui::Button("Spawn")) {
+ 		if (spawnInCar) 
+ 		{
++			customCheats.ClearItemsFromArea(25);
+ 			VehicleFunctions::SpawnVehicle(modelId, true, true);
+ 		} else {
++			customCheats.ClearItemsFromArea(25);
+ 			VehicleFunctions::SpawnVehicle(modelId, false, false);
+ 		}
+ 	}
+ 
+-	ImGui::Separator();
+-}
+-
++	// Show the list of car colors and the button
++	ImGuiCarColors();
+ 
++	// Original working function, moved into another function.
++	//ImGuiFunctions::InputIntClamp("Color 1", &carColor1, 1, 10, 0, 250);
++	//ImGuiFunctions::InputIntClamp("Color 2", &carColor2, 1, 10, 0, 250);
++	//ImGui::inputint
+ 
+-// These are old, I am now using them in the function above.
+-bool showVehicleListBox = false;
+-const char *vehicles[] = {
+-    "Rhino",   "Cheetah", "Infernus", "Comet", "Hotring Racer", "Stinger",
+-    "Sparrow", // Move to helicopters category
+-    "Pheonix",
+-    "Hunter", // Move to helicopters category
+-    "Deluxo",  "Banshee",
+-};
+-int currentItem = 150;
+-
+-bool showCurrentItem = false;
+-
+-bool newVehicleListBoxEnabled = false;
+-
+-/// <summary>
+-/// These are not the vehicle ids, this is just for this menu organization.
+-/// These are old, not in use anymore.
+-/// </summary>
+-enum VehicleModelsMenu {
+-	RHINO = 0,
+-	CHEETAH = 1,
+-	INFERNUS = 2,
+-	COMET = 3,
+-	HOTRING_RACER = 4,
+-	STINGER = 5,
+-	SPARROW = 6,
+-	PHOENIX = 7,
+-	DELUXO = 9,
+-	BANSHEE = 10,
+-};
+-
+-enum HelicopterModelsMenu {
+-	HUNTER = 8,
+-};
+-
++	//if (ImGui::Button("Set colors")) { 
++	//	VehicleFunctions::SetColors(carColor1, carColor2);
++	//}
+ 
++	ImGui::Separator();
++}
+ 
+ void
+ VehicleSpawnMenu::VehicleSpawnTab()
+@@ -169,76 +257,6 @@ VehicleSpawnMenu::VehicleSpawnTab()
+ 	// Test a new vehicle list, moved spawn in vehicle, vehicle list box, and submit button in here.
+ 
+ 	ImGuiVehicleList();
+-
+-	//if(ImGui::Button("Toggle vehicle list")) { showVehicleListBox = !showVehicleListBox; }
+-
+-	//// Add a test for spawning in the car
+-	//ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
+-
+-	//// I got this working with the switch statements below.
+-	//if(showVehicleListBox) {
+-	//	// ImGui::ListBox("Vehicles", &currentItem, vehicles, 3);
+-	//	ImGui::ListBox("Vehicles", &currentItem, vehicles, IM_ARRAYSIZE(vehicles));
+-	//}
+-
+-	//ImGui::Checkbox("Show current item", &showCurrentItem);
+-	//if(showCurrentItem) { ImGui::Text(std::to_string(currentItem).c_str()); }
+-
+-	//if(ImGui::Button("Spawn Vehicle")) {
+-	//	// TODO Make this configurable
+-	//	// This works! Now the cars won't spawn on top of each other and crash the game.
+-	//	customCheats.ClearItemsFromArea(10);
+-
+-	//	// TODO Come up with a better solution then this.
+-
+-	//	// TODO Move this into another file.
+-	//	if(spawnInCar) {
+-	//		switch(currentItem) {
+-
+-	//		case RHINO: VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true); break;
+-
+-	//		case CHEETAH: VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); break;
+-
+-	//		case INFERNUS: VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, true, true); break;
+-	//		case COMET: VehicleFunctions::SpawnVehicle(VehicleModels::COMET, true, true); break;
+-
+-	//		case HOTRING_RACER: VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, true, true); break;
+-
+-	//		case STINGER: VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, true, true); break;
+-
+-	//		case SPARROW: VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, true, true); break;
+-
+-	//		case PHOENIX: VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, true, true); break;
+-	//		case HUNTER: VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, true, true); break;
+-	//		case DELUXO: VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, true, true); break;
+-	//		case BANSHEE: VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, true, true); break;
+-	//		}
+-
+-	//		// Not spawning in vehicle
+-	//	} else {
+-	//		switch(currentItem) {
+-
+-	//		case RHINO: VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, false, false); break;
+-
+-	//		case CHEETAH: VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false); break;
+-
+-	//		case INFERNUS: VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, false, false); break;
+-
+-	//		case COMET: VehicleFunctions::SpawnVehicle(VehicleModels::COMET, false, false); break;
+-
+-	//		case HOTRING_RACER: VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, false, false); break;
+-
+-	//		case STINGER: VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, false, false); break;
+-
+-	//		case SPARROW: VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, false, false); break;
+-
+-	//		case PHOENIX: VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, false, false); break;
+-	//		case HUNTER: VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, false, false); break;
+-	//		case DELUXO: VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, false, false); break;
+-	//		case BANSHEE: VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, false, false); break;
+-	//		}
+-	//	}
+-	//}
+ }
+ 
+ /*
+-- 
+2.45.1.windows.1
+

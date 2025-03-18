@@ -1,0 +1,39 @@
+From 91b5999d4e8834de88746aa8d2aae57b528e5dac Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Mar 2025 11:41:56 -0400
+Subject: [PATCH 111/113] Revert controller config option, it breaks imgui for
+ the controller.
+
+---
+ src/skel/win/win.cpp | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 86c8f97d..443a5823 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -1154,10 +1154,19 @@ HandleControllerInput()
+ 		//if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
+ 		// 
+ 		// New test with controller keybinds in 'ViceExtended/ImGui-Controls.ini'
++		// Oops I didn't fully test the menu with this, it somewhat shows up but goes away if I use any DPad button on the menu
++		// Instead of when both buttons are pressed.
+ 		// 
+-		 if(state.Gamepad.wButtons & button1
+-			&& state.Gamepad.wButtons & button2 &&
++		 //if(state.Gamepad.wButtons & button1
++			//&& state.Gamepad.wButtons & button2 &&
++		 //  CTimer::GetTimeInMilliseconds() - newTime > 500) {
++		 // 
++		 
++		 // Working code
++		if(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER
++			&& state.Gamepad.wButtons &XINPUT_GAMEPAD_DPAD_RIGHT &&
+ 		   CTimer::GetTimeInMilliseconds() - newTime > 500) {
++			// 
+ 			// Reset timer
+ 			newTime = CTimer::GetTimeInMilliseconds();
+ 
+-- 
+2.45.1.windows.1
+

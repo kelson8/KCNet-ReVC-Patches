@@ -1,0 +1,1143 @@
+From 0207d4732f7c8385e361e28f4174575035e39404 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Mar 2025 15:23:28 -0400
+Subject: [PATCH 113/113] Add blip test and remove blip test in player_util.
+ Move drawKCNetTextBox into its own function. Add blip test to misc menu,
+ disabled for now. Add test for pre compiled headers. Fix floats in warp menu,
+ rename m_InBuf to m_LocationBuf and add another buffer. Add test for setting
+ players heading. Add garage functions, also add garage functions to game
+ menu. Add enter button press for imgui command test activation. Add test for
+ getting warps from ini, I have to look into how to do this.
+
+---
+ src/extras/functions/garage_functions.cpp | 143 ++++++++++++++++++
+ src/extras/functions/garage_functions.h   |  25 +++
+ src/extras/functions/imgui_commands.cpp   |  34 ++++-
+ src/extras/functions/ini_functions.cpp    | 176 +++++++++++++++++++++-
+ src/extras/functions/ini_functions.h      |   2 +
+ src/extras/kcnet/pch.cpp                  |   1 +
+ src/extras/kcnet/pch.h                    |  12 ++
+ src/extras/menus/game_menu.cpp            |  50 ++++++
+ src/extras/menus/misc_menu.cpp            | 170 +++++++++++++++------
+ src/extras/menus/warp_menu.cpp            | 116 +++++++++++---
+ src/extras/menus/warp_menu.h              |   5 +
+ src/extras/utils/player_util.cpp          |  52 +++++++
+ src/extras/utils/player_util.h            |  11 ++
+ 13 files changed, 727 insertions(+), 70 deletions(-)
+ create mode 100644 src/extras/functions/garage_functions.cpp
+ create mode 100644 src/extras/functions/garage_functions.h
+ create mode 100644 src/extras/kcnet/pch.cpp
+ create mode 100644 src/extras/kcnet/pch.h
+
+diff --git a/src/extras/functions/garage_functions.cpp b/src/extras/functions/garage_functions.cpp
+new file mode 100644
+index 00000000..7edc4634
+--- /dev/null
++++ b/src/extras/functions/garage_functions.cpp
+@@ -0,0 +1,143 @@
++#include "garage_functions.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// Menus
++#include "imgui_main_menu.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++// Spawning a ped so far, doesn't work.
++#include "ped_functions.h"
++
++#include "imgui_commands.h"
++
++#include "defines.h"
++
++#include "player_util.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Frontend.h"
++#include "Text.h"
++
++#include "Script.h"
++#include "Garages.h"
++
++// TODO Test these
++// I pretty much reimplemented the garage commands from the scripts.
++// I am only calling the original functions.
++
++// Well these log but don't do anything to the garages.
++// Tested at these coords: X: 443.4 Y: 639.6 Z: 11.2
++
++// https://library.sannybuilder.com/#/vc/script/classes/Garage
++
++// Garage IDs:
++// https://docs.sannybuilder.com/scm-documentation/vc/garages
++
++// Garage types: 
++// Look into the eGarageType enum
++
++void
++GarageFunctions::CreateGarage(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId)
++{
++	CGarages::AddOne(X1, Y1, Z1, X2, Y2, X3, Y3, Z2, type, targetId);
++	std::string garageCreatedString = "Garage added at X1: " + std::to_string(X1) + " Y1: " + std::to_string(Y1) + " Z1: " + std::to_string(Z1) +
++	                                  " X2: " + std::to_string(X2) + " Y2: " + std::to_string(Y2) + " X3: " + std::to_string(X3) +
++	                                  " Y3: " + std::to_string(Y3) + " Z2: " + std::to_string(Z2) + "Type: " + std::to_string(type) +
++	                                  "TargetId: " + std::to_string(targetId);
++
++	LogFunctions::LogInfo(defines.logFile, garageCreatedString);
++}
++
++void
++GarageFunctions::ChangeGarageType(int16 garage, uint8 type, int32 modelIndex)
++{
++	CGarages::ChangeGarageType(garage, type, modelIndex);
++
++	std::string garageTypeChangedString =
++	    "Garage id: " + std::to_string(garage) + " changed to type: " + std::to_string(type) + " model index: " + std::to_string(modelIndex);
++
++	LogFunctions::LogInfo(defines.logFile, garageTypeChangedString);
++}
++
++void
++GarageFunctions::OpenGarage(int16 garage)
++{
++	CGarages::OpenGarage(garage);
++
++	std::string garageOpenedString = "Garage id: " + std::to_string(garage) + " opened";
++
++	LogFunctions::LogInfo(defines.logFile, garageOpenedString);
++}
++
++void
++GarageFunctions::CloseGarage(int16 garage)
++{
++	CGarages::CloseGarage(garage);
++
++	std::string garageClosedString = "Garage id: " + std::to_string(garage) + " closed";
++
++	LogFunctions::LogInfo(defines.logFile, garageClosedString);
++}
++
++bool
++GarageFunctions::IsGarageOpened(int16 garage)
++{
++	std::string garageCurrentlyOpenString = "Garage id: " + std::to_string(garage) + " is currently open";
++
++	LogFunctions::LogInfo(defines.logFile, garageCurrentlyOpenString);
++
++	return CGarages::IsGarageOpen(garage);
++
++
++}
++
++bool
++GarageFunctions::IsGarageClosed(int16 garage)
++{
++	std::string garageCurrentlyClosedString = "Garage id: " + std::to_string(garage) + " is currently closed";
++
++	LogFunctions::LogInfo(defines.logFile, garageCurrentlyClosedString);
++
++	return CGarages::IsGarageClosed(garage);
++}
++
++void
++GarageFunctions::DeactivateGarage(int16 garage)
++{
++	CGarages::DeActivateGarage(garage);
++
++	std::string garageDeactivatedString = "Garage id: " + std::to_string(garage) + " has been deactivated";
++
++	LogFunctions::LogInfo(defines.logFile, garageDeactivatedString);
++}
++
++void
++GarageFunctions::ActivateGarage(int16 garage)
++{
++	CGarages::ActivateGarage(garage);
++
++	std::string garageActivatedString = "Garage id: " + std::to_string(garage) + " has been activated";
++
++	LogFunctions::LogInfo(defines.logFile, garageActivatedString);
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/garage_functions.h b/src/extras/functions/garage_functions.h
+new file mode 100644
+index 00000000..82a9e9cd
+--- /dev/null
++++ b/src/extras/functions/garage_functions.h
+@@ -0,0 +1,25 @@
++#pragma once
++#include "common.h"
++#include "defines.h"
++
++
++class GarageFunctions
++{
++private:
++	// TODO Test this
++	Defines defines;
++
++public:
++	void CreateGarage(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId);
++	void ChangeGarageType(int16 garage, uint8 type, int32 modelIndex);
++
++	void OpenGarage(int16 garage);
++	void CloseGarage(int16 garage);
++
++	bool IsGarageOpened(int16 garage);
++	bool IsGarageClosed(int16 garage);
++
++	void DeactivateGarage(int16 garage);
++	void ActivateGarage(int16 garage);
++
++};
+diff --git a/src/extras/functions/imgui_commands.cpp b/src/extras/functions/imgui_commands.cpp
+index 276c6817..e6db5310 100644
+--- a/src/extras/functions/imgui_commands.cpp
++++ b/src/extras/functions/imgui_commands.cpp
+@@ -52,6 +52,7 @@ command_teleport(const std::vector<std::string>& args)
+ 	// Check if the args is 3
+ 	if(args.size() == 3) {
+ 		try {
++			// Convert the values from strings to floats
+ 			float x = std::stof(args[0]);
+ 			float y = std::stof(args[1]);
+ 			float z = std::stof(args[2]);
+@@ -66,6 +67,7 @@ command_teleport(const std::vector<std::string>& args)
+ 			LogFunctions::LogInfo(defines.logFile, playerCoordsStr);
+ 
+ 		}
++		// Catch the error if the values are not floats.
+ 		catch (const std::invalid_argument& e)
+ 		{
+ 			LogFunctions::LogError(defines.logFile, "Invalid arguments for teleport.");
+@@ -107,7 +109,37 @@ ImGuiCommands::ImGuiCommandSystem()
+ 	static char commandInput[256] = "";
+ 	static std::string commandOutput = "";
+ 
+-	ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput));
++	//ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput));
++
++	bool enterPressed = false;
++
++	// Moved this into an if statement, to check if enter is pressed.
++	if (ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput), ImGuiInputTextFlags_EnterReturnsTrue)) 
++	{ 
++		enterPressed = true;
++	}
++
++	// This works for when the enter button is pressed for the commands.
++	if (enterPressed)
++	{
++		std::stringstream ss(commandInput);
++		std::string commandName;
++		std::vector<std::string> args;
++
++		ss >> commandName;
++		std::string arg;
++		while(ss >> arg) { args.push_back(arg); }
++
++		if(commands.count(commandName) > 0) {
++			commands[commandName](args);
++			commandOutput = "Command executed.";
++		} else {
++			commandOutput = "Unknown command.";
++		}
++
++		enterPressed = false;
++	}
++	
+ 
+ 	if(ImGui::Button("Execute")) {
+ 		std::stringstream ss(commandInput);
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 83476baf..67c2b658 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -56,6 +56,7 @@
+ 
+ #include <list>
+ 
++#ifdef CUSTOM_CODE
+ // Extra
+ #include "Garages.h"
+ 
+@@ -70,6 +71,13 @@
+ // Needed for Logging the controller values
+ #include "log_functions.h"
+ #include "defines.h"
++
++//#include "player_cheats.h"
++#include "imgui.h"
++
++#include <map>
++
++#endif
+ //#endif //_TEST1
+ 
+ /////////////////////
+@@ -89,7 +97,9 @@ mINI::INIFile ini(Defines::mainIniFile);
+ mINI::INIStructure cfg;
+ 
+ 
+-// This works fine now
++// Well I checked again and this breaks the controller imgui button
++// So it'll open properly but close if any DPad button is pressed, its only supposed to close
++// if the Right DPad and RB is pressed so I disabled it in win.cpp again.
+ // Controller input, New for ImGui
+ mINI::INIFile imguiIni(Defines::imGuiControlsIniFile);
+ mINI::INIStructure imguiCfg;
+@@ -106,6 +116,7 @@ ReadAndGetImGuiConfig(const char* key)
+ }
+ 
+ 
++// TODO Fix this
+ mINI::INIFile warpsIni(Defines::warpsIniFile);
+ mINI::INIStructure warpsCfg;
+ uint16
+@@ -119,8 +130,153 @@ ReadAndGetWarpsConfig(const char *key)
+ 	return 0;
+ }
+ 
+-// TODO Setup new one of these for reading warps, convert locations.toml to locations.ini.
++struct WarpData {
++	std::string name; // Add the warp name
++	int interiorId;
++	float posX, posY, posZ;
++};
++
++// Function to split a string by delimiter
++std::vector<std::string>
++splitString(const std::string& str, char delimiter)
++{
++	std::vector<std::string> tokens;
++	std::stringstream ss(str);
++	std::string token;
++	while (std::getline(ss, token, delimiter)) { 
++		tokens.push_back(token);
++	}
++	return tokens;
++}
++
++// Function to read WarpData from an ini file
++WarpData
++readWarpDataFromIni(const std::string& section, const std::string& key, const mINI::INIStructure& warpsCfg)
++{
++	WarpData result = {"", 0, 0.0f, 0.0f, 0.0f}; // Default value
++
++	mINI::INIMap<std::string> iniSection = warpsCfg.get(section);
++	if(iniSection.has(key)) {
++		result.name = key; // Store the key as the warp name
++		std::string dataString = iniSection.get(key);
++		std::vector<std::string> components = splitString(dataString, ',');
++
++		if(components.size() == 4) {
++			try {
++				result.interiorId = std::stoi(components[0]);
++				result.posX = std::stof(components[1]);
++				result.posY = std::stof(components[2]);
++				result.posZ = std::stof(components[3]);
++			} catch(const std::invalid_argument &e) {
++				std::cerr << "Invalid PackageData component in INI file: " << e.what() << std::endl;
++			} catch(const std::out_of_range &e) {
++				std::cerr << "PackageData component out of range in INI file: " << e.what() << std::endl;
++			}
++		} else {
++			std::cerr << "Invalid PackageData format in INI file." << std::endl;
++		}
++	}
++	return result;
++}
++
++std::vector<WarpData>
++readAllWarpsFromIni(const std::string &filename, const std::string &section)
++{
++	std::vector<WarpData> warps;
++	mINI::INIFile file(filename);
++	mINI::INIStructure cfg;
++	file.read(cfg);
++
++	mINI::INIMap<std::string> iniSection = cfg.get(section);
++	for(const auto &pair : iniSection) { warps.push_back(readWarpDataFromIni(section, pair.first, cfg)); }
++	return warps;
++}
+ 
++/// <summary>
++/// Added ImGui into this for this to show up.
++/// </summary>
++/// <param name="playerCheats"></param>
++/// <param name="iniFilename"></param>
++/// <param name="section"></param>
++void
++IniFunctions::RenderWarpList(PlayerCheats &playerCheats, const std::string &iniFilename, const std::string &section)
++{
++	static int selectedWarpIndex = -1;
++
++	std::vector<WarpData> warps = readAllWarpsFromIni(iniFilename, section);
++	std::vector<const char *> warpNames;
++
++	for(const auto &warp : warps) { warpNames.push_back(warp.name.c_str()); }
++
++	ImGui::ListBox("Warps", &selectedWarpIndex, warpNames.data(), warpNames.size());
++
++	if(selectedWarpIndex >= 0 && selectedWarpIndex < warps.size()) {
++		if(ImGui::Button("Teleport")) {
++			const WarpData &selectedWarp = warps[selectedWarpIndex];
++			playerCheats.SetPlayerPosition(selectedWarp.posX, selectedWarp.posY, selectedWarp.posZ);
++		}
++	}
++}
++
++//
++
++// TODO Implement this
++struct SectionData {
++	std::map<std::string, std::string> keyValues; // Store key-value pairs
++};
++
++
++/// <summary>
++/// Not sure how exactly to use this just yet. I'll mess with it later.
++/// </summary>
++/// <param name="filename"></param>
++/// <param name="sectionNames"></param>
++/// <returns></returns>
++std::map<std::string, SectionData>
++readMultipleSections(const std::string &filename, const std::vector<std::string> &sectionNames)
++{
++	std::map<std::string, SectionData> sections;
++	mINI::INIFile file(filename);
++	mINI::INIStructure cfg;
++	file.read(cfg);
++
++	for(const auto &sectionName : sectionNames) {
++		mINI::INIMap<std::string> iniSection = cfg.get(sectionName);
++		SectionData sectionData;
++
++		for(const auto &pair : iniSection) { sectionData.keyValues[pair.first] = pair.second; }
++
++		sections[sectionName] = sectionData;
++	}
++	return sections;
++}
++
++// This goes where I am reading this somewhere also.
++
++/*
++int main() {
++    std::vector<std::string> sectionsToRead = {"General", "Settings", "Warps"}; // Sections to read
++    std::map<std::string, SectionData> allSections = readMultipleSections("config.ini", sectionsToRead);
++
++    // Accessing data:
++    if (allSections.count("General") > 0) {
++        SectionData generalData = allSections["General"];
++        if (generalData.keyValues.count("version") > 0) {
++            std::cout << "General version: " << generalData.keyValues["version"] << std::endl;
++        }
++    }
++
++    if (allSections.count("Warps") > 0) {
++        SectionData warpData = allSections["Warps"];
++        for(const auto& pair : warpData.keyValues){
++            std::cout << "Warp " << pair.first << ": " << pair.second << std::endl;
++        }
++    }
++
++    return 0;
++}
++
++*/
+ 
+ 
+ //
+@@ -644,6 +800,22 @@ LoadINISettings()
+ 	imGuiFunctions.setImGuiButton1(toggleImGuiButton1);
+ 	imGuiFunctions.setImGuiButton2(toggleImGuiButton2);
+ 
++
++
++	// Well this works now! Now I can add this to an ImGui list box.
++	
++	// Warps
++	//if(!warpsIni.read(warpsCfg)) return false;
++	//WarpData warp1 = readWarpDataFromIni("Hidden Packages", "Hidden Package 1", warpsCfg);
++
++	//std::string warp1InteriorId = "Warp1 Interior Id: " + std::to_string(warp1.interiorId);
++	//std::string warp1Coords = "Warp1 coords X: " + std::to_string(warp1.posX) 
++	//	+ " Y: " + std::to_string(warp1.posY) 
++	//	+ " Z: " + std::to_string(warp1.posZ);
++
++	//LogFunctions::LogInfo(defines.logFile, warp1InteriorId);
++	//LogFunctions::LogInfo(defines.logFile, warp1Coords);
++
+ 	// Read my warps from warps.ini
+ 	// TODO Setup this, it's not as simple as the others, might be easier to use toml11.
+ 	//if(!warpsIni.read(warpsCfg)) return false;
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index 93077ba3..4f1a0bb6 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -3,6 +3,7 @@
+ // Hmm I could probably use these elsewhere if needed.
+ 
+ #include "defines.h"
++#include "player_cheats.h"
+ 
+ class IniFunctions
+ {
+@@ -11,5 +12,6 @@ private:
+ 
+ public:
+ 	static bool ReadIniIfExists(const char *cat, const char *key, bool *out);
++	void RenderWarpList(PlayerCheats &playerCheats, const std::string &iniFilename, const std::string &section);
+ 	// static bool ReadIniIfExists(const char *cat, const char *key, uint8 *out);
+ };
+diff --git a/src/extras/kcnet/pch.cpp b/src/extras/kcnet/pch.cpp
+new file mode 100644
+index 00000000..17305716
+--- /dev/null
++++ b/src/extras/kcnet/pch.cpp
+@@ -0,0 +1 @@
++#include "pch.h"
+\ No newline at end of file
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+new file mode 100644
+index 00000000..606e80c6
+--- /dev/null
++++ b/src/extras/kcnet/pch.h
+@@ -0,0 +1,12 @@
++#pragma once
++
++#include <vector>
++#include <string>
++#include <sstream>
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
+\ No newline at end of file
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index c29e1dd4..de988c35 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -25,6 +25,10 @@
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+ 
++#include "garage_functions.h"
++
++#include "player_cheats.h"
++
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
+@@ -48,6 +52,8 @@
+ #include "Time.h"
+ #include "Clock.h"
+ 
++#include "Garages.h"
++
+ void
+ setTime(int hour, int minute)
+ {
+@@ -62,6 +68,8 @@ int gameMenuMinute = 0;
+ void
+ GameMenu::GameTab()
+ {
++	GarageFunctions garageFunctions = GarageFunctions();
++
+ 	if(ImGui::CollapsingHeader("Weather")) {
+ 
+ 		ImGui::Text("Weather");
+@@ -114,4 +122,46 @@ GameMenu::GameTab()
+ 		}
+ 	}
+ 
++	if (ImGui::CollapsingHeader("Garages")) 
++	{ 
++		ImGui::Text("This doens't work yet.");
++		ImGui::Text("Garages");
++		ImGui::Text("Ids from here: https://docs.sannybuilder.com/scm-documentation/vc/garages");
++		
++		// Temporary for now.
++		if (ImGui::Button("Teleport to garage 16"))
++		{ 
++			CVector garage16Pos = CVector(443.4, 639.6, 11.2);
++			PlayerCheats::SetPlayerPosition(garage16Pos.x, garage16Pos.y, garage16Pos.z);
++			
++		}
++
++		if (ImGui::Button("Deactivate garage 16")) 
++		{ 
++			garageFunctions.DeactivateGarage(GARAGE_HIDEOUT_ONE);
++		}
++
++		ImGui::SameLine();
++
++		if(ImGui::Button("Activate garage 16")) { 
++			garageFunctions.ActivateGarage(GARAGE_HIDEOUT_ONE); 
++		}
++
++
++		// Well these don't seem to work.
++		if(ImGui::Button("Open garage 16")) 
++		{ 
++			garageFunctions.OpenGarage(GARAGE_HIDEOUT_ONE); 
++		}
++
++		ImGui::SameLine();
++
++		if (ImGui::Button("Close garage 16")) 
++		{ 
++			garageFunctions.CloseGarage(GARAGE_HIDEOUT_ONE);
++		}
++
++
++	}
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 7d8889dd..053fd802 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -33,6 +33,10 @@
+ #include "ControllerConfig.h"
+ #include "Pad.h"
+ 
++#include "ini_functions.h"
++
++#include "player_util.h"
++
+ // TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
+ #ifdef PLUGIN_SDK_TEST
+ #include "../test/scriptcommands_test.h"
+@@ -55,6 +59,9 @@
+ // Set help message and more.
+ #include "Hud.h"
+ 
++// For getting the PlayerInfo
++#include "World.h"
++
+ 
+ // Extras
+ #include <iostream>
+@@ -207,7 +214,7 @@ static std::vector<std::string> m_WeatherNames {
+ //----------- Counter tests and progress bars ----------//
+ 
+ // Copied from script.h
+-#define KEY_LENGTH_IN_SCRIPT 8
++//#define KEY_LENGTH_IN_SCRIPT 8
+ 
+ // Inital value set to 0, this gets set in the displayCounterOnScreen function.
+ uint16 counterVar = 0;
+@@ -420,6 +427,83 @@ static int radiusToClear = 0;
+ //	return std::vector<uint16_t>(data, data + size);
+ //}
+ 
++void playerTest()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	//pPlayer->IsPedDoingDriveByShooting();
++	
++}
++
++// Blip test
++int blipHandle = 0;
++
++// Test for excluding characters in the text box for imgui
++
++void
++drawKCNetTextBox()
++{
++	Defines defines = Defines();
++
++	std::vector<char> buffer(41); // 40 characters + null terminator
++
++	// Copy the current text from MiscMenu into the buffer.
++	std::string currentText = MiscMenu::GetInstance().getTestText();
++	std::strncpy(buffer.data(), currentText.c_str(), 40);
++	buffer[40] = '\0'; // Ensure null termination
++
++	// New function, doesn't work
++	// Use ImGui::InputText to get input
++	//if(ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_EnterReturnsTrue)) {
++	//	std::string inputString(buffer.data());
++
++	//	// Post-process to remove unwanted characters
++	//	inputString.erase(std::remove_if(inputString.begin(), inputString.end(),
++	//	                                 [](char c) {
++	//		                                 return c == '!' || c == '@' || c == '#'; // Add characters to exclude
++	//	                                 }),
++	//	                  inputString.end());
++
++	//	MiscMenu::GetInstance().setTestText(inputString);
++	//	std::strncpy(buffer.data(), inputString.c_str(), 40); // update the buffer with the new string.
++	//	buffer[40] = '\0';
++	//}
++
++	// Original function, should still work
++	ImGui::Text("Warning, do not put the '~' symbol in this, you will crash!");
++	if (ImGui::InputText("Test text", buffer.data(), 41))
++	{
++		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
++	}
++
++	// Moved from MiscTab
++	if(ImGui::Checkbox("Draw KCNet test", &drawKcNetText)) {
++
++		// TODO Fix this to not show up if the other texts are active
++		if(!gbDrawVersionText && !gbDisplayPosn) {
++
++			// This doesn't work for custom text.
++			// miscMenu.testText = "Test from ImGui";
++			// setTestText("Test from ImGui");
++			CustomCheats::ToggleText();
++
++			CustomCheats::SetText(buffer.data());
++			//CustomCheats::SetText(MiscMenu::GetInstance().getTestText());
++		}
++	}
++
++		if(ImGui::Button("Set test text")) {
++		// This works very well.
++		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
++
++		// setTestText("Test from ImGui");
++		//  This is being set, I wonder why it doesn't work in main.cpp
++		LogFunctions::LogInfo(defines.logFile, buffer.data());
++	}
++}
++//
++
+ //----------- Misc tab ----------//
+ void MiscMenu::MiscTab()
+ {
+@@ -432,6 +516,9 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGuiCommands imGuiCommands = ImGuiCommands();
+ 	MiscMenu miscMenu = MiscMenu();
++	IniFunctions iniFunctions = IniFunctions();
++	PlayerCheats playerCheats = PlayerCheats();
++	PlayerUtil playerUtil = PlayerUtil();
+ 
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+@@ -479,50 +566,10 @@ void MiscMenu::MiscTab()
+ 			toggleVersionText();
+ 	}
+ 
+-	// Create a buffer to hold the input text.
+-	std::vector<char> buffer(41); // 40 characters + null terminator
+-	
+-	// Copy the current text from MiscMenu into the buffer.
+-	std::string currentText = MiscMenu::GetInstance().getTestText();
+-	std::strncpy(buffer.data(), currentText.c_str(), 40);
+-	buffer[40] = '\0'; // Ensure null termination
+-
+ 	// Use ImGui::InputText to get input
+-	if (ImGui::InputText("Test text", buffer.data(), 41))
+-	{ 
+-		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
+-	}
+-
+-	if (ImGui::Button("Set test text"))
+-	{ 
+-		// This works very well.
+-		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
++	// Draw the KCNet Test text box from C++.
++	drawKCNetTextBox();
+ 
+-		//setTestText("Test from ImGui");
+-		// This is being set, I wonder why it doesn't work in main.cpp
+-		LogFunctions::LogInfo(defines.logFile, "Test text: " + getTestText());
+-	}
+-
+-	if(ImGui::Checkbox("Draw KCNet test", &drawKcNetText))
+-	{ 
+-		
+-		// TODO Fix this to not show up if the other texts are active
+-		if (!gbDrawVersionText && !gbDisplayPosn)
+-		{
+-
+-			// This doesn't work for custom text.
+-			//miscMenu.testText = "Test from ImGui";
+-			//setTestText("Test from ImGui");
+-			CustomCheats::ToggleText();
+-			CustomCheats::SetText(MiscMenu::GetInstance().getTestText());
+-		}
+-
+-			
+-	}
+-	//if (ImGui::Button("Draw KCNet test")) 
+-	//{ 
+-	//	CustomCheats::ToggleText();
+-	//}
+ 
+ 	ImGui::Separator();
+ 	ImGui::Text("Other tests");
+@@ -583,8 +630,45 @@ void MiscMenu::MiscTab()
+ 	}
+ 
+ 	// Run the test command system for ImGui.
++	// This works fairly well, I can add chat commands like in minecraft.
+ 	imGuiCommands.ImGuiCommandSystem();
+ 
++	// TODO Fix this to work, I can add a blip just not remove it.
++	 //ImGui::Separator();
++	 //ImGui::Text("Set blip on player coords");
++
++	 //// Well this works for putting a blip where the player is
++	 //if (ImGui::Button("Blip coords test"))
++	 //{
++		// // Set value to new handle
++		// //blipHandle = 3;
++		//
++		// int handle = playerUtil.AddBlipForPos(playerUtil.PlayerCoords(), blipHandle);
++		// blipHandle = handle;
++
++		// LogFunctions::LogInfo(defines.logFile, "Blip handle Added: " + std::to_string(blipHandle));
++		// //playerUtil.AddBlipForPos(playerUtil.PlayerCoords(), blipHandle);
++	 //}
++
++	 //// This doesn't remove the blip though.
++	 //// TODO Fix this later
++	 //if (ImGui::Button("Remove blip test")) 
++	 //{ 
++		// //LogFunctions::LogInfo(defines.logFile, "Blip handle: " + std::to_string(blipHandle));
++		// playerUtil.RemoveBlip(blipHandle);
++		// // Reset value
++		// //blipHandle = 0;
++		// LogFunctions::LogInfo(defines.logFile, "Blip handle Removed: " + std::to_string(blipHandle));
++	 //}
++
++	//ImGui::Separator();
++	//ImGui::Text("Warp test");
++
++	// This actually works! Now to separate the button so I can have multiple of these.
++	// I converted the locations.toml from the Cheat Menu to an ini.
++	// This doesn't show all the warps though just a few for now so I disabled it for now.
++	//iniFunctions.RenderWarpList(playerCheats, defines.warpsIniFile, "Ammunation");
++
+ 	// Run the test command system in lua for ImGui
+ 
+ 	//imGuiCommands.ImGuiCommandSystemLua();
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index a9668b7b..f84a5edf 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -1,16 +1,23 @@
++// Pre compiled header test
++// This works! Now to add most stuff that is used in my part of the project to it.
++#include "pch.h"
++
++
+ #include "warp_menu.h"
+ #include "imgui.h"
+ 
+-#include <vector>
+-#include <string>
+-#include <sstream>
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+ 
+-#include "main.h"
++//#include <vector>
++//#include <string>
++//#include <sstream>
++//
++//#define WITHDINPUT
++//#include "common.h"
++//#include "crossplatform.h"
++//#include "platform.h"
++//
++//#include "main.h"
+ 
+ // My functions
+ #include "imgui_functions.h"
+@@ -31,6 +38,9 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++#include <map>
++#include <vector>
++
+ // To add a warp, first add its name to this list.
+ const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
+ int currentWarp = 0;
+@@ -45,39 +55,79 @@ void TeleportToWaypoint(void);
+ 
+ // Test from teleport.cpp in Cheat Menu
+ #define INPUT_BUFFER_SIZE 64
+-char m_LocBuf[INPUT_BUFFER_SIZE], m_InBuf[INPUT_BUFFER_SIZE];
++char m_LocBuf[INPUT_BUFFER_SIZE];
++
++char m_LocationBuf[INPUT_BUFFER_SIZE];
++char m_HeadingBuffer[INPUT_BUFFER_SIZE];
+ 
+ // Locations, possibly move these somewhere else later
+-float airportX = -1515.1;
+-float airportY = -1182.1;
+-float airportZ = 16.5;
++float airportX = -1515.1f;
++float airportY = -1182.1f;
++float airportZ = 16.5f;
+ 
+-float mansionX = -373.6;
+-float mansionY = -519.5;
+-float mansionZ = 13.6;
++float mansionX = -373.6f;
++float mansionY = -519.5f;
++float mansionZ = 13.6f;
+ 
+-float beachX = 267.8;
+-float beachY = -1503.1;
+-float beachZ = 12.5;
++float beachX = 267.8f;
++float beachY = -1503.1f;
++float beachZ = 12.5f;
+ 
+-float mallX = 317.2;
+-float mallY = 1122.6;
+-float mallZ = 20.1;
++float mallX = 317.2f;
++float mallY = 1122.6f;
++float mallZ = 20.1f;
+ 
+ // Set new warp locations below
+ //
+ 
+ // Add new warp locations in here, incrementing the previous number.
+-enum warpLocations { 
++enum WarpLocations { 
+ 	AIRPORT = 0,
+ 	MANSION = 1,
+ 	BEACH = 2,
+ 	MALL = 3,
+ };
+ 
++// TODO Fix this from my vehicle spawner
++void
++imGuiWarpList()
++{
++
++	static int selectedWarp = -1;
++	// Add warps for the list in here.
++	static const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
++
++	// Default random value
++	static WarpLocations warpLocations = WarpLocations::AIRPORT;
++
++	// Add warps for the list in here.
++	static const std::map<std::string, WarpLocations> WarpLocationNameToEnum = {
++		{{"Airport", WarpLocations::AIRPORT}}}
++	;
++
++	if(ImGui::ListBox("Warp", &selectedWarp, warps, IM_ARRAYSIZE(warps))) {
++		if(selectedWarp >= 0 && selectedWarp < IM_ARRAYSIZE(warps)) {
++			std::string selectedWarpName = warps[selectedWarp];
++			if(WarpLocationNameToEnum.count(selectedWarpName) > 0) {
++				WarpLocations warpLocatons = WarpLocationNameToEnum.at(selectedWarpName);
++				//modelId = model;
++				// spawnVehicle(model);
++				// VehicleFunctions::SpawnVehicle(modelId, false, false);
++			}
++		}
++	}
++
++	//if(ImGui::Button("Warp to location")) 
++	//{
++	//	
++	//}
++
++}
++
+ /// <summary>
+ /// Log the current coords to the log file.
+ /// Useful for marking locations quickly.
++/// TODO Move this into another file.
+ /// </summary>
+ void
+ logCurrentCoords()
+@@ -108,19 +158,37 @@ WarpMenu::WarpTab()
+ {
+ 	Defines defines = Defines();
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
++
++
+ 	float playerX = playerCoords.x;
+ 	float playerY = playerCoords.y;
+ 	float playerZ = playerCoords.z;
+ 
++	// Heading, TODO Move into teleport function.
++	// Well this doesn't work.
++	// TODO Fix this.
++	//ImGui::Text("Heading Test");
++	//ImGui::InputTextWithHint("Heading", "Heading", m_HeadingBuffer, INPUT_BUFFER_SIZE);
++	//if (ImGui::Button("Set Heading")) { 
++	//	float heading = 0;
++	//	if(sscanf(m_HeadingBuffer, "%f", &heading) == 1) { 
++	//		playerCheats.SetPlayerHeading(heading);
++	//	}
++	//	
++	//}
++
++
+ 	// Coords
+ 	ImGui::Text("Teleports");
+-	ImGui::InputTextWithHint("Coordinates", "x, y, z", m_InBuf, INPUT_BUFFER_SIZE);
++	ImGui::InputTextWithHint("Coordinates", "x, y, z", m_LocationBuf, INPUT_BUFFER_SIZE);
+ 	ImGui::Spacing();
+ 
++
++
+ 	// I got this to work, I took the idea from teleport.cpp in the Cheat Menu.
+ 	if(ImGui::Button("Teleport")) {
+ 		CVector pos{0, 0, 10};
+-		if(sscanf(m_InBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) {
++		if(sscanf(m_LocationBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) {
+ 			pos.z += 1.0f;
+ 			PlayerCheats::WarpPlayer(pos, 0);
+ 
+diff --git a/src/extras/menus/warp_menu.h b/src/extras/menus/warp_menu.h
+index b08615a9..3aee46f8 100644
+--- a/src/extras/menus/warp_menu.h
++++ b/src/extras/menus/warp_menu.h
+@@ -1,7 +1,12 @@
+ #pragma once
+ 
++#include "player_cheats.h"
++
+ class WarpMenu
+ {
++private:
++	PlayerCheats playerCheats;
++
+ public:
+ 	void WarpTab();
+ };
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index b051f08b..54500c7c 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -1,5 +1,9 @@
+ #include "player_util.h"
+ 
++#include "log_functions.h"
++#include "defines.h"
++
++
+ /// <summary>
+ /// This gets the player coords
+ /// </summary>
+@@ -22,4 +26,52 @@ PlayerUtil::PlayerHeading()
+ 	CPlayerPed *pPlayer = FindPlayerPed();
+ 	float playerHeading = pPlayer->GetPosition().Heading();
+ 	return playerHeading;
++}
++
++// These came from Script2.cpp
++// This somewhat works but doesn't remove the blips.
++// I have disabled it in the menu.
++
++//void
++int
++PlayerUtil::AddBlipForPos(CVector pos, int handle)
++{
++	if(pos.z <= MAP_Z_LOW_LIMIT) pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++	CRadar::GetActualBlipArrayIndex(handle);
++	handle = CRadar::SetCoordBlip(BLIP_COORD, pos, 5, BLIP_DISPLAY_BOTH);
++	CRadar::ChangeBlipScale(handle, 3);
++
++	return handle;
++}
++
++void
++PlayerUtil::AddBlipForCar(CVehicle vehicle, int handle)
++{
++	CRadar::GetActualBlipArrayIndex(handle);
++	handle = CRadar::SetEntityBlip(BLIP_CAR, handle, 0, BLIP_DISPLAY_BOTH);
++	CRadar::ChangeBlipScale(handle, 3);
++}
++
++void
++PlayerUtil::AddBlipForChar(CPed ped, int handle)
++{
++	CRadar::GetActualBlipArrayIndex(handle);
++	handle = CRadar::SetEntityBlip(BLIP_CHAR, handle, 1, BLIP_DISPLAY_BOTH);
++	CRadar::ChangeBlipScale(handle, 3);
++}
++
++void
++PlayerUtil::RemoveBlip(int handle)
++{
++	Defines defines = Defines();
++	int blipIndex = CRadar::GetActualBlipArrayIndex(handle);
++	//CRadar::ClearBlip(handle);
++
++	//LogFunctions::LogInfo(defines.logFile, "Blip with index: " + std::to_string(blipIndex));
++	
++	if (blipIndex != -1) 
++	{
++		CRadar::ClearBlip(blipIndex);
++		LogFunctions::LogInfo(defines.logFile, "Blip with index: " + std::to_string(blipIndex) + " has been removed.");
++	}
+ }
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+index 26f0bc10..bd98fc0d 100644
+--- a/src/extras/utils/player_util.h
++++ b/src/extras/utils/player_util.h
+@@ -11,10 +11,21 @@
+ #include "Vector.h"
+ 
+ 
++#include "World.h"
++#include "Radar.h"
++#include "Vehicle.h"
++
+ 
+ class PlayerUtil
+ {
+ public:
+ 	CVector PlayerCoords();
+ 	float PlayerHeading();
++
++	// Blips
++	//void AddBlipForPos(CVector pos, int handle);
++	int AddBlipForPos(CVector pos, int handle);
++	void AddBlipForCar(CVehicle vehicle, int handle);
++	void AddBlipForChar(CPed ped, int handle);
++	void RemoveBlip(int handle);
+ };
+-- 
+2.45.1.windows.1
+

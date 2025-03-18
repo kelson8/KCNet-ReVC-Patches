@@ -1,0 +1,171 @@
+From d65bf875c53f3f681a7227c04de2cd242431b48e Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Mar 2025 15:18:27 -0400
+Subject: [PATCH 112/113] Remove extra headers from some files. Add set player
+ heading to player cheats.
+
+---
+ src/extras/cheats/custom_cheats.cpp        |  8 --------
+ src/extras/cheats/player_cheats.cpp        | 19 +++++++++++--------
+ src/extras/cheats/player_cheats.h          |  3 ++-
+ src/extras/cheats/vehicle_cheats.cpp       |  8 --------
+ src/extras/functions/vehicle_functions.cpp |  8 --------
+ src/extras/test/area_check_test.cpp        |  8 --------
+ src/extras/test/player_test.cpp            |  8 --------
+ 7 files changed, 13 insertions(+), 49 deletions(-)
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index a02a455c..d1a3fbd3 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -2,14 +2,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ 
+ #include <string>
+ 
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index a45a7a0f..2a5cdabe 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -2,14 +2,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ 
+ #include "player_cheats.h"
+ 
+@@ -78,6 +70,17 @@ PlayerCheats::SetPlayerPosition(float x, float y, float z)
+ 	pEntityToTeleport->Teleport(vNewPos);
+ }
+ 
++/// <summary>
++/// This should set the players heading, TODO test this.
++/// </summary>
++/// <param name="heading">The heading to set to</param>
++void
++PlayerCheats::SetPlayerHeading(float heading)
++{
++	CPlayerPed *pPlayerPed = FindPlayerPed();
++	pPlayerPed->SetHeading(heading);
++}
++
+ void
+ PlayerCheats::HealPlayer()
+ {
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index 40e4f79d..2e13a9e1 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-//class CVector;
++class CVector;
+ 
+ class PlayerCheats
+ {
+@@ -8,6 +8,7 @@ public:
+ 	static void HealPlayer();
+ 	// Teleport player to position, this works.
+ 	static void SetPlayerPosition(float x, float y, float z);
++	void SetPlayerHeading(float heading);
+ 
+ 	static void InfiniteHealthCheat();
+ 	static void SuicideCheat();
+diff --git a/src/extras/cheats/vehicle_cheats.cpp b/src/extras/cheats/vehicle_cheats.cpp
+index 20fc0ae8..f9c04a69 100644
+--- a/src/extras/cheats/vehicle_cheats.cpp
++++ b/src/extras/cheats/vehicle_cheats.cpp
+@@ -2,14 +2,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ 
+ // This was needed for the extra options I had.
+ #include "main.h"
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 25d28a1d..7a944f16 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -5,14 +5,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ 
+ // #include "Pad.h"
+ // #include "ControllerConfig.h"
+diff --git a/src/extras/test/area_check_test.cpp b/src/extras/test/area_check_test.cpp
+index d3ffa0b5..92eb7915 100644
+--- a/src/extras/test/area_check_test.cpp
++++ b/src/extras/test/area_check_test.cpp
+@@ -7,14 +7,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ //
+ 
+ #include "Script.h"
+diff --git a/src/extras/test/player_test.cpp b/src/extras/test/player_test.cpp
+index 0b4238b3..e4d3fb2a 100644
+--- a/src/extras/test/player_test.cpp
++++ b/src/extras/test/player_test.cpp
+@@ -6,14 +6,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ //
+ 
+ 
+-- 
+2.45.1.windows.1
+

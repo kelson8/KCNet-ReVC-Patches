@@ -1,0 +1,278 @@
+From 92da7fa82874d1ce7cd7a8ba54cd5df3dd391903 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Mar 2025 05:39:35 -0400
+Subject: [PATCH 104/113] Add game menu for setting the time, and weather.
+ Modify suicide cheat to blow up player also. Add new test to test.lua.
+
+---
+ src/extras/menus/game_menu.cpp       | 158 +++++++++++++++++++++++++++
+ src/extras/menus/game_menu.h         |   8 ++
+ src/extras/menus/imgui_main_menu.cpp |  11 ++
+ src/extras/menus/player_menu.cpp     |  21 +++-
+ utils/lua/test.lua                   |   1 +
+ 5 files changed, 198 insertions(+), 1 deletion(-)
+ create mode 100644 src/extras/menus/game_menu.cpp
+ create mode 100644 src/extras/menus/game_menu.h
+
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+new file mode 100644
+index 00000000..77af44e6
+--- /dev/null
++++ b/src/extras/menus/game_menu.cpp
+@@ -0,0 +1,158 @@
++#include "game_menu.h"
++
++// https://stackoverflow.com/questions/22744262/cant-call-stdmax-because-minwindef-h-defines-max
++// Fix for std::min and std::max
++#define NOMINMAX
++
++#include "imgui.h"
++#include <algorithm> // For std::min
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "World.h"
++
++
++#include "Pad.h"
++#include "Population.h"
++#include "CarCtrl.h"
++#include "Hud.h"
++#include "Text.h"
++
++#include "Weather.h"
++#include "Time.h"
++#include "Clock.h"
++
++void
++setTime(int hour, int minute)
++{
++	CClock::ms_nGameClockHours = hour;
++	CClock::ms_nGameClockMinutes = minute;
++
++}
++
++int gameMenuHour = 0;
++int gameMenuMinute = 0;
++
++// TODO Move into imgui functions
++// TODO Figure out how to make this work
++// Oh, no wonder something microsoft was overriding it.
++bool
++InputIntMax(const char *label, int *v, int step = 1, int step_fast = 10, int max_value = 100)
++{
++	if(ImGui::InputInt(label, v, step, step_fast)) {
++		*v = std::min(*v, max_value);
++		return true; // Value changed
++	}
++	return false; // Value unchanged
++}
++
++
++// If you also need to set a min value, use this function instead:
++bool
++InputIntClamp(const char *label, int *v, int step = 1, int step_fast = 10, int min_value = 0, int max_value = 100)
++{
++	if(ImGui::InputInt(label, v, step, step_fast)) {
++		*v = std::max(min_value, std::min(*v, max_value));
++		return true; // Value changed
++	}
++	return false; // Value unchanged
++}
++
++//
++
++
++
++void
++GameMenu::GameTab()
++{
++	if(ImGui::CollapsingHeader("Weather")) {
++
++		ImGui::Text("Weather");
++		if(ImGui::Button("Sunny")) {
++			// CWeather::ForceWeather(WEATHER_SUNNY);
++			CWeather::ForceWeatherNow(WEATHER_SUNNY);
++		}
++
++		ImGui::SameLine();
++
++		if(ImGui::Button("Extra Sunny")) { CWeather::ForceWeatherNow(WEATHER_EXTRA_SUNNY); }
++
++		if(ImGui::Button("Cloudy")) { CWeather::ForceWeatherNow(WEATHER_CLOUDY); }
++
++		ImGui::SameLine();
++
++		if(ImGui::Button("Foggy")) { CWeather::ForceWeatherNow(WEATHER_FOGGY); }
++
++		if(ImGui::Button("Extra Colors")) { CWeather::ForceWeatherNow(WEATHER_EXTRACOLOURS); }
++
++		if(ImGui::Button("Rainy")) { CWeather::ForceWeatherNow(WEATHER_RAINY); }
++		ImGui::SameLine();
++		if(ImGui::Button("Hurricane")) { CWeather::ForceWeatherNow(WEATHER_HURRICANE); }
++	}
++
++	if (ImGui::CollapsingHeader("Time")) { 
++		ImGui::Text("Time");
++
++		ImGui::Text("Hour max: 23, Minute max: 59");
++		// TODO Come up with a better solution for this.
++		//ImGui::InputInt("Hour", &gameMenuHour);
++		//ImGui::InputInt("Minute", &gameMenuMinute);
++
++		//if(InputIntClamp("Hour", &gameMenuHour, 1, 10, 0, 23)) {
++		//	
++		//}
++
++		// These should work
++		InputIntClamp("Hour", &gameMenuHour, 1, 10, 0, 23);
++
++		InputIntClamp("Minute", &gameMenuMinute, 1, 10, 0, 59);
++
++		//if (InputIntMax("Hour", &gameMenuHour, 1, 10, 23)) {
++
++		//}
++
++		if (ImGui::Button("Set time")) { 
++			// Check for invalid values
++			if(gameMenuHour > 23 || gameMenuHour < 0 || gameMenuMinute > 59 || gameMenuMinute < 0) return;
++
++			setTime(gameMenuHour, gameMenuMinute);
++		}
++
++		ImGui::Separator();
++
++		if(ImGui::Button("Day")) { setTime(8, 0);
++		}
++
++		if (ImGui::Button("Night"))
++		{
++			setTime(23, 0);
++		}
++	}
++
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/game_menu.h b/src/extras/menus/game_menu.h
+new file mode 100644
+index 00000000..59da09a5
+--- /dev/null
++++ b/src/extras/menus/game_menu.h
+@@ -0,0 +1,8 @@
++#pragma once
++class GameMenu
++{
++
++public:
++	void GameTab();
++
++};
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index ccfc91b6..f8f4f79c 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -42,6 +42,8 @@ extern "C" {
+ #include "misc_menu.h"
+ #include "about_menu.h"
+ #include "ped_menu.h"
++
++#include "game_menu.h"
+ //
+ 
+ 
+@@ -124,6 +126,8 @@ ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
+ 	AboutMenu aboutMenu = AboutMenu();
+ 	PedMenu pedMenu = PedMenu();
+ 
++	GameMenu gameMenu = GameMenu();
++
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	float playerX = playerCoords.x;
+ 	float playerY = playerCoords.y;
+@@ -168,6 +172,13 @@ ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
+ 			ImGui::EndTabItem();
+ 		}
+ 
++		// Game
++		if(ImGui::BeginTabItem("Game")) { 
++			gameMenu.GameTab();
++			
++			ImGui::EndTabItem();
++		}
++
+ 		// Misc
+ 		if(ImGui::BeginTabItem("Misc")) { 
+ 			miscMenu.MiscTab();
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 3178bcba..2a49a006 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -92,7 +92,26 @@ PlayerMenu::PlayerTab()
+ 
+ 	ImGui::SameLine();
+ 
+-	if(ImGui::Button("Suicide")) { PlayerCheats::SuicideCheat(); }
++	if(ImGui::Button("Suicide")) { 
++		
++		int amountOfExplosions = 5;
++		// Well this is fun, makes the player fly around a bit.
++		//int amountOfExplosions = 20;
++		// How the hell does this not crash it?
++		//int amountOfExplosions = 50;
++		// Seems like above 100 it somewhat stops doing anything.
++		//int amountOfExplosions = 100;
++
++		PlayerCheats::SuicideCheat();
++		// Sometimes the player doesn't die from this.. I'll just cause some mayhem
++		// This seems to finish the player off, now it's a true suicide cheat.
++		//for (int i = 0; i < 5; i++)
++		for (int i = 0; i < amountOfExplosions; i++)
++		{ 
++			CustomCheats::ExplosionCheat();
++		}
++		
++	}
+ 
+ 	if(ImGui::Checkbox("Infinite health", &infiniteHealth)) { toggleInfiniteHealth(); }
+ 
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 64f61665..63ec42cc 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -66,6 +66,7 @@ time_to_pass = 10
+ 
+ if toggle_respawn_point then
+ 	-- Run the setRespawnPointLua function in C++
++	-- set_position(spawnX, spawnY, spawnZ)
+ 	set_respawn_point(spawnX, spawnY, spawnZ, airportHeading)
+ else
+ 	-- This should disable the override restart, although It'll keep running
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,438 @@
+From 4ea296f6eb650bc341b7ef9448991b76fdef6521 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Mar 2025 04:50:30 -0400
+Subject: [PATCH 109/113] Add controller toggle to ImGui in win.cpp with
+ XInput. Add some more window stuff for ImGui in win.cpp. Add test for getting
+ the imgui controls from the ini file, this is incomplete. Add setters and
+ getters for the toggle imgui buttons in imgui_functions.h.
+
+---
+ src/extras/functions/imgui_functions.h  |  48 +++++++
+ src/extras/functions/ini_functions.cpp  |  38 ++++++
+ src/extras/menus/vehicle_spawn_menu.cpp |   5 +-
+ src/skel/win/win.cpp                    | 164 ++++++++++++++++++++++--
+ 4 files changed, 242 insertions(+), 13 deletions(-)
+
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 50bcbaa7..5fdf0a66 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -6,6 +6,12 @@
+ 
+ #include "imgui.h"
+ 
++// Oops, I was missing this header.
++#include <cstdint>
++
++//#include "common.h"
++
++
+ //namespace ImGuiFunctions {
+ //	namespace Main {
+ //		static void HelpMarker(const char* desc);
+@@ -22,6 +28,13 @@
+ //}
+ 
+ 
++//#define TYPEDEF_EXTRA
++//
++//#ifdef TYPEDEF_EXTRA
++//typedef uint16_t uint16;
++//
++//#endif
++
+ class ImGuiFunctions
+ {
+ private:
+@@ -30,6 +43,9 @@ private:
+ 
+ 	int selectedVehicleId;
+ 
++	uint16_t toggleImGuiButton1;
++	uint16_t toggleImGuiButton2;
++
+ public:
+ 	// Setup ImGui context.
+ 	static void SetupContext();
+@@ -45,6 +61,28 @@ public:
+ 	// Show a vehicle list box, ids only for now.
+ 	static void VehiclesListBox(int &selectedItem);
+ 	
++
++	// ImGui Buttons, TODO Setup later
++
++	void setImGuiButton1(uint16_t button1) 
++	{ 
++		toggleImGuiButton1 = button1; 
++	}
++
++	const uint16_t getImGuiButton1() const { 
++		return toggleImGuiButton1;
++	}
++
++	void setImGuiButton2(uint16_t button2) { 
++		toggleImGuiButton2 = button2; 
++	}
++
++	const uint16_t getImGuiButton2() const { 
++		return toggleImGuiButton2; 
++	}
++	//
++
++
+ 	// https://www.w3schools.com/cpp/cpp_encapsulation.asp
+ 	// This format seems nice to use.
+ 	// Why does this always show 0? I don't think I'm doing it right.
+@@ -53,6 +91,8 @@ public:
+ 		selectedVehicleId = id;
+ 	}
+ 
++
++
+ 	int getSelectedVehicleId()
+ 	{ 
+ 		return selectedVehicleId;
+@@ -73,6 +113,14 @@ public:
+ 	// Set it to have a minimum and maximum value
+ 	static void InputIntClamp(const char *label, int *v, int step = 1, int step_fast = 10, int min_value = 0, int max_value = 100);
+ 
++		// Singleton test
++	static ImGuiFunctions &GetInstance()
++	{
++		static ImGuiFunctions instance; // Static instance created once
++		return instance;
++	}
++
++
+ #ifdef _MOVE_CODE
+ 	static void RunImGui();
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index b83f229f..36c3bb3b 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -63,6 +63,9 @@
+ 
+ //#ifdef _TEST1
+ #include "ini_functions.h"
++
++// Needed for ImGui button, it's stored here.
++#include "imgui_functions.h"
+ //#endif //_TEST1
+ 
+ /////////////////////
+@@ -77,9 +80,31 @@
+ #define MINI_CASE_SENSITIVE
+ #include "ini.h"
+ 
++// TODO Move this value into defines.cpp, make another one for controller input
+ mINI::INIFile ini("reVC.ini");
+ mINI::INIStructure cfg;
+ 
++
++// TODO Setup later
++// Controller input, New for ImGui
++mINI::INIFile imguiIni("ViceExtended/ImGui-Controls.ini");
++mINI::INIStructure imguiCfg;
++
++uint16
++ReadAndGetImGuiConfig(const char* key)
++{
++	mINI::INIMap<std::string> section = imguiCfg.get("Control");
++	if(section.has(key)) {
++		char *endPtr;
++		return strtol(section.get(key).c_str(), &endPtr, 0);
++	}
++	return 0;
++}
++
++
++
++//
++
+ // FEATURES_INI
+ #ifdef VICE_EXTENDED
+ mINI::INIFile featuresIni("ViceExtended/features.ini");
+@@ -583,6 +608,19 @@ LoadINISettings()
+ {
+ 	if(!ini.read(cfg)) return false;
+ 
++#ifdef CUSTOM_CODE //ImGui controller config
++	// TODO Setup later
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	if(!imguiIni.read(imguiCfg)) return false;
++	uint16 toggleImGuiButton1 = ReadAndGetImGuiConfig("ImGuiButton1");
++	uint16 toggleImGuiButton2 = ReadAndGetImGuiConfig("ImGuiButton2");
++
++	imGuiFunctions.setImGuiButton1(toggleImGuiButton1);
++	imGuiFunctions.setImGuiButton2(toggleImGuiButton2);
++
++#endif
++
+ #ifdef IMPROVED_VIDEOMODE
+ 	ReadIniIfExists("VideoMode", "Width", &FrontEndMenuManager.m_nPrefsWidth);
+ 	ReadIniIfExists("VideoMode", "Height", &FrontEndMenuManager.m_nPrefsHeight);
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index 4cdf3e71..c1ba0057 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -42,7 +42,7 @@
+ // Moved this out of vehicle_menu.cpp, it was getting cluttered.
+ 
+ /// <summary>
+-/// TODO Figure out how to use a map for this, I could use this instead of a massive switch statement.
++/// I have moved this into ImGuiVehicleList() below
+ /// </summary>
+ /// <param name="vehModels"></param>
+ void
+@@ -156,9 +156,8 @@ void
+ ImGuiCarColors()
+ {
+ 	ImGui::Text("Colors");
+-	// TODO Make this read from a imgui color box or something.
+ 
+-	// TODO Test this
++	// This works for the color changing.
+ 	static ImVec4 color1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
+ 	static ImVec4 color2 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f); // Blue
+ 
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index fd18c530..49c73202 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -21,6 +21,7 @@
+ // New 
+ #include <iostream>
+ 
++
+ #pragma warning( push )
+ #pragma warning( disable : 4005)
+ 
+@@ -84,6 +85,9 @@
+ #include "imgui_functions.h"
+ #include "imgui_main_menu.h"
+ 
++// Required for opening menu with Xbox controller.
++#include <Xinput.h>
++
+ bool bInit = false;
+ HWND mainWindow = nullptr;
+ 
+@@ -450,6 +454,8 @@ InitInstance(HANDLE instance)
+ 
+ 	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+ 
++	
++
+ 	return CreateWindow(AppClassName, RsGlobal.appName,
+ 						WS_OVERLAPPEDWINDOW,
+ 						CW_USEDEFAULT, CW_USEDEFAULT,
+@@ -1071,6 +1077,7 @@ void HandleGraphEvent(void)
+ #define _IMGUI_TEST
+ 
+ #ifdef _IMGUI_TEST
++IDirect3DDevice9 *g_pd3dDevice = nullptr; // Global device pointer
+ 
+ 
+ 
+@@ -1120,6 +1127,57 @@ shutDownImGui()
+ 	ImGui::DestroyContext();
+ }
+ 
++// Function to poll XInput and toggle ImGui window
++/// <summary>
++/// This works, TODO Move this and other imgui functions into ImGuiFunctions out of this file.
++/// TODO Make this work off of a config file, possibly another ini file.
++/// </summary>
++void
++HandleControllerInput()
++{
++	XINPUT_STATE state;
++	ZeroMemory(&state, sizeof(XINPUT_STATE));
++
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	// TODO Setup this later, I almost got it working I think
++	// TODO Print the values of this to see if it's correct.
++	uint16 button1 = imGuiFunctions.getImGuiButton1();
++	uint16 button2 = imGuiFunctions.getImGuiButton2();
++
++	DWORD result = XInputGetState(0, &state); // Get state of controller 0
++
++	static int newTime = 0;
++
++	if(result == ERROR_SUCCESS) {
++		// Check for button press (e.g., the 'A' button)
++		//if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
++		// 
++		// New test, TODO Fix this to work.
++		// 
++		 //if(state.Gamepad.wButtons & button1
++			//&& state.Gamepad.wButtons & button2 &&
++		 //  CTimer::GetTimeInMilliseconds() - newTime > 500) {
++
++		// 
++		// Working code
++		if(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER
++			&& state.Gamepad.wButtons &XINPUT_GAMEPAD_DPAD_RIGHT &&
++		   CTimer::GetTimeInMilliseconds() - newTime > 500) {
++			// Reset timer
++			newTime = CTimer::GetTimeInMilliseconds();
++
++			// Toggle ImGui window visibility
++			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++		}
++	} else {
++		// Handle controller not connected or error
++		// You might want to display a message or log an error
++	}
++}
++
++extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the device.
++
+ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+ 		POINTS points;
+@@ -1156,16 +1214,89 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 			r.w = LOWORD(lParam);
+ 			r.h = HIWORD(lParam);
+ 
++
++			#define _IMGUI_TEST
++			#ifdef _IMGUI_TEST
++							// New test
++		        if(rw::d3d::d3ddevice != nullptr && wParam != SIZE_MINIMIZED) {
++			        int newWidth = LOWORD(lParam);
++			        int newHeight = HIWORD(lParam);
++
++			        D3DPRESENT_PARAMETERS presentParams;
++			        ZeroMemory(&presentParams, sizeof(presentParams));
++			        presentParams.Windowed = TRUE;
++			        presentParams.SwapEffect = D3DSWAPEFFECT_DISCARD;
++			        presentParams.BackBufferFormat = D3DFMT_UNKNOWN;
++			        presentParams.EnableAutoDepthStencil = TRUE;
++			        presentParams.AutoDepthStencilFormat = D3DFMT_D16;
++			        presentParams.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
++			        presentParams.hDeviceWindow = window;
++			        presentParams.BackBufferWidth = newWidth;
++			        presentParams.BackBufferHeight = newHeight;
++
++			        ImGui_ImplDX9_InvalidateDeviceObjects();
++			        HRESULT hr = rw::d3d::d3ddevice->Reset(&presentParams);
++			        if(SUCCEEDED(hr)) {
++				        ImGui_ImplDX9_CreateDeviceObjects();
++				        // Update viewport
++				        D3DVIEWPORT9 viewport;
++				        viewport.X = 0;
++				        viewport.Y = 0;
++				        viewport.Width = newWidth;
++				        viewport.Height = newHeight;
++				        viewport.MinZ = 0.0f;
++				        viewport.MaxZ = 1.0f;
++				        rw::d3d::d3ddevice->SetViewport(&viewport);
++
++				        // Update projection matrix (if needed)
++			        } else {
++				        // Handle reset failure
++			        }
++		        }
++
++			#endif
++
+ 			if (RwInitialised && r.h > 0 && r.w > 0)
+ 			{
+-				#define _IMGUI_TEST
++				
+ 				#ifdef _IMGUI_TEST
+-				if (!imGuiFunctions.ImGuiDone) {
+-				        if(rw::d3d::d3ddevice != NULL && wParam != SIZE_MINIMIZED) {
+-					        g_ResizeWidth = LOWORD(lParam);
+-					        g_ResizeHeight = HIWORD(lParam);
+-				        }
+-				   }
++
++	//			if (rw::d3d::d3ddevice != NULL && wParam !=
++	//				SIZE_MINIMIZED)
++	//			{
++	//			    g_ResizeWidth = LOWORD(lParam);
++	//				g_ResizeHeight = HIWORD(lParam);
++	//				
++	//				// Reset DirectX9 and ImGui
++	//				// TODO Test this
++	//			        ImGui_ImplDX9_InvalidateDeviceObjects();
++	//			        ResetDevice(window);
++	//					// TODO Fix this
++	//			        //HRESULT hr = rw::d3d::d3ddevice->Reset(&g_pd3dDevice); // presentParams must be defined.
++	///*					if (SUCCEEDED(hr)) { 
++	//						ImGui_ImplDX9_CreateDeviceObjects();
++	//					}*/
++
++	//						D3DVIEWPORT9 viewport;
++	//			            viewport.X = 0;
++	//			            viewport.Y = 0;
++	//			            viewport.Width = g_ResizeWidth;
++	//			            viewport.Height = g_ResizeHeight;
++	//			            viewport.MinZ = 0.0f;
++	//			            viewport.MaxZ = 1.0f;
++	//			            rw::d3d::d3ddevice->SetViewport(&viewport);
++	//			}
++
++				//
++
++				// Original below
++
++				//if (!imGuiFunctions.ImGuiDone) {
++				//        if(rw::d3d::d3ddevice != NULL && wParam != SIZE_MINIMIZED) {
++				//	        g_ResizeWidth = LOWORD(lParam);
++				//	        g_ResizeHeight = HIWORD(lParam);
++				//        }
++				//   }
+ 				#endif
+ 				#undef _IMGUI_TEST
+ 
+@@ -1516,17 +1647,29 @@ InitApplication(HANDLE instance)
+ 
+ 	WNDCLASS windowClass;
+ 
+-	windowClass.style = CS_BYTEALIGNWINDOW;
++	
+ 	windowClass.lpfnWndProc = (WNDPROC)MainWndProc;
+ 	windowClass.cbClsExtra = 0;
+ 	windowClass.cbWndExtra = 0;
+ 	windowClass.hInstance = (HINSTANCE)instance;
+ 	windowClass.hIcon = LoadIcon((HINSTANCE)instance, (LPCSTR)IDI_MAIN_ICON);
+ 	windowClass.hCursor = LoadCursor(nil, IDC_ARROW);
+-	windowClass.hbrBackground = nil;
++	
+ 	windowClass.lpszMenuName = NULL;
+ 	windowClass.lpszClassName = AppClassName;
+ 
++	// TODO Test this for ImGui window.
++
++	#define _IMGUI_TEST
++	#ifdef _IMGUI_TEST
++	windowClass.hbrBackground = NULL;
++	windowClass.style = CS_BYTEALIGNWINDOW | CS_OWNDC;
++	#else 
++	windowClass.hbrBackground = nil;
++	windowClass.style = CS_BYTEALIGNWINDOW;
++	#endif
++	#undef _IMGUI_TEST
++
+ 	return RegisterClass(&windowClass);
+ }
+ 
+@@ -2878,7 +3021,8 @@ bool	luaInit = false;
+ 							//        ResetDevice();
+ 						 //       }
+ 
+-							// This disables the players control but the mouse is still locked when ImGui is open...
++							// TThis works! It toggles with the Xbox controller.
++							HandleControllerInput();
+ 							if (!imGuiFunctions.ImGuiDone) {
+ 							        CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+ 							        
+-- 
+2.45.1.windows.1
+

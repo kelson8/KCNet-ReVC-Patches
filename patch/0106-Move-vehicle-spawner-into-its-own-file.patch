@@ -1,0 +1,2198 @@
+From 9dabd936af3d54800f149f2c49170fc4ab6f439c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 16 Mar 2025 21:22:41 -0400
+Subject: [PATCH 106/113] Move vehicle spawner into its own file. Did major
+ refactor on vehicle spawner code, now it is neater. Add partial working toml
+ test. Add more labels and seperators. Add player util file which gets the
+ players coords and heading. Add toml test log file to defines. Add F9 keybind
+ for reloading lua. Move some lua functions into lua_functions, I plan on
+ moving everything for lua into this. Disable extra code, add new libraries to
+ gitignore. Add test for boost library. Add datastore as a test from the Cheat
+ Menu mod. Add log coord, and log heading to lua test, set time to pass to
+ default value.
+
+---
+ .gitignore                              |   7 +
+ src/control/GameLogic.cpp               |   4 +-
+ src/extras/defines.cpp                  |   2 +
+ src/extras/defines.h                    |   3 +
+ src/extras/functions/toml_imgui.cpp     | 222 ++++++++++++++++++++
+ src/extras/functions/toml_imgui.h       |  12 ++
+ src/extras/lua/lua_functions.cpp        | 165 +++++++++++++++
+ src/extras/lua/lua_functions.h          |  29 +++
+ src/extras/lua/lua_test.cpp             |  60 +++++-
+ src/extras/lua/lua_test.h               |   7 +
+ src/extras/menus/cheat_menu.cpp         | 150 ++++++++------
+ src/extras/menus/misc_menu.cpp          | 109 +++++++++-
+ src/extras/menus/vehicle_menu.cpp       | 263 +++++++++---------------
+ src/extras/menus/vehicle_spawn_menu.cpp | 248 ++++++++++++++++++++++
+ src/extras/menus/vehicle_spawn_menu.h   |   6 +
+ src/extras/test/boost_test.cpp          |  38 ++++
+ src/extras/test/boost_test.h            |   4 +
+ src/extras/utils/datastore.cpp          |  78 ++++++-
+ src/extras/utils/datastore.h            | 141 ++++++++++++-
+ src/extras/utils/player_util.cpp        |  25 +++
+ src/extras/utils/player_util.h          |  20 ++
+ src/extras/utils/toml_addon.hpp         |  94 +++++++++
+ src/skel/win/win.cpp                    |   8 +
+ utils/lua/test.lua                      |  44 +++-
+ 24 files changed, 1486 insertions(+), 253 deletions(-)
+ create mode 100644 src/extras/functions/toml_imgui.cpp
+ create mode 100644 src/extras/functions/toml_imgui.h
+ create mode 100644 src/extras/lua/lua_functions.cpp
+ create mode 100644 src/extras/lua/lua_functions.h
+ create mode 100644 src/extras/menus/vehicle_spawn_menu.cpp
+ create mode 100644 src/extras/menus/vehicle_spawn_menu.h
+ create mode 100644 src/extras/test/boost_test.cpp
+ create mode 100644 src/extras/test/boost_test.h
+ create mode 100644 src/extras/utils/player_util.cpp
+ create mode 100644 src/extras/utils/player_util.h
+ create mode 100644 src/extras/utils/toml_addon.hpp
+
+diff --git a/.gitignore b/.gitignore
+index 0b752189..80e3bca8 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -16,6 +16,13 @@ src/extras/test/mta_test.h
+ src/vehicles/Rhino.cpp
+ src/vehicles/Rhino.h
+ 
++# Libraries
++# There are over 70k files in here! It'll have to be downloaded separate.
++# I was wondering what cluttered up my git changes lol.
++lib/boost_1_87_0/
++lib/icu
++lib/toml11
++
+ # User-specific files
+ *.rsuser
+ *.suo
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index f218b48a..539fb946 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -196,9 +196,9 @@ CGameLogic::Update()
+ 			// This works!
+ #ifdef LUA_TEST
+ 			// Reset back to normal, now test is in initLua
+-			if (luaTest.toggleRespawnPoint) {
++			//if (luaTest.toggleRespawnPoint) {
+ 
+-			}
++			//}
+ 
+ 			CRestart::FindClosestHospitalRestartPoint(pPlayerInfo.GetPos(), &vecRestartPos, &fRestartFloat);
+ 			
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 64de6568..325990db 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -8,6 +8,8 @@ std::string Defines::pluginSdkTestLog = "KCNet-PluginSdk-Test.log";
+ 
+ std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
+ 
++std::string Defines::tomlLogFile = "KCNet-toml.log";
++
+ // Fonts
+ std::string Defines::fontFile = "cheat_menu.ttf";
+ 
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 91d750ed..9ed34258 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -15,6 +15,9 @@ public:
+ 	// Plugin sdk test
+ 	static std::string pluginSdkTestLog;
+ 
++	// Toml logging
++	static std::string tomlLogFile;
++
+ 	// Files
+ 	static std::string fontFile;
+ 	// Lua
+diff --git a/src/extras/functions/toml_imgui.cpp b/src/extras/functions/toml_imgui.cpp
+new file mode 100644
+index 00000000..cb4cdc4f
+--- /dev/null
++++ b/src/extras/functions/toml_imgui.cpp
+@@ -0,0 +1,222 @@
++#include "toml_imgui.h"
++
++// Visual Studio 2022:
++// Removed ..\lib\tomlplusplus\include
++// Added ..\lib\toml11\include
++
++// This gives an error, needs to be C++17 but I can't upgrade the project.
++// One of the headers in here also break it so I moved this up.
++
++#ifdef TOML_TEST
++
++//#include "toml++/toml.h" // Include toml++
++#include "toml.hpp" // Include toml11
++#include "imgui.h"      // Include ImGui
++#include <iostream>     // For error handling
++#include <vector>       // For storing the list items
++#include <string>       // For string manipulation
++
++#include <fstream>
++
++#include "log_functions.h"
++#include "defines.h"
++
++
++
++
++//std::vector<std::string>
++//loadTomlList(const std::string &filename, const std::string &tableKey, const std::string &arrayKey)
++//{
++//	std::vector<std::string> items;
++//	try {
++//		auto config = toml::parse_file(filename);
++//
++//		if(!config.is_table()) {
++//			std::cerr << "Error: TOML file is not a table." << std::endl;
++//			return items;
++//		}
++//
++//		const auto *table = config[tableKey].as_table();
++//
++//		if(!table) {
++//			std::cerr << "Error: Table '" << tableKey << "' not found." << std::endl;
++//			return items;
++//		}
++//
++//		const auto *array = (*table)[arrayKey].as_array();
++//
++//		if(!array) {
++//			std::cerr << "Error: Array '" << arrayKey << "' not found in table '" << tableKey << "'." << std::endl;
++//			return items;
++//		}
++//
++//		for(const auto &element : *array) {
++//			if(element.is_string()) {
++//				//items.push_back(element.as_string());
++//				// get was needed for this, It tells toml++ that I want to get the actual string stored
++//				// In the toml::v3::value object, which resolves the type mismatch.
++//				items.push_back(element.as_string()->get());
++//			} else {
++//				std::cerr << "Warning: Non-string element found in array." << std::endl;
++//			}
++//		}
++//	} catch(const toml::parse_error &err) {
++//		std::cerr << "Error parsing TOML file: " << err << std::endl;
++//	}
++//
++//	return items;
++//}
++
++std::vector<std::string>
++loadTomlList(const std::string &filename, const std::string &tableKey, const std::string &arrayKey)
++{
++	std::vector<std::string> items;
++	try {
++		std::ifstream file(filename);
++		if(!file.is_open()) {
++			std::cerr << "Error: Could not open file '" << filename << "'" << std::endl;
++			return items;
++		}
++
++		std::stringstream buffer;
++		buffer << file.rdbuf();
++		auto config = toml::parse(buffer.str());
++
++		if(!config.is_table()) {
++			std::cerr << "Error: TOML file is not a table." << std::endl;
++			return items;
++		}
++
++		if(!config.contains(tableKey) || !config[tableKey].is_table()) {
++			std::cerr << "Error: Table '" << tableKey << "' not found." << std::endl;
++			return items;
++		}
++
++		auto &table = config[tableKey].as_table();
++		//if(!table.contains(arrayKey) || !table[arrayKey].is_array()) {
++		//	std::cerr << "Error: Array '" << arrayKey << "' not found in table '" << tableKey << "'." << std::endl;
++		//	return items;
++		//}
++
++		auto &array = table[arrayKey].as_array();
++
++		for(const auto &element : array) {
++			if(element.is_string()) {
++				items.push_back(element.as_string());
++			} else {
++				std::cerr << "Warning: Non-string element found in array." << std::endl;
++			}
++		}
++	} catch(const std::exception &err) {
++		std::cerr << "Error parsing TOML file: " << err.what() << std::endl;
++	}
++
++	return items;
++}
++
++/// <summary>
++/// This might load the file from the locations.toml.
++/// </summary>
++/// <param name="filename"></param>
++/// <returns></returns>
++std::vector<std::string>
++loadRampageValues(const std::string &filename)
++{
++	std::vector<std::string> rampageValues;
++	try {
++		std::ifstream file(filename);
++		if(!file.is_open()) {
++			std::cerr << "Error: Could not open file '" << filename << "'" << std::endl;
++			return rampageValues;
++		}
++
++		std::stringstream buffer;
++		buffer << file.rdbuf();
++		auto config = toml::parse(buffer.str());
++
++		if(!config.is_table() || !config.contains("Rampages") || !config["Rampages"].is_table()) {
++			std::cerr << "Error: Rampages table not found or invalid." << std::endl;
++			return rampageValues;
++		}
++
++		auto &rampagesTable = config["Rampages"].as_table();
++
++		for(const auto &pair : rampagesTable) {
++			if(pair.second.is_string()) {
++				rampageValues.push_back(pair.second.as_string());
++			} else {
++				std::cerr << "Warning: Non-string value found in Rampages table." << std::endl;
++			}
++		}
++	} catch(const std::exception &err) {
++		std::cerr << "Error parsing TOML file: " << err.what() << std::endl;
++	}
++
++	return rampageValues;
++}
++
++std::string
++vectorToString(const std::vector<int> &vec)
++{
++	std::stringstream ss;
++	for(size_t i = 0; i < vec.size(); ++i) {
++		ss << vec[i];
++		if(i < vec.size() - 1) {
++			ss << ", "; // Add a comma and space between elements
++		}
++	}
++	return ss.str();
++}
++
++std::string
++vectorStringToString(const std::vector<std::string> &vec)
++{
++	std::stringstream ss;
++	for(size_t i = 0; i < vec.size(); ++i) {
++		ss << vec[i];
++		if(i < vec.size() - 1) {
++			ss << ", "; // Add a comma and space between elements
++		}
++	}
++	return ss.str();
++}
++
++void
++TomlImGui::LogTest()
++{
++	Defines defines = Defines();
++
++	// TODO Get current path later
++	// For now I'll hard code it to test.
++	std::string filePath = "C:/Rockstar Games/GTA Vice City/ViceExtended/toml/";
++	std::string fileName = "locations.toml";
++
++
++	// TODO Test this
++	std::vector<std::string> values = loadRampageValues(fileName);
++
++	// Well this didn't work, I don't think I have this setup right.
++	LogFunctions::LogInfo(defines.tomlLogFile, vectorStringToString(values));
++
++	//for (const auto& value : values)
++	//{ 
++	//	LogFunctions::LogInfo(defines.tomlLogFile, value);
++	//}
++
++	//std::vector<std::string> myItems = loadTomlList("locations.toml", "my_list", "items");
++	//std::vector<std::string> myItems = loadTomlList(fileName, "Rampages", "Rampage 1");
++
++	//if(myItems.empty()) { 
++	//	LogFunctions::LogError(defines.tomlLogFile, "No items loaded.");
++
++	//} else {
++	//	LogFunctions::LogInfo(defines.tomlLogFile, "Loaded items: ");
++	//	for (const std::string& item : myItems) { 
++	//		LogFunctions::LogInfo(defines.tomlLogFile, item);
++	//	}
++	//}
++
++	//LogFunctions::LogInfo(defines.tomlLogFile, )
++}
++
++#endif //TOML_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/toml_imgui.h b/src/extras/functions/toml_imgui.h
+new file mode 100644
+index 00000000..9579fc1e
+--- /dev/null
++++ b/src/extras/functions/toml_imgui.h
+@@ -0,0 +1,12 @@
++#pragma once
++
++#define TOML_TEST
++
++#ifdef TOML_TEST
++class TomlImGui
++{
++public:
++	void LogTest();
++};
++
++#endif //TOML_TEST
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+new file mode 100644
+index 00000000..2fbe0131
+--- /dev/null
++++ b/src/extras/lua/lua_functions.cpp
+@@ -0,0 +1,165 @@
++#include "lua_functions.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "lua_test.h"
++#include <iostream>
++
++#include <vector>
++
++#include <fstream>
++#include <iostream>
++#include <string>
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif
++
++// Add in my log functions.
++#include "defines.h"
++#include "log_functions.h"
++
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
++
++#include "custom_cheats.h"
++#include "player_cheats.h"
++
++// ImGui test
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++#endif
++
++// VC Specific
++#include "Hud.h"
++#include "Radar.h"
++#include "Text.h"
++
++#include "Automobile.h"
++#include "Bike.h"
++#include "Boat.h"
++#include "Heli.h"
++
++#include "Pad.h"
++#include "Restart.h"
++
++// Well Entity.h is needed before PlayerInfo.h
++#include "Entity.h"
++#include "PlayerInfo.h"
++#include "PlayerPed.h"
++
++#include "CarCtrl.h"
++#include "Population.h"
++#include "World.h"
++
++// Test for getting coords and heading.
++#include "player_util.h"
++
++// Well I got this stuff working in this file.
++
++//------- Toggle lose weapons on death --------//
++
++extern "C" int
++enableLoseWeaponsOnDeathLua(lua_State *L)
++{
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	LuaTest luaTest = LuaTest();
++	Defines defines = Defines();
++	pPlayerInfo.m_bGetOutOfHospitalFree = true;
++	pPlayerInfo.m_bGetOutOfJailFree = true;
++
++	std::string toggleWeaponsDeathString = "You will now lose weapons on death";
++
++	LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++	return 1;
++}
++
++extern "C" int
++disableLoseWeaponsOnDeathLua(lua_State *L)
++{
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	LuaTest luaTest = LuaTest();
++	Defines defines = Defines();
++	pPlayerInfo.m_bGetOutOfHospitalFree = false;
++	pPlayerInfo.m_bGetOutOfJailFree = false;
++
++	std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
++	LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++	return 1;
++}
++
++// Disabled this for now.
++extern "C" int
++toggleLoseWeaponsOnDeathLua(lua_State *L)
++{
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	LuaTest luaTest = LuaTest();
++	Defines defines = Defines();
++
++	// TODO Test this
++	// pPlayerInfo.m_bGetOutOfHospitalFree = luaTest.toggleLoseWeaponsOnDeath;
++
++	if(luaTest.toggleLoseWeaponsOnDeath) {
++		pPlayerInfo.m_bGetOutOfHospitalFree = true;
++	} else {
++		pPlayerInfo.m_bGetOutOfHospitalFree = false;
++	}
++
++	std::string toggleWeaponsDeathString =
++	    luaTest.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
++	// LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++
++	// if (luaTest.toggleLoseWeaponsOnDeath)
++	//{
++	// }
++
++	return 1;
++}
++
++/// <summary>
++/// Log the players coords to the lua file, this works.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int 
++logPlayerCoordsLua(lua_State* L)
++{
++	Defines defines = Defines();
++	PlayerUtil playerUtil = PlayerUtil();
++	
++	CVector playerCoords = playerUtil.PlayerCoords();
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++
++
++	LogFunctions::LogInfo(defines.luaLogFile, "Player coords X:" + std::to_string(playerX) 
++		+ " Y: " + std::to_string(playerY) 
++		+ " Z: " + std::to_string(playerZ));
++
++	return 1;
++}
++
++/// <summary>
++/// Log the players heading to the lua file, this works.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int
++logPlayerHeadingLua(lua_State *L)
++{
++	Defines defines = Defines();
++	PlayerUtil playerUtil = PlayerUtil();
++
++	float playerHeading = playerUtil.PlayerHeading();
++	LogFunctions::LogInfo(defines.luaLogFile, "Player heading: " + std::to_string(playerHeading));
++
++	return 1;
++}
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+new file mode 100644
+index 00000000..53887378
+--- /dev/null
++++ b/src/extras/lua/lua_functions.h
+@@ -0,0 +1,29 @@
++#pragma once
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++	extern int enableLoseWeaponsOnDeathLua(lua_State *L);
++	extern int disableLoseWeaponsOnDeathLua(lua_State *L);
++	extern int toggleLoseWeaponsOnDeathLua(lua_State *L);
++
++	extern int logPlayerCoordsLua(lua_State *L);
++	extern int logPlayerHeadingLua(lua_State *L);
++
++#ifdef __cplusplus
++}
++#endif
++
++class LuaFunctions
++{
++
++
++	};
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 36ae3864..6a703947 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -81,6 +81,13 @@ extern "C" {
+ 
+ #include "CarCtrl.h"
+ #include "Population.h"
++#include "World.h"
++
++// Get the player coords and heading
++#include "player_util.h"
++
++// Moving lua functions into here.
++#include "lua_functions.h"
+ 
+ // Some of this new code was inspired by the MTA SA code
+ // https://github.com/multitheftauto/mtasa-blue/tree/master
+@@ -401,6 +408,9 @@ cancelOverrideNextRestartLua(lua_State *L)
+ 	return 1;
+ }
+ 
++
++
++
+ //------- End cheat functions --------//
+ 
+ // Check lua globals, made this into a function
+@@ -459,6 +469,7 @@ void
+ LuaTest::InitLua()
+ {
+ 	Defines defines = Defines();
++	LuaTest luaTest = LuaTest();
+ 
+ 	// Create a new VM
+ 	m_luaVM = luaL_newstate();
+@@ -516,6 +527,15 @@ LuaTest::InitLua()
+ 	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
+ 	lua_register(m_luaVM, "cancel_override_restart", cancelOverrideNextRestartLua);
+ 
++	// Toggles for losing weapons when dying.
++	//lua_register(m_luaVM, "toggle_lose_weapons_on_death", toggleLoseWeaponsOnDeathLua);
++	lua_register(m_luaVM, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
++	lua_register(m_luaVM, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
++
++	// Test for logging the player coords and heading
++	lua_register(m_luaVM, "log_player_coords", logPlayerCoordsLua);
++	lua_register(m_luaVM, "log_player_heading", logPlayerHeadingLua);
++
+ 	// TODO Setup this for ImGui later.
+ 	// I could use something like this so I don't have to keep changing the code.
+ 	// lua_getglobal(m_luaVM, "vehicle_mass");
+@@ -567,9 +587,10 @@ LuaTest::InitLua()
+ 
+ 			// Well this breaks it.
+ 			// Check if it's a table
+-			if(lua_istable(m_luaVM, -1)) {
++#ifdef LUA_TABLE_TEST
++			//if(lua_istable(m_luaVM, -1)) {
+ 
+-				//printTable(m_luaVM, -1); // Print the table, output to log file.
++				printTable(m_luaVM, -1); // Print the table, output to log file.
+ 
+ 				// Iterate through the table
+ 			//	lua_pushnil(m_luaVM); // Push nil as the inital key.
+@@ -603,9 +624,12 @@ LuaTest::InitLua()
+ 			//		}
+ 			//		lua_pop(m_luaVM, 1); // Pop the value, keep the key for next iteration
+ 			//	}
+-			} else {
+-				LogFunctions::LogError(defines.logFile, "locations_table is not a table!");
+-			}
++			//} else {
++			//	LogFunctions::LogError(defines.logFile, "locations_table is not a table!");
++			//}
++
++#endif //LUA_TABLE_TEST
++
+ 		} else {
+ 			LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaLocationsScript + "Couldn't be loaded!");
+ 		}
+@@ -624,12 +648,32 @@ LuaTest::InitLua()
+ 			// I've never really used this much before.
+ 			std::string toggleTestFile2 =
+ 			    test_bool_file2 ? "Boolean enabled in " + defines.luaLocationsScript : "Boolean disabled in " + defines.luaLocationsScript;
+-			LogFunctions::LogInfo(defines.logFile, toggleTestFile2);
++			// Disabled, this is spammy.
++			//LogFunctions::LogInfo(defines.logFile, toggleTestFile2);
+ 			//
+ 			// std::string toggleRespawnString = toggleRespawnPoint ? "Respawn point enabled" : "Respawn point disabled";
+ 		}
+ 	}
+ 
++
++	// First lua file
++
++	// TODO Figure out how to get this.
++	// For now I'll just use the toggles above.
++	lua_getglobal(m_luaVM, "lose_weapons_bool");
++	if (lua_isboolean(m_luaVM, -1)) 
++	{ 
++		bool toggleLoseWeaponsOnDeath = static_cast<bool>(lua_toboolean(m_luaVM, -1));
++		LuaTest::toggleLoseWeaponsOnDeath = toggleLoseWeaponsOnDeath;
++
++		std::string toggleWeaponsDeathString = luaTest.toggleLoseWeaponsOnDeath 
++			? "You will no longer lose weapons on death" 
++			: "You will now lose weapons on death";
++
++		 LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++
++	}
++
+ 	// Test for setting the time pass variable when wasted or busted, this is what changes the time.
+ 	lua_getglobal(m_luaVM, "time_to_pass");
+ 	if(lua_isnumber(m_luaVM, -1)) {
+@@ -637,7 +681,9 @@ LuaTest::InitLua()
+ 		// TRACE("Value is a number");
+ 		LuaTest::timeToPass = timeToPass;
+ 		std::string timeToPassString = "Time to pass set to: " + std::to_string(timeToPass);
+-		LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++
++		// Disabled, this is spammy.
++		//LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
+ 	}
+ 
+ 	// This works, I can get booleans from Lua now!
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index e9bd1520..58ab22a6 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -36,6 +36,13 @@ public:
+ 
+ 	bool toggleRespawnPoint;
+ 
++	// For enabling/disabling losing weapons on wasted or busted
++	bool toggleLoseWeaponsOnDeath;
++
++	// TODO Implement this
++	// For enabling/disabling losing money on wasted or busted
++	bool toggleLoseCashOnDeath;
++
+ 	// TODO Test this, this might work well in here.
+ 	CVector spawnPosVector = CVector(spawnPosX, spawnPosY, spawnPosZ);
+ 
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index 0d26bce7..88062d2c 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -38,6 +38,8 @@
+ #include "Hud.h"
+ #include "Text.h"
+ 
++// I didn't like the idea of collapsing headers being everywhere so I disabled them in here.
++
+ bool neverWanted = false;
+ // Well I figured out how to use the built in cheats without copying them
+ void
+@@ -133,103 +135,115 @@ togglePedSpeech()
+ //----------- Cheat tab ----------//
+ void CheatMenu::CheatTab()
+ {
+-	if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
++	//if(ImGui::CollapsingHeader("Weapons")) {
+ 
+-	if(ImGui::Button("Weapon2")) { CustomCheats::WeaponCheat2(); }
++		ImGui::Text("Weapons");
+ 
+-	if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
++		if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
+ 
+-	// Money cheats
++		if(ImGui::Button("Weapon2")) { CustomCheats::WeaponCheat2(); }
+ 
+-	ImGui::Separator();
+-	ImGui::Text("Money");
+-	// This input int works well, got the idea from imgui_demo.cpp.
+-	ImGui::InputInt("Amount of Money", &moneyInt);
+-	//ImGui::InputText("Amount of Money", moneyBuffer, IM_ARRAYSIZE(moneyBuffer));
+-	// 
+-
+-	ImGui::Text("If custom amount isn't set, it gives you the default cheat amount of $250,000");
+-	ImGui::Checkbox("Custom amount", &customAmount);
+-	//if (ImGui::Checkbox("Custom amount", &customAmount)) { 
+-	//	toggleCustomAmount();
++		if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
+ 	//}
+ 
+-	if(ImGui::Button("Money")) { 
+-		if (customAmount) { 
+-			CustomCheats::MoneyCheat(moneyInt);
+-		} else {
+-			CustomCheats::MoneyCheat(defaultMoneyValue);
++	// Money cheats
++
++	ImGui::Separator();
++	//if(ImGui::CollapsingHeader("Money")) {
++
++		ImGui::Text("Money");
++		// This input int works well, got the idea from imgui_demo.cpp.
++		ImGui::InputInt("Amount of Money", &moneyInt);
++		// ImGui::InputText("Amount of Money", moneyBuffer, IM_ARRAYSIZE(moneyBuffer));
++		//
++
++		ImGui::Text("If custom amount isn't set, it gives you the default cheat amount of $250,000");
++		ImGui::Checkbox("Custom amount", &customAmount);
++		// if (ImGui::Checkbox("Custom amount", &customAmount)) {
++		//	toggleCustomAmount();
++		// }
++
++		if(ImGui::Button("Give Money")) {
++			if(customAmount) {
++				CustomCheats::MoneyCheat(moneyInt);
++			} else {
++				CustomCheats::MoneyCheat(defaultMoneyValue);
++			}
+ 		}
+-	}
+ 
+-	// Show the players current money on the screen.
+-	ImGui::Checkbox("Show money", &showPlayerMoney);
++		// Show the players current money on the screen.
++		ImGui::Checkbox("Show money", &showPlayerMoney);
+ 
+-	if (showPlayerMoney) { 
+-		std::string totalMoney = "$" + std::to_string(GetPlayerMoney());
++		if(showPlayerMoney) {
++			std::string totalMoney = "$" + std::to_string(GetPlayerMoney());
+ 
+-		ImGui::Text(totalMoney.c_str());
+-	}
++			ImGui::Text(totalMoney.c_str());
++		}
++	//}
+ 
+ 	ImGui::Separator();
+ 
+ 	// Police cheats
+-	ImGui::Text("Police");
++	//if(ImGui::CollapsingHeader("Police")) {
++
++		ImGui::Text("Police");
+ 
+-	if(ImGui::Button("Raise Wanted Level")) { PlayerCheats::RaiseWantedLevel(); }
++		if(ImGui::Button("Raise Wanted Level")) { PlayerCheats::RaiseWantedLevel(); }
+ 
+-	if(ImGui::Button("Lower Wanted Level")) { PlayerCheats::LowerWantedLevel(); }
++		if(ImGui::Button("Lower Wanted Level")) { PlayerCheats::LowerWantedLevel(); }
+ 
+-	// ImGui::Checkbox("Never wanted", &neverWanted);
+-	if(ImGui::Checkbox("Never wanted", &neverWanted)) { toggleNeverWanted(); }
++		// ImGui::Checkbox("Never wanted", &neverWanted);
++		if(ImGui::Checkbox("Never wanted", &neverWanted)) { toggleNeverWanted(); }
++	//}
+ 
+ 	// Time cheats
+ 	ImGui::Separator();
+-	ImGui::Text("Time");
+ 
+-	if(ImGui::Button("Faster time")) { FastTimeCheat(); }
++	//if(ImGui::CollapsingHeader("Time")) {
+ 
+-	if(ImGui::Button("Slower time")) { SlowTimeCheat(); }
++		ImGui::Text("Time");
+ 
+-	// Density cheats
+-	ImGui::Separator();
+-	ImGui::Text("Population density");
++		if(ImGui::Button("Faster time")) { FastTimeCheat(); }
+ 
+-	// TODO Fix these to work, not sure how to do it this spams the game with the text.
+-	
+-	
+-	if(ImGui::Checkbox("Toggle peds", &togglePeds)) 
+-	{ 
+-		togglePedsFunc();
+-	}
+-	
+-	//if (!togglePeds) { 
+-	//	CPopulation::PedDensityMultiplier = 0.0f;
+-	//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-	//} else {
+-	//	CPopulation::PedDensityMultiplier = 1.0f;
+-	//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++		if(ImGui::Button("Slower time")) { SlowTimeCheat(); }
+ 	//}
+ 
+-	//if (!toggleTraffic) { 
+-	//	CCarCtrl::CarDensityMultiplier = 0.0f;
+-	//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-	//} else {
+-	//	CCarCtrl::CarDensityMultiplier = 1.0f;
+-	//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++	// Density cheats
++	ImGui::Separator();
++	
++	//if(ImGui::CollapsingHeader("Population density")) {
++		ImGui::Text("Population density");
++
++		// TODO Fix these to work, not sure how to do it this spams the game with the text.
++
++		if(ImGui::Checkbox("Toggle peds", &togglePeds)) { togglePedsFunc(); }
++
++		// if (!togglePeds) {
++		//	CPopulation::PedDensityMultiplier = 0.0f;
++		//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++		// } else {
++		//	CPopulation::PedDensityMultiplier = 1.0f;
++		//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++		// }
++
++		// if (!toggleTraffic) {
++		//	CCarCtrl::CarDensityMultiplier = 0.0f;
++		//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++		// } else {
++		//	CCarCtrl::CarDensityMultiplier = 1.0f;
++		//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++		// }
++
++		if(ImGui::Checkbox("Toggle traffic", &toggleTraffic)) { toggleTrafficFunc(); }
+ 	//}
+ 
+-	if(ImGui::Checkbox("Toggle traffic", &toggleTraffic)) 
+-	{ 
+-		toggleTrafficFunc();
+-	}
++	//if (ImGui::CollapsingHeader("Misc"))
++	//{
++		// Ped speech
++		ImGui::Text("Ped talking toggle");
+ 
+-	// Ped speech
+-	ImGui::Text("Ped talking toggle");
++		if(ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) { togglePedSpeech(); }
++	//}
+ 
+-	if (ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) 
+-	{ 
+-		togglePedSpeech();
+-	}
+ 
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 9e217891..b67789ad 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -50,12 +50,32 @@
+ // CUserDisplay
+ #include "User.h"
+ 
++// Set help message and more.
++#include "Hud.h"
++
+ 
+ // Extras
+ #include <iostream>
+ #include <vector>
+ #include <format>
+ 
++#include <string>
++#include <locale>
++#include <codecvt>
++
++// Added ICU library from here for these:
++// https://github.com/unicode-org/icu/releases/tag/release-77-1
++// https://unicode-org.github.io/icu/download/77.html
++// Added these includes in Visual Studio 2022:
++// ..\lib\icu\source\common
++// ..\lib\icu\source\io
++// These seem to break the build so I disabled them for now.
++//#include <unicode/unistr.h>
++//#include <unicode/ustream.h>
++#include <cstdint>
++
++#include "toml_imgui.h"
++
+ bool showHud = true;
+ // This will toggle the controller button that is shown in ImGui
+ bool toggleControllerText = false;
+@@ -364,15 +384,50 @@ clearAreaAroundPlayer(int radius)
+ 	customCheats.ClearItemsFromArea(radius);
+ }
+ 
++bool customHelpMessageToggle = false;
++
+ static int radiusToClear = 0;
+ 
++// TODO Test these
++
++//-------- String to wchar conversion  ----------//
++// For CHud and other stuff
++//std::vector<uint16_t>
++//stringToUtf16(const std::string &str)
++//{
++//	icu::UnicodeString ustr = icu::UnicodeString::fromUTF8(str);
++//	std::vector<uint16_t> utf16;
++//	int32_t length = ustr.length();
++//	utf16.resize(length);
++//	for(int32_t i = 0; i < length; ++i) { utf16[i] = ustr.get(i); }
++//	return utf16;
++//}
++
++//std::string
++//utf16ToString(const std::vector<uint16_t> &utf16)
++//{
++//	icu::UnicodeString ustr(reinterpret_cast<const UChar *>(utf16.data()), utf16.size());
++//	std::string str;
++//	ustr.toUTF8String(str);
++//	return str;
++//}
++//
++//std::vector<uint16_t>
++//createVectorFromWchar(const uint16_t *data, size_t size)
++//{
++//	return std::vector<uint16_t>(data, data + size);
++//}
++
+ //----------- Misc tab ----------//
+ void MiscMenu::MiscTab()
+ {
+ 	PedFunctions pedFunctions = PedFunctions();
+ 	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
+ 	Defines defines = Defines();
+-	
++#ifdef TOML_TEST
++	TomlImGui tomlImgui = TomlImGui();
++#endif //TOML_TEST
++
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+ 	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
+@@ -440,8 +495,8 @@ void MiscMenu::MiscTab()
+ 		toggleHud();
+ 	}
+ 
+-	// TODO Test this, it'll probably crash or something.
+-	// Well this displays just doesn't display the text and I cannot get rid of it
++
++	// Show a test counter on the screen like in the scripts, the text doesn't work and this doesn't do anything yet.
+ 	if(ImGui::Checkbox("Display counter test", &counterEnabled)) 
+ 	{ 
+ 		displayCounterOnScreen();
+@@ -456,6 +511,54 @@ void MiscMenu::MiscTab()
+ 		CustomCheats::ExplosionCheat();
+ 	}
+ 
++	// Display some text from the american.gxt file in game.
++	if (ImGui::Button("Text test")) 
++	{
++		std::string message = "test";
++		std::wstring_convert<std::codecvt_utf8<wchar>> converter;
++		
++
++		//wchar test = std::to_wstring("L");
++
++		const size_t size = strlen(message.c_str()) + 1;
++		// wchar_t *wc = new wchar_t[size];
++		wchar *wc = new wchar[size];
++
++		//utf16ToString(TheText.Get("KCCARUK"));
++		wchar *carUnlockText = TheText.Get("KCCARUK");
++
++
++
++		CHud::SetHelpMessage(carUnlockText, false, false);
++
++
++		// Some of this breaks it.
++		// std::wstring_convert<std::codecvt_utf8<wchar>> converter;
++		//std::wstring wide_string = converter.from_bytes(*carUnlockText);
++		//std::string regular_string = utf16ToString(wide_string);
++
++		//LogFunctions::LogInfo(defines.logFile, createVectorFromWchar(TheText.Get("KCCARUK"), sizeof(TheText.Get("KCCARUK"));
++		//LogFunctions::LogInfo(defines.logFile, wide_string);
++		// mbstowcs(wc, message.c_str(), size);
++		//CHud::SetHelpMessage(wc, false, false);
++		//CHud::SetHelpMessage(converter.from_bytes(message), false, false);
++
++	}
++
++
++// Disable this for now, I would like to use the toml files like Cheat Menu for customization outside of the C++ code.
++#undef TOML_TEST
++#ifdef TOML_TEST
++	if (ImGui::Button("Toml test"))
++	{ 
++		tomlImgui.LogTest();
++	}
++#endif
++
++	//if(ImGui::Checkbox("Custom text", &customHelpMessageToggle))
++	//{
++	//}
++
+ 	// This was just for testing.
+ 	//ImGui::Separator();
+ 	//ImGui::Text("Test functions");
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 52c2cb3a..ecf17636 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -22,6 +22,10 @@
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
++#include "player_util.h"
++
++// Vehicle spawner menu, put into its own file.
++#include "vehicle_spawn_menu.h"
+ 
+ // ReVC
+ #include "Entity.h"
+@@ -30,33 +34,10 @@
+ #include "PlayerInfo.h"
+ 
+ 
+-
+-
+ // Vehicle
+ bool highVehicleMass = false;
+ bool vehicleInvincible = false;
+ 
+-bool spawnInCar = false;
+-
+-bool showVehicleListBox = false;
+-const char *vehicles[] = {"Rhino", 
+-				"Cheetah", 
+-				"Infernus", 
+-				"Comet", 
+-				"Hotring Racer", 
+-				"Stinger",
+-				"Sparrow", // Move to helicopters category
+-				"Phoenix",
+-				"Hunter", // Move to helicopters category
+-				"Deluxo",
+-				"Banshee",
+-};
+-int currentItem = 150;
+-
+-bool showCurrentItem = false;
+-
+-bool newVehicleListBoxEnabled = false;
+-
+ void
+ toggleVehicleInvincible()
+ {
+@@ -174,164 +155,88 @@ IV4toRGBA(ImVec4 color)
+ 
+ }
+ 
+-//
+-
+-//
++// This will just run my custom lock doors function.
++void
++lockVehicle()
++{
++	CustomCheats::LockDoors();
++}
+ 
+ /// <summary>
+-/// These are not the vehicle ids, this is just for this menu organization.
++/// This should unlock all cars in the area, sets this to the player coords + the values set below.
+ /// </summary>
+-enum VehicleModelsMenu {
+-	RHINO = 0,
+-	CHEETAH = 1,
+-	INFERNUS = 2,
+-	COMET = 3,
+-	HOTRING_RACER = 4,
+-	STINGER = 5,
+-	SPARROW = 6,
+-	PHOENIX = 7,
+-	DELUXO = 9,
+-	BANSHEE = 10, 
+-};
+-
+-enum HelicopterModelsMenu {
+-	HUNTER = 8,
+-};
+-
+-
++/// <param name="leftBottomX"></param>
++/// <param name="leftBottomY"></param>
++/// <param name="topRightX"></param>
++/// <param name="topRightY"></param>
+ void
+-VehicleMenu::VehicleTab()
++unlockCarsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY)
+ {
+-	CustomCheats customCheats = CustomCheats();
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	CPlayerPed *pPlayer = FindPlayerPed();
++	CVector pPlayerCoords = pPlayer->GetPosition();
++	// TODO Test this later.
++	leftBottomX = pPlayerCoords.x - leftBottomX;
++	leftBottomY = pPlayerCoords.y - leftBottomY;
++	
++	topRightX = pPlayerCoords.y + topRightX;
++	topRightY = pPlayerCoords.y + topRightY;
++
++	VehicleFunctions::UnlockAllCarDoorsInArea(leftBottomX, leftBottomY, topRightX, topRightY);
++}
+ 
+-	// This should store the current vehicle id from the listbox
+-	//int currentVehicleID = imGuiFunctions.selectedVehicleId;
+-	int currentVehicleID = imGuiFunctions.getSelectedVehicleId();
++/// <summary>
++/// This works for setting an ignition bomb on the players vehicle.
++/// If they get back in, it'll blow up.
++/// TODO Add an option to remove the bomb before getting out.
++/// </summary>
++void
++setBombOnCar()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	PlayerUtil playerUtil = PlayerUtil();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
+ 
+-	if(ImGui::Button("Toggle vehicle list")) 
++	CVector playerCoords = playerUtil.PlayerCoords();
++	if (vehicleFunctions.IsPlayerInVehicle())
+ 	{ 
+-		showVehicleListBox = !showVehicleListBox; 
++		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++		playerVeh->m_bombType = CARBOMB_ONIGNITION;
++		//playerVeh->m_bombType = CARBOMB_ONIGNITIONACTIVE;
++		playerVeh->ActivateBomb();
++
+ 	}
++}
+ 
+-	// Add a test for spawning in the car
+-	ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
++/// <summary>
++/// This removes the bomb from the car
++/// </summary>
++void
++removeBombFromCar()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	PlayerUtil playerUtil = PlayerUtil();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
+ 
+-	// I got this working with the switch statements below.
+-	if(showVehicleListBox) 
+-	{ 
+-		//ImGui::ListBox("Vehicles", &currentItem, vehicles, 3); 
+-		ImGui::ListBox("Vehicles", &currentItem, vehicles, IM_ARRAYSIZE(vehicles)); 
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++		playerVeh->m_bombType = CARBOMB_NONE;
+ 	}
++}
+ 
+-	ImGui::Checkbox("Show current item", &showCurrentItem);
+-	if (showCurrentItem)
+-	{ 
+-		ImGui::Text(std::to_string(currentItem).c_str());
+-	}
++//
+ 
+-	if(ImGui::Button("Spawn Vehicle")) {
+-		// TODO Make this configurable
+-		// This works! Now the cars won't spawn on top of each other and crash the game.
+-		customCheats.ClearItemsFromArea(10);
+-		
+-		// TODO Come up with a better solution then this.
+-
+-		// TODO Move this into another file.
+-		if(spawnInCar) {
+-			switch(currentItem) {
+-				
+-			case RHINO: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true);
+-				break;
+-
+-			case CHEETAH: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); 
+-				break;
+-
+-			case INFERNUS: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, true, true);
+-				break;
+-			case COMET: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::COMET, true, true); 
+-				break;
+-
+-			case HOTRING_RACER: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, true, true); 
+-				break;
+-
+-			case STINGER: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, true, true); 
+-				break;
+-
+-			case SPARROW: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, true, true); 
+-				break;
+-
+-			case PHOENIX: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, true, true); 
+-				break;
+-			case HUNTER: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, true, true); 
+-				break; 
+-			case DELUXO: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, true, true); 
+-				break;
+-			case BANSHEE: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, true, true);
+-				break;
+-			
+-			}
+-
+-
+-			// Not spawning in vehicle
+-		} else {
+-			switch(currentItem) {
+-
+-			case RHINO: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, false, false); 
+-				break;
+-
+-			case CHEETAH: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false);
+-				break;
+-
+-			case INFERNUS: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, false, false); 
+-				break;
+-			
+-			case COMET:
+-				VehicleFunctions::SpawnVehicle(VehicleModels::COMET, false, false);
+-				break;
+-
+-			case HOTRING_RACER: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, false, false); 
+-				break;
+-
+-			case STINGER: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, false, false); 
+-				break;
+-
+-			case SPARROW: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, false, false); 
+-				break;
+-
+-			case PHOENIX: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, false, false); 
+-				break;
+-			case HUNTER: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, false, false); 
+-				break; 
+-			case DELUXO: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, false, false); 
+-				break;
+-			case BANSHEE: 
+-				VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, false, false);
+-				break;
+-			
+-			}
+-		}
+-	}
++//
++
++void
++VehicleMenu::VehicleTab()
++{
++	CustomCheats customCheats = CustomCheats();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	VehicleSpawnMenu vehicleSpawnMenu = VehicleSpawnMenu();
++
++	// Spawn vehicle tab
++	vehicleSpawnMenu.VehicleSpawnTab();
++	
+ 
+ 	ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
+ 	if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) 
+@@ -362,6 +267,19 @@ VehicleMenu::VehicleTab()
+ 	////std::string colorString = std::to_string((float*)&color);
+ 	//ImGui::Text("");
+ 
++	ImGui::Separator();
++	ImGui::Text("Lock/Unlock");
++
++	if (ImGui::Button("Lock vehicle")) 
++	{ 
++		lockVehicle();
++	}
++
++	if (ImGui::Button("Unlock vehicles in area"))
++	{ 
++		unlockCarsInArea(20, 20, 20, 20);
++	}
++
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
+@@ -371,6 +289,17 @@ VehicleMenu::VehicleTab()
+ 		CustomCheats::BlowUpAllCars(); 
+ 	}
+ 
++	if (ImGui::Button("Set bomb on car")) { 
++		setBombOnCar();
++	}
++
++	ImGui::SameLine();
++
++	if(ImGui::Button("Remove bomb from car")) 
++	{ 
++		removeBombFromCar();
++	}
++
+ 	// Test
+ 
+ 	//ImGui::Separator();
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+new file mode 100644
+index 00000000..c7320956
+--- /dev/null
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -0,0 +1,248 @@
++#include "vehicle_spawn_menu.h"
++
++//#include "vehicle_menu.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++#include "player_util.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++#include <map>
++#include <functional> // For std::function
++
++// Vehicle
++
++// Moved this out of vehicle_menu.cpp, it was getting cluttered.
++
++/// <summary>
++/// TODO Figure out how to use a map for this, I could use this instead of a massive switch statement.
++/// </summary>
++/// <param name="vehModels"></param>
++void
++spawnVehicle(VehicleModels::ModelIds vehModels)
++{
++		 //static const std::map<VehicleModels, std::function<void()>> vehicleSpawnMap = {
++		 static const std::map<VehicleModels::ModelIds, std::function<void()>> vehicleSpawnMap = {
++	     {VehicleModels::RHINO, []() { VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true); }},
++	     {VehicleModels::CHEETAH, []() { VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); }},
++	    // Add more vehicles here...
++	};
++}
++
++// TODO Test this
++
++/// <summary>
++/// This shows up a list box with the vehicles, and has a button on it, I probably won't the switch statement anymore.
++/// </summary>
++/// 
++
++bool spawnInCar = false;
++
++void
++ImGuiVehicleList()
++{
++	static int selectedVehicle = -1;
++	// Add vehicles for the list in here.
++	static const char *vehicles[] = {"Rhino",   "Cheetah", "Infernus", "Comet",  "Hotring Racer", "Stinger",
++	                                 "Sparrow", "Pheonix", "Hunter",   "Deluxo", "Banshee"};
++
++	// Default random value
++	static VehicleModels::ModelIds modelId = VehicleModels::MANANA;
++
++	// Add vehicles for the list in here.
++	static const std::map<std::string, VehicleModels::ModelIds> vehicleNameToModel = {
++	    {"Rhino", VehicleModels::RHINO},     {"Cheetah", VehicleModels::CHEETAH},       {"Infernus", VehicleModels::INFERNUS},
++	    {"Comet", VehicleModels::COMET},     {"Hotring Racer", VehicleModels::HOTRING}, {"Stinger", VehicleModels::STINGER},
++	    {"Sparrow", VehicleModels::SPARROW}, {"Phoenix", VehicleModels::PHEONIX},       {"Hunter", VehicleModels::HUNTER},
++	    {"Deluxo", VehicleModels::DELUXO},   {"Banshee", VehicleModels::BANSHEE}};
++
++	if(ImGui::ListBox("Vehicles", &selectedVehicle, vehicles, IM_ARRAYSIZE(vehicles))) {
++		if(selectedVehicle >= 0 && selectedVehicle < IM_ARRAYSIZE(vehicles)) {
++			std::string selectedVehicleName = vehicles[selectedVehicle];
++			if(vehicleNameToModel.count(selectedVehicleName) > 0) {
++				VehicleModels::ModelIds model = vehicleNameToModel.at(selectedVehicleName);
++				modelId = model;
++				//spawnVehicle(model);
++				//VehicleFunctions::SpawnVehicle(modelId, false, false);
++			}
++		}
++
++	}
++
++
++	// Test for spawning in the vehicles
++	 ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
++		// This works for spawning the vehicles
++	
++
++	if(ImGui::Button("Spawn")) {
++		if (spawnInCar) 
++		{
++			VehicleFunctions::SpawnVehicle(modelId, true, true);
++		} else {
++			VehicleFunctions::SpawnVehicle(modelId, false, false);
++		}
++	}
++
++	ImGui::Separator();
++}
++
++
++
++// These are old, I am now using them in the function above.
++bool showVehicleListBox = false;
++const char *vehicles[] = {
++    "Rhino",   "Cheetah", "Infernus", "Comet", "Hotring Racer", "Stinger",
++    "Sparrow", // Move to helicopters category
++    "Pheonix",
++    "Hunter", // Move to helicopters category
++    "Deluxo",  "Banshee",
++};
++int currentItem = 150;
++
++bool showCurrentItem = false;
++
++bool newVehicleListBoxEnabled = false;
++
++/// <summary>
++/// These are not the vehicle ids, this is just for this menu organization.
++/// These are old, not in use anymore.
++/// </summary>
++enum VehicleModelsMenu {
++	RHINO = 0,
++	CHEETAH = 1,
++	INFERNUS = 2,
++	COMET = 3,
++	HOTRING_RACER = 4,
++	STINGER = 5,
++	SPARROW = 6,
++	PHOENIX = 7,
++	DELUXO = 9,
++	BANSHEE = 10,
++};
++
++enum HelicopterModelsMenu {
++	HUNTER = 8,
++};
++
++
++
++void
++VehicleSpawnMenu::VehicleSpawnTab()
++{
++	CustomCheats customCheats = CustomCheats();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	//VehicleSpawnMenu vehicleSpawnMenu = VehicleSpawnMenu();
++	// 
++	// This should store the current vehicle id from the listbox
++	// int currentVehicleID = imGuiFunctions.selectedVehicleId;
++	int currentVehicleID = imGuiFunctions.getSelectedVehicleId();
++
++
++	// Test a new vehicle list, moved spawn in vehicle, vehicle list box, and submit button in here.
++
++	ImGuiVehicleList();
++
++	//if(ImGui::Button("Toggle vehicle list")) { showVehicleListBox = !showVehicleListBox; }
++
++	//// Add a test for spawning in the car
++	//ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
++
++	//// I got this working with the switch statements below.
++	//if(showVehicleListBox) {
++	//	// ImGui::ListBox("Vehicles", &currentItem, vehicles, 3);
++	//	ImGui::ListBox("Vehicles", &currentItem, vehicles, IM_ARRAYSIZE(vehicles));
++	//}
++
++	//ImGui::Checkbox("Show current item", &showCurrentItem);
++	//if(showCurrentItem) { ImGui::Text(std::to_string(currentItem).c_str()); }
++
++	//if(ImGui::Button("Spawn Vehicle")) {
++	//	// TODO Make this configurable
++	//	// This works! Now the cars won't spawn on top of each other and crash the game.
++	//	customCheats.ClearItemsFromArea(10);
++
++	//	// TODO Come up with a better solution then this.
++
++	//	// TODO Move this into another file.
++	//	if(spawnInCar) {
++	//		switch(currentItem) {
++
++	//		case RHINO: VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true); break;
++
++	//		case CHEETAH: VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); break;
++
++	//		case INFERNUS: VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, true, true); break;
++	//		case COMET: VehicleFunctions::SpawnVehicle(VehicleModels::COMET, true, true); break;
++
++	//		case HOTRING_RACER: VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, true, true); break;
++
++	//		case STINGER: VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, true, true); break;
++
++	//		case SPARROW: VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, true, true); break;
++
++	//		case PHOENIX: VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, true, true); break;
++	//		case HUNTER: VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, true, true); break;
++	//		case DELUXO: VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, true, true); break;
++	//		case BANSHEE: VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, true, true); break;
++	//		}
++
++	//		// Not spawning in vehicle
++	//	} else {
++	//		switch(currentItem) {
++
++	//		case RHINO: VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, false, false); break;
++
++	//		case CHEETAH: VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, false, false); break;
++
++	//		case INFERNUS: VehicleFunctions::SpawnVehicle(VehicleModels::INFERNUS, false, false); break;
++
++	//		case COMET: VehicleFunctions::SpawnVehicle(VehicleModels::COMET, false, false); break;
++
++	//		case HOTRING_RACER: VehicleFunctions::SpawnVehicle(VehicleModels::HOTRING, false, false); break;
++
++	//		case STINGER: VehicleFunctions::SpawnVehicle(VehicleModels::STINGER, false, false); break;
++
++	//		case SPARROW: VehicleFunctions::SpawnVehicle(VehicleModels::SPARROW, false, false); break;
++
++	//		case PHOENIX: VehicleFunctions::SpawnVehicle(VehicleModels::PHEONIX, false, false); break;
++	//		case HUNTER: VehicleFunctions::SpawnVehicle(VehicleModels::HUNTER, false, false); break;
++	//		case DELUXO: VehicleFunctions::SpawnVehicle(VehicleModels::DELUXO, false, false); break;
++	//		case BANSHEE: VehicleFunctions::SpawnVehicle(VehicleModels::BANSHEE, false, false); break;
++	//		}
++	//	}
++	//}
++}
++
++/*
++
++
++
++*/
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_spawn_menu.h b/src/extras/menus/vehicle_spawn_menu.h
+new file mode 100644
+index 00000000..f1383ecf
+--- /dev/null
++++ b/src/extras/menus/vehicle_spawn_menu.h
+@@ -0,0 +1,6 @@
++#pragma once
++class VehicleSpawnMenu
++{
++public:
++	void VehicleSpawnTab();
++};
+diff --git a/src/extras/test/boost_test.cpp b/src/extras/test/boost_test.cpp
+new file mode 100644
+index 00000000..e393ffe3
+--- /dev/null
++++ b/src/extras/test/boost_test.cpp
+@@ -0,0 +1,38 @@
++#include "boost_test.h"
++
++//#include "asio.hpp"
++
++// From Google Gemini
++// Well I had to add these to the includes:
++// TODO Add to premake later
++// ..\lib\boost_1_87_0\boost\
++// ..\lib\boost_1_87_0\
++
++// TODO Move this into config.h if I'm going to use it in a lot of spots.
++
++// Possibly replace std::optional in datastore.h under src/extras/util with this.
++// The project doesn't support C++17, it only works on C++14.
++
++#define BOOST_TEST
++
++#ifdef BOOST_TEST
++
++#include <string>
++#include <iostream>
++
++#include "optional.hpp"
++
++
++// Assuming pTable->at_path(key).value<std::string>() returns a suitable type
++// For this example, I'll simulate it with a function that might or might not return a string.
++boost::optional<std::string>
++get_string(bool success, const std::string &value)
++{
++	if(success) {
++		return boost::optional<std::string>(value); // Construct optional with value
++	} else {
++		return boost::optional<std::string>(); // Construct empty optional
++	}
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/test/boost_test.h b/src/extras/test/boost_test.h
+new file mode 100644
+index 00000000..3166b5f5
+--- /dev/null
++++ b/src/extras/test/boost_test.h
+@@ -0,0 +1,4 @@
++#pragma once
++class BoostTest
++{
++};
+diff --git a/src/extras/utils/datastore.cpp b/src/extras/utils/datastore.cpp
+index 89571892..116d7d4b 100644
+--- a/src/extras/utils/datastore.cpp
++++ b/src/extras/utils/datastore.cpp
+@@ -1,4 +1,80 @@
+ #include "datastore.h"
+ 
+ // TODO Set this up like the cheat menu, make it store the toggled values.
+-// https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/datastore.cpp
+\ No newline at end of file
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/datastore.cpp
++
++#ifdef CONFIG_FILE_TEST
++#include "datastore.h"
++#include "pch.h"
++
++DataStore::DataStore(const char *fileName, bool isPathPredefined) noexcept
++{
++	if(isPathPredefined) {
++		path = std::string(fileName) + fileExt;
++	} else {
++		path = PLUGIN_PATH((char *)FILE_NAME "/data/") + std::string(fileName) + fileExt;
++	}
++
++	if(std::filesystem::exists(path)) {
++		toml::parse_result result = toml::parse_file(path);
++
++		if(result) {
++			pTable = std::make_unique<toml::table>(std::move(result));
++			return;
++		}
++	}
++
++	if(pTable == nullptr) {
++		pTable = std::make_unique<toml::table>();
++
++		if(fileName == FILE_NAME) {
++			Log::Print<eLogLevel::Info>("Creating {}{}", fileName, fileExt);
++		} else {
++			Log::Print<eLogLevel::Warn>("Error parsing {}{}", fileName, fileExt);
++		}
++	}
++}
++
++bool
++DataStore::Contains(const char *ele) noexcept
++{
++	if(pTable) { return pTable->contains(ele); }
++
++	return false;
++}
++
++DataStore::Table &
++DataStore::Items() noexcept
++{
++	return pTable->as_table()->ref<DataStore::Table>();
++}
++
++void
++DataStore::RemoveTable(const char *key) noexcept
++{
++	if(pTable) { pTable->erase(key); }
++}
++
++void
++DataStore::RemoveKey(const char *key, const char *entry) noexcept
++{
++	if(pTable) {
++		Table *tbl = pTable->at_path(key).as_table();
++		if(tbl) { tbl->erase(entry); }
++	}
++}
++
++void
++DataStore::Save() noexcept
++{
++	if(pTable) {
++		std::ofstream file(path);
++		if(file.good()) {
++			file << *pTable << std::endl;
++			file.close();
++		}
++	}
++}
++
++
++#endif 
+\ No newline at end of file
+diff --git a/src/extras/utils/datastore.h b/src/extras/utils/datastore.h
+index d973bf9e..79792de0 100644
+--- a/src/extras/utils/datastore.h
++++ b/src/extras/utils/datastore.h
+@@ -1,7 +1,144 @@
+ #pragma once
+ 
+-// TODO Set this up like the cheat menu, make it store the toggled values.
++#ifdef CONFIG_FILE_TEST
++
++#define TOML_EXCEPTIONS 0
++#include "toml_addon.hpp"
++#include <memory>
++
++
++
++/*
++    DataStore Class
++    Stores & loads data from disk
++    TOML format
++*/
++
++// TODO Setup boost library
++
++/*
++
++// Assuming pTable->at_path(key).value<std::string>() returns a suitable type
++// For this example, I'll simulate it with a function that might or might not return a string.
++boost::optional<std::string> get_string(bool success, const std::string& value) {
++    if (success) {
++        return boost::optional<std::string>(value); // Construct optional with value
++    } else {
++        return boost::optional<std::string>(); // Construct empty optional
++    }
++}
++
++*/
++
++
++
+ class DataStore
+ {
++private:
++	static inline const char *fileExt = ".toml";
++	std::unique_ptr<toml::table> pTable;
++	std::string path;
++
++public:
++	using Table = toml::table;
++	using Array = toml::array;
++
++	DataStore(const char *fileName, bool isPathPredefined = false) noexcept;
++
++	// Returns data from store structure
++	std::string Get(const char *key, const char *defaultVal, bool writeOnNone = false) noexcept
++	{
++		if(pTable) {
++			std::optional<std::string> option = pTable->at_path(key).value<std::string>();
++
++			if(option.has_value()) { return option.value(); }
++		}
++
++		if(writeOnNone) { Set(key, std::string(defaultVal)); }
++		return defaultVal;
++	}
++
++	template <typename T> T Get(const char *key, const T &defaultVal, bool writeOnNone = false) noexcept
++	{
++		if(pTable) {
++			std::optional<T> option = pTable->at_path(key).value<T>();
++
++			if(option.has_value()) { return option.value(); }
++		}
++
++		if(writeOnNone) { Set(key, defaultVal); }
++		return defaultVal;
++	}
++
++	Array *GetArray(const char *key) noexcept
++	{
++		if(pTable) {
++			Array *tbl = (*pTable).at_path(key).as_array();
++			if(tbl) {
++				return tbl;
++			} else {
++				pTable->insert(key, Table());
++				return (*pTable).at_path(key).as_array();
++			}
++		}
++		return nullptr;
++	}
++
++	Table *GetTable(const char *key) noexcept
++	{
++		if(pTable) {
++			Table *tbl = (*pTable).at_path(key).as_table();
++			if(tbl) {
++				return tbl;
++			} else {
++				pTable->insert(key, Table());
++				return (*pTable).at_path(key).as_table();
++			}
++		}
++		return nullptr;
++	}
++
++	// Adds data to the structure
++	template <typename T> void Set(const char *key, T &&value)
++	{
++		std::stringstream ss(key);
++		std::vector<std::string> paths;
++
++		while(ss.good()) {
++			std::string s1 = "";
++			getline(ss, s1, '.');
++			if(s1 != "") { paths.push_back(std::move(s1)); }
++		}
++
++		// assign the value
++		toml::table tbl;
++		int startIndex = paths.size() - 1;
++		for(int i = startIndex; i >= 0; --i) {
++			if(i == startIndex) {
++				tbl.insert_or_assign(paths[i], std::move(value));
++			} else {
++				toml::table temp;
++				temp.insert_or_assign(paths[i], std::move(tbl));
++				tbl = std::move(temp);
++			}
++		}
++		merge_left(*pTable, std::move(tbl));
++	}
++
++	// If store contains element
++	bool Contains(const char *) noexcept;
++
++	// Provides access to internal structure elements
++	Table &Items() noexcept;
++
++	// Removes a table, it's keys & data
++	void RemoveTable(const char *key) noexcept;
++
++	// Removes a key and it's data
++	void RemoveKey(const char *key, const char *entry) noexcept;
++
++	// Saves data to disk
++	void Save() noexcept;
++};
+ 
+-};
+\ No newline at end of file
++#endif
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+new file mode 100644
+index 00000000..b051f08b
+--- /dev/null
++++ b/src/extras/utils/player_util.cpp
+@@ -0,0 +1,25 @@
++#include "player_util.h"
++
++/// <summary>
++/// This gets the player coords
++/// </summary>
++/// <returns>The CVector of the players coords.</returns>
++CVector
++PlayerUtil::PlayerCoords()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	CVector playerCoords = pPlayer->GetPosition();
++	return playerCoords;
++}
++
++/// <summary>
++/// This gets the players heading
++/// </summary>
++/// <returns>The float for the heading.</returns>
++float
++PlayerUtil::PlayerHeading()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	float playerHeading = pPlayer->GetPosition().Heading();
++	return playerHeading;
++}
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+new file mode 100644
+index 00000000..26f0bc10
+--- /dev/null
++++ b/src/extras/utils/player_util.h
+@@ -0,0 +1,20 @@
++#pragma once
++#define WITHDINPUT
++#include "common.h"
++#include "platform.h"
++
++#include "Ped.h"
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++#include "Vector.h"
++
++
++
++class PlayerUtil
++{
++public:
++	CVector PlayerCoords();
++	float PlayerHeading();
++};
+diff --git a/src/extras/utils/toml_addon.hpp b/src/extras/utils/toml_addon.hpp
+new file mode 100644
+index 00000000..75a54c48
+--- /dev/null
++++ b/src/extras/utils/toml_addon.hpp
+@@ -0,0 +1,94 @@
++#pragma once
++//#include "toml.hpp"
++#include "tomlplusplus/toml.hpp"
++
++template <typename T, typename Path>
++auto
++build_from_path(T &&value, Path &&path_component)
++{
++	using component_type = std::remove_cv_t<std::remove_reference_t<Path>>;
++	static_assert(std::is_integral_v<component_type> || toml::is_key_or_convertible<Path &&>, "path components must be integers or strings");
++
++	// making an array
++	if constexpr(std::is_integral_v<component_type>) {
++		toml::array arr;
++		const auto index = static_cast<std::size_t>(path_component);
++		arr.reserve(index + 1u);
++
++		// backfill with integers
++		while(arr.size() < index) arr.push_back(0);
++
++		// add the actual value
++		arr.push_back(static_cast<T &&>(value));
++
++		return arr;
++	} else // making a table
++	{
++		toml::table tbl;
++		tbl.insert_or_assign(path_component, value);
++		return tbl;
++	}
++}
++
++template <typename T, typename Path, typename... Paths>
++auto
++build_from_path(T &&value, Path &&path_component, Paths &&...path_components)
++{
++	static_assert(sizeof...(Paths));
++
++	return build_from_path(build_from_path(value, path_components...), path_component);
++}
++
++static void
++merge_left(toml::table &lhs, toml::table &&rhs);
++
++static void
++merge_left(toml::array &lhs, toml::array &&rhs)
++{
++	rhs.for_each([&](std::size_t index, auto &&rhs_val) {
++		// rhs index not found in lhs - direct move
++		if(lhs.size() <= index) {
++			lhs.push_back(std::move(rhs_val));
++			return;
++		}
++
++		// both elements were the same container type -  recurse into them
++		if constexpr(toml::is_container<decltype(rhs_val)>) {
++			using rhs_type = std::remove_cv_t<std::remove_reference_t<decltype(rhs_val)>>;
++			if(auto lhs_child = lhs[index].as<rhs_type>()) {
++				merge_left(*lhs_child, std::move(rhs_val));
++				return;
++			}
++		}
++
++		// replace lhs element with rhs
++		lhs.replace(lhs.cbegin() + index, std::move(rhs_val));
++	});
++}
++
++static void
++merge_left(toml::table &lhs, toml::table &&rhs)
++{
++	rhs.for_each([&](const toml::key &rhs_key, auto &&rhs_val) {
++		auto lhs_it = lhs.lower_bound(rhs_key);
++
++		// rhs key not found in lhs - direct move
++		if(lhs_it == lhs.cend() || lhs_it->first != rhs_key) {
++			using rhs_type = std::remove_cv_t<std::remove_reference_t<decltype(rhs_val)>>;
++			lhs.emplace_hint<rhs_type>(lhs_it, rhs_key, std::move(rhs_val));
++			return;
++		}
++
++		// both children were the same container type -  recurse into them
++		if constexpr(toml::is_container<decltype(rhs_val)>) {
++			using rhs_type = std::remove_cv_t<std::remove_reference_t<decltype(rhs_val)>>;
++			if(auto lhs_child = lhs_it->second.as<rhs_type>()) {
++				merge_left(*lhs_child, std::move(rhs_val));
++				return;
++			}
++		}
++
++		// replace lhs value with rhs
++		lhs.insert_or_assign(rhs_key, std::move(rhs_val));
++	});
++}
+\ No newline at end of file
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 0a951232..fd18c530 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -2929,6 +2929,14 @@ bool	luaInit = false;
+ 									// Toggle ImGui
+ 									imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+ 								}
++
++								// Here is a test for reloading lua.
++								if (KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++									newTime = CTimer::GetTimeInMilliseconds();
++
++									// Reinit lua.
++									luaTest.InitLua();
++								}
+ 								
+ 
+ 								// TODO Figure out how to make this use Control + M
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 63ec42cc..ff73f7af 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -2,6 +2,11 @@
+ 
+ -- print("hello ReVC!")
+ 
++-- I added a reload function to my lua test using the 'F9' keybind
++
++-- TODO Rename this file to kcnet_revc.lua
++-- Also try to rename it in the C++ side.
++
+ local setPositionEnabled = false
+ local healPlayerEnabled = false
+ -- This works fine for my new cheat test.
+@@ -11,7 +16,7 @@ local playerControlTestEnabled = false
+ 
+ -- I got this to auto start in win.cpp by adding the initLua 
+ -- function into the GS_PLAYING_GAME loop, once toggled on it shouldn't run anymore.
+--- So anything I run in this file now will auto start, I may just disable the keybind for now.
++-- So anything I run in this file now will auto start.
+ local enableNeverWanted = false
+ local enableInfiniteHealth = false
+ 
+@@ -54,10 +59,43 @@ local airportHeading = 0.0
+ toggle_respawn_point = false
+ 
+ 
+--- I think I have this setup to change the time passed when wasted.
++-- This sets the time that is passed when wasted.
+ -- The default value is 720
++local default_time_to_pass = 720
+ -- TODO Add a boolean for this toggle.
+-time_to_pass = 10
++time_to_pass = default_time_to_pass
++
++-- If the logging is enabled for the player coords and heading, press F9
++local log_coords = false
++local log_heading = false
++
++if log_coords then
++	log_player_coords()
++end
++
++if log_heading then
++	log_player_heading()
++end
++
++-- TODO Test this
++-- Should just log to the file for now.
++
++-- lose_weapons_bool = false
++
++-- If the player will lose their weapons when dying, set to true by default
++
++
++
++local lose_weapons = false
++
++if not lose_weapons then
++	disable_lose_weapons_on_death()
++else
++	enable_lose_weapons_on_death()
++end
++
++-- Disabled
++-- toggle_lose_weapons_on_death()
+ 
+ -- Toggle the players respawn to a new value, this works if the player dies instead of going to the hospital.
+ -- Added this stuff into WBSTATE_WASTED and WBSTATE_BUSTED under CGameLogic::Update()
+-- 
+2.45.1.windows.1
+
