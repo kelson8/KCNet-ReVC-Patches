@@ -1,0 +1,264 @@
+From a2877d7a605d48e967c9a4a35e7d88cd4b885f69 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 18 Mar 2025 02:18:24 -0400
+Subject: [PATCH 114/129] Cleanup ini_functions a bit.
+
+---
+ guides/create-patches.md               |   2 +-
+ src/extras/functions/ini_functions.cpp | 176 -------------------------
+ 2 files changed, 1 insertion(+), 177 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 7b3375d6..1185893b 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 114, patch number: 114)
++(Currently on commit 115, patch number: 115)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index f4755c40..2a45dea4 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -115,9 +115,6 @@ ReadAndGetImGuiConfig(const char* key)
+ 	return 0;
+ }
+ 
+-
+-// TODO Fix this
+-
+ // Function to split a string by delimiter
+ std::vector<std::string>
+ IniFunctions::SplitString(const std::string &str, char delimiter)
+@@ -133,60 +130,6 @@ mINI::INIFile warpsIni(Defines::warpsIniFile);
+ mINI::INIStructure warpsCfg;
+ 
+ std::vector<IniFunctions::WarpData> warps; // Store warp data
+-//void
+-//IniFunctions::ReadWarpIni()
+-//{
+-//	warpsIni.read(warpsCfg);
+-//}
+-
+-// Old functions
+-
+-	// uint16
+-// ReadAndGetWarpsConfig(const char *key)
+-//{
+-//	mINI::INIMap<std::string> section = warpsCfg.get("Ammunation");
+-//	if(section.has(key)) {
+-//		char *endPtr;
+-//		return strtol(section.get(key).c_str(), &endPtr, 0);
+-//	}
+-//	return 0;
+-// }
+-
+-// struct WarpData {
+-//	std::string name; // Add the warp name
+-//	int interiorId;
+-//	float posX, posY, posZ;
+-// };
+-
+-// CVector
+-// ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIStructure &warpsCfg)
+-//{
+-//	CVector result = {0.0f, 0.0f, 0.0f}; // Default value
+-//
+-//	mINI::INIMap<std::string> section = warpsCfg.get(sectionName);
+-//	if(section.has(key)) {
+-//		std::string dataString = section.get(key);
+-//		std::vector<std::string> components = splitString(dataString, ',');
+-//
+-//		if(components.size() == 3) {
+-//			try {
+-//				result.x = std::stof(components[0]);
+-//				result.y = std::stof(components[1]);
+-//				result.z = std::stof(components[2]);
+-//			} catch(const std::invalid_argument &e) {
+-//				std::cerr << "Invalid Vector3 component in INI file: " << e.what() << std::endl;
+-//			} catch(const std::out_of_range &e) {
+-//				std::cerr << "Vector3 component out of range in INI file: " << e.what() << std::endl;
+-//			}
+-//		} else {
+-//			std::cerr << "Invalid Vector3 format in INI file." << std::endl;
+-//		}
+-//	}
+-//	return result;
+-// }
+-
+-//
+-
+ 
+ 
+ // Read the data from the warp file
+@@ -243,10 +186,7 @@ IniFunctions::LoadWarpIni()
+ 	}
+ }
+ 
+-
+-
+ // New for imgui
+-// This doesn't work yet, I have disabled it in the warp menu.
+ void
+ IniFunctions::ImGuiWarpList()
+ {
+@@ -255,20 +195,6 @@ IniFunctions::ImGuiWarpList()
+ 	ImGui::Text("Warps");
+ 	static int selectedWarp = -1;
+ 
+-	// Iterate through sections (std::map<std::string, mINI::INIMap<std::string>>)
+-	// TODO Test moving this into game init somewhere.
+-
+-	//for(const auto &sectionPair : warpsCfg) {
+-	//	const std::string &sectionName = sectionPair.first;
+-	//	const mINI::INIMap<std::string> &section = sectionPair.second;
+-
+-	//	// Iterate through key-value pairs in the section
+-	//	for(const auto &pair : section) {
+-	//		warps.push_back(ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg));
+-	//		warps.back().name = pair.first;
+-	//	}
+-	//}
+-
+ 	std::vector<const char *> warpNames;
+ 
+ 	// Populate warpNames with the names from the warps vector
+@@ -282,14 +208,6 @@ IniFunctions::ImGuiWarpList()
+ 		if(!warps.empty() && selectedWarp >= 0 && selectedWarp < warps.size()) {
+ 			// Get the selected warp data
+ 			const WarpData &selectedWarpData = warps[selectedWarp];
+-			//float posX = selectedWarpData.x;
+-			//float posY = selectedWarpData.y;
+-			//float posZ = selectedWarpData.z;
+-
+-			//LogFunctions::LogInfo(defines.logFile, "Selected warp: " + selectedWarp);
+-			//LogFunctions::LogInfo(defines.logFile, "Warp Size: " + selectedWarp);
+-			//LogFunctions::LogInfo(defines.logFile, "Warp coords: " + std::to_string(posX) + std::to_string(posY) + std::to_string(posZ));
+-
+ 			// Set player position
+ 			PlayerCheats::SetPlayerPosition(selectedWarpData.x, selectedWarpData.y, selectedWarpData.z);
+ 		}
+@@ -311,33 +229,6 @@ IniFunctions::ImGuiWarpList()
+ //	return warps;
+ //}
+ 
+-/// <summary>
+-/// Added ImGui into this for this to show up.
+-/// </summary>
+-/// <param name="playerCheats"></param>
+-/// <param name="iniFilename"></param>
+-/// <param name="section"></param>
+-//void
+-//IniFunctions::RenderWarpList(PlayerCheats &playerCheats, const std::string &iniFilename, const std::string &section)
+-//{
+-//	static int selectedWarpIndex = -1;
+-//
+-//	std::vector<WarpData> warps = readAllWarpsFromIni(iniFilename, section);
+-//	std::vector<const char *> warpNames;
+-//
+-//	for(const auto &warp : warps) { warpNames.push_back(warp.name.c_str()); }
+-//
+-//	ImGui::ListBox("Warps", &selectedWarpIndex, warpNames.data(), warpNames.size());
+-//
+-//	if(selectedWarpIndex >= 0 && selectedWarpIndex < warps.size()) {
+-//		if(ImGui::Button("Teleport")) {
+-//			const WarpData &selectedWarp = warps[selectedWarpIndex];
+-//			playerCheats.SetPlayerPosition(selectedWarp.posX, selectedWarp.posY, selectedWarp.posZ);
+-//		}
+-//	}
+-//}
+-
+-//
+ 
+ // TODO Implement this
+ struct SectionData {
+@@ -370,36 +261,6 @@ readMultipleSections(const std::string &filename, const std::vector<std::string>
+ 	return sections;
+ }
+ 
+-// This goes where I am reading this somewhere also.
+-
+-/*
+-int main() {
+-    std::vector<std::string> sectionsToRead = {"General", "Settings", "Warps"}; // Sections to read
+-    std::map<std::string, SectionData> allSections = readMultipleSections("config.ini", sectionsToRead);
+-
+-    // Accessing data:
+-    if (allSections.count("General") > 0) {
+-        SectionData generalData = allSections["General"];
+-        if (generalData.keyValues.count("version") > 0) {
+-            std::cout << "General version: " << generalData.keyValues["version"] << std::endl;
+-        }
+-    }
+-
+-    if (allSections.count("Warps") > 0) {
+-        SectionData warpData = allSections["Warps"];
+-        for(const auto& pair : warpData.keyValues){
+-            std::cout << "Warp " << pair.first << ": " << pair.second << std::endl;
+-        }
+-    }
+-
+-    return 0;
+-}
+-
+-*/
+-
+-
+-//
+-
+ // FEATURES_INI
+ #ifdef VICE_EXTENDED
+ //mINI::INIFile featuresIni("ViceExtended/features.ini");
+@@ -919,43 +780,6 @@ LoadINISettings()
+ 	imGuiFunctions.setImGuiButton1(toggleImGuiButton1);
+ 	imGuiFunctions.setImGuiButton2(toggleImGuiButton2);
+ 
+-	// I disabled the ini stuff above and am going to attempt to move it into my new imgui test.
+-	//if(!warpsIni.read(warpsCfg)) return false;
+-
+- //   IniFunctions::WarpData washingtonAmmunation = ReadAndGetWarpsConfig("Ammunation", "Washington Ammunation", warpsCfg);
+-	//IniFunctions::WarpData washingtonBeachAmmunation = ReadAndGetWarpsConfig("Ammunation", "Washington Beach Ammunation", warpsCfg);
+-
+-	//LogFunctions::LogInfo(defines.logFile, "Washington Ammunation: interiorId= " + std::to_string(washingtonAmmunation.interiorId) +
+-	//	", x=" + std::to_string(washingtonAmmunation.x)
+-	//          + ", y= " + std::to_string(washingtonAmmunation.y) + ", z= " + std::to_string(washingtonAmmunation.z));
+-
+-	//std::cout << "Washington Beach Ammunation: interiorId=" << washingtonBeachAmmunation.interiorId << ", x=" << washingtonBeachAmmunation.x
+-	//          << ", y=" << washingtonBeachAmmunation.y << ", z=" << washingtonBeachAmmunation.z << std::endl;
+-
+-
+-
+-	// Well this works now! Now I can add this to an ImGui list box.
+-	
+-	// Warps
+-	//if(!warpsIni.read(warpsCfg)) return false;
+-	//WarpData warp1 = readWarpDataFromIni("Hidden Packages", "Hidden Package 1", warpsCfg);
+-
+-	//std::string warp1InteriorId = "Warp1 Interior Id: " + std::to_string(warp1.interiorId);
+-	//std::string warp1Coords = "Warp1 coords X: " + std::to_string(warp1.posX) 
+-	//	+ " Y: " + std::to_string(warp1.posY) 
+-	//	+ " Z: " + std::to_string(warp1.posZ);
+-
+-	//LogFunctions::LogInfo(defines.logFile, warp1InteriorId);
+-	//LogFunctions::LogInfo(defines.logFile, warp1Coords);
+-
+-	// Read my warps from warps.ini
+-	// TODO Setup this, it's not as simple as the others, might be easier to use toml11.
+-	//if(!warpsIni.read(warpsCfg)) return false;
+-	//CVector ammunationWarps = ReadAndGetWarpsConfig("Ammunation");
+-
+-	//std::string ammunationWarpString = "Ammunation: " + std::to_string(ammunationWarps); 
+-	//LogFunctions::LogInfo(defines.logFile, ammunationWarpString);
+-
+ 	// No wonder, these are being set to 0, I fixed it, the value was named wrong in the ini.
+ 	//std::string buttonString =
+ 	//    "Button1: " + std::to_string(imGuiFunctions.getImGuiButton1()) 
+-- 
+2.45.1.windows.1
+

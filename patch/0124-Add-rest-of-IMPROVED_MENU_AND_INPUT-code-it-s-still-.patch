@@ -1,0 +1,441 @@
+From be7f32c8228668f640b2903b79de715135307e75 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 20 Mar 2025 16:51:13 -0400
+Subject: [PATCH 124/129] Add rest of IMPROVED_MENU_AND_INPUT code, it's still
+ broken. Add some more CLIMBING code, it doesn't work on here. Update patch
+ and commit number.
+
+---
+ guides/create-patches.md       |  2 +-
+ src/animation/AnimManager.cpp  | 10 ++++++
+ src/core/Cam.cpp               | 17 +++++++++-
+ src/core/Camera.cpp            |  2 ++
+ src/core/ControllerConfig.cpp  |  5 ++-
+ src/core/MenuScreensCustom.cpp |  4 +++
+ src/peds/PedFight.cpp          |  8 ++++-
+ src/peds/PlayerPed.cpp         | 62 ++++++++++++++++++++++++++++++----
+ src/weapons/Weapon.cpp         | 24 ++++++++++++-
+ src/weapons/WeaponEffects.cpp  |  3 +-
+ 10 files changed, 125 insertions(+), 12 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index fd86dc31..c45bfabe 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 123, patch number: 123)
++(Currently on commit 124, patch number: 124)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/animation/AnimManager.cpp b/src/animation/AnimManager.cpp
+index ce79046b..a4683fe7 100644
+--- a/src/animation/AnimManager.cpp
++++ b/src/animation/AnimManager.cpp
+@@ -544,6 +544,16 @@ char const* aStdAnimations[] = {
+ 	"abseil",
+ 
+ // Begin Extended Vice
++
++#ifdef CLIMBING // add anims
++    "CLIMB_idle",
++    "CLIMB_jump",
++    "CLIMB_jump_B",
++    "CLIMB_Pull",
++    "CLIMB_Stand",
++    "CLIMB_Stand_finish",
++#endif
++
+ #ifdef CROUCH // add anims
+ 	"Crouch_Idle",
+ 	"Crouch_Forward",
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index 07989c27..4efd6fae 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -5742,9 +5742,20 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 	CPad* pad = CPad::GetPad(0);
+ 
+ 	// Next direction is non-existent in III
++
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++	bool bLookLeft = pad->GetLookLeft() && !FindPlayerPed()->bIsPlayerAiming;
++	bool bLookRight = pad->GetLookRight() && !FindPlayerPed()->bIsPlayerAiming;
++	bool bLookBehindForCar = pad->GetLookBehindForCar() && !FindPlayerPed()->bIsPlayerAiming;
++	bool bLookBehindForPed = pad->GetLookBehindForPed() && !FindPlayerPed()->bIsPlayerAiming;
++	uint8 nextDirectionIsForward = !(bLookBehindForCar || bLookBehindForPed || (bLookLeft && !isHeli) || (bLookRight && !isHeli)) &&
++#else
+ 	uint8 nextDirectionIsForward = !(pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight()) &&
++#endif
++		
+ 		DirectionWasLooking == LOOKING_FORWARD;
+ 
++
+ 	if (car->GetModelIndex() == MI_FIRETRUCK) {
+ 		camSetArrPos = 7;
+ 	} else if (car->GetModelIndex() == MI_RCBANDIT || car->GetModelIndex() == MI_RCBARON) {
+@@ -5870,7 +5881,11 @@ CCam::Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation,
+ 	}
+ 
+ 	// WORKAROUND: I still don't know how looking behind works (m_bCamDirectlyInFront is unused in III, they seem to use m_bUseTransitionBeta)
+-	if (pad->GetLookBehindForCar())
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++	if(bLookBehindForCar)
++#else
++	if(pad->GetLookBehindForCar())
++#endif
+ 		if (DirectionWasLooking == LOOKING_FORWARD || !LookingBehind)
+ 			TheCamera.m_bCamDirectlyInFront = true;
+ 
+diff --git a/src/core/Camera.cpp b/src/core/Camera.cpp
+index 8c497465..e9e0bb81 100644
+--- a/src/core/Camera.cpp
++++ b/src/core/Camera.cpp
+@@ -1233,6 +1233,7 @@ CCamera::CamControl(void)
+ 
+ 			WellBufferMe(CloseInPedHeightTarget, &Cams[ActiveCam].m_fCloseInPedHeightOffset, &Cams[ActiveCam].m_fCloseInPedHeightOffsetSpeed, 0.1f, 0.025f, false);
+ 
++#ifndef IMPROVED_MENU_AND_INPUT
+ 			// Check if entering fight cam
+ 			if(!m_bFirstPersonBeingUsed){
+ 				if(FindPlayerPed()->GetPedState() == PED_FIGHT && !m_bUseMouse3rdPerson)
+@@ -1241,6 +1242,7 @@ CCamera::CamControl(void)
+ 				   FindPlayerPed()->GetPedState() == PED_ATTACK && !m_bUseMouse3rdPerson)
+ 					ReqMode = CCam::MODE_FIGHT_CAM;
+ 			}
++#endif
+ 
+ 			// Garage cam
+ 			CAttributeZone *stairsZone = nil;
+diff --git a/src/core/ControllerConfig.cpp b/src/core/ControllerConfig.cpp
+index 69444ee5..2f0702e0 100644
+--- a/src/core/ControllerConfig.cpp
++++ b/src/core/ControllerConfig.cpp
+@@ -187,7 +187,7 @@ void CControllerConfigManager::LoadSettings(int32 file)
+ 
+ void CControllerConfigManager::InitDefaultControlConfiguration()
+ {
+-	#ifdef VICE_EXTENDED // InitDefaultControlConfiguration
++#ifdef VICE_EXTENDED // InitDefaultControlConfiguration
+ 	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKLEFT,                    'Q',        KEYBOARD);
+ 	SetControllerKeyAssociatedWithAction    (VEHICLE_LOOKLEFT,                    rsPADEND,   OPTIONAL_EXTRA);
+ 										    						          
+@@ -1225,6 +1225,7 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_AllStates(int3
+ 		state.Circle = 255;
+ #endif
+ 
++#ifndef IMPROVED_MENU_AND_INPUT
+ 	if (button == GetControllerKeyAssociatedWithAction(GO_LEFT, type))
+ 	{
+ 		if (state.DPadRight || m_aSimCheckers[SIM_X1][type])
+@@ -1249,6 +1250,8 @@ void CControllerConfigManager::AffectControllerStateOn_ButtonDown_AllStates(int3
+ 			state.DPadRight = 255;
+ 	}
+ 
++#endif
++
+ 	if (button == GetControllerKeyAssociatedWithAction(NETWORK_TALK, type))
+ 		state.NetworkTalk = 255;
+ }
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index ad4ec3e0..3f49a0a4 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -60,11 +60,13 @@
+ 	#define CUTSCENE_BORDERS_TOGGLE
+ #endif
+ 
++#ifndef IMPROVED_MENU_AND_INPUT
+ #ifdef FREE_CAM
+ 	#define FREE_CAM_TOGGLE MENUACTION_CFO_SELECT, "FEC_FRC", { new CCFOSelect((int8*)&TheCamera.bFreeCam, "Display", "FreeCam", off_on, 2, false) }, 0, 0, MENUALIGN_LEFT,
+ #else
+ 	#define FREE_CAM_TOGGLE
+ #endif
++#endif
+ 
+ #ifdef PS2_ALPHA_TEST
+ 	#define DUALPASS_SELECTOR MENUACTION_CFO_SELECT, "FEM_2PR", { new CCFOSelect((int8*)&gPS2alphaTest, "Graphics", "PS2AlphaTest", off_on, 2, false) }, 0, 0, MENUALIGN_LEFT,
+@@ -498,7 +500,9 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_DRAWDIST,	"FEM_LOD", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		DENSITY_SLIDERS
+ 		CUTSCENE_BORDERS_TOGGLE
++#ifndef IMPROVED_MENU_AND_INPUT
+ 		FREE_CAM_TOGGLE
++#endif
+ 		MENUACTION_LEGENDS,		"MAP_LEG", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_RADARMODE,	"FED_RDR", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_HUD,			"FED_HUD", { nil, SAVESLOT_NONE, MENUPAGE_DISPLAY_SETTINGS }, 0, 0, MENUALIGN_LEFT,
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index a9621ecf..d8cd513b 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -393,7 +393,13 @@ CPed::SetAttack(CEntity *victim)
+ #else
+ 		} else {
+ #endif
+-			if (this == FindPlayerPed() && TheCamera.Cams[0].Using3rdPersonMouseCam()) {
++
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++			if(this == FindPlayerPed()) {
++#else
++			if(this == FindPlayerPed() && TheCamera.Cams[0].Using3rdPersonMouseCam()) {
++#endif
++
+ 				SetAimFlag(m_fRotationCur);
+ 				((CPlayerPed*)this)->m_fFPSMoveHeading = TheCamera.Find3rdPersonQuickAimPitch();
+ 			} else if (curWeapon->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM)) {
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index a62951ad..4022c2ca 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -30,9 +30,9 @@
+ #include "Particle.h"
+ #endif
+ 
+-// #ifdef IMPROVED_MENU_AND_INPUT
+-// #include "Frontend.h"
+-// #endif
++#ifdef IMPROVED_MENU_AND_INPUT
++#include "Frontend.h"
++#endif
+ 
+ #ifdef IMPROVED_TECH_PART // Fix for the FrontEndMenuManager not being recognized
+ #include "Frontend.h"
+@@ -278,6 +278,10 @@ CPlayerPed::ReactivatePlayerPed(int32 index)
+ }
+ 
+ #ifdef CROUCH
++/// <summary>
++/// Process crouch from Vice Extended project
++/// </summary>
++/// <param name=""></param>
+ void CPlayerPed::ProcessCrouch(void)
+ {
+ 	if (!bIsDucking)
+@@ -401,6 +405,10 @@ void CPlayerPed::FinishRollCB(CAnimBlendAssociation* assoc, void* arg)
+ #endif
+ 
+ #ifdef SWIMMING
++/// <summary>
++/// Process swimming from Vice Extended project.
++/// </summary>
++/// <param name=""></param>
+ void CPlayerPed::ProcessSwimming(void)
+ {
+ 	if (!bIsSwimming)
+@@ -527,6 +535,10 @@ void CPlayerPed::ProcessSwimming(void)
+ #endif
+ 
+ #ifdef FIRING_AND_AIMING
++/// <summary>
++/// Process aiming from Vice Extended project.
++/// </summary>
++/// <param name=""></param>
+ void CPlayerPed::ProcessAiming(void)
+ {
+ 	//if (RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_STARTWALK))
+@@ -658,7 +670,9 @@ CPlayerPed::MakeChangesForNewWeapon(eWeaponType weapon)
+ 	SetCurrentWeapon(weapon);
+ 	m_nSelectedWepSlot = m_currentWeapon;
+ 
++#ifndef IMPROVED_MENU_AND_INPUT // Disabling automatic reloading when changing weapons (thanks to VitalRus)
+ 	GetWeapon()->m_nAmmoInClip = Min(GetWeapon()->m_nAmmoTotal, CWeaponInfo::GetWeaponInfo(GetWeapon()->m_eWeaponType)->m_nAmountofAmmunition);
++#endif
+ 
+ #if defined FIRING_AND_AIMING && defined FIRST_PERSON
+ 	if (IsDoomMode() && GetWeapon()->GetInfo()->IsFlagSet(WEAPONFLAG_CANAIM_WITHARM))
+@@ -1184,13 +1198,15 @@ CPlayerPed::PlayerControlSniper(CPad *padUsed)
+ 	ProcessWeaponSwitch(padUsed);
+ 	TheCamera.PlayerExhaustion = (1.0f - (m_fCurrentStamina - -150.0f) / 300.0f) * 0.9f + 0.1f;
+ 
+-	if (padUsed->DuckJustDown() && !bIsDucking && m_nMoveState != PEDMOVE_SPRINT) {
++#ifndef FIRING_AND_AIMING
++	if(padUsed->DuckJustDown() && !bIsDucking && m_nMoveState != PEDMOVE_SPRINT) {
+ 		bCrouchWhenShooting = true;
+ 		SetDuck(60000, true);
+-	} else if (bIsDucking && (padUsed->DuckJustDown() || m_nMoveState == PEDMOVE_SPRINT)) {
++	} else if(bIsDucking && (padUsed->DuckJustDown() || m_nMoveState == PEDMOVE_SPRINT)) {
+ 		ClearDuck(true);
+ 		bCrouchWhenShooting = false;
+ 	}
++#endif
+ 
+ 	if (!padUsed->GetTarget() && !m_attachedTo) {
+ 		RestorePreviousState();
+@@ -1711,7 +1727,9 @@ CPlayerPed::ProcessAnimGroups(void)
+ 	AssocGroupId groupToSet;
+ #ifdef PC_PLAYER_CONTROLS
+ 	if ((m_fWalkAngle <= -DEGTORAD(50.0f) || m_fWalkAngle >= DEGTORAD(50.0f))
+-		&& TheCamera.Cams[TheCamera.ActiveCam].Using3rdPersonMouseCam()
++#ifndef IMPROVED_MENU_AND_INPUT
++	   && TheCamera.Cams[TheCamera.ActiveCam].Using3rdPersonMouseCam()
++#endif
+ 		&& CanStrafeOrMouseControl()) {
+ 
+ 		if (m_fWalkAngle >= -DEGTORAD(130.0f) && m_fWalkAngle <= DEGTORAD(130.0f)) {
+@@ -2293,6 +2311,19 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 	}
+ #endif
+ 
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++	if(!FrontEndMenuManager.m_PrefsAutoaim)
++		return;
++	else {
++		if(CPad::GetPad(0)->GetTarget()) {
++			bool bCantAim = CPad::GetPad(0)->NewState.RightShoulder1 == 0 && CPad::GetPad(0)->Mode == 2 ||
++			                CPad::GetPad(0)->NewState.LeftShoulder2 < 128 && CPad::GetPad(0)->Mode == 1;
++
++			if(bCantAim && !bIsAutoAiming || GetWeaponSlot(GetWeapon()->m_eWeaponType) == WEAPONSLOT_SNIPER || InVehicle()) return;
++		}
++	}
++#endif
++
+ 	if (padUsed->GetTarget() && m_nSelectedWepSlot == m_currentWeapon && m_nMoveState != PEDMOVE_SPRINT && !TheCamera.Using1stPersonWeaponMode() && weaponInfo->IsFlagSet(WEAPONFLAG_CANAIM)) {
+ 		if (m_pPointGunAt) {
+ 			// what??
+@@ -2331,8 +2362,27 @@ CPlayerPed::ProcessPlayerWeapon(CPad *padUsed)
+ 				if (padUsed->ShiftTargetRightJustDown())
+ 					FindNextWeaponLockOnTarget(m_pPointGunAt, false);
+ 			}
++
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING && defined FIRST_PERSON // we turn the camera to the target during autoaim
++			CCam &camera = TheCamera.Cams[0];
++
++			CVector distForBeta = m_pPointGunAt->GetPosition() - GetPosition();
++			if(camera.Mode == CCam::MODE_REAL_1ST_PERSON)
++				camera.Beta = distForBeta.Heading() - DEGTORAD(90.0f);
++			else
++				camera.Beta = distForBeta.Heading() + DEGTORAD(92.5f);
++
++			CVector dist = GetPosition() - m_pPointGunAt->GetPosition();
++			float groundDist = dist.Magnitude2D();
++			camera.Alpha = CGeneral::GetATanOfXY(groundDist, -dist.z);
++			while(camera.Alpha >= PI) camera.Alpha -= 2.0f * PI;
++			while(camera.Alpha < -PI) camera.Alpha += 2.0f * PI;
++#else
+ 			TheCamera.SetNewPlayerWeaponMode(CCam::MODE_SYPHON, 0, 0);
+ 			TheCamera.UpdateAimingCoors(m_pPointGunAt->GetPosition());
++#endif
++
++
+ 
+ 		} else if (!CCamera::m_bUseMouse3rdPerson) {
+ #ifdef IMPROVED_MENU_AND_INPUT
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 83799c36..842d44cc 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -1853,7 +1853,11 @@ CWeapon::FireShotgun(CEntity *shooter, CVector *fireSource)
+ 		CColPoint point;
+ 		CEntity *victim;
+ 
+-		if ( shooter == FindPlayerPed() && TheCamera.Cams[0].Using3rdPersonMouseCam() )
++#if defined IMPROVED_MENU_AND_INPUT && defined FIRING_AND_AIMING
++		if(shooter == FindPlayerPed() && !FindPlayerPed()->bIsAutoAiming)
++#else
++		if(shooter == FindPlayerPed() && TheCamera.Cams[0].Using3rdPersonMouseCam())
++#endif
+ 		{
+ 			CVector Left;
+ #ifdef FREE_CAM
+@@ -2217,6 +2221,7 @@ CWeapon::FireProjectile(CEntity *shooter, CVector *fireSource, float power)
+ 
+ 		if ( shooter->IsPed() && ((CPed*)shooter)->IsPlayer() )
+ 		{
++#ifndef FIRING_AND_AIMING
+ 			int16 mode = TheCamera.Cams[TheCamera.ActiveCam].Mode;
+ 			if (!( mode == CCam::MODE_M16_1STPERSON
+ 				|| mode == CCam::MODE_SNIPER
+@@ -2227,6 +2232,7 @@ CWeapon::FireProjectile(CEntity *shooter, CVector *fireSource, float power)
+ 			{
+ 				return false;
+ 			}
++#endif
+ 
+ 			*fireSource += TheCamera.Cams[TheCamera.ActiveCam].Front;
+ 		}
+@@ -2398,6 +2404,7 @@ CWeapon::FireSniper(CEntity *shooter)
+ {
+ 	ASSERT(shooter!=nil);
+ 	
++#ifndef FIRING_AND_AIMING
+ 	if ( (CEntity *)FindPlayerPed() == shooter )
+ 	{
+ 		int16 mode = TheCamera.Cams[TheCamera.ActiveCam].Mode;
+@@ -2411,7 +2418,9 @@ CWeapon::FireSniper(CEntity *shooter)
+ 		{
+ 			return false;
+ 		}
++
+ 	}
++#endif
+ 
+ #ifdef SECUROM
+ 	if (sniperPirateCheck){
+@@ -3063,6 +3072,10 @@ CWeapon::DoDriveByAutoAiming(CEntity *driver, CVehicle *vehicle, CVector *source
+ 	}
+ }
+ 
++/// <summary>
++/// TODO Try to add infinite ammo into this.
++/// </summary>
++/// <param name=""></param>
+ void
+ CWeapon::Reload(void)
+ {
+@@ -3245,6 +3258,7 @@ FireOneInstantHitRound(CVector *source, CVector *target, int32 damage)
+ 
+ 	CColPoint point;
+ 	CEntity *victim;
++	// TODO Look into this sometime
+ 	CWorld::ProcessLineOfSight(*source, *target, point, victim, true, true, true, true, true, true, false);
+ 
+ 	CParticle::AddParticle(PARTICLE_HELI_ATTACK, *source, ((*target) - (*source)) * 0.15f);
+@@ -3458,6 +3472,11 @@ CWeapon::BlowUpExplosiveThings(CEntity *thing)
+ 	}
+ }
+ 
++/// <summary>
++/// TODO Look into this function.
++/// </summary>
++/// <param name=""></param>
++/// <returns></returns>
+ bool
+ CWeapon::HasWeaponAmmoToBeUsed(void)
+ {
+@@ -3472,6 +3491,9 @@ CWeapon::HasWeaponAmmoToBeUsed(void)
+ 		return m_nAmmoTotal != 0;
+ }
+ 
++/// <summary>
++/// TODO Look into this, draw it to the SetText in custom_cheats.cpp as a test.
++/// </summary>
+ bool
+ CPed::IsPedDoingDriveByShooting(void)
+ {
+diff --git a/src/weapons/WeaponEffects.cpp b/src/weapons/WeaponEffects.cpp
+index 9e6ca65c..f43d5852 100644
+--- a/src/weapons/WeaponEffects.cpp
++++ b/src/weapons/WeaponEffects.cpp
+@@ -106,12 +106,13 @@ CWeaponEffects::Render(void)
+ 		{
+ 			PUSH_RENDERGROUP("CWeaponEffects::Render");
+ 
++#ifndef IMPROVED_MENU_AND_INPUT
+ 			float recipz = 1.0f / pos.z;
+ 			CSprite::RenderOneXLUSprite_Rotate_Aspect(pos.x, pos.y, pos.z,
+ 				w, h,
+ 				255, 88, 100, 158,
+ 				recipz, gCrossHair.m_fRotation, gCrossHair.m_nAlpha);
+-				
++#endif
+ 			float recipz2 = 1.0f / pos.z;
+ 			
+ 			CSprite::RenderOneXLUSprite_Rotate_Aspect(pos.x, pos.y, pos.z,
+-- 
+2.45.1.windows.1
+

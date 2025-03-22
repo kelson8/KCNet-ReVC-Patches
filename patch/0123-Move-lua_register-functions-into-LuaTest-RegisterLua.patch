@@ -1,0 +1,1766 @@
+From 6f50e90e1abbe559afc7109b8d09e911c75df77d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 20 Mar 2025 16:10:27 -0400
+Subject: [PATCH 123/129] Move lua_register functions into
+ LuaTest::RegisterLuaFunctions. Add player in vehicle check, and log_info for
+ lua. Fix area_check_test to work in my code, added to misc menu. Fix the lag
+ with ImGui for displaying warps. Add loading vehicles from ini to
+ ini_functions, add loading warp locations. Update ped_functions, update
+ vehicle_functions. Add get current direction, open current directory button,
+ and open specific directory button to imgui_functions. Update logger messages
+ in garage_functions. Add vehiclesIniFile to defines. Refactor
+ CustomCheats::SetText. Update config.h, fix some compile bugs. Add defines.h
+ to dll_log_headers, update logging.h Update ped_menu, add option to load all
+ vehicles from ini file for spawning, disabled. Add fix for focus loss, now
+ you can exit the game freely without the game pausing and locking the mouse,
+ win.cpp. Convert CGame::Initalise from static to non-static in win.cpp.
+ Update log_functions.h, update patch and commit number.
+
+---
+ guides/create-patches.md                   |   2 +-
+ src/core/Frontend.cpp                      |   4 +-
+ src/core/config.h                          |  13 +-
+ src/extras/cheats/custom_cheats.cpp        | 106 ++++++++-----
+ src/extras/defines.cpp                     |   2 +
+ src/extras/defines.h                       |   8 +
+ src/extras/functions/garage_functions.cpp  |  19 +--
+ src/extras/functions/garage_functions.h    |   8 +-
+ src/extras/functions/imgui_functions.cpp   |  35 +++++
+ src/extras/functions/imgui_functions.h     |   8 +
+ src/extras/functions/ini_functions.cpp     | 165 ++++++++++++++++++++-
+ src/extras/functions/ini_functions.h       |  20 ++-
+ src/extras/functions/log_functions.h       |   6 +
+ src/extras/functions/ped_functions.cpp     |  94 +++++++-----
+ src/extras/functions/vehicle_functions.cpp |  40 +++--
+ src/extras/kcnet/dll_log_headers.h         |   5 +-
+ src/extras/kcnet/logging.h                 |   5 +-
+ src/extras/lua/lua_functions.cpp           |  55 ++++++-
+ src/extras/lua/lua_functions.h             |   3 +
+ src/extras/lua/lua_test.cpp                |  87 ++++-------
+ src/extras/lua/lua_test.h                  |   2 +-
+ src/extras/menus/misc_menu.cpp             |  77 ++++++++++
+ src/extras/menus/ped_menu.cpp              |   6 +-
+ src/extras/menus/vehicle_spawn_menu.cpp    |  59 ++++++--
+ src/extras/menus/warp_menu.cpp             |  13 +-
+ src/extras/test/area_check_test.cpp        |  65 +++++---
+ src/extras/test/area_check_test.h          |   2 +-
+ src/skel/win/win.cpp                       |  46 +++++-
+ 28 files changed, 733 insertions(+), 222 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 8c2692d1..fd86dc31 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 122, patch number: 122)
++(Currently on commit 123, patch number: 123)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 3f4070d3..4d0713a1 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -1739,10 +1739,10 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						||
+ 
+ #ifdef FIRST_PERSON
+-						action == MENUACTION_FOV_FP
++						action == MENUACTION_FOV_FP ||
+ #endif
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+-						|| action == MENUACTION_CFO_SLIDER
++						action == MENUACTION_CFO_SLIDER
+ #endif
+ 						) {
+ 						rightXMin = 600;
+diff --git a/src/core/config.h b/src/core/config.h
+index ff25a35e..6a2fecaa 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -100,6 +100,8 @@
+ // Begin working
+ 
+ // Well one of these break aiming in a vehicle.
++// TODO Figure out what is breaking free look in a chopper, I'm forced to aim with one of these.
++// Well I disabled all of these and it didn't fix it, so something somewhere else is breaking freelook in a chopper.
+ #define FIRING_AND_AIMING
+ // I think I mostly got this one completed also.
+ #define FIRST_PERSON
+@@ -107,6 +109,10 @@
+ // Enable better crouching support
+ #define CROUCH
+ 
++// I got the code for this implemented into here
++// This works fine now!
++#define SWIMMING
++
+ // Enable the plugin sdk test
+ // I have it in src/extras/plugin_sdk_test
+ // Files:
+@@ -144,9 +150,7 @@
+ // TODO Fix this, if enabled in the features.ini the rocket launcher doesn't have the proper animations, and won't work.
+ #define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+ 
+-// I got the code for this implemented into here
+-// This works fine now!
+-#define SWIMMING
++
+ 
+ // End working
+ 
+@@ -492,6 +496,9 @@ enum Config {
+ 
+ 	NUM_CRANES = 8,
+ 	NUM_ESCALATORS = 22,
++	// Well changing this and changing it in Fluff.cpp also disables the elevators and makes them have a flat surface.
++	// TODO Can I place these anywhere?
++	//NUM_ESCALATORS = 21,
+ 	NUM_WATER_CREATURES = 8,
+ 
+ 	NUM_EXPLOSIONS = 48,
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index d1a3fbd3..946a7389 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -656,6 +656,55 @@ CustomCheats::ToggleText()
+ 	toggleText = !toggleText;
+ }
+ 
++/// <summary>
++/// Moved the setup for my custom text into here, so I don't have to keep redefining this.
++/// </summary>
++void
++SetupTextAndFont(std::string text)
++{
++	char str[200];
++	wchar ustr[200];
++
++	sprintf(str, text.c_str());
++
++	AsciiToUnicode(str, ustr);
++
++	CFont::SetPropOn();
++	CFont::SetBackgroundOff();
++
++	CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
++	// CFont::SetScale(SCREEN_SCALE_X(0.4f), SCREEN_SCALE_Y(0.4f));
++	CFont::SetCentreOff();
++	CFont::SetRightJustifyOff();
++	CFont::SetJustifyOff();
++	CFont::SetBackGroundOnlyTextOff();
++	CFont::SetWrapx(SCREEN_STRETCH_X(DEFAULT_SCREEN_WIDTH));
++
++	// Set font style
++	CFont::SetFontStyle(FONT_STANDARD);
++	// CFont::SetFontStyle(FONT_HEADING);
++
++	// Set the drop color, shadow position
++	CFont::SetDropColor(CRGBA(0, 0, 0, 255));
++	CFont::SetDropShadowPosition(2);
++
++	// Set the black color for the black text on the screen.
++	CFont::SetColor(CRGBA(0, 0, 0, 255));
++
++	// Setting the position to the black part of the text
++	CFont::PrintString(41.0f, 41.0f, ustr);
++
++	// Set the yellow color for the second part of the text
++	CFont::SetColor(CRGBA(205, 205, 0, 255));
++
++	// Setting the position to the yellow part of the text
++	CFont::PrintString(40.0f, 40.0f, ustr);
++
++	// Quite sure this is for drawing the fonts
++	CFont::DrawFonts();
++
++}
++
+ /// <summary>
+ /// TODO Possibly add this to Idle and FrontendIdle in main.cpp
+ /// Once I figure out how to make this stay on the screen, 
+@@ -667,10 +716,13 @@ CustomCheats::ToggleText()
+ void
+ CustomCheats::SetText(std::string text)
+ {
++	CPlayerPed *pPlayer = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++	PlayerUtil playerUtil = PlayerUtil();
++	CUpsideDownCarCheck cUpsideDownCarCheck = CUpsideDownCarCheck();
++
+ 	if(toggleText) {
+ 
+-		char str[200];
+-		wchar ustr[200];
+ 		// This seems to be a way to draw to the screen, I could possibly use this in my menus or something
+ 		// TODO Look into this.
+ 
+@@ -678,6 +730,7 @@ CustomCheats::SetText(std::string text)
+ 		// Can I do something with this and draw a test menu with the debug menu? Hmm might be possible.
+ 
+ 		/* Example from SceneEdit.cpp:
++		* Moved into SetupTextAndFont
+ 		sprintf(str, "Selected");
+ 		AsciiToUnicode(str, wstr);
+ 		*/
+@@ -687,46 +740,25 @@ CustomCheats::SetText(std::string text)
+ 		int controllerButton = cControllerConfigManager.GetJoyButtonJustDown();
+ 		std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
+ 
+-		// sprintf(str, "Test");
+-		//sprintf(str, controllerButtonMessage.c_str());
+-		sprintf(str, text.c_str());
+-		//sprintf(str, "KCNet-ReVC");
+-
+-		AsciiToUnicode(str, ustr);
+-
+-		CFont::SetPropOn();
+-		CFont::SetBackgroundOff();
+-
+-		CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
+-		//CFont::SetScale(SCREEN_SCALE_X(0.4f), SCREEN_SCALE_Y(0.4f));
+-		CFont::SetCentreOff();
+-		CFont::SetRightJustifyOff();
+-		CFont::SetJustifyOff();
+-		CFont::SetBackGroundOnlyTextOff();
+-		CFont::SetWrapx(SCREEN_STRETCH_X(DEFAULT_SCREEN_WIDTH));
+-
+-		// Set font style
+-		CFont::SetFontStyle(FONT_STANDARD);
+-		// CFont::SetFontStyle(FONT_HEADING);
+-
+-		// Set the drop color, shadow position
+-		CFont::SetDropColor(CRGBA(0, 0, 0, 255));
+-		CFont::SetDropShadowPosition(2);
++		// This works! My new function is setup so I don't have to duplicate this code as much.
++		//SetupTextAndFont(text);
++		
++		//if(vehicleFunctions.IsPlayerInVehicle()) {
++		//	CVehicle *currentVeh = playerUtil.GetCurrentVehicle();
++		//	bool isPlayerVehicleUpsideDown = cUpsideDownCarCheck.IsCarUpsideDown(currentVeh);
++		//	std::string isPlayerVehicleUpsideDownStr = isPlayerVehicleUpsideDown ? "Vehicle upside down" : "Vehicle not upside down";
+ 
+-		// Set the black color for the black text on the screen.
+-		CFont::SetColor(CRGBA(0, 0, 0, 255));
++		//	SetupTextAndFont(isPlayerVehicleUpsideDownStr.c_str());
++		//}
+ 
+-		// Setting the position to the black part of the text
+-		CFont::PrintString(41.0f, 41.0f, ustr);
+ 
+-		// Set the yellow color for the second part of the text
+-		CFont::SetColor(CRGBA(205, 205, 0, 255));
++		//SetupTextAndFont(pPlayer->bIsShooting ? "Player is shooting" : "Player is not shooting");
++		//SetupTextAndFont(pPlayer->bIsAimingGun ? "Player is aiming" : "Player is not aiming");
+ 
+-		// Setting the position to the yellow part of the text
+-		CFont::PrintString(40.0f, 40.0f, ustr);
+ 
+-		// Quite sure this is for drawing the fonts
+-		CFont::DrawFonts();
++		// This works for displaying stuff on the screen
++		//SetupTextAndFont(pPlayer->bIsShooting ? "Player is shooting" : "Player is not shooting");
++		//SetupTextAndFont(pPlayer->bIsAimingGun ? "Player is aiming" : "Player is not aiming");
+ 	}
+ 
+ 	// TODO Look into win.cpp, try to use the PrintMemoryUsage function for drawing a menu, modify it a bit
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index ee8e258e..397cfaaf 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -53,3 +53,5 @@ std::string Defines::imGuiControlsIniFile = viceExtendedFolder + "ImGui-Controls
+ std::string Defines::warpsIniFile = viceExtendedFolder + "warps.ini";
+ std::string Defines::featuresIniFile = viceExtendedFolder + "features.ini";
+ 
++std::string Defines::vehiclesIniFile = viceExtendedFolder + "vehicles.ini";
++
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 58292700..56e2eba7 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -2,6 +2,11 @@
+ 
+ #include <iostream>
+ 
++// New for dll logging
++#define LOG_CLASS_TEST
++#define LOG_DLL_TEST
++//
++
+ // TODO Move file path defines into here, so I can easily change the folder path from 'ViceExtended'
+ // To something else.
+ class Defines
+@@ -36,6 +41,9 @@ public:
+ 	// Vice Extended features
+ 	static std::string featuresIniFile;
+ 
++	// Vehicles
++	static std::string vehiclesIniFile;
++
+ 
+ 	// Program info
+ 	static std::string modificationName;
+diff --git a/src/extras/functions/garage_functions.cpp b/src/extras/functions/garage_functions.cpp
+index 7c5e011f..2fe2bb82 100644
+--- a/src/extras/functions/garage_functions.cpp
++++ b/src/extras/functions/garage_functions.cpp
+@@ -44,13 +44,12 @@
+ 
+ // New log functions, in dll
+ // This works! I had to reconfigure the dll_log_headers and add some init for it to win.cpp.
+-//#include "dll_log_headers.h"
+-//
+-//#include "logging.h"
++#include "dll_log_headers.h"
+ 
+-#ifdef LOG_DLL_TEST
++#include "logging.h"
++
++#ifndef LOG_DLL_TEST
+ // This should only include this file if the dll log isn't defined.
+-#else
+ #include "log_functions.h"
+ #endif
+ 
+@@ -73,7 +72,7 @@ void
+ GarageFunctions::CreateGarage(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId)
+ {
+ #ifdef LOG_DLL_TEST
+-	Logger logger = Logger();
++	//Logger logger = Logger();
+ #endif
+ 	CGarages::AddOne(X1, Y1, Z1, X2, Y2, X3, Y3, Z2, type, targetId);
+ 	std::string garageCreatedString = "Garage added at X1: " + std::to_string(X1) + " Y1: " + std::to_string(Y1) + " Z1: " + std::to_string(Z1) +
+@@ -108,9 +107,6 @@ GarageFunctions::ChangeGarageType(int16 garage, uint8 type, int32 modelIndex)
+ void
+ GarageFunctions::OpenGarage(int16 garage)
+ {
+-#ifdef LOG_DLL_TEST
+-	Logger logger = Logger();
+-#endif
+ 	CGarages::OpenGarage(garage);
+ 
+ 	std::string garageOpenedString = "Garage id: " + std::to_string(garage) + " opened";
+@@ -135,7 +131,7 @@ GarageFunctions::CloseGarage(int16 garage)
+ 
+ 
+ #ifdef LOG_DLL_TEST
+-	logInfo(defines.logFilePath.c_str(), garageClosedString.c_str());
++	logger.info(defines.logFilePath, garageClosedString);
+ #else
+ 	LogFunctions::LogInfo(defines.logFile, garageClosedString);
+ #endif
+@@ -146,9 +142,8 @@ GarageFunctions::IsGarageOpened(int16 garage)
+ {
+ 	std::string garageCurrentlyOpenString = "Garage id: " + std::to_string(garage) + " is currently open";
+ 
+-
+ #ifdef LOG_DLL_TEST
+-	logInfo(defines.logFilePath.c_str(), garageCurrentlyOpenString.c_str());
++	logger.info(defines.logFilePath, garageCurrentlyOpenString);
+ #else
+ 	LogFunctions::LogInfo(defines.logFile, garageCurrentlyOpenString);
+ #endif
+diff --git a/src/extras/functions/garage_functions.h b/src/extras/functions/garage_functions.h
+index 82a9e9cd..c4d18ce3 100644
+--- a/src/extras/functions/garage_functions.h
++++ b/src/extras/functions/garage_functions.h
+@@ -1,7 +1,9 @@
+ #pragma once
+ #include "common.h"
+ #include "defines.h"
+-
++#ifdef LOG_DLL_TEST
++#include "logging.h"
++#endif
+ 
+ class GarageFunctions
+ {
+@@ -9,6 +11,10 @@ private:
+ 	// TODO Test this
+ 	Defines defines;
+ 
++#ifdef LOG_DLL_TEST
++	Logger logger;
++#endif
++
+ public:
+ 	void CreateGarage(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId);
+ 	void ChangeGarageType(int16 garage, uint8 type, int32 modelIndex);
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 9c611de4..02d29354 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -23,6 +23,8 @@
+ 
+ #include "log_functions.h"
+ 
++#include <direct.h>
++
+ 
+ // I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with myself.
+ 
+@@ -470,3 +472,36 @@ ImGuiFunctions::GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
+ 
+ 	return {index1, index2};
+ }
++
++
++// Moved out of misc_menu
++// TODO Move this into a utilities file, possible win_util.cpp or something.
++std::string
++ImGuiFunctions::GetCurrentWorkingDirectory()
++{
++	char buffer[MAX_PATH];
++	if(_getcwd(buffer, sizeof(buffer)) != nullptr) {
++		return std::string(buffer);
++	} else {
++		return ""; // Or handle the error appropriately
++	}
++}
++
++void
++ImGuiFunctions::OpenCurrentDirectoryButton(const char *buttonLabel)
++{
++	std::string currentDir = GetCurrentWorkingDirectory();
++	if(!currentDir.empty() && ImGui::Button(buttonLabel)) { ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
++}
++
++void
++ImGuiFunctions::OpenDirectoryButton(std::string folder, const char *buttonLabel)
++{
++	Defines defines = Defines();
++	// std::string currentDir = GetCurrentWorkingDirectory() + folder;
++	if(!folder.empty() && ImGui::Button(buttonLabel)) {
++		LogFunctions::LogInfo(defines.logFile, "Folder path: " + folder);
++		// ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
++		ShellExecuteA(nullptr, "explore", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
++	}
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 4519c33c..15055f7c 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -6,6 +6,8 @@
+ 
+ #include "imgui.h"
+ 
++#include <string>
++
+ // Oops, I was missing this header.
+ #include <cstdint>
+ 
+@@ -68,6 +70,12 @@ public:
+ 	
+ 	std::pair<int, int> GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2);
+ 
++	// Windows directory opening and buttons
++	std::string GetCurrentWorkingDirectory();
++	void OpenCurrentDirectoryButton(const char *buttonLabel);
++	void OpenDirectoryButton(std::string folder, const char *buttonLabel);
++	//
++
+ 
+ 	// ImGui Buttons, these work now
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index b70578d5..e61914fd 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -78,7 +78,11 @@
+ //#include "player_cheats.h"
+ #include "imgui.h"
+ 
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
++
+ #include <map>
++#include <optional>
+ 
+ // New logging functions
+ //#include "dll_log_headers.h"
+@@ -133,13 +137,142 @@ IniFunctions::SplitString(const std::string &str, char delimiter)
+ 	return tokens;
+ }
+ 
++//------------------
++// Vehicles
++//------------------
++mINI::INIFile vehiclesIni(Defines::vehiclesIniFile);
++mINI::INIStructure vehiclesCfg;
++
++// Store vehicle data
++std::vector<IniFunctions::VehicleData> vehicles;
++
++// This seems to work, I just have it disabled because I need to
++// refactor the ImGui side of it, 
++// TODO Add a spawn button at the bottom.
++// TODO Add a spawn in vehicle checkbox.
++
++std::vector<IniFunctions::VehicleCategory>
++IniFunctions::LoadVehiclesFromIni(const std::string &filename)
++{
++	mINI::INIFile file(filename);
++	mINI::INIStructure ini;
++	file.read(ini);
++
++	std::vector<VehicleCategory> categories;
++	for(const auto &section : ini) {
++		VehicleCategory category;
++		category.name = section.first;
++
++		for(const auto &entry : section.second) {
++			std::string vehicleName = entry.first;
++			std::string vehicleIdStr = entry.second; // Vehicle ID is the value
++
++			VehicleData vehicleData;
++			vehicleData.name = vehicleName; // Set the vehicle name
++			try {
++				vehicleData.id = std::stoi(vehicleIdStr); // Convert ID to integer
++				category.vehicles.emplace_back(vehicleName, vehicleData);
++			} catch(const std::invalid_argument &e) {
++				std::cerr << "Error parsing vehicle ID: " << vehicleIdStr << " in " << vehicleName << std::endl;
++			} catch(const std::out_of_range &e) {
++				std::cerr << "Error parsing vehicle ID: " << vehicleIdStr << " in " << vehicleName << std::endl;
++			}
++		}
++
++		categories.push_back(category);
++	}
++	return categories;
++}
++
++//std::vector<IniFunctions::VehicleCategory> 
++//IniFunctions::LoadVehiclesFromIni(const std::string &filename)
++//{
++//	mINI::INIFile file(filename);
++//	mINI::INIStructure ini;
++//	file.read(ini);
++//
++//	std::vector<VehicleCategory> categories;
++//	for(const auto &section : ini) {
++//		VehicleCategory category;
++//		category.name = section.first;
++//
++//		for(const auto &entry : section.second) {
++//			std::string vehicleName = entry.first;
++//			std::string vehicleDataStr = entry.second;
++//
++//			std::stringstream ss(vehicleDataStr);
++//			VehicleData vehicleData;
++//			char comma;
++//
++//			if(ss >> vehicleData.name >> comma >> vehicleData.id) {
++//				category.vehicles.emplace_back(vehicleName, vehicleData);
++//
++//			//if(ss >> locationData.interiorId >> comma >> locationData.posX >> comma >> locationData.posY >> comma >> locationData.posZ) {
++//			//	category.locations.emplace_back(locationName, locationData);
++//			} else {
++//				std::cerr << "Error parsing location data: " << vehicleDataStr << std::endl;
++//			}
++//		}
++//
++//		categories.push_back(category);
++//	}
++//	return categories;
++//
++//}
++
++/// <summary>
++/// This works for spawning in vehicles.
++/// TODO Add a spawn in vehicle checkbox
++/// TODO Fix this to have a spawn button at the bottom.
++/// </summary>
++/// <param name="categories"></param>
++void
++IniFunctions::DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &categories)
++{
++	CustomCheats customCheats = CustomCheats();
++
++	ImGui::Separator();
++	ImGui::Text("Vehicle Spawner");
++
++	for(const auto &category : categories) {
++		if(ImGui::CollapsingHeader(category.name.c_str())) {
++			if(ImGui::BeginListBox(("##" + category.name).c_str(),
++			                       ImVec2(-FLT_MIN, category.vehicles.size() * ImGui::GetTextLineHeightWithSpacing()))) {
++				
++				for(const auto &vehicle : category.vehicles) {
++					ImGui::Text("%s", vehicle.first.c_str()); // Display the vehicle name
++
++					// Oh this one removes the
++					// if(ImGui::Selectable(location.first.c_str())) {}
++					ImGui::SameLine(); // Place the button on the same line
++
++					if(ImGui::Button(("Spawn##" + vehicle.first).c_str())) { // Add a teleport button
++						std::cout << defines.KcLogString << "Spawning: " << category.name << " - " << vehicle.first << std::endl;
++						std::cout << defines.KcLogString << "Vehicle ID: " << vehicle.second.id << std::endl;
++						
++						// Clear the area
++						customCheats.ClearItemsFromArea(25);
++
++						// Spawn the vehicle
++						VehicleFunctions::SpawnVehicle(vehicle.second.id, false, false);
++						//PlayerCheats::SetPlayerPosition(location.second.posX, location.second.posY, location.second.posZ);
++					}
++				}
++				ImGui::EndListBox();
++			}
++		}
++	}
++}
++
++//------------------
++// Warps
++//------------------
++
+ mINI::INIFile warpsIni(Defines::warpsIniFile);
+ mINI::INIStructure warpsCfg;
+ 
+ std::vector<IniFunctions::WarpData> warps; // Store warp data
+ 
+-/////////////////////////////////////
+-
+ 
+ 
+ 
+@@ -210,9 +343,26 @@ IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &catego
+ 	}
+ }
+ 
+-///////////////////////////////////////
++// Setup loading for Game init
++std::vector<IniFunctions::Category> loadedLocations;
+ 
++// Calling this in CGame::Init
++// And as a button under warp_menu
++void
++IniFunctions::LoadLocations()
++{
++	loadedLocations = LoadLocationsFromIni(defines.warpsIniFile);
++}
++
++void
++IniFunctions::DisplayLocationsImGui()
++{
++	DisplayLocations(loadedLocations);
++}
++
++//------------------
+ // Read the data from the warp file
++//------------------
+ IniFunctions::WarpData
+ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIStructure &warpsCfg)
+ {
+@@ -244,12 +394,13 @@ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIS
+ }
+ 
+ 
+-//-----------
++//------------------
+ // End new tests
+-//-----------
++//------------------
+ 
+-
+-//
++//------------------
++// Old warp function
++//------------------
+ 
+ /// <summary>
+ /// This is now running in CGame::Initialise, this fixes the lag for ImGui.
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index b738487b..219c343c 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -28,6 +28,11 @@ public:
+ 		float x, y, z;
+ 	};
+ 
++	struct VehicleData {
++		std::string name;
++		int id;
++	};
++
+ 	struct LocationData {
+ 		int interiorId;
+ 		float posX, posY, posZ;
+@@ -38,6 +43,11 @@ public:
+ 		std::vector<std::pair<std::string, LocationData>> locations;
+ 	};
+ 
++	struct VehicleCategory {
++		std::string name;
++		std::vector<std::pair<std::string, VehicleData>> vehicles;
++	};
++
+ 	// New, warp categories
+ #ifdef NEW_WARP_TEST
+ 	std::vector<IniFunctions::WarpData> categorizedWarps;
+@@ -53,10 +63,18 @@ public:
+ 
+ 	std::vector<std::string> SplitString(const std::string &str, char delimiter);
+ 
+-	// New test
++	// Load locations
+ 	std::vector<Category> LoadLocationsFromIni(const std::string &filename);
+ 	void DisplayLocations(const std::vector<IniFunctions::Category> &categories);
+ 
++	// New load locations
++	void LoadLocations();
++	void DisplayLocationsImGui();
++	//
++
++	// Load Vehicles
++	std::vector<VehicleCategory> LoadVehiclesFromIni(const std::string &filename);
++	void DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &categories);
+ 
+ 	//WarpData ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIStructure &warpsCfg);
+ 	void ImGuiWarpList();
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+index cfd02c87..9e48fd6a 100644
+--- a/src/extras/functions/log_functions.h
++++ b/src/extras/functions/log_functions.h
+@@ -2,6 +2,12 @@
+ #include <iostream>
+ #include <string>
+ 
++// I have started working on a dll for this log functions project, 
++// I will need to double check the paths in ReVC once I test it, since I modified the functions a bit
++
++// The project name so far is KCNet-Logging-Dll, I'll probably come up with a better name sometime.
++// I have made the project open source under the MIT license since it's something I am playing around with.
++
+ class LogFunctions
+ {
+ //private:
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 0389c5a3..30012d80 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -15,6 +15,7 @@
+ #include "Population.h"
+ 
+ #include "Streaming.h"
++#include <thread>
+ 
+ // TODO Replicate these into C++
+ 
+@@ -31,56 +32,83 @@
+ void
+ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+ {
++	// Possibly use this to load the model in.
++	// int mi = ped->GetModelIndex();
++    // Moved to top as a test
++	CStreaming::RequestModel(modelIndex, 0);
++	//CStreaming::RequestModel(modelIndex, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(true);
+ 
++	Defines defines = Defines();
+     // Raise the values in here.
+     CVector playerPedPos = FindPlayerPed()->GetPosition();
+-	float playerX = playerPedPos.x + 3;
+-	float playerY = playerPedPos.x + 3;
+-	float playerZ = playerPedPos.z;
++	float playerX = playerPedPos.x + 3.0f;
++	float playerY = playerPedPos.y + 3.0f;
++	float playerZ = playerPedPos.z + 3.0f;
+ 
+     CVector playerPosNew = CVector(playerX, playerY, playerZ);
+ 
+-    // Possibly use this to load the model in.
+-    // int mi = ped->GetModelIndex();
+-    CStreaming::RequestModel(modelIndex, 0);
+-    CStreaming::LoadAllRequestedModels(false);
+ 
+-	CPed *ped;
+-	if(pedType == PEDTYPE_COP) 
+-        ped = new CCopPed((eCopType)COP_STREET);
+ 
+-    else if (pedType == PEDTYPE_EMERGENCY || pedType == PEDTYPE_FIREMAN)
+-		ped = new CEmergencyPed(pedType);
+-    else
+-	    ped = new CCivilianPed((ePedType)PEDTYPE_CIVMALE, modelIndex);
++    // Add attempt checking to see if model is loaded, this didn't work.
++    int attempts = 0;
++    while(!CStreaming::HasModelLoaded(modelIndex) && attempts < 100) { 
++        // Delay it a bit, 10 ms
++        std::this_thread::sleep_for(std::chrono::milliseconds(10));
++	    attempts++;
++    }
++    //
+ 
++    // Check if the model has loaded.
++    if(CStreaming::HasModelLoaded(modelIndex)) {
+ 
++	    CPed *ped;
++	    if(pedType == PEDTYPE_COP) {
++		    eCopType copType;
++		    switch(modelIndex) {
++		    case MI_COP: copType = COP_STREET; break;
++		    case MI_SWAT: copType = COP_SWAT; break;
++		    case MI_FBI: copType = COP_FBI; break;
++		    case MI_ARMY: copType = COP_ARMY; break;
++		    default: copType = COP_STREET; break; // Default cop type
++		    }
++		    ped = new CCopPed(copType);
++	    } else if(pedType == PEDTYPE_EMERGENCY || pedType == PEDTYPE_FIREMAN) {
++		    ped = new CEmergencyPed(pedType); // Model index is the ped type here.
++	    } else {
++		    ped = new CCivilianPed(pedType, modelIndex);
++	    }
+ 
+-    // Setup the ped
++	    // Setup the ped
+ 
+-    ped->CharCreatedBy = MISSION_CHAR;
+-    ped->bRespondsToThreats = false;
+-    ped->bAllowMedicsToReviveMe = false;
+-    ped->bIsPlayerFriend = false;
++	    ped->CharCreatedBy = MISSION_CHAR;
++	    ped->bRespondsToThreats = false;
++	    ped->bAllowMedicsToReviveMe = false;
++	    ped->bIsPlayerFriend = false;
+ 
+-    CVector pos = playerPosNew;
++	    CVector pos = playerPosNew;
+ 
+-   if(pos.z <= MAP_Z_LOW_LIMIT) 
+-       pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++	    if(pos.z <= MAP_Z_LOW_LIMIT) 
++            pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+ 
+-   pos.z += 1.0f;
+-   ped->SetPosition(pos);
+-   ped->SetOrientation(0.0f, 0.0f, 0.0f);
++	    pos.z += 1.0f;
++	    ped->SetPosition(pos);
++	    ped->SetOrientation(0.0f, 0.0f, 0.0f);
+ 
+-   // Clear space for the mission entity
+-   //CTheScripts::ClearSpaceForMissionEntity(pos, ped);
++        // Clear space for the mission entity
++        CTheScripts::ClearSpaceForMissionEntity(pos, ped);
++	    ped->bIsStaticWaitingForCollision = true; // Mimic mission script behavior.
+ 
+-   // Add the ped to the world
+-   CWorld::Add(ped);
+-
+-   //ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
+-   //
+-   //CPopulation::ms_nTotalMissionPeds++;
++	    // Add the ped to the world
++	    CWorld::Add(ped);
++	    ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
++	    CPopulation::ms_nTotalMissionPeds++;
++	    
++        // Release the model after use.
++	    //CStreaming::SetModelIsDeletable(modelIndex);
++    } else {
++	    std::cout << defines.KcLogString << "Model " << modelIndex << " is not loaded yet." << std::endl;
++    }
+     
+ }
+ 
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index cca3e84e..ba67cfc3 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -65,6 +65,8 @@
+ 
+ #include "player_util.h"
+ 
++#include "thread"
++
+ //#include "test/scriptcommands_test.h"
+ #endif // CUSTOM_CODE
+ 
+@@ -480,6 +482,7 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 			//float playerZ = playerCoords.z;
+ 
+ 			pPed->SetObjective(OBJECTIVE_LEAVE_CAR);
++			pPed->SetObjectiveTimer(10000);
+ 			// Well this didn't work.
+ 			//pPed->SetPosition(CVector(playerX, playerY, playerZ));
+ 
+@@ -489,6 +492,14 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 				playerVeh->ActivateBomb();
+ 				// pPed->m_fHealth = 0;
+ 			}
++
++			// TODO Test this.
++			// Oops, this just crashes it.
++			//while(pPed->bInVehicle) 
++			//{
++			//	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
++			//	std::this_thread::yield();
++			//}
+ 			
+ 			// Remove the vehicle from the world
+ 			VehicleFunctions::RemoveCurrentVehicleFromWorld();
+@@ -501,19 +512,22 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		//if(warpIntoVehicle && CTimer::GetTimeInMilliseconds() - newTime > 500)
+ 		if(warpIntoVehicle)
+ 		{
+-			// Extras
+-			pPed->bInVehicle = true;
+-			pPed->m_pMyVehicle = v;
+-			// Will this crash it?
+-			pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
+-			pPed->m_nPedState = PED_DRIVING;
+-
+-			// Original function
+-			if (CTimer::GetTimeInMilliseconds() - newTime > 500)
+-			{
+-				newTime = CTimer::GetTimeInMilliseconds();
+-				pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
+-				pPed->WarpPedIntoCar(v);
++			if(!pPed->bInVehicle) {
++				
++					
++					// Extras
++					pPed->bInVehicle = true;
++					pPed->m_pMyVehicle = v;
++					// Will this crash it?
++					pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
++					pPed->m_nPedState = PED_DRIVING;
++
++					// Original function
++					if(CTimer::GetTimeInMilliseconds() - newTime > 500) {
++					        newTime = CTimer::GetTimeInMilliseconds();
++						pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
++						pPed->WarpPedIntoCar(v);
++					}
+ 			}
+ 
+ 		}
+diff --git a/src/extras/kcnet/dll_log_headers.h b/src/extras/kcnet/dll_log_headers.h
+index 16754059..0a8f63d2 100644
+--- a/src/extras/kcnet/dll_log_headers.h
++++ b/src/extras/kcnet/dll_log_headers.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ #include <iostream>
+ #include <Windows.h>
+-//#define LOG_DLL_TEST
++#include "defines.h"
+ 
+ // I got this working now as a dll, TODO Move log functions to this.
+ // I had to make a new path but I can reuse it on my other items.
+@@ -13,9 +13,6 @@
+ // Test for setting the values of this
+ extern HINSTANCE hLogDll;
+ extern "C" {
+-// typedef void (*LogInfo)(std::string fileName, std::string message);
+-// typedef void (*LogWarning)(std::string fileName, std::string message);
+-// typedef void (*LogError)(std::string fileName, std::string message);
+ 
+ typedef void (*LogInfo)(const char *fileName, const char *message);
+ typedef void (*LogWarning)(const char *fileName, const char *message);
+diff --git a/src/extras/kcnet/logging.h b/src/extras/kcnet/logging.h
+index 6746247b..464d5f5b 100644
+--- a/src/extras/kcnet/logging.h
++++ b/src/extras/kcnet/logging.h
+@@ -4,10 +4,11 @@
+ #include <string>
+ 
+ #include "dll_log_headers.h"
++#include "defines.h"
++
++// TODO Migrate stuff to this, it seems to work.
+ 
+-// TODO Test this later, I got it to build.
+ 
+-//#define LOG_CLASS_TEST
+ #ifdef LOG_CLASS_TEST
+ 
+ // Example in garage_functions.cpp:
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 6e68a0f4..3e61928e 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -86,8 +86,9 @@ disableLoseWeaponsOnDeathLua(lua_State *L)
+ 	pPlayerInfo.m_bGetOutOfHospitalFree = false;
+ 	pPlayerInfo.m_bGetOutOfJailFree = false;
+ 
+-	std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
+-	LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++	// This is annoying, it runs everytime the game starts or lua inits
++	//std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
++	//LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+ 	return 1;
+ }
+ 
+@@ -158,5 +159,55 @@ logPlayerHeadingLua(lua_State *L)
+ 	float playerHeading = playerUtil.PlayerHeading();
+ 	LogFunctions::LogInfo(defines.luaLogFile, "Player heading: " + std::to_string(playerHeading));
+ 
++	return 1;
++}
++
++// TODO Set these up
++void
++pushBooleanToLua(lua_State *L, bool value)
++{
++	lua_pushboolean(L, value);
++}
++
++/// <summary>
++/// This works for logging if the player is in a vehicle, tested with logMessageLua in lua.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int 
++isPlayerInVehicleLua(lua_State* L)
++{
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++	bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
++	pushBooleanToLua(L, isInVehicle);
++	return 1;
++}
++
++/// <summary>
++/// This works, log an info message using lua.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int
++logMessageLua(lua_State* L)
++{
++	Defines defines = Defines();
++	//std::string logString = lua_tostring(L, 1);
++	const char* logString = lua_tostring(L, 1);
++
++	if (logString == nullptr) { 
++		// Oops, forgot this.
++		lua_pushstring(L, "Error: missing string argument");
++		return 1;
++	}
++
++	LogFunctions::LogInfo(defines.luaLogFile, logString);
++	
++	return 1;
++}
++
++extern "C" int
++blowUpPlayerVehicle(lua_State *L)
++{
+ 	return 1;
+ }
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 53887378..d3ad6aca 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -18,6 +18,9 @@ extern "C" {
+ 	extern int logPlayerCoordsLua(lua_State *L);
+ 	extern int logPlayerHeadingLua(lua_State *L);
+ 
++	extern int isPlayerInVehicleLua(lua_State *L);
++    extern int logMessageLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index acdde205..06d74a51 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -474,51 +474,64 @@ printTable(lua_State *L, int index)
+ 
+ /// <summary>
+ /// I had to add this to the class to fix it.
+-/// TODO Setup this to run instead of the init function every time.
++/// I got this working, I had to add lua_State *L and get the lua state
++/// To move this back into the init function if needed:
++/// Rename the 'L' variable in each lua_register to 'm_luaVM'
+ /// </summary>
+ void
+-LuaTest::RegisterLuaFunctions()
++LuaTest::RegisterLuaFunctions(lua_State *L)
+ {
++	// Test for checking is 'L' is null
++	assert(L != nullptr);
++	// 
++
+ 	// This seems to work now.
+ 	//lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
+ 	lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
+ 
+-	lua_register(m_luaVM, "heal_player", HealPlayerLua);
++	lua_register(L, "heal_player", HealPlayerLua);
+ 
+ 	// Cheat test
+-	lua_register(m_luaVM, "cheat_test", CheatTestNew);
++	lua_register(L, "cheat_test", CheatTestNew);
+ 
+ 	// Toggle player control
+-	lua_register(m_luaVM, "toggle_control", TogglePlayerControlLua);
++	lua_register(L, "toggle_control", TogglePlayerControlLua);
+ 
+ 	// Test for ImGui
+-	lua_register(m_luaVM, "toggle_imgui", toggleImGuiLua);
++	lua_register(L, "toggle_imgui", toggleImGuiLua);
+ 
+ 	// Auto enable never wanted in the lua script
+-	lua_register(m_luaVM, "enable_never_wanted", enableNeverWantedLua);
++	lua_register(L, "enable_never_wanted", enableNeverWantedLua);
+ 
+ 	// Auto enable infinite health in the lua script
+-	lua_register(m_luaVM, "enable_infinite_health", enablePlayerInfiniteHealthLua);
++	lua_register(L, "enable_infinite_health", enablePlayerInfiniteHealthLua);
+ 
+ 	// Auto disable peds and vehicles in the lua script
+-	lua_register(m_luaVM, "disable_peds", disablePedsLua);
+-	lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
++	lua_register(L, "disable_peds", disablePedsLua);
++	lua_register(L, "disable_vehicles", disableVehiclesLua);
+ 
+ 	// This works
+ 	// TODO Get CVector for respawn from file.
+-	lua_register(m_luaVM, "set_respawn_point", setRespawnPointLua);
++	lua_register(L, "set_respawn_point", setRespawnPointLua);
+ 
+ 	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
+-	lua_register(m_luaVM, "cancel_override_restart", cancelOverrideNextRestartLua);
++	lua_register(L, "cancel_override_restart", cancelOverrideNextRestartLua);
+ 
+ 	// Toggles for losing weapons when dying.
+ 	// lua_register(m_luaVM, "toggle_lose_weapons_on_death", toggleLoseWeaponsOnDeathLua);
+-	lua_register(m_luaVM, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
+-	lua_register(m_luaVM, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
++	lua_register(L, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
++	lua_register(L, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
+ 
+ 	// Test for logging the player coords and heading
+-	lua_register(m_luaVM, "log_player_coords", logPlayerCoordsLua);
+-	lua_register(m_luaVM, "log_player_heading", logPlayerHeadingLua);
++	lua_register(L, "log_player_coords", logPlayerCoordsLua);
++	lua_register(L, "log_player_heading", logPlayerHeadingLua);
++
++	// Test for checking if player is in vehicle
++	lua_register(L, "is_player_in_vehicle", isPlayerInVehicleLua);
++
++	// Log messages in lua
++	// This works, log an info message in lua
++	lua_register(L, "log_info", logMessageLua);
+ 
+ 	
+ }
+@@ -567,47 +580,9 @@ LuaTest::InitLua()
+ 	// Usage: set_position(posX, posY, posZ)
+ 	//lua_register(L, "set_position", SetPlayerPositionLua);
+ 
+-	// Well I disabled the above since it breaks the keybind and respawn features.
+-	// I need to fix that.
+-	lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
+-
+-	lua_register(m_luaVM, "heal_player", HealPlayerLua);
+-
+-	// Cheat test
+-	lua_register(m_luaVM, "cheat_test", CheatTestNew);
+-
+-	// Toggle player control
+-	lua_register(m_luaVM, "toggle_control", TogglePlayerControlLua);
+-
+-	// Test for ImGui
+-	lua_register(m_luaVM, "toggle_imgui", toggleImGuiLua);
+-
+-	// Auto enable never wanted in the lua script
+-	lua_register(m_luaVM, "enable_never_wanted", enableNeverWantedLua);
+-
+-	// Auto enable infinite health in the lua script
+-	lua_register(m_luaVM, "enable_infinite_health", enablePlayerInfiniteHealthLua);
+-
+-	// Auto disable peds and vehicles in the lua script
+-	lua_register(m_luaVM, "disable_peds", disablePedsLua);
+-	//lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
+-	lua_register(m_luaVM, "disable_vehicles", disableVehiclesLua);
+-
+-	// This works
+-	// TODO Get CVector for respawn from file.
+-	lua_register(m_luaVM, "set_respawn_point", setRespawnPointLua);
+-
+-	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
+-	lua_register(m_luaVM, "cancel_override_restart", cancelOverrideNextRestartLua);
+-
+-	// Toggles for losing weapons when dying.
+-	//lua_register(m_luaVM, "toggle_lose_weapons_on_death", toggleLoseWeaponsOnDeathLua);
+-	lua_register(m_luaVM, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
+-	lua_register(m_luaVM, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
+ 
+-	// Test for logging the player coords and heading
+-	lua_register(m_luaVM, "log_player_coords", logPlayerCoordsLua);
+-	lua_register(m_luaVM, "log_player_heading", logPlayerHeadingLua);
++	// I finally got this working, I had to pass the lua state to it!
++	luaTest.RegisterLuaFunctions(m_luaVM);
+ 
+ 	// TODO Hook this up to the ImGui command test.
+ 
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 347a649f..7518447a 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -25,7 +25,7 @@ private:
+ 	lua_State *m_luaVM;
+ 
+ 	// This doesn't work right yet, crashes the game.
+-	void RegisterLuaFunctions();
++	void RegisterLuaFunctions(lua_State *L);
+ 
+ 	//LuaTest() { 
+ 	//	m_luaVM = luaL_newstate();
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 4989de99..b48f50df 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -32,6 +32,9 @@
+ 
+ #include "player_util.h"
+ 
++// For area check command reimplementation
++#include "area_check_test.h"
++
+ // TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
+ #ifdef PLUGIN_SDK_TEST
+ #include "../test/scriptcommands_test.h"
+@@ -69,6 +72,9 @@
+ #include <locale>
+ #include <codecvt>
+ 
++// TODO Move into a utilites file
++#include <direct.h>
++
+ // Added ICU library from here for these:
+ // https://github.com/unicode-org/icu/releases/tag/release-77-1
+ // https://unicode-org.github.io/icu/download/77.html
+@@ -89,6 +95,9 @@ bool toggleControllerText = false;
+ // This will toggle the custom text I setup in CustomCheats::SetText
+ bool drawKcNetText = false;
+ 
++// Show the current directory in ImGui
++bool showCurrentDirectory = false;
++
+ 
+ 
+  // Timecyc stuff
+@@ -294,6 +303,22 @@ MiscMenu::DisplayCounterOnScreen()
+ 
+ }
+ 
++
++// Folder stuff
++
++void
++ToggleCurrentDirectory()
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	if(showCurrentDirectory) {
++		ImGui::Separator();
++		//std::string getCurrentDirString = "Current directory: " + GetCurrentWorkingDirectory();
++		std::string getCurrentDirString = "Current directory: " + imGuiFunctions.GetCurrentWorkingDirectory();
++		ImGui::Text(getCurrentDirString.c_str());
++	}
++}
++
++
+ //----------- Plugin sdk test ----------//
+ // Old functions
+ //#ifdef PLUGIN_SDK_TEST
+@@ -573,8 +598,34 @@ MiscMenu::DrawKCNetTextBox()
+ 		// setTestText("Test from ImGui");
+ 		//  This is being set, I wonder why it doesn't work in main.cpp
+ 		LogFunctions::LogInfo(defines.logFile, buffer.data());
++
+ 	}
+ }
++
++
++
++
++/// <summary>
++/// Check if player is near the safehouse beside the stadium on the left side of the map.
++/// TODO Fix this, it just crashes the game.
++/// </summary>
++void
++logAreaTest()
++{
++	AreaCheckTest areaCheckTest = AreaCheckTest();
++	float x1 = -839.0f;
++	float y1 = 1292.0f;
++	float z1 = 10.0f;
++
++	float x2 = -828.0f;
++	float y2 = 1307.0f;
++	float z2 = 13.0f;
++
++
++	// TODO Make this into a bool.
++	areaCheckTest.Area3DCheckCommand(x1, y1, z1, x2, y2, z2);
++}
++
+ //
+ 
+ //----------- Misc tab ----------//
+@@ -592,6 +643,8 @@ void MiscMenu::MiscTab()
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+ 	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
+@@ -643,6 +696,25 @@ void MiscMenu::MiscTab()
+ 	// Draw the KCNet Test text box from C++.
+ 	DrawKCNetTextBox();
+ 
++	//if (ImGui::Checkbox("Show current directory: ", &showCurrentDirectory)) 
++	//{ 
++	//	ToggleCurrentDirectory();
++	//}
++
++	ImGui::Checkbox("Show current directory", &showCurrentDirectory);
++
++	if (showCurrentDirectory) { 
++		ToggleCurrentDirectory();
++	}
++	
++	// This works
++	imGuiFunctions.OpenCurrentDirectoryButton("Open game directory");
++
++	// TODO Fix this, should open a custom directory.
++	//imGuiFunctions.OpenDirectoryButton("/ViceExtended/logs", "Open logs directory");
++	std::string currentDir = imGuiFunctions.GetCurrentWorkingDirectory() + "/ViceExtended/logs/";
++	imGuiFunctions.OpenDirectoryButton(currentDir.c_str(), "Open logs directory");
++
+ 
+ 	ImGui::Separator();
+ 	ImGui::Text("Other tests");
+@@ -659,6 +731,11 @@ void MiscMenu::MiscTab()
+ 		DisplayCounterOnScreen();
+ 	}
+ 
++	if(ImGui::Button("Area check test")) 
++	{ 
++		logAreaTest(); 
++	}
++
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index 74364b93..3a2a2938 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -50,5 +50,9 @@ PedMenu::PedTab()
+ 	ImGui::Text("This is broken, doesn't work.");
+ 	ImGui::Text("Ped spawner");
+ 	if(ImGui::Button("Spawn ped")) { 
+-		pedFunctions.CreatePed(PEDTYPE_CIVMALE, 12); }
++		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, 12);
++		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, 20);
++		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, MI_BFOBE);
++		pedFunctions.CreatePed(PEDTYPE_CRIMINAL, MI_BFOBE);
++	}
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index aac1dfb1..e095ed57 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -36,6 +36,8 @@
+ 
+ // Moved this out of vehicle_menu.cpp, it was getting cluttered.
+ 
++bool loadVehicles = false;
++
+ /// <summary>
+ /// I have moved this into ImGuiVehicleList() below
+ /// </summary>
+@@ -106,10 +108,15 @@ VehicleSpawnMenu::ImGuiVehicleList()
+ {
+ 	CustomCheats customCheats = CustomCheats();
+ 	static int selectedVehicle = -1;
++
++	static int selectedHeli = -1;
+ 	// Add vehicles for the list in here.
+ 	static const char *vehicles[] = {"Rhino",   "Cheetah", "Infernus", "Comet",  "Hotring Racer", "Stinger",
+ 	                                 "Sparrow", "Pheonix", "Hunter",   "Deluxo", "Banshee"};
+ 
++	static const char *helis[] = {"Hunter", "Sea Sparrow", "Sparrow", "Maverick", 
++								"VCN Maverick", "Police Maverick"};
++
+ 	// Default random value
+ 	static VehicleModels::ModelIds modelId = VehicleModels::MANANA;
+ 
+@@ -120,17 +127,37 @@ VehicleSpawnMenu::ImGuiVehicleList()
+ 	    {"Sparrow", VehicleModels::SPARROW}, {"Phoenix", VehicleModels::PHEONIX},       {"Hunter", VehicleModels::HUNTER},
+ 	    {"Deluxo", VehicleModels::DELUXO},   {"Banshee", VehicleModels::BANSHEE}};
+ 
+-	if(ImGui::ListBox("Vehicles", &selectedVehicle, vehicles, IM_ARRAYSIZE(vehicles))) {
+-		if(selectedVehicle >= 0 && selectedVehicle < IM_ARRAYSIZE(vehicles)) {
+-			std::string selectedVehicleName = vehicles[selectedVehicle];
+-			if(vehicleNameToModel.count(selectedVehicleName) > 0) {
+-				VehicleModels::ModelIds model = vehicleNameToModel.at(selectedVehicleName);
+-				modelId = model;
+-				//spawnVehicle(model);
+-				//VehicleFunctions::SpawnVehicle(modelId, false, false);
++	// Quite sure Chopper just crashes this..
++	static const std::map<std::string, VehicleModels::ModelIds> heliNameToModel = {
++	    //{"Hunter", VehicleModels::HUNTER}, {"Chopper", VehicleModels::CHOPPER}, {"Sea Sparrow", VehicleModels::SEA_SPARROW}, 
++	    {"Hunter", VehicleModels::HUNTER}, {"Sea Sparrow", VehicleModels::SEA_SPARROW}, 
++		{"Sparrow", VehicleModels::SPARROW}, {"Maverick", VehicleModels::MAVERICK}, {"VCN Maverick", VehicleModels::VCN_MAVERICK},
++		{"Police Maverick", VehicleModels::POLICE_MAVERICK}
++	};
++
++	if(ImGui::CollapsingHeader("Vehicles")) {
++		if(ImGui::ListBox("Vehicles", &selectedVehicle, vehicles, IM_ARRAYSIZE(vehicles))) {
++			if(selectedVehicle >= 0 && selectedVehicle < IM_ARRAYSIZE(vehicles)) {
++				std::string selectedVehicleName = vehicles[selectedVehicle];
++				if(vehicleNameToModel.count(selectedVehicleName) > 0) {
++					VehicleModels::ModelIds model = vehicleNameToModel.at(selectedVehicleName);
++					modelId = model;
++					// spawnVehicle(model);
++					// VehicleFunctions::SpawnVehicle(modelId, false, false);
++				}
+ 			}
+ 		}
++	}
+ 
++	if(ImGui::CollapsingHeader("Helis")) {
++
++		if(ImGui::ListBox("Helis", &selectedHeli, helis, IM_ARRAYSIZE(helis))) {
++			if(selectedHeli >= 0 && selectedHeli < IM_ARRAYSIZE(helis)) {
++				std::string selectedHeliName = helis[selectedHeli];
++				VehicleModels::ModelIds model = heliNameToModel.at(selectedHeliName);
++				modelId = model;
++			}
++		}
+ 	}
+ 
+ 
+@@ -170,16 +197,30 @@ VehicleSpawnMenu::VehicleSpawnTab()
+ {
+ 	CustomCheats customCheats = CustomCheats();
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	IniFunctions iniFunctions = IniFunctions();
++	Defines defines = Defines();
+ 	//VehicleSpawnMenu vehicleSpawnMenu = VehicleSpawnMenu();
+ 	// 
+ 	// This should store the current vehicle id from the listbox
+ 	// int currentVehicleID = imGuiFunctions.selectedVehicleId;
+ 	int currentVehicleID = imGuiFunctions.getSelectedVehicleId();
+ 
++	if(!loadVehicles) {
++		// std::vector<IniFunctions::Category> locations = iniFunctions.LoadLocationsFromIni(defines.warpsIniFile);
++		iniFunctions.LoadLocationsFromIni(defines.vehiclesIniFile);
++		loadVehicles = true;
++	}
+ 
+-	// Test a new vehicle list, moved spawn in vehicle, vehicle list box, and submit button in here.
+ 
++	// Test a new vehicle list, moved spawn in vehicle, vehicle list box, and submit button in here.
++	// I will be using this one for now, I still need to work on the one below that lists everything.
+ 	ImGuiVehicleList();
++
++	// This is a new test in the iniFunctions file, reads vehicles.ini in 'ViceExtended/'
++	// Well this new category works now, I just have to setup the spawn in vehicle button
++	//iniFunctions.DisplayVehicles(iniFunctions.LoadVehiclesFromIni(defines.vehiclesIniFile));
++
++	
+ }
+ 
+ /*
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index c4ab2209..75268376 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -68,8 +68,6 @@ float mallZ = 20.1f;
+ // Set new warp locations below
+ //
+ 
+-bool loadLocations = false;
+-
+ // Add new warp locations in here, incrementing the previous number.
+ enum WarpLocations { 
+ 	AIRPORT = 0,
+@@ -192,11 +190,6 @@ WarpMenu::WarpTab()
+ #endif
+ {
+ 	IniFunctions iniFunctions;
+-	if(!loadLocations) { 
+-		//std::vector<IniFunctions::Category> locations = iniFunctions.LoadLocationsFromIni(defines.warpsIniFile);
+-		iniFunctions.LoadLocationsFromIni(defines.warpsIniFile);
+-		loadLocations = true;
+-	}
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	//CGame cGame;
+ 
+@@ -264,7 +257,11 @@ WarpMenu::WarpTab()
+ 	//iniFunctions.ImGuiWarpList();
+ 
+ 	// Display the new warp list
+-	iniFunctions.DisplayLocations(iniFunctions.LoadLocationsFromIni(defines.warpsIniFile));
++	iniFunctions.DisplayLocationsImGui();
++
++	if (ImGui::Button("Reload warps.ini")) { 
++		iniFunctions.LoadLocations();
++	}
+ 
+ 	// Current Position
+ 
+diff --git a/src/extras/test/area_check_test.cpp b/src/extras/test/area_check_test.cpp
+index 92eb7915..21e8f276 100644
+--- a/src/extras/test/area_check_test.cpp
++++ b/src/extras/test/area_check_test.cpp
+@@ -1,5 +1,5 @@
+ // Disable below code, it is incomplete.
+-//#define _TEST
++#define _TEST
+ #ifdef _TEST
+ 
+ // These are needed!
+@@ -20,22 +20,40 @@
+ 
+ #include "area_check_test.h"
+ 
++#include "log_functions.h"
++#include "defines.h"
++
++#include <string>
++#include <sstream>
+ 
+ // Idk how I would use the commands in here like in plugin sdk
+ // COMMAND_IS_PLAYER_IN_AREA_3D
+ // I'm pretty much expanding out some of the commands so they can be used like this.
+ 
++// TODO Test this
++std::string
++floatToString(float value)
++{
++	std::stringstream ss;
++	ss << value;
++	return ss.str();
++}
++
+ /// <summary>
+ /// Check your position in a 3d cube
+ /// COMMAND_IS_PLAYER_IN_AREA_3D
++/// Hmm, this seems to be in Placeable.h
++/// bool IsWithinArea(float x1, float y1, float z1, float x2, float y2, float z2);
++/// TODO Test this new method like this.. Add to lua or something.
+ /// </summary>
+ void
+ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2)
+ {
++	Defines defines = Defines();
+ 	// Original:
+-	// CPlayerPed pPlayerPed = FindPlayerPed();
++	CPlayerPed *pPlayerPed = FindPlayerPed();
+ 	// Will this work?
+-	CPlayerPed pPlayerPed = CPlayerPed::CPlayerPed();
++	//CPlayerPed pPlayerPed = CPlayerPed::CPlayerPed();
+ 	// Copied from playerinfo.cpp, idk why it wouldn't let me use FindPlayerPed()
+ 	CPlayerPed *pedTest = CWorld::Players[CWorld::PlayerInFocus].m_pPed;
+ 	// Not sure how to use this one.
+@@ -52,17 +70,16 @@ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float
+ 	//{
+ 	//	
+ 	//}
+-	//pPlayerPed.
+ 
+-	
+-	x1 = 2;
+-	y1 = 2;
+-	z1 = 2;
+-	CVector pos = CVector(x1, y1, z1); 
+-	x2 = 22;
+-	y2 = 22;
+-	z2 = 22;
+-	if(pPlayerPed.bInVehicle) {
++	//if(pPlayerPed.bInVehicle) {
++
++	// TODO Check what this is, i never seen it before.
++	// if(pPlayerPed->bDebugPlayerInfo);
++
++	// Check if the ped exists
++
++
++	if(pPlayerPed->bInVehicle) {
+ 		// Area check inside of vehicle 
+ 		// // CPlaceable::IsWithinArea()
+ 		//pPlayerPed.m_pMyVehicle;
+@@ -72,17 +89,17 @@ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float
+ 		//UpdateCompareFlag(ped->m_pMyVehicle->IsWithinArea(x1, y1, z1, x2, y2, z2));
+ 	} else {
+ 		// Area check outside of vehicle
+-		
+-		// This might work for getting the position
+-		//if(pPlayerPed.GetPosition() == pos) 
+-		//{
+-		//
+-		//}
+-		// 
+-		// This looks like it should work, now to figure out how to add this to the debug menu in here.
+-		if(pPlayerPed.IsWithinArea(x1, y1, x2, y2)) 
+-		{
+-		
++		if(pPlayerPed->IsWithinArea(x1, y1, z1, x2, y2, z2))
++		{ 
++			std::string isWithinAreaMessage = "Player is within area X1: " 
++				+ floatToString(x1) + " Y1: " + floatToString(y1) + " Z1: " + floatToString(z1) 
++				+ " X2: " + floatToString(x2) + " Y2: " + floatToString(y2) + " Z2: " + floatToString(z2);
++			LogFunctions::LogInfo(defines.logFile, isWithinAreaMessage);
++		} else {
++			std::string isWithinAreaMessage = "Player is not within area X1: " + floatToString(x1) + " Y1: " + floatToString(y1) +
++			                                  " Z1: " + floatToString(z1) + " X2: " + floatToString(x2) + " Y2: " + floatToString(y2) +
++			                                  " Z2: " + floatToString(z2);
++			LogFunctions::LogInfo(defines.logFile, isWithinAreaMessage);
+ 		}
+ 	}
+ 	
+diff --git a/src/extras/test/area_check_test.h b/src/extras/test/area_check_test.h
+index 8c6e835b..6f23ea17 100644
+--- a/src/extras/test/area_check_test.h
++++ b/src/extras/test/area_check_test.h
+@@ -3,5 +3,5 @@
+ class AreaCheckTest {
+ public:
+ 	// Reimplemtation of COMMAND_IS_PLAYER_IN_AREA_3D as a helper function for C++.
+-	static void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
++	void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
+ };
+\ No newline at end of file
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index a61db266..c3b7bce6 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -4,12 +4,13 @@
+ // I have a dll loading up for log functions, so I can keep it working between other games.
+ // This should be able to be used on Re3 and ReLCS for a quicker way of setting up logging.
+ // The library and header for the dll will need to be added to 
+-// Moved define into dll_log_headers.h
++// Moved define into defines.h
+ //#define LOG_DLL_TEST
+ // Moved define into this header
+ #include "dll_log_headers.h"
+ #ifdef LOG_DLL_TEST
+ //#include "log_functions_new.h"
++#include "logging.h"
+ #endif
+ 
+ #if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
+@@ -134,6 +135,10 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ // Timer for the keybind
+ #include "Timer.h"
+ #include "defines.h"
++
++// Test for disabling pause on focus loss
++bool isGameFocused = true; // Initially focused
++
+ #endif //LUA_TEST
+ 
+ #define MAX_SUBSYSTEMS		(16)
+@@ -383,6 +388,16 @@ psTimer(void)
+ void
+ psMouseSetPos(RwV2d *pos)
+ {
++#ifdef CUSTOM_CODE
++	// Proper fix for focus loss, with this enabled and the CGame::InitAfterFocusLoss disabled in WM_KILLFOCUS
++	// It seems to work well.
++	// Checking for focus loss in WM_ACTIVATEAPP
++	if (!isGameFocused) 
++	{ 
++		return;
++	}
++#endif
++
+ 	// Well... Placing this here seems to have fixed the mouse being locked.
+ 	// I just guessed where this was and it works!
+ 	#define _IMGUI_TEST
+@@ -1517,6 +1532,12 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 
+ 		case WM_ACTIVATEAPP:
+ 		{
++#ifdef CUSTOM_CODE
++			// This works, disables focus loss when paused.
++		        BOOL fActive = (BOOL)wParam;
++		        isGameFocused = fActive; // Update focus flag
++#endif
++
+ 			switch ( gGameState )
+ 			{
+ 				case GS_LOGO_MPEG:
+@@ -1655,8 +1676,13 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 		case WM_SETFOCUS:
+ #endif
+ 		{
++			// TODO Re-enable this if needed
++			// Disabling this turns off the game pausing on focus loss, I also have this set in the psMouseSetPos and under the
++			// WM_ACTIVATEAPP
++#ifndef CUSTOM_CODE
+ 			CGame::InitAfterFocusLoss();
+ 			break;
++#endif
+ 		}
+ 
+ 	}
+@@ -2418,8 +2444,12 @@ CMenuManager cMenuManager = CMenuManager();
+ #endif //CUSTOM_CODE
+ 
+ 
++// Make this load my KCNet-Logging-Dll.dll
++// TODO Migrate log functions to using it.
+ #ifdef LOG_DLL_TEST
+ 	Defines defines = Defines();
++	Logger logger = Logger();
++
+ 	// First, load the dll
+ 	LPCSTR logDllName = "KCNet-Logging-Dll.dll";
+ 	hLogDll = LoadLibraryA(logDllName);
+@@ -2428,7 +2458,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 	std::string dllNameString(logDllName);
+ 
+ 	if (hLogDll == nullptr) { 
+-		TRACE("Error: Could not load the dll");
++		TRACE("Error: Could not load the KCNet Logging dll");
+ 		std::cerr << "Error, could not load " << dllNameString << std::endl;
+ 		return 1; // Exit early if loading fails.
+ 	}
+@@ -2457,7 +2487,8 @@ CMenuManager cMenuManager = CMenuManager();
+ 
+ 	// This works!!
+ 	TRACE("KCNet-ReVC Logging dll started");
+-	logInfo(defines.logFilePath.c_str(), "KCNet-ReVC Logging dll started");
++	logger.info(defines.logFilePath, "KCNet-ReVC Logging dll started");
++	//logInfo(defines.logFilePath.c_str(), "KCNet-ReVC Logging dll started");
+ 
+ 	
+ #endif
+@@ -3024,7 +3055,14 @@ bool	luaInit = false;
+ 					case GS_INIT_PLAYING_GAME:
+ 					{
+ #ifdef PS2_MENU
+-						CGame::Initialise("DATA\\GTA3.DAT");
++
++#ifdef CUSTOM_CODE
++					        CGame cGame;
++					        cGame.Initialise("DATA\\GTA_3.DAT");
++#else
++					        CGame::Initialise("DATA\\GTA3.DAT");
++#endif
++						
+ 						
+ 						//LoadingScreen("Starting Game", NULL, GetRandomSplashScreen());
+ 					
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,546 @@
+From b1d839094137b158e7706a8fe5f8612bf5a81828 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 21 Mar 2025 03:13:11 -0400
+Subject: [PATCH 126/129] Add changing player clothes to player util. Add
+ changing player clothes to imgui menu in player_menu. Add kill wanted player,
+ kill player, and check if player is alive to lua. Add get vehicle speed
+ option and add test for it to kcnet text drawing. Add test for vehicle
+ deleting when spawning in, this crashes and is disabled. Modify suicide cheat
+ to only run if the player is not dead. Add set wanted level and get wanted
+ level. Update kcnet-events.lua
+
+---
+ src/extras/cheats/custom_cheats.cpp        |   6 ++
+ src/extras/cheats/player_cheats.cpp        |  37 +++++++-
+ src/extras/cheats/player_cheats.h          |   5 +
+ src/extras/functions/vehicle_functions.cpp | 103 +++++++++++++++++++++
+ src/extras/functions/vehicle_functions.h   |   3 +
+ src/extras/lua/lua_functions.cpp           |  38 ++++++++
+ src/extras/lua/lua_functions.h             |   5 +
+ src/extras/lua/lua_test.cpp                |   9 ++
+ src/extras/menus/player_menu.cpp           |  37 ++++++++
+ src/extras/menus/player_menu.h             |   4 +
+ src/extras/utils/player_util.cpp           |  24 +++++
+ src/extras/utils/player_util.h             |   2 +
+ utils/lua/kcnet-events.lua                 |  24 ++++-
+ 13 files changed, 291 insertions(+), 6 deletions(-)
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index c5fe16bc..25e115f8 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -757,6 +757,12 @@ CustomCheats::SetText(std::string text)
+ 
+ 		// This works! My new function is setup so I don't have to duplicate this code as much.
+ 		//SetupTextAndFont(text);
++
++		// This seems to work.
++		// Display the vehicle speed on screen as a test.
++		//std::string mphString = "MPH";
++		//std::string vehicleSpeedStr = "Vehicle speed: " + std::to_string(vehicleFunctions.GetVehicleSpeed()) + " MPH";
++		//SetupTextAndFont(vehicleSpeedStr);
+ 		
+ 		//if(vehicleFunctions.IsPlayerInVehicle()) {
+ 		//	CVehicle *currentVeh = playerUtil.GetCurrentVehicle();
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index 6d61b474..3e2e1317 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -97,17 +97,21 @@ PlayerCheats::HealPlayer()
+ /// <summary>
+ /// Kill the player.
+ /// Copied from Pad.cpp
+-/// Why doesn't this work in Cleo Redux?
++/// Modified to only run if the player isn't dead, should fix the spamming in lua.
+ /// </summary>
+ /// <param name=""></param>
+ void
+ PlayerCheats::SuicideCheat()
+ {
+-	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+-	FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++	CPlayerPed *pPlayer = FindPlayerPed();
++	if (!pPlayer->DyingOrDead())
++	{
++		CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++		pPlayer->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
+ #ifdef CUSTOM_CODE
+-	FindPlayerPed()->m_fArmour = 0;
++		pPlayer->m_fArmour = 0;
+ #endif // CUSTOM_CODE
++	}
+ }
+ 
+ // Give the player a shotgun as a test, untested
+@@ -119,6 +123,31 @@ PlayerCheats::GivePlayerWeapon()
+ }
+ 
+ ////////////////////
++void
++PlayerCheats::SetWantedLevel(int32 wantedLevel)
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	if(!pPlayer->DyingOrDead())
++	{ 
++		pPlayer->m_pWanted->SetWantedLevel(wantedLevel);
++	}
++
++}
++
++/// <summary>
++/// This works, tested in lua.
++/// </summary>
++/// <returns></returns>
++int32
++PlayerCheats::GetWantedLevel()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	int32 wantedLevel = pPlayer->m_pWanted->GetWantedLevel();
++	return wantedLevel;
++	//return pPlayer->wanted;
++}
++
++// 
+ // These are for cleo redux
+ // I guess the cheats in pad.cpp won't work with Memory.Translate.
+ // TODO Reorganize these sometime.
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index 2e13a9e1..006fe65d 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -17,6 +17,11 @@ public:
+ 	// Wanted
+ 	static void RaiseWantedLevel();
+ 	static void LowerWantedLevel();
++	void SetWantedLevel(int wantedLevel);
++	//int32 GetWantedLevel();
++	// Fix build, I guess this is using librw which complains about using the ReVC types.
++	int32_t GetWantedLevel();
++
+ 
+ 	// Toggles, TODO Move these into private function, I only want the Toggle functions down here if they work.
+ 	void EnableInfiniteHealth();
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index ca94805e..848052ad 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -10,6 +10,9 @@
+ // #include "ControllerConfig.h"
+ // #include "Timer.h"
+ // #include "Frontend.h"
++#include "AnimBlendAssocGroup.h"
++#include "AnimBlendAssociation.h"
++
+ #include "Camera.h"
+ #include "CarCtrl.h"
+ #include "CutsceneMgr.h"
+@@ -40,6 +43,8 @@
+ #include "Placeable.h"
+ #include "PlayerInfo.h"
+ 
++#include "AudioManager.h"
++
+ // Extra
+ // This code works now in here! I can move my code out of Pad.cpp
+ #ifdef CUSTOM_CODE
+@@ -58,6 +63,7 @@
+ #include "PlayerInfo.h"
+ 
+ 
++
+ // My code
+ #include "..\extras\test\enums\model_ids.h"
+ //#include "..\extras\test\scriptcommands_test.h"
+@@ -470,7 +476,71 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		// Add the vehicle to the world.
+ 		CWorld::Add(v);
+ 
++//#define NEW_VEHICLE_SPAWN
+ 		// Remove the players current vehicle if enabled, and make the player exit the vehicle.
++		// This new method just crashes it, pretty much from COMMAND_WARP_PLAYER_FROM_CAR_TO_COORD
++#ifdef NEW_VEHICLE_SPAWN
++		if(pPed->bInVehicle && deleteCurrentVehicle) {
++			CVehicle *playerVeh = pPed->m_pMyVehicle;
++
++			CVector playerCoords = pPed->GetPosition(); // Get player's current position
++
++			if(pPed->m_pMyVehicle->bIsBus) 
++				pPed->bRenderPedInCar = true;
++
++			if(pPed->m_pMyVehicle->pDriver == pPed) {
++				pPed->m_pMyVehicle->RemoveDriver();
++				pPed->m_pMyVehicle->SetStatus(STATUS_ABANDONED);
++				pPed->m_pMyVehicle->bEngineOn = false;
++				pPed->m_pMyVehicle->AutoPilot.m_nCruiseSpeed = 0;
++			} else {
++				pPed->m_pMyVehicle->RemovePassenger(pPed);
++			}
++
++			pPed->RemoveInCarAnims();
++			pPed->bInVehicle = false;
++			pPed->m_pMyVehicle = nullptr;
++			pPed->SetPedState(PED_IDLE);
++			pPed->bUsesCollision = true;
++			pPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
++			pPed->ReplaceWeaponWhenExitingVehicle();
++
++			if(pPed->m_pVehicleAnim) 
++				pPed->m_pVehicleAnim->blendDelta = -1000.0f;
++
++			pPed->m_pVehicleAnim = nullptr;
++			pPed->SetMoveState(PEDMOVE_NONE);
++			CAnimManager::BlendAnimation(pPed->GetClump(), pPed->m_animGroup, ANIM_STD_IDLE, 1000.0f);
++			pPed->RestartNonPartialAnims();
++			AudioManager.PlayerJustLeftCar();
++
++			playerCoords.z += pPed->GetDistanceFromCentreOfMassToBaseOfModel(); // Adjust Z for model height
++			pPed->Teleport(playerCoords);
++			//CTheScripts::ClearSpaceForMissionEntity(playerCoords, pPed);
++
++			if(chaosMode) {
++				if(playerVeh) {
++					playerVeh->m_fHealth = 0;
++					playerVeh->ActivateBomb();
++				}
++			}
++
++			//VehicleFunctions::RemoveCurrentVehicleFromWorld();
++
++	
++		}
++
++		if(warpIntoVehicle) {
++			if(!pPed->bInVehicle) {
++				pPed->bInVehicle = true;
++				pPed->m_pMyVehicle = v;
++				pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
++				pPed->m_nPedState = PED_DRIVING;
++				pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
++				pPed->WarpPedIntoCar(v);
++			}
++		}
++#else
+ 		if(pPed->bInVehicle && deleteCurrentVehicle)
+ 		{
+ 			CVehicle *playerVeh = pPed->m_pMyVehicle;
+@@ -537,6 +607,10 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 			}
+ 
+ 		}
++
++		//
++#endif
++
+ 	}
+ }
+ 
+@@ -798,4 +872,33 @@ void
+ VehicleFunctions::LockVehicle()
+ {
+ 	customCheats.LockDoors();
++}
++
++/// <summary>
++/// Get the current vehicles speed, I have options for Meters per second, KM/h and MP/H
++/// TODO Setup a chaos mode function using this in lua.
++/// Check if a player is in a vehicle, check if their speed is greater hen 60MP/H then blow them up or something.
++/// </summary>
++/// <returns></returns>
++float
++VehicleFunctions::GetVehicleSpeed()
++{
++	PlayerUtil playerUtil = PlayerUtil();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++	if (vehicleFunctions.IsPlayerInVehicle())
++	{ 
++		CVehicle *pVehicle = playerUtil.GetCurrentVehicle();
++		// Get the vehicle speed in meters per second
++		float vehicleSpeedMs = pVehicle->GetSpeed().Magnitude() * GAME_SPEED_TO_METERS_PER_SECOND;
++		// Convert the value to miles per hour
++		float vehicleSpeedMph = pVehicle->GetSpeed().Magnitude() * GAME_SPEED_TO_METERS_PER_SECOND * 2.23694f;
++		// Convert the value to kilometers per hour
++		float vehicleSpeedKph = pVehicle->GetSpeed().Magnitude() * GAME_SPEED_TO_METERS_PER_SECOND * 3.6f;
++
++		return vehicleSpeedMph;
++		//return vehicleSpeedMs;
++	}
++	// Return nothing if there is no vehicle.
++	return 0.0f;
++	
+ }
+\ No newline at end of file
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index af70b26f..9120e7d0 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -64,6 +64,9 @@ public:
+ 
+ 	bool IsPlayerInVehicle();
+ 
++	// Get vehicle speed
++	float GetVehicleSpeed();
++
+ 	#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 	static void EnableUpsideDownExplosions();
+ 	static void DisableUpsideDownExplosions();
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 73f76635..4bbba418 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -223,4 +223,42 @@ blowUpPlayerVehicleLua(lua_State *L)
+ 	}
+ 
+ 	return 1;
++}
++
++extern "C"
++{
++
++	int
++	killPlayerIfWantedLua(lua_State* l)
++	{
++		PlayerCheats playerCheats = PlayerCheats();
++		if(playerCheats.GetWantedLevel() > 0) 
++		{
++			playerCheats.SuicideCheat(); 
++		}
++
++		return 1;
++	}
++
++	int 
++	suicideCheatLua(lua_State* L)
++	{
++			PlayerCheats playerCheats = PlayerCheats();
++	        CPlayerPed *pPlayer = FindPlayerPed();
++			if (!pPlayer->DyingOrDead())
++			{ 
++				playerCheats.SuicideCheat();
++			}
++		return 1;
++	}
++
++	int 
++	isPlayerAliveLua(lua_State* L)
++	{
++	        CPlayerPed *pPlayer = FindPlayerPed();
++	        bool isPlayerAlive = !pPlayer->DyingOrDead();
++	        pushBooleanToLua(L, isPlayerAlive);
++	        return 1;
++	}
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index d626e504..a92c8ca3 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -22,6 +22,11 @@ extern "C" {
+     extern int blowUpPlayerVehicleLua(lua_State *L);
+     extern int logMessageLua(lua_State *L);
+ 
++	extern int killPlayerIfWantedLua(lua_State *L);
++    extern int isPlayerAliveLua(lua_State *L);
++
++	extern int suicideCheatLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index a5ce529a..f016b982 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -530,6 +530,15 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Blow up the players vehicle
+ 	lua_register(L, "blow_up_vehicle", blowUpPlayerVehicleLua);
+ 
++	// Kill the player if wanted
++	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
++
++	// Kill the player cheat
++	lua_register(L, "kill_player", suicideCheatLua);
++
++	// Check if the player is alive
++	lua_register(L, "is_player_alive", isPlayerAliveLua);
++
+ 	// Log messages in lua
+ 	// This works, log an info message in lua
+ 	lua_register(L, "log_info", logMessageLua);
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 27f5cff1..608b70e9 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -79,6 +79,40 @@ PlayerMenu::ToggleGetOfJailFree()
+ 	}
+ }
+ 
++std::map<std::string, const char *> clothesMap = {
++	{"Default", "Player"}, {"Suit Plain", "Player2"}, {"Worker", "Player3"},
++	{"Golfer", "Player4"}, {"Cuban", "Player5"},      {"Cop", "Player6"},
++    {"Bank", "Player7"},   {"Simple", "Player8"},     {"Suit Stripe", "Player9"}};
++
++void
++PlayerMenu::ChangeClothesMenu()
++{
++	static int selectedItem = 0;
++	std::vector<std::string> displayNames;
++	for(const auto &pair : clothesMap) 
++	{ 
++		displayNames.push_back(pair.first); 
++	}
++
++	std::vector<const char *> clothes;
++	for(const auto &name : displayNames) { 
++		clothes.push_back(name.c_str()); 
++	}
++
++	ImGui::Separator();
++	ImGui::Text("Select clothes");
++
++	ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothes.size());
++	
++	if(ImGui::Button("Change Clothes")) { // Add the button
++		if(selectedItem >= 0 && selectedItem < clothes.size()) {
++			std::string selectedDisplayName = displayNames[selectedItem];
++			const char *internalName = clothesMap[selectedDisplayName];
++			playerUtil.ChangeClothes(internalName);
++		}
++	}
++}
++
+ 
+ void
+ PlayerMenu::PlayerTab()
+@@ -133,4 +167,7 @@ PlayerMenu::PlayerTab()
+ 	{ 
+ 		ToggleGetOfJailFree(); 
+ 	}
++
++	// Change the players clothes.
++	ChangeClothesMenu();
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/player_menu.h b/src/extras/menus/player_menu.h
+index a60af8ce..12dcdd3d 100644
+--- a/src/extras/menus/player_menu.h
++++ b/src/extras/menus/player_menu.h
+@@ -1,11 +1,15 @@
+ #pragma once
+ 
+ #include "player_cheats.h"
++#include "player_util.h"
+ 
+ class PlayerMenu
+ {
+ private:
+ 	PlayerCheats playerCheats;
++	PlayerUtil playerUtil;
++
++	void ChangeClothesMenu();
+ 
+ public:
+ 	void PlayerTab();
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 21c013bf..7ba0e45c 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -3,6 +3,8 @@
+ #include "log_functions.h"
+ #include "defines.h"
+ 
++#include "Streaming.h"
++
+ #include "vehicle_functions.h"
+ 
+ // ReVC
+@@ -11,6 +13,8 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++
++
+ /// <summary>
+ /// Get the players current vehicle
+ /// </summary>
+@@ -99,4 +103,24 @@ PlayerUtil::RemoveBlip(int handle)
+ 		CRadar::ClearBlip(blipIndex);
+ 		LogFunctions::LogInfo(defines.logFile, "Blip with index: " + std::to_string(blipIndex) + " has been removed.");
+ 	}
++}
++
++/// <summary>
++/// Change the players clothes
++/// </summary>
++/// <param name="clothingSetName"></param>
++void
++PlayerUtil::ChangeClothes(const char* clothingSetName)
++{
++	CPed *pPlayerPed = FindPlayerPed();
++	if (pPlayerPed == nullptr) 
++	{ 
++		return; 
++	}
++
++	pPlayerPed->Undress(clothingSetName);
++	CStreaming::LoadAllRequestedModels(false);
++	pPlayerPed->Dress();
++	
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+index 7d2ab195..d6d15afc 100644
+--- a/src/extras/utils/player_util.h
++++ b/src/extras/utils/player_util.h
+@@ -31,4 +31,6 @@ public:
+ 	void AddBlipForCar(CVehicle vehicle, int handle);
+ 	void AddBlipForChar(CPed ped, int handle);
+ 	void RemoveBlip(int handle);
++
++	void ChangeClothes(const char *clothingSetName);
+ };
+diff --git a/utils/lua/kcnet-events.lua b/utils/lua/kcnet-events.lua
+index 122dbb05..01e45d80 100644
+--- a/utils/lua/kcnet-events.lua
++++ b/utils/lua/kcnet-events.lua
+@@ -1,13 +1,33 @@
+ -- My custom event system running in lua
+ -- KCNet Event System ReVC
+ 
++-- Functions for this:
++-- blow_up_vehicle - This blows up the current vehicle if the player is in one.
++-- kill_wanted_player - This will kill the player if they get wanted.
++-- is_player_in_vehicle - Check if the player is in a vehicle, automatically runs on certain things like blow_up_vehicle
++-- kill_player - This will kill the player.
++
++-- Booleans for this:
++-- is_player_alive - Check if the player is alive.
++
+ local chaos_mode = false
+ 
+ -- if is_player_in_vehicle() then
+ if chaos_mode then
+     -- Player vehicle check is done in the function, although I could change that if needed.
+-	blow_up_vehicle()
+-	-- Blow up vehicle
++    -- Blow up vehicle
++	-- blow_up_vehicle()
++
++    -- Kill player if wanted
++    -- This works, I fixed the C++ function to not run if the player has died.
++    kill_wanted_player()
++
++    -- Well this still spams the message
++    -- if is_player_in_vehicle() and is_player_alive() then
++    --     kill_player()
++    -- end
++
++	
+ end
+ 
+ -----
+\ No newline at end of file
+-- 
+2.45.1.windows.1
+

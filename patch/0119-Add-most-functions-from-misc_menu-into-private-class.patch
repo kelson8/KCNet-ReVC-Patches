@@ -1,0 +1,1279 @@
+From 2c5d7364c60c36fedf4b213fef01c68a79c1ea4d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Mar 2025 18:49:58 -0400
+Subject: [PATCH 119/129] Add most functions from misc_menu into private class
+ for access of other member variables. Cleanup cheat_menu a bit. Make
+ gbFreezeTime extern in Clock.h, add option to freeze time in Game Menu, add
+ SetTime to function in game menu, can now be used outside the file. Make
+ player cheats set the max health and armor properly. Move items from
+ player_menu into class. Move some items from vehicle_menu into
+ vehicle_functions and into imgui_functions. Move color functions out of
+ vehicle spawn menu, and into imgui functions.
+
+---
+ src/core/Clock.h                           |   4 +
+ src/extras/cheats/player_cheats.cpp        |   8 +-
+ src/extras/functions/imgui_functions.cpp   | 119 ++++++++++++-
+ src/extras/functions/imgui_functions.h     |   7 +
+ src/extras/functions/vehicle_functions.cpp |  47 +++++-
+ src/extras/functions/vehicle_functions.h   |  14 +-
+ src/extras/menus/cheat_menu.cpp            |  18 --
+ src/extras/menus/game_menu.cpp             |  50 +++++-
+ src/extras/menus/game_menu.h               |   7 +
+ src/extras/menus/misc_menu.cpp             | 184 +++++++++++++++------
+ src/extras/menus/misc_menu.h               |  23 +++
+ src/extras/menus/player_menu.cpp           |  35 ++--
+ src/extras/menus/player_menu.h             |  10 ++
+ src/extras/menus/vehicle_menu.cpp          |  84 +---------
+ src/extras/menus/vehicle_spawn_menu.cpp    |  97 +----------
+ src/extras/menus/vehicle_spawn_menu.h      |   1 +
+ src/peds/Ped.cpp                           |   4 +
+ 17 files changed, 449 insertions(+), 263 deletions(-)
+
+diff --git a/src/core/Clock.h b/src/core/Clock.h
+index a611cd50..1b49a78c 100644
+--- a/src/core/Clock.h
++++ b/src/core/Clock.h
+@@ -1,5 +1,9 @@
+ #pragma once
+ 
++#ifdef CUSTOM_CODE
++extern bool gbFreezeTime;
++#endif
++
+ class CClock
+ {
+ public:
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index 2a5cdabe..6d61b474 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -84,8 +84,12 @@ PlayerCheats::SetPlayerHeading(float heading)
+ void
+ PlayerCheats::HealPlayer()
+ {
+-	FindPlayerPed()->m_fHealth = 250;
+-	FindPlayerPed()->m_fArmour = 100;
++
++
++	//FindPlayerPed()->m_fHealth = 250;
++	FindPlayerPed()->m_fHealth = CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth;
++	//FindPlayerPed()->m_fArmour = 100;
++	FindPlayerPed()->m_fArmour = CWorld::Players[CWorld::PlayerInFocus].m_nMaxArmour;
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 
+ }
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 565d89f6..e4ee90c9 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -21,6 +21,8 @@
+ #include <vector>
+ #include <sstream>
+ 
++#include "log_functions.h"
++
+ 
+ // I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with myself.
+ 
+@@ -352,4 +354,119 @@ ImGuiFunctions::RunImGui()
+ }
+ 
+ 
+-#endif //_MOVE_CODE
+\ No newline at end of file
++#endif //_MOVE_CODE
++
++// Convert ImVec4 to RGBA
++
++// Reverse this function: https://github.com/ocornut/imgui/issues/5102
++
++float r_color = 0;
++float g_color = 0;
++float b_color = 0;
++float a_color = 0;
++
++// Well now, Google Gemini helps again, I can use the color variable, and multiply it by 255 to get the RGBA.
++void
++ImGuiFunctions::IV4toRGBA(ImVec4 color)
++{
++	Defines defines = Defines();
++	// ImVec4(color);
++	r_color = static_cast<int>(color.x * 255.0f);
++	g_color = static_cast<int>(color.y * 255.0f);
++	b_color = static_cast<int>(color.z * 255.0f);
++	a_color = static_cast<int>(color.w * 255.0f);
++
++	std::string colorString = "Colors (RGBA): R: " + std::to_string(r_color) + " G: " + std::to_string(g_color) + " B: " + std::to_string(b_color) +
++	                          " A: " + std::to_string(a_color);
++
++	LogFunctions::LogInfo(defines.logFile, colorString);
++}
++
++//------------
++// Vehicle colors
++//------------
++
++// Vice City Car Colours from https://www.grandtheftwiki.com/Car_Colours
++struct ReVCColor {
++	int r;
++	int g;
++	int b;
++	int index;
++};
++
++const ReVCColor viceCityColors[] = {
++    {0, 0, 0, 0},        // Black
++    {255, 255, 255, 1},  // White
++    {128, 128, 128, 2},  // Grey
++    {255, 0, 0, 3},      // Red
++    {0, 255, 0, 4},      // Green
++    {0, 0, 255, 5},      // Blue
++    {255, 255, 0, 6},    // Yellow
++    {255, 0, 255, 7},    // Magenta
++    {0, 255, 255, 8},    // Cyan
++    {128, 0, 0, 9},      // Maroon
++    {0, 128, 0, 10},     // Dark Green
++    {0, 0, 128, 11},     // Navy
++    {128, 128, 0, 12},   // Olive
++    {128, 0, 128, 13},   // Purple
++    {0, 128, 128, 14},   // Teal
++    {192, 192, 192, 15}, // Silver
++    {255, 128, 0, 16},   // Orange
++    {128, 64, 0, 17},    // Brown
++    {255, 128, 128, 18}, // Light Red
++    {128, 255, 128, 19}, // Light Green
++    {128, 128, 255, 20}, // Light Blue
++    {255, 255, 128, 21}, // Light Yellow
++    {255, 128, 255, 22}, // Light Magenta
++    {128, 255, 255, 23}, // Light Cyan
++};
++
++const int viceCityColorCount = sizeof(viceCityColors) / sizeof(viceCityColors[0]);
++
++// Convert ImVec4 to RGB
++struct RGBColor {
++	int r;
++	int g;
++	int b;
++};
++
++RGBColor
++imVec4ToRGB(const ImVec4 &color)
++{
++	return {static_cast<int>(color.x * 255.0f), static_cast<int>(color.y * 255.0f), static_cast<int>(color.z * 255.0f)};
++}
++
++// Find the closest color in ReVC
++int
++findClosestColorIndex(const RGBColor &rgb)
++{
++	int closestIndex = 0;
++	int closestDistance = INT_MAX;
++
++	for(int i = 0; i < viceCityColorCount; ++i) {
++		int dr = rgb.r - viceCityColors[i].r;
++		int dg = rgb.g - viceCityColors[i].g;
++		int db = rgb.b - viceCityColors[i].b;
++
++		int distance = dr * dr + dg * dg + db * db; // Squared distance for efficiency
++
++		if(distance < closestDistance) {
++			closestDistance = distance;
++			closestIndex = viceCityColors[i].index;
++		}
++	}
++	return closestIndex;
++}
++
++// Function to get ReVC color indices:
++std::pair<int, int>
++ImGuiFunctions::GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
++{
++	RGBColor rgb1 = imVec4ToRGB(color1);
++	RGBColor rgb2 = imVec4ToRGB(color2);
++
++	int index1 = findClosestColorIndex(rgb1);
++	int index2 = findClosestColorIndex(rgb2);
++
++	return {index1, index2};
++}
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index a9739d67..4519c33c 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -9,6 +9,9 @@
+ // Oops, I was missing this header.
+ #include <cstdint>
+ 
++#include <map>
++#include <functional> // For std::function
++
+ //#include "common.h"
+ 
+ 
+@@ -60,7 +63,11 @@ public:
+ 	// This is a test I got from Google Gemini, I need to learn how it works.
+ 	// Show a vehicle list box, ids only for now.
+ 	static void VehiclesListBox(int &selectedItem);
++
++	void IV4toRGBA(ImVec4 color);
+ 	
++	std::pair<int, int> GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2);
++
+ 
+ 	// ImGui Buttons, these work now
+ 
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 209898f1..cca3e84e 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -62,7 +62,6 @@
+ #include "..\extras\test\enums\model_ids.h"
+ //#include "..\extras\test\scriptcommands_test.h"
+ #include "Script.h"
+-#include "custom_cheats.h"
+ 
+ #include "player_util.h"
+ 
+@@ -735,4 +734,48 @@ VehicleFunctions::ToggleVehicleInvincible(CVehicle *veh)
+ //}
+ //}
+ 
+-//}
+\ No newline at end of file
++//}
++
++// Bomb stuff
++/// <summary>
++/// This works for setting an ignition bomb on the players vehicle.
++/// If they get back in, it'll blow up.
++/// TODO Add an option to remove the bomb before getting out.
++/// </summary>
++void
++VehicleFunctions::SetBombOnCar()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	PlayerUtil playerUtil = PlayerUtil();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	CVector playerCoords = playerUtil.PlayerCoords();
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++		playerVeh->m_bombType = CARBOMB_ONIGNITION;
++		// playerVeh->m_bombType = CARBOMB_ONIGNITIONACTIVE;
++		playerVeh->ActivateBomb();
++	}
++}
++
++/// <summary>
++/// This removes the bomb from the car
++/// </summary>
++void
++VehicleFunctions::RemoveBombFromCar()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	PlayerUtil playerUtil = PlayerUtil();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++		playerVeh->m_bombType = CARBOMB_NONE;
++	}
++}
++
++void
++VehicleFunctions::LockVehicle()
++{
++	customCheats.LockDoors();
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 6c62c38c..af70b26f 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -15,12 +15,14 @@
+ 
+ #include "Vehicle.h"
+ #include "player_util.h"
++#include "custom_cheats.h"
+ 
+ class VehicleFunctions
+ {
+ private:
+ 	//VehicleFunctions vehicleFunctions;
+ 	PlayerUtil playerUtil;
++	CustomCheats customCheats;
+ 
+ public:
+ 	void SpawnVehicle();
+@@ -30,20 +32,30 @@ public:
+ 	// static void SpawnVehicle(int id);
+ 	static void SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ 
++	// Set colors
+ 	void SetColors(int color1, int color2);
+ 	void SetColor1(int color1);
+ 	void SetColor2(int color2);
+ 
++	// Bomb stuff
++	void SetBombOnCar();
++	void RemoveBombFromCar();
++
++
++
+ 	#ifdef VEHICLE_SPAWN_TEST
+ 	static CVehicle SpawnVehicle(int id);
+ 	#endif //VEHICLE_SPAWN_TEST
+ 	// TODO Setup this later
+ 	//static void SpawnVehicle(int id, CPlayerPed *pPed, bool clearFromArea, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ 
+-	// TODO Test this
++	// Car unlocking
+ 	static void UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY);
+ 	static void UnlockAllCarDoorsInPlayerArea();
+ 
++	// Car locking
++	void LockVehicle();
++
+ 	// Repair vehicle
+ 	static void RepairCurrentVehicle();
+ 
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index ee792857..0ad6d335 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -223,26 +223,8 @@ void CheatMenu::CheatTab()
+ 	//if(ImGui::CollapsingHeader("Population density")) {
+ 		ImGui::Text("Population density");
+ 
+-		// TODO Fix these to work, not sure how to do it this spams the game with the text.
+-
+ 		if(ImGui::Checkbox("Toggle peds", &togglePeds)) { togglePedsFunc(); }
+ 
+-		// if (!togglePeds) {
+-		//	CPopulation::PedDensityMultiplier = 0.0f;
+-		//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-		// } else {
+-		//	CPopulation::PedDensityMultiplier = 1.0f;
+-		//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
+-		// }
+-
+-		// if (!toggleTraffic) {
+-		//	CCarCtrl::CarDensityMultiplier = 0.0f;
+-		//	CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-		// } else {
+-		//	CCarCtrl::CarDensityMultiplier = 1.0f;
+-		//	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
+-		// }
+-
+ 		if(ImGui::Checkbox("Toggle traffic", &toggleTraffic)) { toggleTrafficFunc(); }
+ 	//}
+ 
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index de988c35..5e1fb8f9 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -54,8 +54,45 @@
+ 
+ #include "Garages.h"
+ 
++
++// Booleans
++// Set the time frozen status
++bool timeFrozen = false;
++
++void
++GameMenu::EnableFreezeTime()
++{
++	gbFreezeTime = true;
++}
++
++
++void
++GameMenu::DisableFreezeTime()
++{
++	gbFreezeTime = false;
++}
++
+ void
+-setTime(int hour, int minute)
++GameMenu::ToggleFreezeTime()
++{
++	if (timeFrozen) 
++	{ 
++		EnableFreezeTime();
++	} else 
++	{
++		DisableFreezeTime();
++	}
++
++}
++
++/// <summary>
++/// Set the game time
++/// TODO Move this into game_functions
++/// </summary>
++/// <param name="hour"></param>
++/// <param name="minute"></param>
++void
++GameMenu::SetTime(int hour, int minute)
+ {
+ 	CClock::ms_nGameClockHours = hour;
+ 	CClock::ms_nGameClockMinutes = minute;
+@@ -108,17 +145,22 @@ GameMenu::GameTab()
+ 			// Check for invalid values
+ 			if(gameMenuHour > 23 || gameMenuHour < 0 || gameMenuMinute > 59 || gameMenuMinute < 0) return;
+ 
+-			setTime(gameMenuHour, gameMenuMinute);
++			SetTime(gameMenuHour, gameMenuMinute);
++		}
++
++		if(ImGui::Checkbox("Freeze time", &timeFrozen)) 
++		{ 
++			ToggleFreezeTime();
+ 		}
+ 
+ 		ImGui::Separator();
+ 
+-		if(ImGui::Button("Day")) { setTime(8, 0);
++		if(ImGui::Button("Day")) { SetTime(8, 0);
+ 		}
+ 
+ 		if (ImGui::Button("Night"))
+ 		{
+-			setTime(23, 0);
++			SetTime(23, 0);
+ 		}
+ 	}
+ 
+diff --git a/src/extras/menus/game_menu.h b/src/extras/menus/game_menu.h
+index 59da09a5..82107e2e 100644
+--- a/src/extras/menus/game_menu.h
++++ b/src/extras/menus/game_menu.h
+@@ -2,7 +2,14 @@
+ class GameMenu
+ {
+ 
++private:
++	void EnableFreezeTime();
++	void DisableFreezeTime();
++
+ public:
+ 	void GameTab();
+ 
++	// TODO Move into game_functions.cpp.
++	void SetTime(int hour, int minute);
++	void ToggleFreezeTime();
+ };
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index ea927662..b7cbd51a 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -62,6 +62,8 @@
+ // For getting the PlayerInfo
+ #include "World.h"
+ 
++// For getting the time cycles
++#include "Timecycle.h"
+ 
+ // Extras
+ #include <iostream>
+@@ -126,7 +128,7 @@ static std::vector<std::string> m_WeatherNames {
+ //{
+ //	std::ofstream file = std::ofstream("timecyc.dat");
+ //
+-//	for(uint i = 0; i < TOTAL_WEATHERS; ++i) {
++//	for(uint16 i = 0; i < TOTAL_WEATHERS; ++i) {
+ //		std::string buffer;
+ //		switch(i) {
+ //		case 0: buffer = "\n// SUNNY\n"; break;
+@@ -148,6 +150,8 @@ static std::vector<std::string> m_WeatherNames {
+ //		file << buffer << std::endl;
+ //
+ //		        for(size_t j = 0; j < 24; ++j) {
++//					std::stringstream ss;   // Use stringstream for each line.
++//					std::string linePrefix; // Store the prefix for each line.
+ //
+ //			if(i == 6) // EXTRA COLORS
+ //			{
+@@ -175,26 +179,57 @@ static std::vector<std::string> m_WeatherNames {
+ //
+ //			}
+ //
+-//
+ //			size_t val = TOTAL_WEATHERS * i + j;
+-//			buffer += std::format(
+-//			    "{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{} "
+-//			    "{} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {} {}",
+-//			    GetTCVal(m_nAmbientRed, val), GetTCVal(m_nAmbientGreen, val), GetTCVal(m_nAmbientBlue, val), GetTCVal(m_nAmbientRed_Obj, val),
+-//			    GetTCVal(m_nAmbientGreen_Obj, val), GetTCVal(m_nAmbientBlue_Obj, val), GetTCVal(m_nAmbientBlRed, val),
+-//			    GetTCVal(m_nAmbientBlGreen, val), GetTCVal(m_nAmbientBlBlue, val), GetTCVal(m_nAmbientBlRed_Obj, val),
+-//			    GetTCVal(m_nAmbientBlGreen_Obj, val), GetTCVal(m_nAmbientBlBlue_Obj, val), GetTCVal(m_nDirRed, val), GetTCVal(m_nDirGreen, val),
+-//			    GetTCVal(m_nDirBlue, val), GetTCVal(m_nSkyTopRed, val), GetTCVal(m_nSkyTopGreen, val), GetTCVal(m_nSkyTopBlue, val),
+-//			    GetTCVal(m_nSkyBottomRed, val), GetTCVal(m_nSkyBottomGreen, val), GetTCVal(m_nSkyBottomBlue, val), GetTCVal(m_nSunCoreRed, val),
+-//			    GetTCVal(m_nSunCoreGreen, val), GetTCVal(m_nSunCoreBlue, val), GetTCVal(m_nSunCoronaRed, val), GetTCVal(m_nSunCoronaGreen, val),
+-//			    GetTCVal(m_nSunCoronaBlue, val), GetTCVal(m_fSunSize, val) / 10.0f, GetTCVal(m_fSpriteSize, val) / 10.0f,
+-//			    GetTCVal(m_fSpriteBrightness, val) / 10.0f, GetTCVal(m_nShadowStrength, val), GetTCVal(m_nLightShadowStrength, val),
+-//			    GetTCVal(m_nPoleShadowStrength, val), GetTCVal(m_fFarClip, val), GetTCVal(m_fFogStart, val),
+-//			    GetTCVal(m_fLightsOnGroundBrightness, val) / 10.0f, GetTCVal(m_nLowCloudsRed, val), GetTCVal(m_nLowCloudsGreen, val),
+-//			    GetTCVal(m_nLowCloudsBlue, val), GetTCVal(m_nTopCloudsRed, val), GetTCVal(m_nTopCloudsGreen, val), GetTCVal(m_nTopCloudsBlue, val),
+-//			    GetTCVal(m_nBottomCloudsRed, val), GetTCVal(m_nBottomCloudsGreen, val), GetTCVal(m_nBottomCloudsBlue, val),
+-//			    GetTCVal(m_nBlurRed, val), GetTCVal(m_nBlurGreen, val), GetTCVal(m_nBlurBlue, val), GetTCVal(m_fWaterRed, val),
+-//			    GetTCVal(m_fWaterGreen, val), GetTCVal(m_fWaterBlue, val), GetTCVal(m_fWaterAlpha, val));
++//			//buffer += std::format(
++//			//    "{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{} "
++//			//    "{} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {} {}",
++//			//    GetTCVal(m_nAmbientRed, val), GetTCVal(m_nAmbientGreen, val), GetTCVal(m_nAmbientBlue, val), GetTCVal(m_nAmbientRed_Obj, val),
++//			//    GetTCVal(m_nAmbientGreen_Obj, val), GetTCVal(m_nAmbientBlue_Obj, val), GetTCVal(m_nAmbientBlRed, val),
++//			//    GetTCVal(m_nAmbientBlGreen, val), GetTCVal(m_nAmbientBlBlue, val), GetTCVal(m_nAmbientBlRed_Obj, val),
++//			//    GetTCVal(m_nAmbientBlGreen_Obj, val), GetTCVal(m_nAmbientBlBlue_Obj, val), GetTCVal(m_nDirRed, val), GetTCVal(m_nDirGreen, val),
++//			//    GetTCVal(m_nDirBlue, val), GetTCVal(m_nSkyTopRed, val), GetTCVal(m_nSkyTopGreen, val), GetTCVal(m_nSkyTopBlue, val),
++//			//    GetTCVal(m_nSkyBottomRed, val), GetTCVal(m_nSkyBottomGreen, val), GetTCVal(m_nSkyBottomBlue, val), GetTCVal(m_nSunCoreRed, val),
++//			//    GetTCVal(m_nSunCoreGreen, val), GetTCVal(m_nSunCoreBlue, val), GetTCVal(m_nSunCoronaRed, val), GetTCVal(m_nSunCoronaGreen, val),
++//			//    GetTCVal(m_nSunCoronaBlue, val), GetTCVal(m_fSunSize, val) / 10.0f, GetTCVal(m_fSpriteSize, val) / 10.0f,
++//			//    GetTCVal(m_fSpriteBrightness, val) / 10.0f, GetTCVal(m_nShadowStrength, val), GetTCVal(m_nLightShadowStrength, val),
++//			//    GetTCVal(m_nPoleShadowStrength, val), GetTCVal(m_fFarClip, val), GetTCVal(m_fFogStart, val),
++//			//    GetTCVal(m_fLightsOnGroundBrightness, val) / 10.0f, GetTCVal(m_nLowCloudsRed, val), GetTCVal(m_nLowCloudsGreen, val),
++//			//    GetTCVal(m_nLowCloudsBlue, val), GetTCVal(m_nTopCloudsRed, val), GetTCVal(m_nTopCloudsGreen, val), GetTCVal(m_nTopCloudsBlue, val),
++//			//    GetTCVal(m_nBottomCloudsRed, val), GetTCVal(m_nBottomCloudsGreen, val), GetTCVal(m_nBottomCloudsBlue, val),
++//			//    GetTCVal(m_nBlurRed, val), GetTCVal(m_nBlurGreen, val), GetTCVal(m_nBlurBlue, val), GetTCVal(m_fWaterRed, val),
++//			//    GetTCVal(m_fWaterGreen, val), GetTCVal(m_fWaterBlue, val), GetTCVal(m_fWaterAlpha, val));
++//
++//			
++//			// Well I'll need to remap these to using the internal names, and replicate the GetTCVal function
++//			// 
++//			//m_fCurrentAmbientBlue
++//			ss << GetTCVal(CTimeCycle::GetAmbientRed, val) << " " << GetTCVal(CTimeCycle::GetAmbientGreen, val) << " "
++//			   << GetTCVal(CTimeCycle::GetAmbientBlue, val) << "\t" << GetTCVal(CTimeCycle::GetAmbientRed_Obj, val) << " "
++//			   << GetTCVal(CTimeCycle::GetAmbientGreen_Obj, val) << " " << GetTCVal(CTimeCycle::GetAmbientBlue_Obj, val)
++//			   << "\t"
++//			   //<< GetTCVal(m_nAmbientBlRed, val) << " " << GetTCVal(m_nAmbientBlGreen, val) << " " << GetTCVal(m_nAmbientBlBlue, val) << "\t"
++//			   << GetTCVal(CTimeCycle::GetAmbientRed_Bl, val) << " " << GetTCVal(CTimeCycle::GetAmbientGreen_Bl, val) << " "
++//			   << GetTCVal(CTimeCycle::GetAmbientBlue_Bl, val)
++//			   << "\t"
++//
++//			   
++//			   << GetTCVal(CTimeCycle::GetAmbientRed_Obj_Bl, val) << " " << GetTCVal(CTimeCycle::GetAmbientGreen_Obj_Bl, val) << " " << GetTCVal(CTimeCycle::GetAmbientBlue_Obj_Bl, val);
++//			// TODO Finish this.   
++//			//<< "\t" << GetTCVal(m_nDirRed, val) << " " << GetTCVal(m_nDirGreen, val) << " " << GetTCVal(m_nDirBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSkyTopRed, val) << " " << GetTCVal(m_nSkyTopGreen, val) << " " << GetTCVal(m_nSkyTopBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSkyBottomRed, val) << " " << GetTCVal(m_nSkyBottomGreen, val) << " " << GetTCVal(m_nSkyBottomBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSunCoreRed, val) << " " << GetTCVal(m_nSunCoreGreen, val) << " " << GetTCVal(m_nSunCoreBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSunCoronaRed, val) << " " << GetTCVal(m_nSunCoronaGreen, val) << " " << GetTCVal(m_nSunCoronaBlue, val) << "\t"
++//			   //<< GetTCVal(m_fSunSize, val) / 10.0f << "\t" << GetTCVal(m_fSpriteSize, val) / 10.0f << "\t"
++//			   //<< GetTCVal(m_fSpriteBrightness, val) / 10.0f << "\t" << GetTCVal(m_nShadowStrength, val) << "\t"
++//			   //<< GetTCVal(m_nLightShadowStrength, val) << "\t" << GetTCVal(m_nPoleShadowStrength, val) << "\t" << GetTCVal(m_fFarClip, val) << "\t"
++//			   //<< GetTCVal(m_fFogStart, val) << "\t" << GetTCVal(m_fLightsOnGroundBrightness, val) / 10.0f << "\t" << GetTCVal(m_nLowCloudsRed, val)
++//			   //<< " " << GetTCVal(m_nLowCloudsGreen, val) << " " << GetTCVal(m_nLowCloudsBlue, val) << "\t" << GetTCVal(m_nTopCloudsRed, val) << " "
++//			   //<< GetTCVal(m_nTopCloudsGreen, val) << " " << GetTCVal(m_nTopCloudsBlue, val) << "\t" << GetTCVal(m_nBottomCloudsRed, val) << " "
++//			   //<< GetTCVal(m_nBottomCloudsGreen, val) << " " << GetTCVal(m_nBottomCloudsBlue, val) << "\t" << GetTCVal(m_nBlurRed, val) << " "
++//			   //<< GetTCVal(m_nBlurGreen, val) << " " << GetTCVal(m_nBlurBlue, val) << "\t" << GetTCVal(m_fWaterRed, val) << " "
++//			   //<< GetTCVal(m_fWaterGreen, val) << " " << GetTCVal(m_fWaterBlue, val) << " " << GetTCVal(m_fWaterAlpha, val);
++//
+ //
+ //			file << buffer << std::endl;
+ //
+@@ -204,14 +239,15 @@ static std::vector<std::string> m_WeatherNames {
+ 
+ // TODO Figure out how to replicate this
+ 
++
++//----------- Counter tests and progress bars ----------//
++
+ /// <summary>
+ /// Values from Script4.cpp, and OnscreenTimer.h
+ /// 	COUNTER_DISPLAY_NUMBER,
+ ///		COUNTER_DISPLAY_BAR,
+-    /// </summary>
+-	/// 
+-
+-//----------- Counter tests and progress bars ----------//
++/// </summary>
++/// 
+ 
+ // Copied from script.h
+ //#define KEY_LENGTH_IN_SCRIPT 8
+@@ -225,7 +261,7 @@ uint16 counterVar = 0;
+ /// Clear the counter that was on the screen
+ /// </summary>
+ void
+-clearCounterOnScreen()
++MiscMenu::ClearCounterOnScreen()
+ {
+ 	// if (!counterEnabled)
+ 	//{
+@@ -240,7 +276,8 @@ bool counterEnabled = false;
+ /// <summary>
+ /// This works, but doesn't display the proper text.
+ /// </summary>
+-void displayCounterOnScreen()
++void 
++MiscMenu::DisplayCounterOnScreen()
+ {
+ 	// TODO Figure out how to fix the text, it doesn't get the right text.
+ 	if (counterEnabled) 
+@@ -257,7 +294,7 @@ void displayCounterOnScreen()
+ 		//CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+ 		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+ 	} else {
+-		clearCounterOnScreen();
++		ClearCounterOnScreen();
+ 	}
+ 
+ }
+@@ -313,7 +350,7 @@ void displayCounterOnScreen()
+ /// Toggle the customized version text on the screen
+ /// </summary>
+ void
+-toggleVersionText()
++MiscMenu::ToggleVersionText()
+ {
+ 	if (gbDrawVersionText) { 
+ 		gbDrawVersionText = true;
+@@ -327,7 +364,7 @@ toggleVersionText()
+ /// Toggle the position display in game from the debug menu.
+ /// </summary>
+ void
+-toggleDisplayPosn()
++MiscMenu::ToggleDisplayPosn()
+ {
+ 	if(gbDisplayPosn) 
+ 	{
+@@ -349,35 +386,33 @@ CMenuManager frontEndMenuManager = CMenuManager();
+ 
+ // TODO Fix these functions
+ void
+-enableHud()
++MiscMenu::EnableHud()
+ {
+ 	frontEndMenuManager.m_PrefsShowHud = true;
+ }
+ 
+ void
+-disableHud()
++MiscMenu::DisableHud()
+ {
+ 	frontEndMenuManager.m_PrefsShowHud = false;
+ }
+ 
+ void
+-toggleHud()
++MiscMenu::ToggleHud()
+ {
+ 	// frontEndMenuManager.m_PrefsShowHud = !frontEndMenuManager.m_PrefsShowHud;
+ 
+ 	if(showHud) {
+-		disableHud();
++		DisableHud();
+ 	} else {
+-		enableHud();
++		EnableHud();
+ 	}
+ }
+ 
+ // This didn't show anything, just showed 0.
+ void
+-logJoyButtonJustDown()
++MiscMenu::LogJoyButtonJustDown()
+ {
+-	Defines defines = Defines();
+-
+ 	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
+ 	int controllerButton = cControllerConfigManager.GetJoyButtonJustDown();
+ 
+@@ -387,7 +422,7 @@ logJoyButtonJustDown()
+ }
+ 
+ void
+-clearAreaAroundPlayer(int radius)
++MiscMenu::ClearAreaAroundPlayer(int radius)
+ {
+ 	CustomCheats customCheats = CustomCheats();
+ 	customCheats.ClearItemsFromArea(radius);
+@@ -439,13 +474,57 @@ void playerTest()
+ // Blip test
+ int blipHandle = 0;
+ 
++// TODO Move into ImGui functions if i get this working.
+ // Test for excluding characters in the text box for imgui
++//unsigned int
++int
++CharFilterCallback(ImGuiInputTextCallbackData *data)
++{
++	if(data->EventChar == '~') {
++		return 0; // Exclude '~'
++	}
++	return data->EventChar; // Allow other characters
++}
++
+ 
++/// <summary>
++/// TODO Fix this to work, should block the '~' symbol from the textbox which crashes the game if drawn.
++/// </summary>
+ void
+-drawKCNetTextBox()
++ImguiTextboxWithCharFilterAndVector()
+ {
+-	Defines defines = Defines();
++	static std::vector<char> buffer(41); // 40 characters + null terminator.
+ 
++	// Copy the current text from MiscMenu into the buffer:
++	std::string currentText = MiscMenu::GetInstance().getTestText();
++	std::strncpy(buffer.data(), currentText.c_str(), 40);
++	buffer[40] = '\0'; // Ensure null termination
++
++	// Use ImGui::InputText to get input
++	if(ImGui::InputText("Test text", buffer.data(), 41,
++	                    ImGuiInputTextFlags_CallbackCharFilter | ImGuiInputTextFlags_EnterReturnsTrue, // Add EnterReturnsTrue for post-filtering
++	                    CharFilterCallback)) {
++		// Input text changed (e.g., Enter was pressed)
++
++		// 1. Post-Filtering (Remove unwanted characters)
++		std::string inputString(buffer.data());
++		inputString.erase(std::remove(inputString.begin(), inputString.end(), '~'), inputString.end());
++
++		// 2. Update buffer and MiscMenu
++		std::strncpy(buffer.data(), inputString.c_str(), 40);
++		buffer[40] = '\0'; // Ensure null termination
++
++		MiscMenu::GetInstance().setTestText(inputString);
++
++		std::cout << "Input after filtering: " << inputString << std::endl;
++	}
++}
++//
++
++
++void
++MiscMenu::DrawKCNetTextBox()
++{
+ 	std::vector<char> buffer(41); // 40 characters + null terminator
+ 
+ 	// Copy the current text from MiscMenu into the buffer.
+@@ -472,6 +551,9 @@ drawKCNetTextBox()
+ 
+ 	// Original function, should still work
+ 	ImGui::Text("Warning, do not put the '~' symbol in this, you will crash!");
++	// Well this new function didn't work right for blocking certain characters, it won't let me type anything other then '~'
++	//ImguiTextboxWithCharFilterAndVector();
++	//if (ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_CallbackCharFilter, CharFilterCallback))
+ 	if (ImGui::InputText("Test text", buffer.data(), 41))
+ 	{
+ 		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
+@@ -482,14 +564,10 @@ drawKCNetTextBox()
+ 
+ 		// TODO Fix this to not show up if the other texts are active
+ 		if(!gbDrawVersionText && !gbDisplayPosn) {
+-
+-			// This doesn't work for custom text.
+-			// miscMenu.testText = "Test from ImGui";
+-			// setTestText("Test from ImGui");
+ 			CustomCheats::ToggleText();
+ 
++			// Set the text to the custom text.
+ 			CustomCheats::SetText(buffer.data());
+-			//CustomCheats::SetText(MiscMenu::GetInstance().getTestText());
+ 		}
+ 	}
+ 
+@@ -509,7 +587,6 @@ void MiscMenu::MiscTab()
+ {
+ 	PedFunctions pedFunctions = PedFunctions();
+ 	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
+-	Defines defines = Defines();
+ #ifdef TOML_TEST
+ 	TomlImGui tomlImgui = TomlImGui();
+ #endif //TOML_TEST
+@@ -541,8 +618,7 @@ void MiscMenu::MiscTab()
+ 	ImGui::Text(radiusText.c_str());
+ 
+ 	if (ImGui::Button("Clear area")) { 
+-		//clearAreaAroundPlayer(10);
+-		clearAreaAroundPlayer(radiusToClear);
++		ClearAreaAroundPlayer(radiusToClear);
+ 	}
+ 
+ 	ImGui::Separator();
+@@ -556,19 +632,21 @@ void MiscMenu::MiscTab()
+ 	{ 
+ 		// TODO Fix this to not show up if the other texts are active
+ 		if(!drawKcNetText && !gbDrawVersionText)
+-			toggleDisplayPosn();
++			//toggleDisplayPosn();
++			ToggleDisplayPosn();
+ 	}
+ 	// Toggle the version text like in the debug menu.
+ 	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) 
+ 	{ 
+ 		// TODO Fix this to not show up if the other texts are active
+ 		if(!drawKcNetText && !gbDisplayPosn)
+-			toggleVersionText();
++			//toggleVersionText();
++			ToggleVersionText();
+ 	}
+ 
+ 	// Use ImGui::InputText to get input
+ 	// Draw the KCNet Test text box from C++.
+-	drawKCNetTextBox();
++	DrawKCNetTextBox();
+ 
+ 
+ 	ImGui::Separator();
+@@ -576,14 +654,14 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGui::Text("This doesn't work, I need to fix the toggle hud in the code.");
+ 	if(ImGui::Checkbox("Toggle hud", &showHud)) { 
+-		toggleHud();
++		ToggleHud();
+ 	}
+ 
+ 
+ 	// Show a test counter on the screen like in the scripts, the text doesn't work and this doesn't do anything yet.
+ 	if(ImGui::Checkbox("Display counter test", &counterEnabled)) 
+ 	{ 
+-		displayCounterOnScreen();
++		DisplayCounterOnScreen();
+ 	}
+ 
+ 	ImGui::Separator();
+diff --git a/src/extras/menus/misc_menu.h b/src/extras/menus/misc_menu.h
+index 3c834ffb..5106f979 100644
+--- a/src/extras/menus/misc_menu.h
++++ b/src/extras/menus/misc_menu.h
+@@ -1,11 +1,34 @@
+ #pragma once
+ 
+ #include <string>
++#include "defines.h"
+ 
+ class MiscMenu
+ {
+ private:
+ 	std::string m_testText;
++	Defines defines;
++
++	void DrawKCNetTextBox();
++	void LogJoyButtonJustDown();
++
++	// TODO Move into player_util.cpp.
++	void ClearAreaAroundPlayer(int radius);
++
++	// Hud toggles
++	void EnableHud();
++	void DisableHud();
++	void ToggleHud();
++
++	// Debug menu toggles
++	void ToggleDisplayPosn();
++	void ToggleVersionText();
++
++	// Counter test, displays on screen like in missions but has broken text.
++	// TODO Figure out how to use these and make them update.
++	void DisplayCounterOnScreen();
++	void ClearCounterOnScreen();
++
+ public:
+ 	void MiscTab();
+ 
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 2a49a006..574835a4 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -14,7 +14,7 @@
+ #include "custom_cheats.h"
+ 
+ #include "vehicle_cheats.h"
+-#include "player_cheats.h"
++//#include "player_cheats.h"
+ 
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+@@ -36,7 +36,7 @@ bool getOutOfHospitalFree = false;
+ bool getOutOfJailFree = false;
+ 
+ void
+-toggleInfiniteHealth()
++PlayerMenu::ToggleInfiniteHealth()
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if(infiniteHealth) {
+@@ -47,7 +47,7 @@ toggleInfiniteHealth()
+ }
+ 
+ void
+-toggleInfiniteSprint()
++PlayerMenu::ToggleInfiniteSprint()
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if (infiniteSprint) 
+@@ -61,7 +61,7 @@ toggleInfiniteSprint()
+ // This was tested and working, it makes it to where the player doesn't have to pay money for the hospital.
+ // They still lose their weapons though.
+ void
+-toggleGetOfHospitalFree()
++PlayerMenu::ToggleGetOfHospitalFree()
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if(getOutOfHospitalFree) { 
+@@ -73,7 +73,7 @@ toggleGetOfHospitalFree()
+ }
+ 
+ void
+-toggleGetOfJailFree()
++PlayerMenu::ToggleGetOfJailFree()
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if(getOutOfJailFree) 
+@@ -88,7 +88,10 @@ toggleGetOfJailFree()
+ void
+ PlayerMenu::PlayerTab()
+ {
+-	if(ImGui::Button("Heal")) { PlayerCheats::HealPlayer(); }
++	if(ImGui::Button("Heal")) 
++	{ 
++		PlayerCheats::HealPlayer(); 
++	}
+ 
+ 	ImGui::SameLine();
+ 
+@@ -113,14 +116,26 @@ PlayerMenu::PlayerTab()
+ 		
+ 	}
+ 
+-	if(ImGui::Checkbox("Infinite health", &infiniteHealth)) { toggleInfiniteHealth(); }
++	if(ImGui::Checkbox("Infinite health", &infiniteHealth)) 
++	{ 
++		ToggleInfiniteHealth(); 
++	}
+ 
+-	if(ImGui::Checkbox("Infinite sprint", &infiniteSprint)) { toggleInfiniteSprint(); }
++	if(ImGui::Checkbox("Infinite sprint", &infiniteSprint)) 
++	{ 
++		ToggleInfiniteSprint(); 
++	}
+ 
+ 	ImGui::Text("For not having to pay when getting out of hospital and getting busted.");
+ 	// TODO Make these not take away weapons when dying/getting busted.
+ 
+-	if(ImGui::Checkbox("Get out of hospital free", &getOutOfHospitalFree)) { toggleGetOfHospitalFree(); }
++	if(ImGui::Checkbox("Get out of hospital free", &getOutOfHospitalFree)) 
++	{ 
++		ToggleGetOfHospitalFree(); 
++	}
+ 
+-	if(ImGui::Checkbox("Get out of jail free", &getOutOfJailFree)) { toggleGetOfJailFree(); }
++	if(ImGui::Checkbox("Get out of jail free", &getOutOfJailFree)) 
++	{ 
++		ToggleGetOfJailFree(); 
++	}
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/player_menu.h b/src/extras/menus/player_menu.h
+index 44299622..a60af8ce 100644
+--- a/src/extras/menus/player_menu.h
++++ b/src/extras/menus/player_menu.h
+@@ -1,7 +1,17 @@
+ #pragma once
+ 
++#include "player_cheats.h"
++
+ class PlayerMenu
+ {
++private:
++	PlayerCheats playerCheats;
++
+ public:
+ 	void PlayerTab();
++	void ToggleInfiniteHealth();
++	void ToggleInfiniteSprint();
++
++	void ToggleGetOfHospitalFree();
++	void ToggleGetOfJailFree();
+ };
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 3ddc6de0..f2767d5e 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -125,42 +125,7 @@ toggleHighVehicleMass()
+ 	}
+ }
+ 
+-// TODO Move this into a misc functions file
+-// Convert ImVec4 to RGBA
+ 
+-// Reverse this function: https://github.com/ocornut/imgui/issues/5102
+-
+-float r_color = 0;
+-float g_color = 0;
+-float b_color = 0;
+-float a_color = 0;
+-
+-// Well now, Google Gemini helps again, I can use the color variable, and multiply it by 255 to get the RGBA.
+-void
+-IV4toRGBA(ImVec4 color)
+-{
+-	Defines defines = Defines();
+-	//ImVec4(color);
+-	r_color = static_cast<int>(color.x * 255.0f);
+-	g_color = static_cast<int>(color.y * 255.0f);
+-	b_color = static_cast<int>(color.z * 255.0f);
+-	a_color = static_cast<int>(color.w * 255.0f);
+-
+-	std::string colorString = "Colors (RGBA): R: " + std::to_string(r_color) 
+-		+ " G: " + std::to_string(g_color) 
+-		+ " B: " + std::to_string(b_color) 
+-		+ " A: " + std::to_string(a_color);
+-
+-	LogFunctions::LogInfo(defines.logFile, colorString);
+-
+-}
+-
+-// This will just run my custom lock doors function.
+-void
+-lockVehicle()
+-{
+-	CustomCheats::LockDoors();
+-}
+ 
+ /// <summary>
+ /// This should unlock all cars in the area, sets this to the player coords + the values set below.
+@@ -174,7 +139,6 @@ unlockCarsInArea(float leftBottomX, float leftBottomY, float topRightX, float to
+ {
+ 	CPlayerPed *pPlayer = FindPlayerPed();
+ 	CVector pPlayerCoords = pPlayer->GetPosition();
+-	// TODO Test this later.
+ 	leftBottomX = pPlayerCoords.x - leftBottomX;
+ 	leftBottomY = pPlayerCoords.y - leftBottomY;
+ 	
+@@ -184,45 +148,6 @@ unlockCarsInArea(float leftBottomX, float leftBottomY, float topRightX, float to
+ 	VehicleFunctions::UnlockAllCarDoorsInArea(leftBottomX, leftBottomY, topRightX, topRightY);
+ }
+ 
+-/// <summary>
+-/// This works for setting an ignition bomb on the players vehicle.
+-/// If they get back in, it'll blow up.
+-/// TODO Add an option to remove the bomb before getting out.
+-/// </summary>
+-void
+-setBombOnCar()
+-{
+-	CPlayerPed *pPlayer = FindPlayerPed();
+-	PlayerUtil playerUtil = PlayerUtil();
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-
+-	CVector playerCoords = playerUtil.PlayerCoords();
+-	if (vehicleFunctions.IsPlayerInVehicle())
+-	{ 
+-		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
+-		playerVeh->m_bombType = CARBOMB_ONIGNITION;
+-		//playerVeh->m_bombType = CARBOMB_ONIGNITIONACTIVE;
+-		playerVeh->ActivateBomb();
+-
+-	}
+-}
+-
+-/// <summary>
+-/// This removes the bomb from the car
+-/// </summary>
+-void
+-removeBombFromCar()
+-{
+-	CPlayerPed *pPlayer = FindPlayerPed();
+-	PlayerUtil playerUtil = PlayerUtil();
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-
+-	if(vehicleFunctions.IsPlayerInVehicle()) {
+-		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
+-		playerVeh->m_bombType = CARBOMB_NONE;
+-	}
+-}
+-
+ //
+ 
+ //
+@@ -254,7 +179,8 @@ VehicleMenu::VehicleTab()
+ 
+ 	if (ImGui::Button("Lock vehicle")) 
+ 	{ 
+-		lockVehicle();
++		//lockVehicle();
++		vehicleFunctions.LockVehicle();
+ 	}
+ 
+ 	if (ImGui::Button("Unlock vehicles in area"))
+@@ -278,13 +204,15 @@ VehicleMenu::VehicleTab()
+ 	}
+ 
+ 	if (ImGui::Button("Set bomb on car")) { 
+-		setBombOnCar();
++		//setBombOnCar();
++		vehicleFunctions.SetBombOnCar();
+ 	}
+ 
+ 	ImGui::SameLine();
+ 
+ 	if(ImGui::Button("Remove bomb from car")) 
+ 	{ 
+-		removeBombFromCar();
++		//removeBombFromCar();
++		vehicleFunctions.RemoveBombFromCar();
+ 	}
+  }
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index 46321307..c9df1cfa 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -62,104 +62,13 @@ bool spawnInCar = false;
+ int carColor1 = 0;
+ int carColor2 = 0;
+ 
+-// TODO Possibly move into another file
+-
+-// Vice City Car Colours from https://www.grandtheftwiki.com/Car_Colours
+-struct ReVCColor {
+-	int r;
+-	int g;
+-	int b;
+-	int index;
+-};
+-
+-const ReVCColor viceCityColors[] = {
+-    {0, 0, 0, 0},        // Black
+-    {255, 255, 255, 1},  // White
+-    {128, 128, 128, 2},  // Grey
+-    {255, 0, 0, 3},      // Red
+-    {0, 255, 0, 4},      // Green
+-    {0, 0, 255, 5},      // Blue
+-    {255, 255, 0, 6},    // Yellow
+-    {255, 0, 255, 7},    // Magenta
+-    {0, 255, 255, 8},    // Cyan
+-    {128, 0, 0, 9},      // Maroon
+-    {0, 128, 0, 10},     // Dark Green
+-    {0, 0, 128, 11},     // Navy
+-    {128, 128, 0, 12},   // Olive
+-    {128, 0, 128, 13},   // Purple
+-    {0, 128, 128, 14},   // Teal
+-    {192, 192, 192, 15}, // Silver
+-    {255, 128, 0, 16},   // Orange
+-    {128, 64, 0, 17},    // Brown
+-    {255, 128, 128, 18}, // Light Red
+-    {128, 255, 128, 19}, // Light Green
+-    {128, 128, 255, 20}, // Light Blue
+-    {255, 255, 128, 21}, // Light Yellow
+-    {255, 128, 255, 22}, // Light Magenta
+-    {128, 255, 255, 23}, // Light Cyan
+-};
+-
+-const int viceCityColorCount = sizeof(viceCityColors) / sizeof(viceCityColors[0]);
+-
+-// Convert ImVec4 to RGB
+-struct RGBColor {
+-	int r;
+-	int g;
+-	int b;
+-};
+-
+-RGBColor
+-imVec4ToRGB(const ImVec4 &color)
+-{
+-	return {static_cast<int>(color.x * 255.0f), static_cast<int>(color.y * 255.0f), static_cast<int>(color.z * 255.0f)};
+-}
+-
+-// Find the closest color in ReVC
+-int
+-findClosestColorIndex(const RGBColor &rgb)
+-{
+-	int closestIndex = 0;
+-	int closestDistance = INT_MAX;
+-
+-	for(int i = 0; i < viceCityColorCount; ++i) {
+-		int dr = rgb.r - viceCityColors[i].r;
+-		int dg = rgb.g - viceCityColors[i].g;
+-		int db = rgb.b - viceCityColors[i].b;
+-
+-		int distance = dr * dr + dg * dg + db * db; // Squared distance for efficiency
+-
+-		if(distance < closestDistance) {
+-			closestDistance = distance;
+-			closestIndex = viceCityColors[i].index;
+-		}
+-	}
+-	return closestIndex;
+-}
+-
+-// Function to get ReVC color indices:
+-std::pair<int, int>
+-getReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
+-{
+-	RGBColor rgb1 = imVec4ToRGB(color1);
+-	RGBColor rgb2 = imVec4ToRGB(color2);
+-
+-	int index1 = findClosestColorIndex(rgb1);
+-	int index2 = findClosestColorIndex(rgb2);
+-
+-	return {index1, index2};
+-}
+-
+-//
+-
+-
+-
+-
+ /// <summary>
+ /// Sets the vehicle colors
+ /// </summary>
+ void
+ VehicleSpawnMenu::ImGuiCarColors()
+ {
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 	ImGui::Text("Colors");
+ 
+ 	// This works for the color changing.
+@@ -172,13 +81,13 @@ VehicleSpawnMenu::ImGuiCarColors()
+ 	// Separate these into their own buttons.
+ 	if (ImGui::Button("Set color #1"))
+ 	{ 
+-		std::pair<int, int> indices = getReVCColorIndices(color1, color2);
++		std::pair<int, int> indices = imGuiFunctions.GetReVCColorIndices(color1, color2);
+ 		int carColor1 = indices.first;
+ 		vehicleFunctions.SetColor1(carColor1);
+ 	}
+ 
+ 	if(ImGui::Button("Set color #2")) {
+-		std::pair<int, int> indices = getReVCColorIndices(color1, color2);
++		std::pair<int, int> indices = imGuiFunctions.GetReVCColorIndices(color1, color2);
+ 		int carColor2 = indices.second;
+ 		vehicleFunctions.SetColor2(carColor2);
+ 	}
+diff --git a/src/extras/menus/vehicle_spawn_menu.h b/src/extras/menus/vehicle_spawn_menu.h
+index 7f3d9876..5b820c43 100644
+--- a/src/extras/menus/vehicle_spawn_menu.h
++++ b/src/extras/menus/vehicle_spawn_menu.h
+@@ -5,6 +5,7 @@ class VehicleSpawnMenu
+ {
+ private:
+ 	VehicleFunctions vehicleFunctions;
++
+ 	void ImGuiCarColors();
+ 	void ImGuiVehicleList();
+ 
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 249129ae..9cc506a9 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -7781,6 +7781,10 @@ CPed::FinishDieAnimCB(CAnimBlendAssociation *animAssoc, void *arg)
+ 		ped->bIsPedDieAnimPlaying = false;
+ }
+ 
++// Memory addresses for this can be found in Visual studio 2022:
++// Debug -> Windows -> Memory -> Memory 1
++// TODO Use these for a test with a new plugin sdk from Google Gemini
++// 0x00007FF6D051F450
+ void
+ CPed::SetDead(void)
+ {
+-- 
+2.45.1.windows.1
+

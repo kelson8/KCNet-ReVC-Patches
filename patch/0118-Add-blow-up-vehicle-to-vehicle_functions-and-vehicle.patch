@@ -1,0 +1,485 @@
+From bca9a57b704371882afc8fdac3febcd88957b2bb Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Mar 2025 13:26:16 -0400
+Subject: [PATCH 118/129] Add blow up vehicle to vehicle_functions and vehicle
+ menu. Refactor some code in vehicle_spawn_menu, and move some items into
+ private classes. Refactor vehicle_menu. Add SetColor1 and SetColor2 to
+ vehicle functions, and to vehicle spawn menu. Separate setting color 1 and 2
+ in vehicle spawn menu. Refactor warp menu code. Add getting players current
+ vehicle to player_util. Add blow up vehicle to vehicle menu. Disable ImGui
+ window movement, disable ImGui window resize and set position for now.
+
+---
+ src/extras/functions/vehicle_functions.cpp | 78 ++++++++++++----------
+ src/extras/functions/vehicle_functions.h   | 12 +++-
+ src/extras/menus/imgui_main_menu.cpp       | 15 ++++-
+ src/extras/menus/vehicle_menu.cpp          |  8 ++-
+ src/extras/menus/vehicle_menu.h            |  5 ++
+ src/extras/menus/vehicle_spawn_menu.cpp    | 32 +++++++--
+ src/extras/menus/vehicle_spawn_menu.h      |  7 ++
+ src/extras/menus/warp_menu.cpp             | 13 +---
+ src/extras/menus/warp_menu.h               | 10 +++
+ src/extras/utils/player_util.cpp           | 25 +++++++
+ src/extras/utils/player_util.h             |  3 +
+ 11 files changed, 153 insertions(+), 55 deletions(-)
+
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 7a944f16..209898f1 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -71,9 +71,6 @@
+ 
+ //
+ 
+-// From Cheat Menu
+-// https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/util.cpp#L249-L291
+-
+ // This was copied from the plugin-sdk
+ // https://github.com/DK22Pac/plugin-sdk/blob/master/plugin_vc/game_vc/CVector2D.h
+ inline float
+@@ -84,6 +81,8 @@ DistanceBetweenPoints(const CVector2D &pointOne, const CVector2D &pointTwo)
+ }
+ 
+ 
++// From Cheat Menu
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/util.cpp#L249-L291
+ 
+ /// <summary>
+ /// implemention of opcode 0AB5 (STORE_CLOSEST_ENTITIES)
+@@ -104,9 +103,6 @@ CVehicle* GetClosestCar()
+ 	CVehiclePool *vehiclePool = CPools::GetVehiclePool();
+ 	int poolSize = vehiclePool->GetSize();
+ 
+-	// TODO Figure out how to do this.
+-	//for(CVehicle *pVeh : CPools::ms_pVehiclePool) {
+-	//for(CVehicle *pVeh : CPools::GetVehiclePool()->GetSize() ) {
+ 	for(int i = 0; i < poolSize; i++) {
+ 		CVehicle *pVeh = vehiclePool->GetAt(i);
+ 		CVector pos = pVeh->GetPosition();
+@@ -121,6 +117,21 @@ CVehicle* GetClosestCar()
+ }
+ //
+ 
++/// <summary>
++/// This works! Blows up the players current vehicle
++/// My new function also gets the players current vehicle.
++/// </summary>
++void
++VehicleFunctions::BlowUpVehicle()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	if(IsPlayerInVehicle()) {
++		// Get this from my new function, this should work
++		CVehicle *playerVeh = playerUtil.GetCurrentVehicle();
++		playerVeh->BlowUpCar(pPlayer);
++	}
++}
++
+ /// <summary>
+ /// Check if a player is in a vehicle
+ /// </summary>
+@@ -174,32 +185,7 @@ VehicleFunctions::RepairCurrentVehicle()
+ 
+ }
+ 
+-// TODO Replicate this from the Scripts:
+-/*
+-        case COMMAND_UNLOCK_ALL_CAR_DOORS_IN_AREA:
+-        {
+-                CollectParameters(&m_nIp, 4);
+-                uint32 i = CPools::GetVehiclePool()->GetSize();
+-                float infX = *(float*)&ScriptParams[0];
+-                float infY = *(float*)&ScriptParams[1];
+-                float supX = *(float*)&ScriptParams[2];
+-                float supY = *(float*)&ScriptParams[3];
+-                while (i--) {
+-                        CVehicle* pVehicle = CPools::GetVehiclePool()->GetSlot(i);
+-                        if (!pVehicle)
+-                                continue;
+-                        if (pVehicle->IsWithinArea(infX, infY, supX, supY))
+-                                pVehicle->m_nDoorLock = CARLOCK_UNLOCKED;
+-                }
+-                return 0;
+-        }
+-
+-*/
+-
+-
+ /// <summary>
+-/// TODO Fix this to work in cleo redux
+-/// TODO Figure out how to log values to a file.
+ /// https://library.sannybuilder.com/#/vc/script/extensions/default/0591
+ /// </summary>
+ /// <param name="leftBottomX"></param>
+@@ -221,8 +207,6 @@ VehicleFunctions::UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY,
+ 			continue; 
+ 		}
+ 
+-		// Wait, this is being called, why doesn't my function run?
+-		// It seems like something I'm doing is wrong for this.
+ 		if (pVehicle->IsWithinArea(leftBottomX, leftBottomY, topRightX, topRightY)) 
+ 		{ 
+ 			pVehicle->m_nDoorLock = CARLOCK_UNLOCKED;
+@@ -363,17 +347,39 @@ VehicleFunctions::SpawnVehicle(int id)
+ }
+ #endif //VEHICLE_SPAWN_TEST
+ 
++void
++VehicleFunctions::SetColor1(int color1)
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	if(IsPlayerInVehicle()) {
++		CVehicle *playerVeh = playerUtil.GetCurrentVehicle();
++		playerVeh->m_currentColour1 = color1;
++	}
++}
++
++void
++VehicleFunctions::SetColor2(int color2)
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	if(IsPlayerInVehicle()) {
++		CVehicle *playerVeh = playerUtil.GetCurrentVehicle();
++		playerVeh->m_currentColour2 = color2;
++	}
++}
++
+ /// <summary>
+ /// Set the vehicle colors
+-/// TODO Test this later.
++/// This works.
++/// TODO Make this into SetColor1 and SetColor2 functions.
+ /// </summary>
+ /// <param name="color1"></param>
+ /// <param name="color2"></param>
+ void VehicleFunctions::SetColors(int color1, int color2)
+ {
+ 	CPlayerPed *pPlayer = FindPlayerPed();
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-	if (vehicleFunctions.IsPlayerInVehicle()) { 
++	//VehicleFunctions vehicleFunctions = VehicleFunctions();
++	//if (vehicleFunctions.IsPlayerInVehicle()) { 
++	if (IsPlayerInVehicle()) { 
+ 		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
+ 		playerVeh->m_currentColour1 = color1;
+ 		playerVeh->m_currentColour2 = color2;
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index a3ec6df2..6c62c38c 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -14,9 +14,14 @@
+ #endif
+ 
+ #include "Vehicle.h"
++#include "player_util.h"
+ 
+ class VehicleFunctions
+ {
++private:
++	//VehicleFunctions vehicleFunctions;
++	PlayerUtil playerUtil;
++
+ public:
+ 	void SpawnVehicle();
+ 	static void ToggleVehicleInvincible(CVehicle *veh);
+@@ -25,7 +30,9 @@ public:
+ 	// static void SpawnVehicle(int id);
+ 	static void SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ 
+-	static void SetColors(int color1, int color2);
++	void SetColors(int color1, int color2);
++	void SetColor1(int color1);
++	void SetColor2(int color2);
+ 
+ 	#ifdef VEHICLE_SPAWN_TEST
+ 	static CVehicle SpawnVehicle(int id);
+@@ -40,6 +47,9 @@ public:
+ 	// Repair vehicle
+ 	static void RepairCurrentVehicle();
+ 
++	// Blow up current vehicle
++	void BlowUpVehicle();
++
+ 	bool IsPlayerInVehicle();
+ 
+ 	#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index f8f4f79c..2dfdaaa4 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -60,6 +60,10 @@ extern "C" {
+ 
+ #include "Pad.h"
+ 
++// TODO Setup config file from Cheat Menu
++
++//DataStore gConfig = DataStore(FILE_NAME, true);
++
+ // Test
+ int selectedIndex = 0;
+ bool showMainMenuBar = false;
+@@ -139,7 +143,16 @@ ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
+ 	//playerX = (double)((int)playerX * 100) / 100;
+ 
+ 
+-	ImGui::Begin("KCNet ReVC ImGui");
++	// This will fix the window movement being glitchy for now, but it cannot be moved around anymore.
++
++	// Test for setting menu position
++	// Set the initial position of the window (e.g., 100 pixels from the left, 200 pixels from the top)
++	//ImGui::SetNextWindowPos(ImVec2(600, 400), ImGuiCond_FirstUseEver);
++	// Set the position every frame
++	// This works
++	ImGui::SetNextWindowPos(ImVec2(200, 175), ImGuiCond_Always);
++
++	ImGui::Begin("KCNet ReVC ImGui", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+ 
+ 	if (ImGui::BeginTabBar("Functions")) {
+ 
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 60979481..3ddc6de0 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -236,7 +236,7 @@ VehicleMenu::VehicleTab()
+ 
+ 	// Spawn vehicle tab
+ 	vehicleSpawnMenu.VehicleSpawnTab();
+-	
++
+ 
+ 	ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
+ 	if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) 
+@@ -265,6 +265,12 @@ VehicleMenu::VehicleTab()
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
++
++	if(ImGui::Button("Blow up current vehicle")) 
++	{ 
++		vehicleFunctions.BlowUpVehicle();
++	}
++
+ 	// This should blow up all cars.
+ 	if(ImGui::Button("Blow up all cars")) 
+ 	{ 
+diff --git a/src/extras/menus/vehicle_menu.h b/src/extras/menus/vehicle_menu.h
+index 2de150e7..be30d4f0 100644
+--- a/src/extras/menus/vehicle_menu.h
++++ b/src/extras/menus/vehicle_menu.h
+@@ -1,7 +1,12 @@
+ #pragma once
+ 
++#include "vehicle_functions.h"
++
+ class VehicleMenu
+ {
++private:
++	VehicleFunctions vehicleFunctions;
++
+ public:
+ 	void VehicleTab();
+ };
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index c1ba0057..46321307 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -152,8 +152,13 @@ getReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
+ //
+ 
+ 
++
++
++/// <summary>
++/// Sets the vehicle colors
++/// </summary>
+ void
+-ImGuiCarColors()
++VehicleSpawnMenu::ImGuiCarColors()
+ {
+ 	ImGui::Text("Colors");
+ 
+@@ -164,21 +169,36 @@ ImGuiCarColors()
+ 	ImGui::ColorEdit4("Color 1", (float *)&color1);
+ 	ImGui::ColorEdit4("Color 2", (float *)&color2);
+ 
+-	if(ImGui::Button("Set colors")) {
++	// Separate these into their own buttons.
++	if (ImGui::Button("Set color #1"))
++	{ 
+ 		std::pair<int, int> indices = getReVCColorIndices(color1, color2);
+ 		int carColor1 = indices.first;
++		vehicleFunctions.SetColor1(carColor1);
++	}
++
++	if(ImGui::Button("Set color #2")) {
++		std::pair<int, int> indices = getReVCColorIndices(color1, color2);
+ 		int carColor2 = indices.second;
+-		// std::cout << "ReVC Color Indices: " << indices.first << ", " << indices.second << std::endl;
+-		VehicleFunctions::SetColors(carColor1, carColor2);
++		vehicleFunctions.SetColor2(carColor2);
+ 	}
++
++	// Disabled this, the above works fine.
++	//if(ImGui::Button("Set colors")) {
++	//	std::pair<int, int> indices = getReVCColorIndices(color1, color2);
++	//	int carColor1 = indices.first;
++	//	int carColor2 = indices.second;
++	//	// std::cout << "ReVC Color Indices: " << indices.first << ", " << indices.second << std::endl;
++	//	vehicleFunctions.SetColors(carColor1, carColor2);
++	//}
+ }
+ 
+ /// <summary>
+-/// This shows up a list box with the vehicles, and has a button on it, I probably won't the switch statement anymore.
++/// This shows up a list box with the vehicles, and has a button on it.
+ /// </summary>
+ /// 
+ void
+-ImGuiVehicleList()
++VehicleSpawnMenu::ImGuiVehicleList()
+ {
+ 	CustomCheats customCheats = CustomCheats();
+ 	static int selectedVehicle = -1;
+diff --git a/src/extras/menus/vehicle_spawn_menu.h b/src/extras/menus/vehicle_spawn_menu.h
+index f1383ecf..7f3d9876 100644
+--- a/src/extras/menus/vehicle_spawn_menu.h
++++ b/src/extras/menus/vehicle_spawn_menu.h
+@@ -1,6 +1,13 @@
+ #pragma once
++#include "vehicle_functions.h"
++
+ class VehicleSpawnMenu
+ {
++private:
++	VehicleFunctions vehicleFunctions;
++	void ImGuiCarColors();
++	void ImGuiVehicleList();
++
+ public:
+ 	void VehicleSpawnTab();
+ };
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index b205615c..034a61be 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -30,7 +30,7 @@
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+ 
+-#include "defines.h"
++//#include "defines.h"
+ 
+ // ReVC
+ #include "Entity.h"
+@@ -41,11 +41,6 @@
+ #include <map>
+ #include <vector>
+ 
+-// I have put the warp imgui stuff in here for now.
+-#include "ini_functions.h"
+-
+-// Logging player coords so far.
+-#include "log_util.h"
+ 
+ // To add a warp, first add its name to this list.
+ const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
+@@ -94,6 +89,8 @@ enum WarpLocations {
+ 	MALL = 3,
+ };
+ 
++// I'm currently using this in ini_functions, 
++// this is for the old function.
+ struct WarpData {
+ 	std::string name;
+ 	float x, y, z, heading;
+@@ -193,10 +190,6 @@ imGuiWarpList()
+ void
+ WarpMenu::WarpTab()
+ {
+-	Defines defines = Defines();
+-	IniFunctions iniFunctions = IniFunctions();
+-	LogUtil logUtil = LogUtil();
+-
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 
+ 
+diff --git a/src/extras/menus/warp_menu.h b/src/extras/menus/warp_menu.h
+index 3aee46f8..c6fc8e97 100644
+--- a/src/extras/menus/warp_menu.h
++++ b/src/extras/menus/warp_menu.h
+@@ -1,11 +1,21 @@
+ #pragma once
+ 
+ #include "player_cheats.h"
++//#include "log_functions.h"
++
++#include "defines.h"
++// I have put the warp imgui stuff in here for now.
++#include "ini_functions.h"
++// Logging player coords so far.
++#include "log_util.h"
+ 
+ class WarpMenu
+ {
+ private:
+ 	PlayerCheats playerCheats;
++	Defines defines;
++	IniFunctions iniFunctions;
++	LogUtil logUtil;
+ 
+ public:
+ 	void WarpTab();
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 54500c7c..21c013bf 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -3,6 +3,31 @@
+ #include "log_functions.h"
+ #include "defines.h"
+ 
++#include "vehicle_functions.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++/// <summary>
++/// Get the players current vehicle
++/// </summary>
++/// <returns>A CVehicle* to the players current vehicle.</returns>
++CVehicle*
++PlayerUtil::GetCurrentVehicle()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++	if (vehicleFunctions.IsPlayerInVehicle())
++	{ 
++		//CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++		return pPlayer->m_pMyVehicle;
++	}
++
++	return nullptr;
++ }
+ 
+ /// <summary>
+ /// This gets the player coords
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+index bd98fc0d..7d2ab195 100644
+--- a/src/extras/utils/player_util.h
++++ b/src/extras/utils/player_util.h
+@@ -22,6 +22,9 @@ public:
+ 	CVector PlayerCoords();
+ 	float PlayerHeading();
+ 
++	// Get current vehicle
++	CVehicle *GetCurrentVehicle();
++
+ 	// Blips
+ 	//void AddBlipForPos(CVector pos, int handle);
+ 	int AddBlipForPos(CVector pos, int handle);
+-- 
+2.45.1.windows.1
+

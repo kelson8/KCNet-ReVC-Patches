@@ -1,0 +1,681 @@
+From 5b1f838176c52587b41b551d63e509d24573b0bf Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Mar 2025 12:40:23 -0400
+Subject: [PATCH 117/129] Add test for new plugin sdk in ReVC. Disable dll log
+ test for now, seems to cause memory leaks. Add ImGui warp category test.
+ Increment version number and patch number.
+
+---
+ guides/create-patches.md                  |   2 +-
+ src/control/Script.cpp                    |  51 ++++++-----
+ src/core/Game.cpp                         |  12 +++
+ src/extras/defines.cpp                    |   3 +-
+ src/extras/functions/garage_functions.cpp |  10 +-
+ src/extras/functions/ini_functions.cpp    | 107 ++++++++++++++++++++++
+ src/extras/functions/ini_functions.h      |   6 ++
+ src/extras/kcnet/api/revc_api.cpp         |  65 +++++++++++++
+ src/extras/kcnet/api/revc_api.h           |  73 +++++++++++++++
+ src/extras/kcnet/api/revc_globals.h       |  17 ++++
+ src/extras/kcnet/api/script_api.h         |  27 ++++++
+ src/extras/kcnet/dll_log_headers.h        |   5 +-
+ src/extras/kcnet/logging.cpp              |   2 +-
+ src/extras/kcnet/logging.h                |   2 +-
+ src/extras/test/ScriptCommands.cpp        |   8 --
+ 15 files changed, 353 insertions(+), 37 deletions(-)
+ create mode 100644 src/extras/kcnet/api/revc_api.cpp
+ create mode 100644 src/extras/kcnet/api/revc_api.h
+ create mode 100644 src/extras/kcnet/api/revc_globals.h
+ create mode 100644 src/extras/kcnet/api/script_api.h
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index cf799d24..98ca9bd9 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 116, patch number: 116)
++(Currently on commit 118, patch number: 118)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 3910a449..65415afe 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -57,7 +57,8 @@
+ #include "modloader.h"
+ #endif
+ 
+-#ifdef PLUGIN_SDK_TEST
++//#define NEW_PLUGIN_SDK
++#ifdef NEW_PLUGIN_SDK
+ // https://stackoverflow.com/questions/47332305/c14-generic-lambda-with-generic-stdfunction-as-class-member
+ // https://en.cppreference.com/w/cpp/header/unordered_map
+ #include <any> //not required for method 1
+@@ -66,8 +67,10 @@
+ #include <unordered_map>
+ #include <utility>
+ 
+-#include "plugin_manager.h"
+-#endif //PLUGIN_SDK_TEST
++//#include "plugin_manager.h"
++#include "revc_api.h"
++#include "script_api.h"
++#endif //NEW_PLUGIN_SDK
+ 
+ uint8 CTheScripts::ScriptSpace[SIZE_SCRIPT_SPACE];
+ CRunningScript CTheScripts::ScriptsArray[MAX_NUM_SCRIPTS];
+@@ -253,17 +256,18 @@ const uint32 CRunningScript::nSaveStructSize =
+ #endif
+ 
+ // TODO Test this later.
+-#ifdef PLUGIN_SDK_TEST
++//#ifdef PLUGIN_SDK_TEST
++#ifdef NEW_PLUGIN_SDK
+ // Scripting engine modification (script_engine.cpp)
+ std::unordered_map<std::string, std::function<void(std::vector<std::string>)>> commandTable;
+ 
+-void
++REVC_SCRIPT_API void
+ RegisterScriptCommand(const std::string &commandName, std::function<void(std::vector<std::string>)> commandFunction)
+ {
+ 	commandTable[commandName] = commandFunction;
+ }
+ 
+-void
++REVC_SCRIPT_API void
+ ExecuteScriptCommand(const std::string &commandName, const std::vector<std::string> &arguments)
+ {
+ 	if(commandTable.count(commandName)) {
+@@ -1208,36 +1212,41 @@ int8 CRunningScript::ProcessOneCommand()
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 	LogBeforeProcessingCommand(command);
+ #endif
+-	if (command < 100)
++	if(command < 100)
+ 		retval = ProcessCommands0To99(command);
+-	else if (command < 200)
++	else if(command < 200)
+ 		retval = ProcessCommands100To199(command);
+-	else if (command < 300)
++	else if(command < 300)
+ 		retval = ProcessCommands200To299(command);
+-	else if (command < 400)
++	else if(command < 400)
+ 		retval = ProcessCommands300To399(command);
+-	else if (command < 500)
++	else if(command < 500)
+ 		retval = ProcessCommands400To499(command);
+-	else if (command < 600)
++	else if(command < 600)
+ 		retval = ProcessCommands500To599(command);
+-	else if (command < 700)
++	else if(command < 700)
+ 		retval = ProcessCommands600To699(command);
+-	else if (command < 800)
++	else if(command < 800)
+ 		retval = ProcessCommands700To799(command);
+-	else if (command < 900)
++	else if(command < 900)
+ 		retval = ProcessCommands800To899(command);
+-	else if (command < 1000)
++	else if(command < 1000)
+ 		retval = ProcessCommands900To999(command);
+-	else if (command < 1100)
++	else if(command < 1100)
+ 		retval = ProcessCommands1000To1099(command);
+-	else if (command < 1200)
++	else if(command < 1200)
+ 		retval = ProcessCommands1100To1199(command);
+-	else if (command < 1300)
++	else if(command < 1300)
+ 		retval = ProcessCommands1200To1299(command);
+-	else if (command < 1400)
++	else if(command < 1400)
+ 		retval = ProcessCommands1300To1399(command);
+-	else if (command < 1500)
++	else if(command < 1500)
+ 		retval = ProcessCommands1400To1499(command);
++#ifdef NEW_PLUGIN_SDK
++	//else if(command >= 1600 && command < 2000)
++	//	// This isn't implemented yet.
++	//	retval = ProcessPluginCommand(command);
++	#endif
+ #ifdef USE_MISSION_REPLAY_OVERRIDE_FOR_NON_MOBILE_SCRIPT
+ 	if (!AlreadySavedGame) // we need to ignore first "fake" command which actually just saves the game
+ #endif
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 2a1e00b2..1d55466f 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -119,6 +119,12 @@
+ #include "ini_functions.h"
+ #endif // CUSTOM_CODE - LUA_TEST
+ 
++// Well this crashes in here, disabled for now.
++//#define NEW_PLUGIN_SDK
++#ifdef NEW_PLUGIN_SDK
++#include "revc_api.h"
++#endif // NEW_PLUGIN_SDK - Test using my ReVC api.
++
+ eLevelName CGame::currLevel;
+ int32 CGame::currArea;
+ bool CGame::bDemoMode = true;
+@@ -536,6 +542,12 @@ bool CGame::Initialise(const char* datFile)
+ 	IniFunctions iniFunctions = IniFunctions();
+ 
+ 	iniFunctions.LoadWarpIni();
++
++#ifdef NEW_PLUGIN_SDK
++	// TODO Test if this runs or not.
++	// Well this crahses it.
++	reVC::CreatePlayerPed();
++#endif
+ #endif //CUSTOM_CODE - LUA_TEST
+ 
+ // Not using these below
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 5e64fc49..ab6cf47b 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -29,7 +29,8 @@ std::string Defines::menuName = "KCNet-ReVC-ImGui";
+ std::string Defines::modificationAuthor = "kelson8";
+ 
+ // Set the program version.
+-std::string Defines::programVersion = "1.0.1";
++// TODO Make this grab from my latest internal gitea releases or something.
++std::string Defines::programVersion = "1.1";
+ 
+ // Vice extended folder, lua scripts.
+ // For now I only have a test.lua in this but it works when wasted/busted and on game startup.
+diff --git a/src/extras/functions/garage_functions.cpp b/src/extras/functions/garage_functions.cpp
+index b68ecea8..7c5e011f 100644
+--- a/src/extras/functions/garage_functions.cpp
++++ b/src/extras/functions/garage_functions.cpp
+@@ -44,9 +44,9 @@
+ 
+ // New log functions, in dll
+ // This works! I had to reconfigure the dll_log_headers and add some init for it to win.cpp.
+-#include "dll_log_headers.h"
+-
+-#include "logging.h"
++//#include "dll_log_headers.h"
++//
++//#include "logging.h"
+ 
+ #ifdef LOG_DLL_TEST
+ // This should only include this file if the dll log isn't defined.
+@@ -72,7 +72,9 @@
+ void
+ GarageFunctions::CreateGarage(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId)
+ {
++#ifdef LOG_DLL_TEST
+ 	Logger logger = Logger();
++#endif
+ 	CGarages::AddOne(X1, Y1, Z1, X2, Y2, X3, Y3, Z2, type, targetId);
+ 	std::string garageCreatedString = "Garage added at X1: " + std::to_string(X1) + " Y1: " + std::to_string(Y1) + " Z1: " + std::to_string(Z1) +
+ 	                                  " X2: " + std::to_string(X2) + " Y2: " + std::to_string(Y2) + " X3: " + std::to_string(X3) +
+@@ -106,7 +108,9 @@ GarageFunctions::ChangeGarageType(int16 garage, uint8 type, int32 modelIndex)
+ void
+ GarageFunctions::OpenGarage(int16 garage)
+ {
++#ifdef LOG_DLL_TEST
+ 	Logger logger = Logger();
++#endif
+ 	CGarages::OpenGarage(garage);
+ 
+ 	std::string garageOpenedString = "Garage id: " + std::to_string(garage) + " opened";
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 2a45dea4..18bba382 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -77,6 +77,10 @@
+ 
+ #include <map>
+ 
++// New logging functions
++//#include "dll_log_headers.h"
++//
++//#include "logging.h"
+ #endif
+ //#endif //_TEST1
+ 
+@@ -163,6 +167,39 @@ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIS
+ 	return result;
+ }
+ 
++// New, category testing
++//std::map<std::string, std::vector<IniFunctions::WarpData>>
++//LoadWarpsFromIni(const std::string &iniFilePath)
++//{
++//	std::map<std::string, std::vector<IniFunctions::WarpData>> categorizedWarps;
++//	mINI::INIFile file(iniFilePath);
++//	mINI::INIStructure ini;
++//
++//	if(file.read(ini)) {
++//		for(const auto &section : ini) {
++//			for(const auto &keyValuePair : section.second) {
++//				std::stringstream ss(keyValuePair.second);
++//				IniFunctions::WarpData warp;
++//				warp.name = keyValuePair.first;
++//
++//				char comma;
++//				if(ss >> warp.x >> comma >> warp.y >> comma >> warp.z >> comma >> warp.name) {
++//					categorizedWarps[section.first].push_back(warp);
++//				} else {
++//					std::cerr << "Error parsing warp data: " << keyValuePair.second << std::endl;
++//				}
++//			}
++//		}
++//	} else {
++//		std::cerr << "Error reading INI file: " << iniFilePath << std::endl;
++//	}
++//
++//	return categorizedWarps;
++//}
++
++
++//
++
+ /// <summary>
+ /// This is now running in CGame::Initialise, this fixes the lag for ImGui.
+ /// Now this only loads once instead of every frame.
+@@ -171,21 +208,91 @@ void
+ IniFunctions::LoadWarpIni()
+ {
+ 	if(warpsIni.read(warpsCfg)) {
++		// Clear previous data
++		categorizedWarps.clear();
++		// 
+ 		// Success! Now process the data and populate the warps vector
+ 		for(const auto &sectionPair : warpsCfg) {
+ 			const std::string &sectionName = sectionPair.first;
+ 			const mINI::INIMap<std::string> &section = sectionPair.second;
+ 
+ 			for(const auto &pair : section) {
++				// New test, for categories
++				//WarpData warpData = ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg);
++				//warpData.name = pair.first;
++				//// Set the warp data.
++				//categorizedWarps[sectionName].push_back(warpData);
++
++
++				// Original function
+ 				warps.push_back(ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg));
+ 				warps.back().name = pair.first;
+ 			}
++
++			//std::string loadWarpsLogString = "Category " + sectionName + ", Warps: " + std::to_string(categorizedWarps[sectionName].size());
++			// Log this out somewhere.
++			// Well I'll attempt to use my dll test, I need to remember to use this more often.
++			//logInfo(defines.logFile.c_str(), loadWarpsLogString.c_str());
++			//LogFunctions::LogInfo(defines.logFile, loadWarpsLogString);
++
++			//std::cout << "Category: " << sectionName << ", Warps: " << categorizedWarps[sectionName].size() << std::endl;
+ 		}
+ 	} else {
+ 		std::cerr << "Error reading warp INI file!" << std::endl;
+ 	}
+ }
+ 
++
++//
++
++// TODO Test this, new category test for ImGui.
++// TODO Fix this to work, it logs the categories they just don't show up in ImGui.
++//void
++//IniFunctions::ImGuiWarpList()
++//{
++//	Defines defines = Defines();
++//	ImGui::Separator();
++//	ImGui::Text("Warps");
++//	static int selectedWarp = -1;
++//
++//	std::vector<const char *> warpNames;
++//
++//	// Populate the warp categories
++//	for(const auto &categoryPair : categorizedWarps) {
++//	
++//		// Test:
++//		ImGui::Text(categoryPair.first.c_str()); // Display category names
++//		if (ImGui::CollapsingHeader(categoryPair.first.c_str()))
++//		{ 
++//			static std::map<std::string, int> selectedWarpIndices; // Track selected indices per category.
++//			
++//			std::vector<const char *> warpNames;
++//			for (const auto& warp : categoryPair.second)
++//			{ 
++//				warpNames.push_back(warp.name.c_str());
++//			}
++//
++//			if(ImGui::ListBox(("##" + categoryPair.first).c_str(), 
++//				&selectedWarpIndices[categoryPair.first], warpNames.data(), warpNames.size())) {
++//				// Listbox selection handling is done for you by imgui.
++//			}
++//
++//			if(ImGui::Button(("Warp to " + categoryPair.first).c_str())) {
++//				if(!categoryPair.second.empty() && selectedWarpIndices[categoryPair.first] >= 0 &&
++//				   selectedWarpIndices[categoryPair.first] < categoryPair.second.size()) 
++//				{
++//					const WarpData &selectedWarpData = categoryPair.second[selectedWarpIndices[categoryPair.first]];
++//					PlayerCheats::SetPlayerPosition(selectedWarpData.x, selectedWarpData.y, selectedWarpData.z);
++//				}
++//			}
++//
++//		}
++//	}
++//}
++
++
++// End category test
++
+ // New for imgui
+ void
+ IniFunctions::ImGuiWarpList()
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index bc1af75f..0c15e85b 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -6,8 +6,10 @@
+ 
+ #include "defines.h"
+ #include "player_cheats.h"
++
+ #include <string>
+ #include <vector>
++#include <map>
+ 
+ 
+ 
+@@ -24,6 +26,10 @@ public:
+ 		float x, y, z;
+ 	};
+ 
++	// New, warp categories
++	std::map<std::string, std::vector<WarpData>> categorizedWarps;
++	//
++
+ 	static bool ReadIniIfExists(const char *cat, const char *key, bool *out);
+ 	void RenderWarpList(PlayerCheats &playerCheats, const std::string &iniFilename, const std::string &section);
+ 
+diff --git a/src/extras/kcnet/api/revc_api.cpp b/src/extras/kcnet/api/revc_api.cpp
+new file mode 100644
+index 00000000..6a42d3e4
+--- /dev/null
++++ b/src/extras/kcnet/api/revc_api.cpp
+@@ -0,0 +1,65 @@
++#include "pch.h"
++#include "revc_api.h"
++
++#ifdef NEW_PLUGIN_SDK
++#include "revc_globals.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerInfo.h"
++
++#include "PlayerPed.h"
++
++// TODO Move this header and function into a dll if possible.
++#include "log_functions.h"
++
++#include "Hud.h"
++#include "Text.h"
++#include "World.h"
++
++
++// TODO Test this for usage in a dll.
++
++// Well I think the below breaks it.
++
++
++
++
++//Create a global pointer to the player object
++// I had to add this into the header as extern.
++// Moved into revc_globals.h
++// Well this wasn't needed, i just used the FindPlayerPed option.
++//CPlayerPed *g_pPlayer = nullptr;
++
++namespace reVC
++{
++
++REVC_API float
++GetPlayerHealth() {
++	CPlayerPed *pPlayer = FindPlayerPed();
++
++	if(pPlayer) { 
++		return pPlayer->m_fHealth;
++	} else {
++	// Handle error
++		return 0.0f;
++	}
++
++}
++
++
++REVC_API void
++SetPlayerHealth(int health)
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	if(pPlayer) { 
++		pPlayer->m_fHealth = health;
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++
++	}
++}
++
++
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/api/revc_api.h b/src/extras/kcnet/api/revc_api.h
+new file mode 100644
+index 00000000..0d96c26a
+--- /dev/null
++++ b/src/extras/kcnet/api/revc_api.h
+@@ -0,0 +1,73 @@
++#pragma once
++//#define NEW_PLUGIN_SDK
++#ifdef NEW_PLUGIN_SDK
++
++/*
++Define REVC_API_EXPORT:
++
++    Define the REVC_API_EXPORT macro when compiling the ReVC project.
++    Don't define it when compiling the plugin DLLs.
++*/
++
++// TODO Try to create a dll api for ReVC using something like this as a base.
++
++// Disabled, I will need to work on this.
++
++
++#include <string>
++#include <functional>
++#include <vector>
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerInfo.h"
++
++#include "PlayerPed.h"
++
++
++#define REVC_API_EXPORT
++
++#ifdef REVC_API_EXPORT
++#define REVC_API __declspec(dllexport)
++#else
++#define REVC_API __declspec(dllimport)
++#endif
++
++// Moved into revc_globals.h
++//extern REVC_API CPlayerPed *g_pPlayer;
++
++namespace reVC
++{
++
++void
++CreatePlayerPed();
++
++// Plugin dll stuff below
++
++
++struct REVC_API Vector3 {
++    float x, y, z;
++};
++
++// Moved to above
++//REVC_API void
++//CreatePlayerPed();
++
++REVC_API float
++GetPlayerHealth();
++
++REVC_API void
++SetPlayerHealth(int health);
++
++REVC_API Vector3
++GetPlayerPosition();
++
++REVC_API void
++SetPlayerPosition(Vector3 position);
++
++REVC_API void
++RegisterScriptCommand(const std::string &commandName, std::function<void(std::vector<std::string>)> commandFunction);
++
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/api/revc_globals.h b/src/extras/kcnet/api/revc_globals.h
+new file mode 100644
+index 00000000..985810da
+--- /dev/null
++++ b/src/extras/kcnet/api/revc_globals.h
+@@ -0,0 +1,17 @@
++#pragma once
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerInfo.h"
++
++#include "PlayerPed.h"
++
++
++#ifdef REVC_API_EXPORT
++#define REVC_API __declspec(dllexport)
++#else
++#define REVC_API __declspec(dllimport)
++#endif
++
++// This is no longer needed with the new setup, I should've just used FindPlayerPed anyways.
++//extern REVC_API CPlayerPed *g_pPlayer;
+\ No newline at end of file
+diff --git a/src/extras/kcnet/api/script_api.h b/src/extras/kcnet/api/script_api.h
+new file mode 100644
+index 00000000..1898921a
+--- /dev/null
++++ b/src/extras/kcnet/api/script_api.h
+@@ -0,0 +1,27 @@
++#pragma once
++
++#include <string>
++#include <vector>
++#include <functional>
++
++#ifdef NEW_PLUGIN_SDK
++
++#define REVC_SCRIPT_API_EXPORT
++
++#ifdef REVC_SCRIPT_API_EXPORT
++#define REVC_SCRIPT_API __declspec(dllexport)
++#else
++#define REVC_SCRIPT_API __declspec(dllimport)
++#endif
++
++extern "C" {
++REVC_SCRIPT_API void
++RegisterScriptCommand(const std::string &commandName, std::function<void(std::vector<std::string>)> commandFunction);
++}
++
++extern "C" {
++REVC_SCRIPT_API void
++ExecuteScriptCommand(const std::string &commandName, const std::vector<std::string> &arguments);
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/dll_log_headers.h b/src/extras/kcnet/dll_log_headers.h
+index b4283d10..16754059 100644
+--- a/src/extras/kcnet/dll_log_headers.h
++++ b/src/extras/kcnet/dll_log_headers.h
+@@ -1,11 +1,14 @@
+ #pragma once
+ #include <iostream>
+ #include <Windows.h>
+-#define LOG_DLL_TEST
++//#define LOG_DLL_TEST
+ 
+ // I got this working now as a dll, TODO Move log functions to this.
+ // I had to make a new path but I can reuse it on my other items.
+ 
++// Well I think this was memory leaking the ram went up to 2.4GB or something for ReVC.
++// I have disabled this for now.
++
+ #ifdef LOG_DLL_TEST
+ // Test for setting the values of this
+ extern HINSTANCE hLogDll;
+diff --git a/src/extras/kcnet/logging.cpp b/src/extras/kcnet/logging.cpp
+index ee1e7759..97a2c7bf 100644
+--- a/src/extras/kcnet/logging.cpp
++++ b/src/extras/kcnet/logging.cpp
+@@ -4,7 +4,7 @@
+ 
+ #ifdef LOG_CLASS_TEST
+ 
+-// Definitions of member variables
++// Definitions of member variables, TODO Possibly move into here.
+ // Already defined in win.cpp
+ //HINSTANCE hLogDll = nullptr;
+ //LogInfo logInfo = nullptr;
+diff --git a/src/extras/kcnet/logging.h b/src/extras/kcnet/logging.h
+index 23908a4b..6746247b 100644
+--- a/src/extras/kcnet/logging.h
++++ b/src/extras/kcnet/logging.h
+@@ -7,7 +7,7 @@
+ 
+ // TODO Test this later, I got it to build.
+ 
+-#define LOG_CLASS_TEST
++//#define LOG_CLASS_TEST
+ #ifdef LOG_CLASS_TEST
+ 
+ // Example in garage_functions.cpp:
+diff --git a/src/extras/test/ScriptCommands.cpp b/src/extras/test/ScriptCommands.cpp
+index fcdd0d16..0c3ac539 100644
+--- a/src/extras/test/ScriptCommands.cpp
++++ b/src/extras/test/ScriptCommands.cpp
+@@ -20,14 +20,6 @@
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+-#ifdef XINPUT
+-#include <xinput.h>
+-#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
+-#pragma comment(lib, "Xinput9_1_0.lib")
+-#else
+-#pragma comment(lib, "Xinput.lib")
+-#endif
+-#endif
+ 
+ #if defined(GTA3) || defined(GTAVC) || defined(GTASA) || defined(GTASA_UNREAL)
+ //#include "ScriptCommands.h"
+-- 
+2.45.1.windows.1
+

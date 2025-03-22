@@ -1,0 +1,480 @@
+From f277bdd0e11f0920bd27dfc26ce775366d79ccd5 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 21 Mar 2025 14:36:18 -0400
+Subject: [PATCH 127/129] Move change player clothes into player_util, add
+ check to see if they exist. Remove clothesMap from player_menu. Add a
+ collapsing header for clothes and skins. Add test for changing player clothes
+ in lua, disabled due to crashing. Add change player clothes to lua for later.
+
+---
+ src/extras/lua/lua_functions.cpp |  14 ++++
+ src/extras/lua/lua_functions.h   |   8 ++-
+ src/extras/lua/lua_test.cpp      |  19 ++++--
+ src/extras/menus/player_menu.cpp | 107 ++++++++++++++++++++++++++----
+ src/extras/menus/player_menu.h   |   1 +
+ src/extras/utils/player_util.cpp | 109 +++++++++++++++++++++++++++++--
+ src/extras/utils/player_util.h   |  18 +++++
+ utils/lua/test.lua               |  13 ++++
+ 8 files changed, 266 insertions(+), 23 deletions(-)
+
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 4bbba418..6bde3290 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -261,4 +261,18 @@ extern "C"
+ 	        return 1;
+ 	}
+ 
++	// TODO Figure out how to disable certain functions in kcnet-events.lua
++	// TODO Fix this to not crash if the model is invalid.
++	int
++	changePlayerClothesLua(lua_State* L)
++	{
++			// TODO Make this get value from lua
++
++		std::string clothesStringLua = lua_tostring(L, 1);
++
++	    PlayerUtil playerUtil = PlayerUtil();
++	    playerUtil.ChangeClothes(clothesStringLua.c_str());
++	    return 1;
++	}
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index a92c8ca3..827296b9 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -18,14 +18,20 @@ extern "C" {
+ 	extern int logPlayerCoordsLua(lua_State *L);
+ 	extern int logPlayerHeadingLua(lua_State *L);
+ 
++	// Player
+ 	extern int isPlayerInVehicleLua(lua_State *L);
+     extern int blowUpPlayerVehicleLua(lua_State *L);
+-    extern int logMessageLua(lua_State *L);
++    
++
++	extern int changePlayerClothesLua(lua_State *L);
+ 
+ 	extern int killPlayerIfWantedLua(lua_State *L);
+     extern int isPlayerAliveLua(lua_State *L);
+ 
+ 	extern int suicideCheatLua(lua_State *L);
++	
++	// Misc
++	extern int logMessageLua(lua_State *L);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index f016b982..31a0fca4 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -485,12 +485,6 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	assert(L != nullptr);
+ 	// 
+ 
+-	// This seems to work now.
+-	lua_register(L, "set_position", SetPlayerPositionLua);
+-	//lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
+-
+-	lua_register(L, "heal_player", HealPlayerLua);
+-
+ 	// Cheat test
+ 	lua_register(L, "cheat_test", CheatTestNew);
+ 
+@@ -509,6 +503,15 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Auto disable peds and vehicles in the lua script
+ 	lua_register(L, "disable_peds", disablePedsLua);
+ 	lua_register(L, "disable_vehicles", disableVehiclesLua);
++	
++
++	//------------- Player ------------//
++
++	// This seems to work now.
++	lua_register(L, "set_position", SetPlayerPositionLua);
++	// lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
++
++	lua_register(L, "heal_player", HealPlayerLua);
+ 
+ 	// This works
+ 	// TODO Get CVector for respawn from file.
+@@ -539,6 +542,10 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Check if the player is alive
+ 	lua_register(L, "is_player_alive", isPlayerAliveLua);
+ 
++	// TODO Setup changing player clothes, check if the model is invalid.
++	// Until I figure that out, I have disabled this.
++	//lua_register(L, "change_clothes", changePlayerClothesLua);
++
+ 	// Log messages in lua
+ 	// This works, log an info message in lua
+ 	lua_register(L, "log_info", logMessageLua);
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 608b70e9..2932ae41 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -79,16 +79,39 @@ PlayerMenu::ToggleGetOfJailFree()
+ 	}
+ }
+ 
+-std::map<std::string, const char *> clothesMap = {
+-	{"Default", "Player"}, {"Suit Plain", "Player2"}, {"Worker", "Player3"},
+-	{"Golfer", "Player4"}, {"Cuban", "Player5"},      {"Cop", "Player6"},
+-    {"Bank", "Player7"},   {"Simple", "Player8"},     {"Suit Stripe", "Player9"}};
++// clang-format off
+ 
++std::map<std::string, const char*> skinsMap = {
++	// Special
++	{"Sonny Forelli", "IGSonny"},			{"Alex Shrub", "IGalscb"},
++	{"Lance Normal", "IGbuddy"},					{"Lance Cop", "IGBudy2"},		{"Lance Beaten Up", "IGBudy3"},
++	{"Candy Suxxx", "IGCandy"},				{"Colonel Cortez", "IGColon"},	{"Ricardo Diaz", "IGDiaz"},
++	{"Dick (Lovefist)", "IGDick"},			{"Gonzalez", "IGGonz"},			{"Hilary", "IGHlary"},
++	{"Hilary (Bank Mission)", "IGHlry2"},	{"Jezz Torrent", "IGJezz"},		{"Ken Rosenberg", "IGKen"},
++	{"Mercedes", "IGMerc"},					{"Mercedes (purple dress)", "IGMerc2"},    {"Cam Jones", "IGmike"},
++	{"Cam Jones (Bank Mission)", "IGMike2"},	{"Percy (Lovefist)", "IGPercy"},
++	{"Phil (Injured)", "IGphil2"}, {"Phil (Bank Mission)", "IGphil3"}, {"Phil Cassidy", "IGPhil"},
++
++	// Misc
++	{"Chef", "Chef"}, {"Fsfa", "FSFA"}, {"Courier", "COURIER"},
++	{"Sgc", "SGC"}, {"Psycho", "PSYCHO"}, {"Striper", "STRIPA"},
++};
++
++// clang-format on
++
++/// <summary>
++/// Menu for changing the players clothes.
++/// </summary>
+ void
+ PlayerMenu::ChangeClothesMenu()
+ {
+ 	static int selectedItem = 0;
+ 	std::vector<std::string> displayNames;
++
++	// This works, moved the clothesMap into player_util.
++	const std::map<std::string, const char *> &clothesMap = PlayerUtil::GetClothesMap();
++	//
++
+ 	for(const auto &pair : clothesMap) 
+ 	{ 
+ 		displayNames.push_back(pair.first); 
+@@ -100,20 +123,78 @@ PlayerMenu::ChangeClothesMenu()
+ 	}
+ 
+ 	ImGui::Separator();
+-	ImGui::Text("Select clothes");
++	if(ImGui::CollapsingHeader("Clothes")) {
++
++		ImGui::Text("Select clothes");
++
++		ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothes.size());
++
++		if(ImGui::Button("Change Clothes")) { // Add the button
++			if(selectedItem >= 0 && selectedItem < clothes.size()) {
++				std::string selectedDisplayName = displayNames[selectedItem];
++				// TODO Revert if crash
++				//const char *internalName = clothesMap[selectedDisplayName];
++
++				const char *internalName = PlayerUtil::GetClothingSetName(selectedDisplayName);
++				playerUtil.ChangeClothes(internalName);
++			}
++		}
++
++		if(ImGui::Button("Reset to default")) {
++			std::string defaultClothesName = displayNames[0];
++			// TODO Test this
++			//playerUtil.ChangeClothes(clothesMap[defaultClothesName]);
++			playerUtil.ChangeClothes("Player");
++		}
++	}
++}
+ 
+-	ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothes.size());
++/// <summary>
++/// Menu for changing the players skins.
++/// </summary>
++void
++PlayerMenu::ChangeSkinsMenu()
++{
++	static int selectedItem = 0;
++	std::vector<std::string> displayNames;
++	for(const auto &pair : skinsMap) 
++	{ 
++		displayNames.push_back(pair.first); 
++	}
++
++	std::vector<const char *> skins;
++	for(const auto &name : displayNames) { 
++		skins.push_back(name.c_str()); 
++	}
++
++	ImGui::Separator();
++	if(ImGui::CollapsingHeader("Skins")) {
++
++		ImGui::Text("Select skin");
++
++		ImGui::ListBox("Skins", &selectedItem, skins.data(), skins.size());
++
++		if(ImGui::Button("Change Skins")) { // Add the button
++			if(selectedItem >= 0 && selectedItem < skins.size()) {
++				std::string selectedDisplayName = displayNames[selectedItem];
++				const char *internalName = skinsMap[selectedDisplayName];
++				playerUtil.ChangeClothes(internalName);
++			}
++		}
+ 	
+-	if(ImGui::Button("Change Clothes")) { // Add the button
+-		if(selectedItem >= 0 && selectedItem < clothes.size()) {
+-			std::string selectedDisplayName = displayNames[selectedItem];
+-			const char *internalName = clothesMap[selectedDisplayName];
+-			playerUtil.ChangeClothes(internalName);
++		if(ImGui::Button("Reset to default")) { 
++			std::string defaultClothesName = displayNames[0];
++			// TODO Fix this to work, might not grab the right value in the skin menu.
++			//playerUtil.ChangeClothes(clothesMap[defaultClothesName]);
++			playerUtil.ChangeClothes("Player");
+ 		}
+ 	}
++
++
+ }
+ 
+ 
++
+ void
+ PlayerMenu::PlayerTab()
+ {
+@@ -170,4 +251,8 @@ PlayerMenu::PlayerTab()
+ 
+ 	// Change the players clothes.
+ 	ChangeClothesMenu();
++
++	// Change the players skins
++	ChangeSkinsMenu();
++
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/player_menu.h b/src/extras/menus/player_menu.h
+index 12dcdd3d..0317b231 100644
+--- a/src/extras/menus/player_menu.h
++++ b/src/extras/menus/player_menu.h
+@@ -10,6 +10,7 @@ private:
+ 	PlayerUtil playerUtil;
+ 
+ 	void ChangeClothesMenu();
++	void ChangeSkinsMenu();
+ 
+ public:
+ 	void PlayerTab();
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 7ba0e45c..0e5a340c 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -13,8 +13,88 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++// Begin Clothes
++// clang-format off
++std::map<std::string, const char *> PlayerUtil::clothesMap = {
++	{"Default", "Player"}, {"Suit Plain", "Player2"}, {"Worker", "Player3"},
++	{"Golfer", "Player4"}, {"Cuban", "Player5"},      {"Cop", "Player6"},
++    {"Bank", "Player7"},   {"Simple", "Player8"},     {"Suit Stripe", "Player9"}
++};
++
++// TODO Setup skins in here later, for now they are in player_menu.cpp
++std::map<std::string, const char*> PlayerUtil::skinsMap = {
++	// Special
++	{"Sonny Forelli", "IGSonny"},			{"Alex Shrub", "IGalscb"},
++	{"Lance Normal", "IGbuddy"},					{"Lance Cop", "IGBudy2"},		{"Lance Beaten Up", "IGBudy3"},
++	{"Candy Suxxx", "IGCandy"},				{"Colonel Cortez", "IGColon"},	{"Ricardo Diaz", "IGDiaz"},
++	{"Dick (Lovefist)", "IGDick"},			{"Gonzalez", "IGGonz"},			{"Hilary", "IGHlary"},
++	{"Hilary (Bank Mission)", "IGHlry2"},	{"Jezz Torrent", "IGJezz"},		{"Ken Rosenberg", "IGKen"},
++	{"Mercedes", "IGMerc"},					{"Mercedes (purple dress)", "IGMerc2"},    {"Cam Jones", "IGmike"},
++	{"Cam Jones (Bank Mission)", "IGMike2"},	{"Percy (Lovefist)", "IGPercy"},
++	{"Phil (Injured)", "IGphil2"}, {"Phil (Bank Mission)", "IGphil3"}, {"Phil Cassidy", "IGPhil"},
++
++	// Misc
++	{"Chef", "Chef"}, {"Fsfa", "FSFA"}, {"Courier", "COURIER"},
++	{"Sgc", "SGC"}, {"Psycho", "PSYCHO"}, {"Striper", "STRIPA"},
++};
+ 
+ 
++/// <summary>
++/// Get the values out of the clothes map
++/// </summary>
++/// <returns></returns>
++const std::map<std::string, const char*>& PlayerUtil::GetClothesMap()
++{
++	return clothesMap;
++}
++
++/// <summary>
++/// Get the clothing set name
++/// </summary>
++/// <param name="key"></param>
++/// <returns></returns>
++const char* PlayerUtil::GetClothingSetName(const std::string& key) {
++	// Debug
++	//OutputDebugStringA(("Getting internal name for: " + key).c_str());
++
++    auto it = clothesMap.find(key);
++    if (it != clothesMap.end()) {
++        return it->second;
++    }
++    return nullptr; // Or a default value if you prefer
++}
++
++/// <summary>
++/// Check if the clothing set exists
++/// </summary>
++/// <param name="key"></param>
++/// <returns></returns>
++bool PlayerUtil::ClothingSetExists(const std::string& key)
++{
++	// Debug
++	//OutputDebugStringA(("Checking if clothing set exists: " + key).c_str());
++	
++
++	return clothesMap.find(key) != clothesMap.end();
++}
++
++std::string PlayerUtil::GetClothingDisplayName(const char* internalName) {
++    for (const auto& pair : clothesMap) {
++        if (pair.second == internalName) {
++            return pair.first;
++        }
++    }
++    return ""; // Return an empty string if not found
++}
++
++// clang-format on
++
++// End clothes
++
++// Begin skins
++
++// End skins
++
+ /// <summary>
+ /// Get the players current vehicle
+ /// </summary>
+@@ -107,20 +187,39 @@ PlayerUtil::RemoveBlip(int handle)
+ 
+ /// <summary>
+ /// Change the players clothes
++/// TODO Fix this to not crash if it's invalid.
+ /// </summary>
+ /// <param name="clothingSetName"></param>
+ void
+ PlayerUtil::ChangeClothes(const char* clothingSetName)
+ {
++	//OutputDebugStringA(("Changing clothes to: " + std::string(clothingSetName)).c_str()); // Debug line
++
+ 	CPed *pPlayerPed = FindPlayerPed();
+ 	if (pPlayerPed == nullptr) 
+ 	{ 
+ 		return; 
+ 	}
+ 
+-	pPlayerPed->Undress(clothingSetName);
+-	CStreaming::LoadAllRequestedModels(false);
+-	pPlayerPed->Dress();
+-	
++	// Get the internal clothing set name, this doesn't seem to grab the right value
++	//const char *internalClothingName = GetClothingSetName(clothingSetName);
++	const char *clothesDisplayName = GetClothingDisplayName(clothingSetName).c_str();
++
++	// This didn't work either, I need to figure this out before I implement this into lua.
++	//bool doesClothesExist = ClothingSetExists(clothingSetName);
++
++	// This check doesn't work
++	// This one seems to work.
++	if (clothesDisplayName != nullptr)
++	{
++		pPlayerPed->Undress(clothingSetName);
++		//pPlayerPed->Undress(internalClothingName);
++		CStreaming::LoadAllRequestedModels(false);
++		pPlayerPed->Dress();
++	} else {
++		OutputDebugStringA(("Invalid display name: " + std::string(clothingSetName)).c_str());
++		//TRACE("Clothes not valid.");
++	}
++}
+ 
+-}
+\ No newline at end of file
++// TODO Figure out how to get if the clothes model is valid
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+index d6d15afc..3f305f60 100644
+--- a/src/extras/utils/player_util.h
++++ b/src/extras/utils/player_util.h
+@@ -15,9 +15,18 @@
+ #include "Radar.h"
+ #include "Vehicle.h"
+ 
++#include <string>
++#include <map>
++
+ 
+ class PlayerUtil
+ {
++private:
++	// TODO Test this in player_menu.cpp
++	// Well these complain
++	static std::map<std::string, const char *> clothesMap;
++	static std::map<std::string, const char *> skinsMap;
++
+ public:
+ 	CVector PlayerCoords();
+ 	float PlayerHeading();
+@@ -33,4 +42,13 @@ public:
+ 	void RemoveBlip(int handle);
+ 
+ 	void ChangeClothes(const char *clothingSetName);
++
++	// Test for getting the clothesMap variable from here, this works
++	// TODO Fix this to not crash on invalid models.
++	static const std::map<std::string, const char*> &GetClothesMap();
++	static const char *GetClothingSetName(const std::string &key);
++	static bool ClothingSetExists(const std::string &key);
++
++	static std::string GetClothingDisplayName(const char *internalName);
++
+ };
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 830fa5a4..82fc493a 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -43,6 +43,12 @@ local disableVehicles = false
+ -- Display a log message using my C++ functions, logs to 'ViceExtended/logs/KCNet-ReVC-lua.log'
+ local log_test = false
+ 
++-- This should change the players clothes
++-- This works
++-- TODO Fix this 
++-- Due to the invalid models crashing this I disabled it in the C++ code, now it won't do anything.
++local change_clothes_enabled = false
++
+ -----------
+ -- Locations
+ -----------
+@@ -99,6 +105,13 @@ if log_heading then
+ 	log_player_heading()
+ end
+ 
++-- Change the players clothes
++-- TODO Fix this to not crash if the model is invalid.
++if change_clothes_enabled then
++	change_clothes("player2")
++	-- change_clothes("invalid")
++end
++
+ -- TODO Test this
+ -- Should just log to the file for now.
+ 
+-- 
+2.45.1.windows.1
+

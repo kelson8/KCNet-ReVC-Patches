@@ -1,0 +1,32 @@
+From d72420bac5417908c136359abae3e6722dc26c7b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Mar 2025 18:55:13 -0400
+Subject: [PATCH 120/129] Fix for compiler warnings, not sure why i had these
+ set as int.
+
+---
+ src/extras/functions/imgui_functions.cpp | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index e4ee90c9..9c611de4 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -371,10 +371,10 @@ ImGuiFunctions::IV4toRGBA(ImVec4 color)
+ {
+ 	Defines defines = Defines();
+ 	// ImVec4(color);
+-	r_color = static_cast<int>(color.x * 255.0f);
+-	g_color = static_cast<int>(color.y * 255.0f);
+-	b_color = static_cast<int>(color.z * 255.0f);
+-	a_color = static_cast<int>(color.w * 255.0f);
++	r_color = static_cast<float>(color.x * 255.0f);
++	g_color = static_cast<float>(color.y * 255.0f);
++	b_color = static_cast<float>(color.z * 255.0f);
++	a_color = static_cast<float>(color.w * 255.0f);
+ 
+ 	std::string colorString = "Colors (RGBA): R: " + std::to_string(r_color) + " G: " + std::to_string(g_color) + " B: " + std::to_string(b_color) +
+ 	                          " A: " + std::to_string(a_color);
+-- 
+2.45.1.windows.1
+

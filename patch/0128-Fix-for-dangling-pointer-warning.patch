@@ -1,0 +1,34 @@
+From be951888530305426781ba2ec01751f65d1ed75c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 21 Mar 2025 14:41:33 -0400
+Subject: [PATCH 128/129] Fix for dangling pointer warning.
+
+---
+ src/extras/utils/player_util.cpp | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 0e5a340c..bd4dfedc 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -203,14 +203,14 @@ PlayerUtil::ChangeClothes(const char* clothingSetName)
+ 
+ 	// Get the internal clothing set name, this doesn't seem to grab the right value
+ 	//const char *internalClothingName = GetClothingSetName(clothingSetName);
+-	const char *clothesDisplayName = GetClothingDisplayName(clothingSetName).c_str();
++	std::string clothesDisplayName = GetClothingDisplayName(clothingSetName);
+ 
+ 	// This didn't work either, I need to figure this out before I implement this into lua.
+ 	//bool doesClothesExist = ClothingSetExists(clothingSetName);
+ 
+-	// This check doesn't work
+ 	// This one seems to work.
+-	if (clothesDisplayName != nullptr)
++	// This only checks if it's null, still crashes on invalid models, I'll fix it later.
++	if (clothesDisplayName.c_str() != nullptr)
+ 	{
+ 		pPlayerPed->Undress(clothingSetName);
+ 		//pPlayerPed->Undress(internalClothingName);
+-- 
+2.45.1.windows.1
+

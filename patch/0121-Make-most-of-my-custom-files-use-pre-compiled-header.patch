@@ -1,0 +1,334 @@
+From ebcb922ace6324d7322154f7c2ad0c8652a57380 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Mar 2025 19:20:35 -0400
+Subject: [PATCH 121/129] Make most of my custom files use pre compiled
+ headers.
+
+---
+ src/extras/kcnet/pch.h                  | 11 ++++++++++-
+ src/extras/lua/lua_functions.cpp        |  7 ++-----
+ src/extras/lua/lua_test.cpp             | 12 ++++--------
+ src/extras/menus/about_menu.cpp         |  9 ++-------
+ src/extras/menus/cheat_menu.cpp         |  9 ++-------
+ src/extras/menus/game_menu.cpp          | 11 +++--------
+ src/extras/menus/imgui_main_menu.cpp    |  9 ++-------
+ src/extras/menus/misc_menu.cpp          |  9 ++-------
+ src/extras/menus/ped_menu.cpp           |  9 ++-------
+ src/extras/menus/player_menu.cpp        |  9 ++-------
+ src/extras/menus/vehicle_menu.cpp       |  9 ++-------
+ src/extras/menus/vehicle_spawn_menu.cpp |  9 ++-------
+ src/extras/menus/warp_menu.cpp          | 13 -------------
+ 13 files changed, 35 insertions(+), 91 deletions(-)
+
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+index 606e80c6..ced46998 100644
+--- a/src/extras/kcnet/pch.h
++++ b/src/extras/kcnet/pch.h
+@@ -4,9 +4,18 @@
+ #include <string>
+ #include <sstream>
+ 
++// ReVC
++#ifdef _WIN32
++// TODO Is this needed? Seems to be auto disabled in common.h if it's active.
+ #define WITHDINPUT
++#endif
++
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+ 
+-#include "main.h"
+\ No newline at end of file
++#include "main.h"
++
++//
++
++#include <functional>
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 2fbe0131..6e68a0f4 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -1,9 +1,6 @@
+-#include "lua_functions.h"
++#include "pch.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
++#include "lua_functions.h"
+ 
+ #include "lua_test.h"
+ #include <iostream>
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index a29457a5..acdde205 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -1,11 +1,7 @@
+ // Well trying to move this to sol didn't work well.
+ // I guess it doesn't like C++14 and changing it breaks ReVC.
+ 
+-// VC Specific
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
++#include "pch.h"
+ 
+ #include "lua_test.h"
+ #include <iostream>
+@@ -101,7 +97,7 @@ extern "C" {
+ LuaTest::LuaTest() { 
+ 	m_luaVM = luaL_newstate(); 
+ 
+-	// Load LUA libraries
++	// Load LUA libraries, TODO is this needed in here?
+ 	luaopen_base(m_luaVM);
+ 	luaopen_math(m_luaVM);
+ 	luaopen_string(m_luaVM);
+@@ -538,7 +534,7 @@ LuaTest::InitLua()
+ 	Defines defines = Defines();
+ 	LuaTest luaTest = LuaTest();
+ 
+-	// Create a new VM
++	// Create a new VM, moved into constructor
+ 	//m_luaVM = luaL_newstate();
+ 	// TODO Implement this from MTA
+ 	// m_pLuaManager->OnLuaMainOpenVM(this, m_luaVM);
+@@ -562,7 +558,7 @@ LuaTest::InitLua()
+ 	// Well this crashes it like this
+ 	//luaTest.RegisterLuaFunctions();
+ 
+-	lua_State *L = LuaTest::GetInstance().GetLuaState();
++	//lua_State *L = LuaTest::GetInstance().GetLuaState();
+ 
+ 	// This seems to work now.
+ 	// lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
+diff --git a/src/extras/menus/about_menu.cpp b/src/extras/menus/about_menu.cpp
+index 9aa8562b..ade0258a 100644
+--- a/src/extras/menus/about_menu.cpp
++++ b/src/extras/menus/about_menu.cpp
+@@ -1,13 +1,8 @@
++#include "pch.h"
++
+ #include "about_menu.h"
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index 0ad6d335..f80d4327 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -1,13 +1,8 @@
++#include "pch.h"
++
+ #include "cheat_menu.h"
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index 5e1fb8f9..98dc3783 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -1,3 +1,5 @@
++#include "pch.h"
++
+ #include "game_menu.h"
+ 
+ // https://stackoverflow.com/questions/22744262/cant-call-stdmax-because-minwindef-h-defines-max
+@@ -7,13 +9,6 @@
+ #include "imgui.h"
+ #include <algorithm> // For std::min
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+@@ -173,7 +168,7 @@ GameMenu::GameTab()
+ 		// Temporary for now.
+ 		if (ImGui::Button("Teleport to garage 16"))
+ 		{ 
+-			CVector garage16Pos = CVector(443.4, 639.6, 11.2);
++			CVector garage16Pos = CVector(443.4f, 639.6f, 11.2f);
+ 			PlayerCheats::SetPlayerPosition(garage16Pos.x, garage16Pos.y, garage16Pos.z);
+ 			
+ 		}
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index 2dfdaaa4..74edc093 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -1,16 +1,11 @@
++#include "pch.h"
++
+ #include "imgui_main_menu.h"
+ #include "imgui.h"
+ 
+ #include <iomanip>
+ 
+ // Lua test
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ #include "lua_test.h"
+ // Lua
+ extern "C" {
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index b7cbd51a..c0424d51 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -1,13 +1,8 @@
++#include "pch.h"
++
+ #include "misc_menu.h"
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // Menus
+ #include "imgui_main_menu.h"
+ 
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index 7db6d4a5..74364b93 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -1,14 +1,9 @@
++#include "pch.h"
++
+ #include "ped_menu.h"
+ 
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 574835a4..27f5cff1 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -1,13 +1,8 @@
++#include "pch.h"
++
+ #include "player_menu.h"
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index f2767d5e..dd8870f2 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -1,13 +1,8 @@
++#include "pch.h"
++
+ #include "vehicle_menu.h"
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index c9df1cfa..aac1dfb1 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -1,15 +1,10 @@
++#include "pch.h"
++
+ #include "vehicle_spawn_menu.h"
+ 
+ //#include "vehicle_menu.h"
+ #include "imgui.h"
+ 
+-#define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
+-
+-#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 034a61be..224e7912 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -6,19 +6,6 @@
+ #include "warp_menu.h"
+ #include "imgui.h"
+ 
+-
+-
+-//#include <vector>
+-//#include <string>
+-//#include <sstream>
+-//
+-//#define WITHDINPUT
+-//#include "common.h"
+-//#include "crossplatform.h"
+-//#include "platform.h"
+-//
+-//#include "main.h"
+-
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+-- 
+2.45.1.windows.1
+

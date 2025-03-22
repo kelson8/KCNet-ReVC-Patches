@@ -1,0 +1,390 @@
+From 38f636c1215e379f9e66a3809b114a36bf40a405 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 18 Mar 2025 15:41:05 -0400
+Subject: [PATCH 116/129] Make garage_functions log using new dll method, fix
+ dll to work in other files. Add logging file as a test to move the logging
+ into a class. Test logging file in garage_functions, it works.
+
+---
+ src/extras/functions/garage_functions.cpp | 59 ++++++++++++++++++-
+ src/extras/kcnet/dll_log_headers.h        | 11 +++-
+ src/extras/kcnet/logging.cpp              | 69 +++++++++++++++++++++++
+ src/extras/kcnet/logging.h                | 54 ++++++++++++++++++
+ src/skel/win/win.cpp                      | 23 ++++++--
+ 5 files changed, 209 insertions(+), 7 deletions(-)
+ create mode 100644 src/extras/kcnet/logging.cpp
+ create mode 100644 src/extras/kcnet/logging.h
+
+diff --git a/src/extras/functions/garage_functions.cpp b/src/extras/functions/garage_functions.cpp
+index 7edc4634..b68ecea8 100644
+--- a/src/extras/functions/garage_functions.cpp
++++ b/src/extras/functions/garage_functions.cpp
+@@ -19,7 +19,7 @@
+ #include "player_cheats.h"
+ 
+ #include "vehicle_functions.h"
+-#include "log_functions.h"
++
+ 
+ // Spawning a ped so far, doesn't work.
+ #include "ped_functions.h"
+@@ -42,6 +42,18 @@
+ #include "Script.h"
+ #include "Garages.h"
+ 
++// New log functions, in dll
++// This works! I had to reconfigure the dll_log_headers and add some init for it to win.cpp.
++#include "dll_log_headers.h"
++
++#include "logging.h"
++
++#ifdef LOG_DLL_TEST
++// This should only include this file if the dll log isn't defined.
++#else
++#include "log_functions.h"
++#endif
++
+ // TODO Test these
+ // I pretty much reimplemented the garage commands from the scripts.
+ // I am only calling the original functions.
+@@ -60,13 +72,20 @@
+ void
+ GarageFunctions::CreateGarage(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId)
+ {
++	Logger logger = Logger();
+ 	CGarages::AddOne(X1, Y1, Z1, X2, Y2, X3, Y3, Z2, type, targetId);
+ 	std::string garageCreatedString = "Garage added at X1: " + std::to_string(X1) + " Y1: " + std::to_string(Y1) + " Z1: " + std::to_string(Z1) +
+ 	                                  " X2: " + std::to_string(X2) + " Y2: " + std::to_string(Y2) + " X3: " + std::to_string(X3) +
+ 	                                  " Y3: " + std::to_string(Y3) + " Z2: " + std::to_string(Z2) + "Type: " + std::to_string(type) +
+ 	                                  "TargetId: " + std::to_string(targetId);
+ 
++#ifdef LOG_DLL_TEST
++	//logInfo(defines.logFilePath.c_str(), garageCreatedString.c_str());
++	logger.info(defines.logFilePath, garageCreatedString);
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageCreatedString);
++#endif
++	
+ }
+ 
+ void
+@@ -77,17 +96,30 @@ GarageFunctions::ChangeGarageType(int16 garage, uint8 type, int32 modelIndex)
+ 	std::string garageTypeChangedString =
+ 	    "Garage id: " + std::to_string(garage) + " changed to type: " + std::to_string(type) + " model index: " + std::to_string(modelIndex);
+ 
++#ifdef LOG_DLL_TEST
++	logInfo(defines.logFilePath.c_str(), garageTypeChangedString.c_str());
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageTypeChangedString);
++#endif
+ }
+ 
+ void
+ GarageFunctions::OpenGarage(int16 garage)
+ {
++	Logger logger = Logger();
+ 	CGarages::OpenGarage(garage);
+ 
+ 	std::string garageOpenedString = "Garage id: " + std::to_string(garage) + " opened";
+ 
++#ifdef LOG_DLL_TEST
++	//logInfo(defines.logFilePath.c_str(), garageOpenedString.c_str());
++	// This new logging class works!
++	// TODO Move everything to using it.
++	logger.info(defines.logFilePath, garageOpenedString);
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageOpenedString);
++#endif
++	
+ }
+ 
+ void
+@@ -97,7 +129,12 @@ GarageFunctions::CloseGarage(int16 garage)
+ 
+ 	std::string garageClosedString = "Garage id: " + std::to_string(garage) + " closed";
+ 
++
++#ifdef LOG_DLL_TEST
++	logInfo(defines.logFilePath.c_str(), garageClosedString.c_str());
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageClosedString);
++#endif
+ }
+ 
+ bool
+@@ -105,7 +142,12 @@ GarageFunctions::IsGarageOpened(int16 garage)
+ {
+ 	std::string garageCurrentlyOpenString = "Garage id: " + std::to_string(garage) + " is currently open";
+ 
++
++#ifdef LOG_DLL_TEST
++	logInfo(defines.logFilePath.c_str(), garageCurrentlyOpenString.c_str());
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageCurrentlyOpenString);
++#endif
+ 
+ 	return CGarages::IsGarageOpen(garage);
+ 
+@@ -117,7 +159,12 @@ GarageFunctions::IsGarageClosed(int16 garage)
+ {
+ 	std::string garageCurrentlyClosedString = "Garage id: " + std::to_string(garage) + " is currently closed";
+ 
++
++#ifdef LOG_DLL_TEST
++	logInfo(defines.logFilePath.c_str(), garageCurrentlyClosedString.c_str());
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageCurrentlyClosedString);
++#endif
+ 
+ 	return CGarages::IsGarageClosed(garage);
+ }
+@@ -129,7 +176,12 @@ GarageFunctions::DeactivateGarage(int16 garage)
+ 
+ 	std::string garageDeactivatedString = "Garage id: " + std::to_string(garage) + " has been deactivated";
+ 
++
++#ifdef LOG_DLL_TEST
++	logInfo(defines.logFilePath.c_str(), garageDeactivatedString.c_str());
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageDeactivatedString);
++#endif
+ }
+ 
+ void
+@@ -139,5 +191,10 @@ GarageFunctions::ActivateGarage(int16 garage)
+ 
+ 	std::string garageActivatedString = "Garage id: " + std::to_string(garage) + " has been activated";
+ 
++#ifdef LOG_DLL_TEST
++	logInfo(defines.logFilePath.c_str(), garageActivatedString.c_str());
++#else
+ 	LogFunctions::LogInfo(defines.logFile, garageActivatedString);
++
++#endif
+ }
+\ No newline at end of file
+diff --git a/src/extras/kcnet/dll_log_headers.h b/src/extras/kcnet/dll_log_headers.h
+index 94d2c217..b4283d10 100644
+--- a/src/extras/kcnet/dll_log_headers.h
++++ b/src/extras/kcnet/dll_log_headers.h
+@@ -1,10 +1,14 @@
+ #pragma once
+-//#define LOG_DLL_TEST
++#include <iostream>
++#include <Windows.h>
++#define LOG_DLL_TEST
+ 
+ // I got this working now as a dll, TODO Move log functions to this.
+ // I had to make a new path but I can reuse it on my other items.
+ 
+ #ifdef LOG_DLL_TEST
++// Test for setting the values of this
++extern HINSTANCE hLogDll;
+ extern "C" {
+ // typedef void (*LogInfo)(std::string fileName, std::string message);
+ // typedef void (*LogWarning)(std::string fileName, std::string message);
+@@ -14,4 +18,9 @@ typedef void (*LogInfo)(const char *fileName, const char *message);
+ typedef void (*LogWarning)(const char *fileName, const char *message);
+ typedef void (*LogError)(const char *fileName, const char *message);
+ }
++extern LogInfo logInfo;
++extern LogWarning logWarning;
++extern LogError logError;
++
++
+ #endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/logging.cpp b/src/extras/kcnet/logging.cpp
+new file mode 100644
+index 00000000..ee1e7759
+--- /dev/null
++++ b/src/extras/kcnet/logging.cpp
+@@ -0,0 +1,69 @@
++#include "logging.h"
++
++// TODO Test this later, I got it to build.
++
++#ifdef LOG_CLASS_TEST
++
++// Definitions of member variables
++// Already defined in win.cpp
++//HINSTANCE hLogDll = nullptr;
++//LogInfo logInfo = nullptr;
++//LogWarning logWarning = nullptr;
++//LogError logError = nullptr;
++
++// Constructor and destructor implementations
++Logger::Logger()
++{
++	 hLogDll = nullptr;
++	 logInfo = nullptr;
++	 logWarning = nullptr;
++	 logError = nullptr;
++
++	// ... (Your constructor logic) ...
++	LPCSTR logDllName = "KCNet-Logging-Dll.dll";
++	hLogDll = LoadLibraryA(logDllName);
++	if(hLogDll == nullptr) {
++		std::cerr << "Error, could not load " << logDllName << std::endl;
++		return;
++	}
++
++	logInfo = (LogInfo)GetProcAddress(hLogDll, "LogInfo");
++	logWarning = (LogWarning)GetProcAddress(hLogDll, "LogWarning");
++	logError = (LogError)GetProcAddress(hLogDll, "LogError");
++	if(logInfo == nullptr || logWarning == nullptr || logError == nullptr) {
++		std::cerr << "Error: Could not find log functions in DLL." << std::endl;
++		FreeLibrary(hLogDll);
++		hLogDll = nullptr;
++		return;
++	}
++}
++
++Logger::~Logger()
++{
++	// ... (Your destructor logic) ...
++	if(hLogDll != nullptr) { FreeLibrary(hLogDll); }
++}
++
++// Logging method implementations
++void
++Logger::info(const std::string &fileName, const std::string &message)
++{
++	// ... (Your info method logic) ...
++	if(logInfo != nullptr) { logInfo(fileName.c_str(), message.c_str()); }
++}
++
++void
++Logger::warning(const std::string &fileName, const std::string &message)
++{
++	// ... (Your warning method logic) ...
++	if(logWarning != nullptr) { logWarning(fileName.c_str(), message.c_str()); }
++}
++
++void
++Logger::error(const std::string &fileName, const std::string &message)
++{
++	// ... (Your error method logic) ...
++	if(logError != nullptr) { logError(fileName.c_str(), message.c_str()); }
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/logging.h b/src/extras/kcnet/logging.h
+new file mode 100644
+index 00000000..23908a4b
+--- /dev/null
++++ b/src/extras/kcnet/logging.h
+@@ -0,0 +1,54 @@
++#pragma once
++#include <Windows.h>
++#include <iostream>
++#include <string>
++
++#include "dll_log_headers.h"
++
++// TODO Test this later, I got it to build.
++
++#define LOG_CLASS_TEST
++#ifdef LOG_CLASS_TEST
++
++// Example in garage_functions.cpp:
++// Old method:
++// 	//logInfo(defines.logFilePath.c_str(), garageOpenedString.c_str());
++	// This new logging class works!
++	// TODO Move everything to using it.
++//
++// #include "logging.h"
++//
++//logger.info(defines.logFilePath, garageOpenedString);
++
++// Defined in dll_log_headers.h
++//extern "C" {
++//typedef void (*LogInfo)(const char *, const char *);
++//typedef void (*LogWarning)(const char *, const char *);
++//typedef void (*LogError)(const char *, const char *);
++//}
++
++class Logger
++{
++private:
++	HINSTANCE hLogDll;
++	LogInfo logInfo;
++	LogWarning logWarning;
++	LogError logError;
++
++
++public:
++	// Constructor: Load DLL and get function pointers
++	Logger();
++
++	// Destructor: Free the DLL
++	~Logger();
++
++	// Logging methods
++	void info(const std::string &fileName, const std::string &message);
++
++	void warning(const std::string &fileName, const std::string &message);
++
++	void error(const std::string &fileName, const std::string &message);
++};
++
++#endif
+\ No newline at end of file
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index aa14300f..a61db266 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -2390,6 +2390,14 @@ void HandleExit()
+ // Test moving into win_new.cpp in src/extras/test
+ // MainWndProc alternative, placing text here so i can easily find this...
+ 
++#ifdef LOG_DLL_TEST
++// Init these variables for the dll.
++HINSTANCE hLogDll = nullptr;
++LogInfo logInfo = nullptr;
++LogWarning logWarning = nullptr;
++LogError logError = nullptr;
++#endif
++
+ #ifndef _SPLIT_WIN_FILE
+ ////
+ int PASCAL
+@@ -2414,7 +2422,7 @@ CMenuManager cMenuManager = CMenuManager();
+ 	Defines defines = Defines();
+ 	// First, load the dll
+ 	LPCSTR logDllName = "KCNet-Logging-Dll.dll";
+-	HINSTANCE hLogDll = LoadLibraryA(logDllName);
++	hLogDll = LoadLibraryA(logDllName);
+ 
+ 	// Convert LPCSTR to std::string
+ 	std::string dllNameString(logDllName);
+@@ -2429,16 +2437,21 @@ CMenuManager cMenuManager = CMenuManager();
+ 	// Set above also, for extern "C"
+ 	// Moved into dll_log_headers.h, this isn't the one for the dll this is a separate file.
+ 
+-
+-	LogInfo logInfo = (LogInfo)GetProcAddress(hLogDll, "LogInfo");
+-	LogWarning logWarning = (LogWarning)GetProcAddress(hLogDll, "LogWarning");
+-	LogError logError = (LogError)GetProcAddress(hLogDll, "LogError");
++	 logInfo = (LogInfo)GetProcAddress(hLogDll, "LogInfo");
++	 logWarning = (LogWarning)GetProcAddress(hLogDll, "LogWarning");
++	 logError = (LogError)GetProcAddress(hLogDll, "LogError");
+ 
+ 	if (logInfo == nullptr || logWarning == nullptr || logError == nullptr)
+ 	{ 
+ 		std::cerr << "Error: Could not find log functions in DLL." << std::endl;
+ 		TRACE("Error: Could not find log functions in DLL");
++		
++		// Free the library
+ 		FreeLibrary(hLogDll);
++
++		// Reset the value
++		hLogDll = nullptr;
++
+ 		return 1; // Exit early of functions aren't found
+ 	}
+ 
+-- 
+2.45.1.windows.1
+

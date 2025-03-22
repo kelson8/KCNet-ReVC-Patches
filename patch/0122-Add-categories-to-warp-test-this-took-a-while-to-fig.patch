@@ -1,0 +1,1010 @@
+From 9623b5b769ef8bf7cccb22e639311c06aac1bf16 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 19 Mar 2025 23:31:53 -0400
+Subject: [PATCH 122/129] Add categories to warp test, this took a while to
+ figure out. Add some misc testing from a different warp categories test. Make
+ CGame::Initialise not static, possibly revert that. Add KcLogString for cout
+ and other messages in the console. Switch imgui_main_menu from namespace to
+ class. Cleanup imgui main menu a bit, add new warp test which didn't work.
+ Add misc_util, so far it can convert a memory address to a string. Disable
+ items in revc_globals.h Update patch and commit number.
+
+---
+ guides/create-patches.md               |   2 +-
+ src/core/Game.cpp                      |  67 ++++++-
+ src/core/Game.h                        |  47 +++++
+ src/core/config.h                      |   4 +
+ src/core/main.cpp                      |  12 +-
+ src/extras/defines.cpp                 |   4 +
+ src/extras/defines.h                   |   3 +
+ src/extras/functions/ini_functions.cpp | 235 +++++++++++++++----------
+ src/extras/functions/ini_functions.h   |  26 ++-
+ src/extras/kcnet/api/revc_globals.h    |  19 +-
+ src/extras/menus/imgui_main_menu.cpp   |  67 ++++---
+ src/extras/menus/imgui_main_menu.h     |  39 ++--
+ src/extras/menus/misc_menu.cpp         |   2 +-
+ src/extras/menus/warp_menu.cpp         |  38 +++-
+ src/extras/menus/warp_menu.h           |  14 ++
+ src/extras/utils/misc_util.cpp         |   9 +
+ src/extras/utils/misc_util.h           |   9 +
+ 17 files changed, 436 insertions(+), 161 deletions(-)
+ create mode 100644 src/extras/utils/misc_util.cpp
+ create mode 100644 src/extras/utils/misc_util.h
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 98ca9bd9..8c2692d1 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 118, patch number: 118)
++(Currently on commit 122, patch number: 122)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 1d55466f..6e6db495 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -115,8 +115,18 @@
+ 
+ #ifdef CUSTOM_CODE
+ #include "lua_test.h"
+-// Warp loading
+-#include "ini_functions.h"
++// Warp loading, moved into Game.h for test.
++//#include "ini_functions.h"
++
++// Logging
++#include "log_functions.h"
++
++// Misc stuff for my project
++#include "misc_util.h"
++
++// Extra stuff for defines.
++#include "defines.h"
++
+ #endif // CUSTOM_CODE - LUA_TEST
+ 
+ // Well this crashes in here, disabled for now.
+@@ -419,6 +429,24 @@ CGame::FinalShutdown(void)
+ 	CdStreamShutdown();
+ }
+ 
++#ifdef CUSTOM_CODE
++
++// Initialize the static member
++//CGame *CGame::instance = nullptr; 
++
++// Initialize the global pointer
++#ifdef NEW_WARP_TEST
++CGame *g_gameInstance = nullptr; 
++
++void
++CGame::InitialiseIniFunctions()
++{
++	iniFunctions.LoadWarpIni();
++}
++#endif
++
++#endif
++
+ /// <summary>
+ /// Looks like the main loading for the game.
+ /// Hmm I could play with this and stop certain features from being enabled.
+@@ -427,6 +455,14 @@ CGame::FinalShutdown(void)
+ /// <returns>TODO Possibly if the game is loaded?</returns>
+ bool CGame::Initialise(const char* datFile)
+ {
++#ifdef CUSTOM_CODE
++	Defines defines = Defines();
++
++	// Set the global pointer
++#ifdef NEW_WARP_TEST
++	g_gameInstance = this;
++#endif
++#endif
+ 	ResetLoadingScreenBar();
+ 	strcpy(aDatFile, datFile);
+ 
+@@ -539,10 +575,37 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	// Load my ini file for the warps.ini in ImGui
+ 	// This works fine for ImGui.
++#ifndef NEW_WARP_TEST
+ 	IniFunctions iniFunctions = IniFunctions();
++#endif
++	//CGame game = CGame();
++	MiscUtil miscUtil = MiscUtil();
+ 
++	// TODO Test this.
++#ifdef NEW_WARP_TEST
++	std::cout << defines.KcLogString << "categorizedWarps size after loading : " << iniFunctions.categorizedWarps.size() << std::endl;
++#endif
+ 	iniFunctions.LoadWarpIni();
+ 
++#ifdef NEW_WARP_TEST
++	std::cout << defines.KcLogString << "g_gameInstance set to in Game.cpp : " << g_gameInstance << std::endl;
++#endif
++
++	// LogFunctions::LogInfo(defines.logFile, "iniFunctions address in Init(): " + &iniFunctions);
++	// LogFunctions::LogInfo(defines.logFile, "iniFunctions address in Init(): " + miscUtil.AddressToString(&iniFunctions));
++	// InitialiseIniFunctions();
++
++	// InitialiseIniFunctions();
++
++	// Temporary log
++	// LogFunctions::LogInfo(defines.logFile, "categorizedWarps size after loading: " + iniFunctions.categorizedWarps.size());
++	// for(const auto &pair : iniFunctions.categorizedWarps) {
++	//	LogFunctions::LogInfo(defines.logFile, "Category: " + pair.first + ", Warps: " + std::to_string(pair.second.size()));
++	//	std::cout << "Category: '" << pair.first << "', Warps: " << pair.second.size() << std::endl;
++	//
++	//}
++
++
+ #ifdef NEW_PLUGIN_SDK
+ 	// TODO Test if this runs or not.
+ 	// Well this crahses it.
+diff --git a/src/core/Game.h b/src/core/Game.h
+index 4052eb00..d23d915a 100644
+--- a/src/core/Game.h
++++ b/src/core/Game.h
+@@ -1,5 +1,10 @@
+ #pragma once
+ 
++#ifdef CUSTOM_CODE
++// Warp loading
++#include "ini_functions.h"
++#endif
++
+ enum eLevelName {
+ 	LEVEL_IGNORE = -1, // beware, this is only used in CPhysical's m_nZoneLevel
+ 	LEVEL_GENERIC = 0,
+@@ -33,6 +38,16 @@ enum eAreaName {
+ 
+ class CGame
+ {
++
++#ifdef CUSTOM_CODE
++private:
++#ifdef NEW_WARP_TEST
++	IniFunctions iniFunctions;
++#endif
++	//static CGame *instance;
++	//CGame() {}
++#endif
++
+ public:
+ 	static eLevelName currLevel;
+ 	static int32 currArea;
+@@ -53,12 +68,37 @@ public:
+ 	static bool8 VarUpdatePlayerCoords;
+ #endif
+ 
++
++#ifdef CUSTOM_CODE
++
++	// TODO Test this for warp ini loading, I think something is clearing it with the static context.
++	//static CGame* GetInstance() { 
++	//	if(!instance) { 
++	//		instance = new CGame();
++	//	}
++	//	return instance;
++	//}
++
++	// Test for passing a pointer from this iniFunctions instance to another file
++	// TODO Test this
++#ifdef NEW_WARP_TEST
++	IniFunctions &GetIniFunctions() { return iniFunctions; };
++#endif
++
++	void InitialiseIniFunctions();
++#endif
++
+ 	static bool InitialiseOnceBeforeRW(void);
+ 	static bool InitialiseRenderWare(void);
+ 	static void ShutdownRenderWare(void);
+ 	static bool InitialiseOnceAfterRW(void);
+ 	static void FinalShutdown(void);
++
++#ifdef CUSTOM_CODE
++	bool Initialise(const char *datFile);
++#else
+ 	static bool Initialise(const char *datFile);
++#endif
+ 	static bool ShutDown(void);
+ 	static void ReInitGameObjectVariables(void);
+ 	static void ReloadIPLs(void);
+@@ -79,3 +119,10 @@ public:
+ };
+ 
+ inline bool IsAreaVisible(int area) { return area == CGame::currArea || area == AREA_EVERYWHERE; }
++
++#ifdef CUSTOM_CODE
++// Set the global pointer for CGame
++#ifdef NEW_WARP_TEST
++extern CGame *g_gameInstance;
++#endif
++#endif
+\ No newline at end of file
+diff --git a/src/core/config.h b/src/core/config.h
+index 91d02823..ff25a35e 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -11,6 +11,10 @@
+ // It changes the value in the reVC.ini file.
+ #define MENU_TEST
+ 
++// Toggle my new ImGui warp category test, it currently doesn't work.
++// This is old, I'll remove this later.
++//#define NEW_WARP_TEST
++
+ // Enable my early plugin sdk test.
+ // I am attemping to use the script commands directly in the C++ code like plugin sdk, without needing the
+ // memory addresses, this needs a lot of work to be done on here.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 9ba39eb4..a26e391f 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -2006,7 +2006,12 @@ InitialiseGame(void)
+ 	LoadingScreen(nil, nil, "loadsc0");
+ #endif
+ 
++#ifdef CUSTOM_CODE
++	CGame cGame;
++	cGame.Initialise("DATA\\GTA_VC.DAT");
++	#else
+ 	CGame::Initialise("DATA\\GTA_VC.DAT");
++#endif
+ }
+ 
+ RsEventStatus
+@@ -2131,7 +2136,12 @@ void TheGame(void)
+ 
+ 	CTimer::Initialise();
+ 
+-	CGame::Initialise("DATA\\GTA3.DAT");
++#ifdef CUSTOM_CODE
++	CGame cGame;
++	cGame.Initialise("DATA\\GTA_3.DAT");
++#else
++	CGame::Initialise("DATA\\GTA_3.DAT");
++#endif
+ 
+ 	Const char *splash = GetRandomSplashScreen(); // inlined here
+ 
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index ab6cf47b..ee8e258e 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -2,6 +2,10 @@
+ 
+ std::string viceExtendedFolder = "ViceExtended/";
+ 
++std::string logFolderPath = viceExtendedFolder + "logs/";
++// This is mostly in use for cout in the -console of ReVC, so I can read the value easier.
++std::string Defines::KcLogString = "||||&&&&KCNET&&&&|||| ";
++
+ // This is required.
+ // Set the log file path
+ std::string Defines::logFile = "KCNet-ReVC.log";
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index 892579c8..58292700 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -20,6 +20,9 @@ public:
+ 	// Toml logging
+ 	static std::string tomlLogFile;
+ 
++	// Log string for cout, cerr debug
++	static std::string KcLogString;
++
+ 	// Files
+ 	static std::string fontFile;
+ 	// Lua
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 18bba382..b70578d5 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -72,6 +72,9 @@
+ #include "log_functions.h"
+ #include "defines.h"
+ 
++#include "misc_util.h"
++
++
+ //#include "player_cheats.h"
+ #include "imgui.h"
+ 
+@@ -135,6 +138,79 @@ mINI::INIStructure warpsCfg;
+ 
+ std::vector<IniFunctions::WarpData> warps; // Store warp data
+ 
++/////////////////////////////////////
++
++
++
++
++std::vector<IniFunctions::Category>
++IniFunctions::LoadLocationsFromIni(const std::string &filename)
++{
++	mINI::INIFile file(filename);
++	mINI::INIStructure ini;
++	file.read(ini);
++
++	std::vector<Category> categories;
++
++	for(const auto &section : ini) {
++		Category category;
++		category.name = section.first;
++
++		for(const auto &entry : section.second) {
++			std::string locationName = entry.first;
++			std::string locationDataStr = entry.second;
++
++			std::stringstream ss(locationDataStr);
++			LocationData locationData;
++			char comma;
++
++			if(ss >> locationData.interiorId >> comma >> locationData.posX >> comma >> locationData.posY >> comma >> locationData.posZ) {
++				category.locations.emplace_back(locationName, locationData);
++			} else {
++				std::cerr << "Error parsing location data: " << locationDataStr << std::endl;
++			}
++		}
++		categories.push_back(category);
++	}
++	return categories;
++}
++
++// This works without a button for categories
++
++
++void
++IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &categories)
++{
++	ImGui::Separator();
++	ImGui::Text("Warp locations");
++
++	for(const auto &category : categories) {
++		if(ImGui::CollapsingHeader(category.name.c_str())) {
++			if(ImGui::BeginListBox(("##" + category.name).c_str(),
++			                       ImVec2(-FLT_MIN, category.locations.size() * ImGui::GetTextLineHeightWithSpacing()))) {
++				for(const auto &location : category.locations) {
++					ImGui::Text("%s", location.first.c_str()); // Display the location name
++
++					// Oh this one removes the 
++					// if(ImGui::Selectable(location.first.c_str())) {}
++					ImGui::SameLine(); // Place the button on the same line
++
++					if(ImGui::Button(("Teleport##" + location.first).c_str())) { // Add a teleport button
++						// Teleport to location when the button is clicked
++						//std::cout << "Teleporting to: " << category.name << " - " << location.first << std::endl;
++						//std::cout << "Interior: " << location.second.interiorId << ", Pos: " << location.second.posX << ", "
++						//          << location.second.posY << ", " << location.second.posZ << std::endl;
++
++						PlayerCheats::SetPlayerPosition(location.second.posX, location.second.posY, location.second.posZ);
++					}
++				}
++				ImGui::EndListBox();
++			}
++		}
++	}
++}
++
++///////////////////////////////////////
+ 
+ // Read the data from the warp file
+ IniFunctions::WarpData
+@@ -167,35 +243,10 @@ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIS
+ 	return result;
+ }
+ 
+-// New, category testing
+-//std::map<std::string, std::vector<IniFunctions::WarpData>>
+-//LoadWarpsFromIni(const std::string &iniFilePath)
+-//{
+-//	std::map<std::string, std::vector<IniFunctions::WarpData>> categorizedWarps;
+-//	mINI::INIFile file(iniFilePath);
+-//	mINI::INIStructure ini;
+-//
+-//	if(file.read(ini)) {
+-//		for(const auto &section : ini) {
+-//			for(const auto &keyValuePair : section.second) {
+-//				std::stringstream ss(keyValuePair.second);
+-//				IniFunctions::WarpData warp;
+-//				warp.name = keyValuePair.first;
+-//
+-//				char comma;
+-//				if(ss >> warp.x >> comma >> warp.y >> comma >> warp.z >> comma >> warp.name) {
+-//					categorizedWarps[section.first].push_back(warp);
+-//				} else {
+-//					std::cerr << "Error parsing warp data: " << keyValuePair.second << std::endl;
+-//				}
+-//			}
+-//		}
+-//	} else {
+-//		std::cerr << "Error reading INI file: " << iniFilePath << std::endl;
+-//	}
+-//
+-//	return categorizedWarps;
+-//}
++
++//-----------
++// End new tests
++//-----------
+ 
+ 
+ //
+@@ -207,28 +258,41 @@ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIS
+ void
+ IniFunctions::LoadWarpIni()
+ {
++	std::cout << defines.KcLogString << "Before warpsIni.read()" << std::endl;
+ 	if(warpsIni.read(warpsCfg)) {
++		std::cout << defines.KcLogString << "warpsIni.read() returned true" << std::endl;
++
+ 		// Clear previous data
+-		categorizedWarps.clear();
++		//categorizedWarps.clear();
+ 		// 
+ 		// Success! Now process the data and populate the warps vector
+ 		for(const auto &sectionPair : warpsCfg) {
++
++
++
++			
+ 			const std::string &sectionName = sectionPair.first;
+ 			const mINI::INIMap<std::string> &section = sectionPair.second;
+ 
+ 			for(const auto &pair : section) {
+-				// New test, for categories
+-				//WarpData warpData = ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg);
+-				//warpData.name = pair.first;
+-				//// Set the warp data.
+-				//categorizedWarps[sectionName].push_back(warpData);
+ 
++				std::cout << "Section: " << sectionName << ", Key: " << pair.first << std::endl;
++
++				WarpData warpData = ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg);
++				// std::cout << defines.KcLogString << "warpData.name: " << warpData.name << std::endl;
++				std::cout << defines.KcLogString << "warpData.interiorId: " << warpData.interiorId << std::endl;
++				std::cout << defines.KcLogString << "warpData.x: " << warpData.x << std::endl;
++				std::cout << defines.KcLogString << "warpData.y: " << warpData.y << std::endl;
++				std::cout << defines.KcLogString << "warpData.z: " << warpData.z << std::endl;
++				// warpData.name = pair.first;
++				//  Set the warp data.
+ 
+ 				// Original function
+ 				warps.push_back(ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg));
+ 				warps.back().name = pair.first;
+ 			}
+ 
++
+ 			//std::string loadWarpsLogString = "Category " + sectionName + ", Warps: " + std::to_string(categorizedWarps[sectionName].size());
+ 			// Log this out somewhere.
+ 			// Well I'll attempt to use my dll test, I need to remember to use this more often.
+@@ -238,62 +302,23 @@ IniFunctions::LoadWarpIni()
+ 			//std::cout << "Category: " << sectionName << ", Warps: " << categorizedWarps[sectionName].size() << std::endl;
+ 		}
+ 	} else {
+-		std::cerr << "Error reading warp INI file!" << std::endl;
++		
++		std::cerr << defines.KcLogString << "Error reading warp INI file !" << std::endl;
+ 	}
++
++	std::cout << defines.KcLogString << "warpsCfg size: " << warpsCfg.size() << std::endl;
+ }
+ 
+ 
+-//
+ 
+-// TODO Test this, new category test for ImGui.
+-// TODO Fix this to work, it logs the categories they just don't show up in ImGui.
+-//void
+-//IniFunctions::ImGuiWarpList()
+-//{
+-//	Defines defines = Defines();
+-//	ImGui::Separator();
+-//	ImGui::Text("Warps");
+-//	static int selectedWarp = -1;
+-//
+-//	std::vector<const char *> warpNames;
+-//
+-//	// Populate the warp categories
+-//	for(const auto &categoryPair : categorizedWarps) {
+-//	
+-//		// Test:
+-//		ImGui::Text(categoryPair.first.c_str()); // Display category names
+-//		if (ImGui::CollapsingHeader(categoryPair.first.c_str()))
+-//		{ 
+-//			static std::map<std::string, int> selectedWarpIndices; // Track selected indices per category.
+-//			
+-//			std::vector<const char *> warpNames;
+-//			for (const auto& warp : categoryPair.second)
+-//			{ 
+-//				warpNames.push_back(warp.name.c_str());
+-//			}
+-//
+-//			if(ImGui::ListBox(("##" + categoryPair.first).c_str(), 
+-//				&selectedWarpIndices[categoryPair.first], warpNames.data(), warpNames.size())) {
+-//				// Listbox selection handling is done for you by imgui.
+-//			}
+-//
+-//			if(ImGui::Button(("Warp to " + categoryPair.first).c_str())) {
+-//				if(!categoryPair.second.empty() && selectedWarpIndices[categoryPair.first] >= 0 &&
+-//				   selectedWarpIndices[categoryPair.first] < categoryPair.second.size()) 
+-//				{
+-//					const WarpData &selectedWarpData = categoryPair.second[selectedWarpIndices[categoryPair.first]];
+-//					PlayerCheats::SetPlayerPosition(selectedWarpData.x, selectedWarpData.y, selectedWarpData.z);
+-//				}
+-//			}
+-//
+-//		}
+-//	}
+-//}
+ 
+ 
+-// End category test
++//
+ 
+-// New for imgui
++/// <summary>
++/// Display the current updated warp list, TODO Figure out how to move this to warp_menu.cpp or warp_functions.
++/// Old function without categories.
++/// </summary>
+ void
+ IniFunctions::ImGuiWarpList()
+ {
+@@ -302,26 +327,42 @@ IniFunctions::ImGuiWarpList()
+ 	ImGui::Text("Warps");
+ 	static int selectedWarp = -1;
+ 
+-	std::vector<const char *> warpNames;
++		// Well this didn't work, it displays a collapsing header for the warps but lists each warp under them.
++	 //   for(const auto &categoryPair : warps) {
++		//if(ImGui::CollapsingHeader(categoryPair.name.c_str())) {
++			//
++			std::vector<std::string> warpStrings;
+ 
+-	// Populate warpNames with the names from the warps vector
+-	for(const auto &warp : warps) { warpNames.push_back(warp.name.c_str()); }
++			std::vector<const char *> warpNames;
+ 
+-	if(ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpNames.size())) {
+-		// Listbox selection handling is done for you by imgui.
+-	}
++			for(const auto &str : warpStrings) { warpNames.push_back(str.c_str()); }
+ 
+-	if(ImGui::Button("Warp to location")) {
+-		if(!warps.empty() && selectedWarp >= 0 && selectedWarp < warps.size()) {
+-			// Get the selected warp data
+-			const WarpData &selectedWarpData = warps[selectedWarp];
+-			// Set player position
+-			PlayerCheats::SetPlayerPosition(selectedWarpData.x, selectedWarpData.y, selectedWarpData.z);
+-		}
++			// Populate warpNames with the names from the warps vector
++			for(const auto &warp : warps) {
++				// TODO Test this, see what it does.
++				// if(ImGui::CollapsingHeader(warp.first.c_str())) {}
++				warpNames.push_back(warp.name.c_str());
++			}
++
++			if(ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpNames.size())) {
++				// Listbox selection handling is done for you by imgui.
++			}
++	          if(ImGui::Button("Warp to location")) {
++			
++				if(!warps.empty() && selectedWarp >= 0 && selectedWarp < warps.size()) {
++					// Get the selected warp data
++					const WarpData &selectedWarpData = warps[selectedWarp];
++
++					// Set player position
++					PlayerCheats::SetPlayerPosition(selectedWarpData.x, selectedWarpData.y, selectedWarpData.z);
++				}
++
++		//	}
++		//}
+ 	}
+ }
+ 
+-//
++
+ 
+ //std::vector<WarpData>
+ //readAllWarpsFromIni(const std::string &filename, const std::string &section)
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index 0c15e85b..b738487b 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -21,20 +21,42 @@ private:
+ 
+ public:
+ 	struct WarpData {
++		// This isn't in my file, I'll add it later
+ 		std::string name;
+ 		int interiorId;
++
+ 		float x, y, z;
+ 	};
+ 
++	struct LocationData {
++		int interiorId;
++		float posX, posY, posZ;
++	};
++
++	struct Category {
++		std::string name;
++		std::vector<std::pair<std::string, LocationData>> locations;
++	};
++
+ 	// New, warp categories
+-	std::map<std::string, std::vector<WarpData>> categorizedWarps;
+-	//
++#ifdef NEW_WARP_TEST
++	std::vector<IniFunctions::WarpData> categorizedWarps;
++#else
++	// Well I think these are the problem, they break it in here... I'll deal with this later.....
++	//std::map<std::string, std::vector<WarpData>> categorizedWarps;
++
++	//std::map<std::string, std::vector<WarpData>> warps;
++#endif
+ 
+ 	static bool ReadIniIfExists(const char *cat, const char *key, bool *out);
+ 	void RenderWarpList(PlayerCheats &playerCheats, const std::string &iniFilename, const std::string &section);
+ 
+ 	std::vector<std::string> SplitString(const std::string &str, char delimiter);
+ 
++	// New test
++	std::vector<Category> LoadLocationsFromIni(const std::string &filename);
++	void DisplayLocations(const std::vector<IniFunctions::Category> &categories);
++
+ 
+ 	//WarpData ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIStructure &warpsCfg);
+ 	void ImGuiWarpList();
+diff --git a/src/extras/kcnet/api/revc_globals.h b/src/extras/kcnet/api/revc_globals.h
+index 985810da..860f3d12 100644
+--- a/src/extras/kcnet/api/revc_globals.h
++++ b/src/extras/kcnet/api/revc_globals.h
+@@ -1,17 +1,18 @@
+ #pragma once
+ 
+-#include "Entity.h"
+-#include "Placeable.h"
+-#include "PlayerInfo.h"
++//#include "Entity.h"
++//#include "Placeable.h"
++//#include "PlayerInfo.h"
++//
++//#include "PlayerPed.h"
+ 
+-#include "PlayerPed.h"
+ 
+ 
+-#ifdef REVC_API_EXPORT
+-#define REVC_API __declspec(dllexport)
+-#else
+-#define REVC_API __declspec(dllimport)
+-#endif
++//#ifdef REVC_API_EXPORT
++//#define REVC_API __declspec(dllexport)
++//#else
++//#define REVC_API __declspec(dllimport)
++//#endif
+ 
+ // This is no longer needed with the new setup, I should've just used FindPlayerPed anyways.
+ //extern REVC_API CPlayerPed *g_pPlayer;
+\ No newline at end of file
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index 74edc093..a0f7691a 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -79,27 +79,27 @@ toggleSecondWindow()
+ }
+ 
+ //bool ImGuiMenus::ShowWindow2;
+-bool ImGuiMenus::ShowWindow2 = false;
+-
+-void
+-ShowDemoWindow()
+-{
+-	
+-}
+-
+-// This is disabled in the code.
+-void
+-Window2()
+-{
+-	//ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
+-	ImGui::Begin("Another Window", &ImGuiMenus::ShowWindow2); // Pass a pointer to our bool variable (the window will have a closing button that
+-	                                                      // will clear the bool when clicked)
+-	ImGui::Text("Hello from another window!");
+-	//if(ImGui::Button("Close Me")) show_another_window = false;
+-	if(ImGui::Button("Close Me")) 
+-		ImGuiMenus::ShowWindow2 = false;
+-	ImGui::End();
+-}
++//bool ImGuiMenus::ShowWindow2 = false;
++//
++//void
++//ShowDemoWindow()
++//{
++//	
++//}
++//
++//// This is disabled in the code.
++//void
++//Window2()
++//{
++//	//ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++//	ImGui::Begin("Another Window", &ImGuiMenus::ShowWindow2); // Pass a pointer to our bool variable (the window will have a closing button that
++//	                                                      // will clear the bool when clicked)
++//	ImGui::Text("Hello from another window!");
++//	//if(ImGui::Button("Close Me")) show_another_window = false;
++//	if(ImGui::Button("Close Me")) 
++//		ImGuiMenus::ShowWindow2 = false;
++//	ImGui::End();
++//}
+ 
+ 
+ 
+@@ -108,7 +108,8 @@ Window2()
+ /// </summary>
+ /// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
+ void
+-ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
++//ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
++ImGuiMenus::MainMenu(ImVec4 clear_color)
+ {
+ 	ImGuiIO io;
+ 	static float f = 0.0f;
+@@ -174,11 +175,27 @@ ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
+ 		}
+ 
+ 		// Warps
+-		if(ImGui::BeginTabItem("Warps")) {
+-			warpMenu.WarpTab();
+ 
+-			ImGui::EndTabItem();
++#ifdef NEW_WARP_TEST
++		
++		std::cout << defines.KcLogString << "g_gameInstance set to in imgui_main_menu.cpp: " << g_gameInstance << std::endl;
++		if(g_gameInstance) {
++
++#endif
++
++			if(ImGui::BeginTabItem("Warps")) {
++#ifdef NEW_WARP_TEST
++				warpMenu.WarpTab(*g_gameInstance);
++#else
++				warpMenu.WarpTab();
++#endif
++
++				ImGui::EndTabItem();
++			}
++
++#ifdef NEW_WARP_TEST
+ 		}
++		#endif
+ 
+ 		// Game
+ 		if(ImGui::BeginTabItem("Game")) { 
+diff --git a/src/extras/menus/imgui_main_menu.h b/src/extras/menus/imgui_main_menu.h
+index ebd70dbf..383348b3 100644
+--- a/src/extras/menus/imgui_main_menu.h
++++ b/src/extras/menus/imgui_main_menu.h
+@@ -1,25 +1,24 @@
+ #pragma once
+ #include "imgui.h"
+ 
+-namespace ImGuiMenus
+-{
+-
+-	// I added extern to this
+-	// This isn't in use currently, couldn't figure out how to make it work here.
+-	extern bool ShowWindow2;
+-
+-	// TODO Setup toggle for demo window
+-	
+-
+-	namespace Menu
+-	{
+-	void
+-	MainMenu(ImVec4 clear_color);
++//namespace ImGuiMenus
++//{
++//	// TODO Setup toggle for demo window
++//	
++//
++//	namespace Menu
++//	{
++//	void
++//	MainMenu(ImVec4 clear_color);
++//
++//	
++//	}
++//}
+ 
+-	
+-	}
+-}
++class ImGuiMenus
++{
++public:
+ 
+-//class MainMenu
+-//{
+-//};
++	void MainMenu(ImVec4 clear_color);
++	bool ShowWindow2;
++};
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index c0424d51..4989de99 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -588,7 +588,7 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGuiCommands imGuiCommands = ImGuiCommands();
+ 	MiscMenu miscMenu = MiscMenu();
+-	IniFunctions iniFunctions = IniFunctions();
++	//IniFunctions iniFunctions = IniFunctions();
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 224e7912..c4ab2209 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -24,11 +24,11 @@
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
++#include "Game.h"
+ 
+ #include <map>
+ #include <vector>
+ 
+-
+ // To add a warp, first add its name to this list.
+ const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
+ int currentWarp = 0;
+@@ -68,6 +68,8 @@ float mallZ = 20.1f;
+ // Set new warp locations below
+ //
+ 
++bool loadLocations = false;
++
+ // Add new warp locations in here, incrementing the previous number.
+ enum WarpLocations { 
+ 	AIRPORT = 0,
+@@ -136,6 +138,8 @@ imGuiWarpList()
+ 
+ }
+ 
++
++
+ //void
+ //imGuiWarpList()
+ //{
+@@ -172,12 +176,29 @@ imGuiWarpList()
+ //
+ //}
+ 
+-
++#ifdef NEW_WARP_TEST
++void
++WarpMenu::RenderWarpMenu(CGame &game)
++{
++	game.GetIniFunctions().ImGuiWarpList();
++}
++#endif
+ 
+ void
++#ifdef NEW_WARP_TEST
++WarpMenu::WarpTab(CGame &game)
++#else
+ WarpMenu::WarpTab()
++#endif
+ {
++	IniFunctions iniFunctions;
++	if(!loadLocations) { 
++		//std::vector<IniFunctions::Category> locations = iniFunctions.LoadLocationsFromIni(defines.warpsIniFile);
++		iniFunctions.LoadLocationsFromIni(defines.warpsIniFile);
++		loadLocations = true;
++	}
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
++	//CGame cGame;
+ 
+ 
+ 	float playerX = playerCoords.x;
+@@ -231,8 +252,19 @@ WarpMenu::WarpTab()
+ 
+ 	}
+ 
++	// TODO Test this:
++	// Added to game.h also
++	
++	//game.GetIniFunctions().ImGuiWarpList();
++	//cGame.GetIniFunctions().ImGuiWarpList();
++
+ 	// This works now, load from the warps.ini, i had to load it on the game init.
+-	iniFunctions.ImGuiWarpList();
++	
++	// Display the old warp list - without categories.
++	//iniFunctions.ImGuiWarpList();
++
++	// Display the new warp list
++	iniFunctions.DisplayLocations(iniFunctions.LoadLocationsFromIni(defines.warpsIniFile));
+ 
+ 	// Current Position
+ 
+diff --git a/src/extras/menus/warp_menu.h b/src/extras/menus/warp_menu.h
+index c6fc8e97..51aca397 100644
+--- a/src/extras/menus/warp_menu.h
++++ b/src/extras/menus/warp_menu.h
+@@ -8,6 +8,7 @@
+ #include "ini_functions.h"
+ // Logging player coords so far.
+ #include "log_util.h"
++#include "Game.h"
+ 
+ class WarpMenu
+ {
+@@ -17,6 +18,19 @@ private:
+ 	IniFunctions iniFunctions;
+ 	LogUtil logUtil;
+ 
++	//void ImGuiWarpList();
++	void ImGuiWarpList(IniFunctions &iniFuncs);
++
++	
++
+ public:
++#ifdef NEW_WARP_TEST
++	// TODO Make this work, I should be able to pass the iniFunctions to it if i figure it out.
++	 void WarpTab(CGame &game);
++	void RenderWarpMenu(CGame &game);
++#else
+ 	void WarpTab();
++#endif
++
++
+ };
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+new file mode 100644
+index 00000000..fa35a7f5
+--- /dev/null
++++ b/src/extras/utils/misc_util.cpp
+@@ -0,0 +1,9 @@
++#include "misc_util.h"
++
++std::string
++MiscUtil::AddressToString(void *address)
++{
++	std::stringstream ss;
++	ss << address;
++	return ss.str();
++}
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+new file mode 100644
+index 00000000..e5801db8
+--- /dev/null
++++ b/src/extras/utils/misc_util.h
+@@ -0,0 +1,9 @@
++#pragma once
++#include <sstream> // Include the header
++#include <string>
++
++class MiscUtil
++{
++public:
++	std::string AddressToString(void *address);
++};
+-- 
+2.45.1.windows.1
+
