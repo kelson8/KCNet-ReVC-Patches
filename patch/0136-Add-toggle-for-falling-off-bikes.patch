@@ -1,0 +1,85 @@
+From 0d2a90c99c5e8a57bc29dd0554baa12d704f934c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 13:30:11 -0400
+Subject: [PATCH 136/138] Add toggle for falling off bikes.
+
+---
+ src/extras/menus/vehicle_menu.cpp |  6 ++++++
+ src/vehicles/Bike.cpp             | 28 ++++++++++++++++++++++++++++
+ 2 files changed, 34 insertions(+)
+
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 86223ce0..d9ffee79 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -226,6 +226,12 @@ VehicleMenu::VehicleTab()
+ 		ImGui::EndDisabled();
+ 	}
+ 
++	ImGui::Separator();
++	ImGui::Text("Toggle falling off bikes for the player, this is on by default.");
++	// Well this works! This is set to true by default in main.cpp, so it can be toggled off.
++	// Also you won't lose health when hitting something if this is turned off.
++	ImGui::Checkbox("Fall off bike", &gbFalloffBike);
++
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
+diff --git a/src/vehicles/Bike.cpp b/src/vehicles/Bike.cpp
+index 7a727c18..9656ee7b 100644
+--- a/src/vehicles/Bike.cpp
++++ b/src/vehicles/Bike.cpp
+@@ -42,6 +42,10 @@
+ #include "Garages.h"
+ #endif
+ 
++#ifdef CUSTOM_CODE // Toggle fall off bike
++#include "main.h"
++#endif
++
+ const uint32 CBike::nSaveStructSize =
+ #ifdef COMPATIBLE_SAVES
+ 	1260;
+@@ -2355,8 +2359,20 @@ CBike::VehicleDamage(void)
+ 			int dir = -10;
+ 			if(pDriver){
+ 				dir = pDriver->GetLocalDirection(-m_vecDamageNormal);
++
++#ifdef CUSTOM_CODE
++				// Check if fall off bike is enabled, if not do nothing
++				// Fix for losing health when fall off bike is disabled.
++				if(gbFalloffBike) 
++				{
++					if(pDriver->m_fHealth > 0.0f)
++						pDriver->InflictDamage(m_pDamageEntity, WEAPONTYPE_RAMMEDBYCAR, 0.05f * damage, PEDPIECE_TORSO, dir);
++				}
++#else
+ 				if(pDriver->m_fHealth > 0.0f)
+ 					pDriver->InflictDamage(m_pDamageEntity, WEAPONTYPE_RAMMEDBYCAR, 0.05f*damage, PEDPIECE_TORSO, dir);
++#endif
++
+ #ifdef FIRING_AND_AIMING // make it possible to fall off the bike during driveby
+ 					if(pDriver && (pDriver->GetPedState() == PED_DRIVING || bDriverUsesDriveBy))
+ #else
+@@ -3011,6 +3027,18 @@ CBike::PlayCarHorn(void)
+ void
+ CBike::KnockOffRider(eWeaponType weapon, uint8 direction, CPed *ped, bool bGetBackOn)
+ {
++	// Hmm, can I add a toggle for this?
++#ifdef CUSTOM_CODE
++	if (ped->IsPlayer()) 
++	{
++		if (!gbFalloffBike) 
++		{ 
++			return;
++		}
++	}
++#endif
++	//
++
+ 	AnimationId anim = ANIM_STD_KO_FRONT;
+ 	if(ped == nil)
+ 		return;
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,56 @@
+From c1e8f6b209192798493a5a5c94f8582dfd616df7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 02:21:45 -0400
+Subject: [PATCH 134/138] Fix splash screen randomizer, there is no 14 and it
+ was causing crashes. Update gitignore and commit/patch number.
+
+---
+ .gitignore               | 3 +++
+ guides/create-patches.md | 2 +-
+ src/core/main.cpp        | 2 +-
+ 3 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index 80e3bca8..263861d7 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -16,6 +16,9 @@ src/extras/test/mta_test.h
+ src/vehicles/Rhino.cpp
+ src/vehicles/Rhino.h
+ 
++# Pycharm
++guides/.idea
++
+ # Libraries
+ # There are over 70k files in here! It'll have to be downloaded separate.
+ # I was wondering what cluttered up my git changes lol.
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index fa27921b..541d20c1 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 132, patch number: 132)
++(Currently on commit 133, patch number: 133)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index a4cfe486..25963df9 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -2007,7 +2007,7 @@ InitialiseGame(void)
+ 	//int index = CGeneral::GetRandomNumberInRange(0, 14);
+ 
+ 	// The other random number function seemed to always get the same loading screen.
+-	int index = MiscUtil::GenerateRandomNumber(1, 14);
++	int index = MiscUtil::GenerateRandomNumber(1, 13);
+ 
+ 	char splashName[16];
+ 	sprintf(splashName, "loadsc%d", index);
+-- 
+2.45.1.windows.1
+

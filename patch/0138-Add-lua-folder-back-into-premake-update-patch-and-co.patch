@@ -1,0 +1,50 @@
+From 1cf674ef7655ca856876e6918e9fe2f7b85ccb83 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 13:46:27 -0400
+Subject: [PATCH 138/138] Add lua folder back into premake, update patch and
+ commit number.
+
+---
+ guides/create-patches.md | 2 +-
+ premake5.lua             | 4 +++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 541d20c1..8cebb233 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 133, patch number: 133)
++(Currently on commit 137, patch number: 137)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/premake5.lua b/premake5.lua
+index 1ea72778..64797055 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -341,6 +341,9 @@ project "reVC"
+ 	-- Lib folders - ImGui and Lua
+ 	files { addSrcFiles("lib/") }
+ 	files { addSrcFiles("lib/imgui") }
++
++	-- I had accidently removed this when cleaning up and removing luac.c
++	files { addSrcFiles("lib/lua") }
+ 	
+ 	-- This might work for excluding the files
+ 	files {
+@@ -361,7 +364,6 @@ project "reVC"
+ 	}
+ 
+ 	--files { addSrcFiles("lib/imgui/backends") }
+-	files { addSrcFiles("lib/lua") }
+ 	
+ 	-- New KCNet extras (Include dirs)
+ 	-- Extras folder
+-- 
+2.45.1.windows.1
+

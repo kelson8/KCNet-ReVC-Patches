@@ -1,0 +1,46 @@
+From 1ee373d77790924a63dbf1b7dda9e884aa1532b8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 02:13:05 -0400
+Subject: [PATCH 133/138] Remove luac.c from premake, update commit and patch
+ number.
+
+---
+ guides/create-patches.md | 2 +-
+ premake5.lua             | 2 --
+ 2 files changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 43eafd3d..fa27921b 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 129, patch number: 129)
++(Currently on commit 132, patch number: 132)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/premake5.lua b/premake5.lua
+index e16c6711..1ea72778 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -341,13 +341,11 @@ project "reVC"
+ 	-- Lib folders - ImGui and Lua
+ 	files { addSrcFiles("lib/") }
+ 	files { addSrcFiles("lib/imgui") }
+-	--files { addSrcFiles("lib/lua", {"lib/lua/luac.c"}) }
+ 	
+ 	-- This might work for excluding the files
+ 	files {
+ 		"lib/lua/*.c",
+ 		"lib/lua/*.h",
+-		{"lib/lua/luac.c", exclude = true} -- This should exclude the extra luac.c file
+ 	
+ 	}
+ 
+-- 
+2.45.1.windows.1
+

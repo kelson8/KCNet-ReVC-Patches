@@ -1,0 +1,678 @@
+From cb199f27e917f1529ab168542354398fe661f649 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 22 Mar 2025 15:23:03 -0400
+Subject: [PATCH 130/138] Add test for playing sounds in misc menu. Add
+ animation menu as sub tab to player tab. Add animation test in animation
+ menu, so far it plays the animations but doesn't loop them. Add generate
+ random number into misc util. Enable random splash screen in main.cpp. Move
+ my custom items in config.h to the top. Update patch and commit number.
+
+---
+ guides/create-patches.md             |   2 +-
+ src/core/config.h                    |  84 +++++-----
+ src/core/main.cpp                    |  15 +-
+ src/extras/menus/animation_menu.cpp  | 230 +++++++++++++++++++++++++++
+ src/extras/menus/animation_menu.h    |   6 +
+ src/extras/menus/imgui_main_menu.cpp |  37 +++++
+ src/extras/menus/misc_menu.cpp       |  61 ++++++-
+ src/extras/utils/misc_util.cpp       |  21 ++-
+ src/extras/utils/misc_util.h         |   2 +
+ 9 files changed, 406 insertions(+), 52 deletions(-)
+ create mode 100644 src/extras/menus/animation_menu.cpp
+ create mode 100644 src/extras/menus/animation_menu.h
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index d6c9e79a..43eafd3d 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 125, patch number: 125)
++(Currently on commit 129, patch number: 129)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/core/config.h b/src/core/config.h
+index 107f80af..b3a486ca 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -11,6 +11,49 @@
+ // It changes the value in the reVC.ini file.
+ #define MENU_TEST
+ 
++// Custom code
++#define CUSTOM_CODE
++
++#ifdef CUSTOM_CODE
++// Toggle the lua test, so far this just has a F8 keybind that sets the players position.
++#define LUA_TEST
++
++#ifdef LUA_TEST
++// This works for basic lua events!!!
++// I setup the blow_up_vehicle function in lua.
++// Just don't put anything that'll constantly run in this lua file.
++#define LUA_EVENT_TEST
++#endif
++
++// Move most debug functions into src/extras/debug/debug_functions.cpp
++#define _MOVE_DEBUG_FILE
++
++// This moves most ini functions into src/extra/functions/ini_functions.cpp
++// This seems to work.
++#define _MOVE_INI_FILE
++
++// Add my fast loader, and a config option for it.
++#define _FAST_LOADER
++
++// Enable the invincibility cheat.
++#define INVINCIBLE_CHEAT
++
++// This adds a toggle into CCopPed that allows the police weapons to be changed.
++// Once I figure it out, I'll add all the weapon options to the debug menu.
++#define CHANGE_POLICE_WEAPONS
++
++// This will add more features to the cop ped, mostly with the debug menu.
++// So far I have a test for enabling/disabling the spike strips.
++#define EX_COP_FUNCTIONS
++
++// Adds extra logging features for KCNet, can be toggled in the general settings menu.
++#define EXTRA_LOGGING
++
++// Toggle vehicle upside down explosion option in debug menu.
++// #define TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
++#endif // CUSTOM_CODE
++
+ // Toggle my new ImGui warp category test, it currently doesn't work.
+ // This is old, I'll remove this later.
+ //#define NEW_WARP_TEST
+@@ -40,23 +83,6 @@
+ // Adds radio icons from radio.txd for the radio wheel and in the sound settings.
+ #define EX_RADIO_ICONS
+ 
+-// Enable the invincibility cheat.
+-#define INVINCIBLE_CHEAT
+-
+-// This adds a toggle into CCopPed that allows the police weapons to be changed.
+-// Once I figure it out, I'll add all the weapon options to the debug menu.
+-#define CHANGE_POLICE_WEAPONS
+-
+-// This will add more features to the cop ped, mostly with the debug menu.
+-// So far I have a test for enabling/disabling the spike strips.
+-#define EX_COP_FUNCTIONS
+-
+-// Adds extra logging features for KCNet, can be toggled in the general settings menu.
+-#define EXTRA_LOGGING
+-
+-
+-// Toggle vehicle upside down explosion option in debug menu.
+-//#define TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 
+ // TODO Add these for crouch features and other stuff from Extended Vice.
+ // This will take a little bit.
+@@ -574,31 +600,7 @@ enum Config {
+ #define FINAL
+ #endif
+ 
+-// Custom code
+-#define CUSTOM_CODE
+-
+-#ifdef CUSTOM_CODE
+-// Toggle the lua test, so far this just has a F8 keybind that sets the players position.
+-#define LUA_TEST
+-
+-#ifdef LUA_TEST
+-// This works for basic lua events!!!
+-// I setup the blow_up_vehicle function in lua.
+-// Just don't put anything that'll constantly run in this lua file.
+-#define LUA_EVENT_TEST
+-#endif
+-
+-// Move most debug functions into src/extras/debug/debug_functions.cpp
+-#define _MOVE_DEBUG_FILE
+-
+-// This moves most ini functions into src/extra/functions/ini_functions.cpp
+-// This seems to work.
+-#define _MOVE_INI_FILE
+ 
+-// Add my fast loader, and a config option for it.
+-#define _FAST_LOADER
+-
+-#endif //CUSTOM_CODE
+ 
+ 
+ // these are placed here to work with VANILLA_DEFINES for compatibility
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index a26e391f..a4cfe486 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -96,6 +96,9 @@
+ 
+ // Setup program version and name
+ #include "defines.h"
++
++// Random number generator
++#include "misc_util.h"
+ #endif
+ 
+ GlobalScene Scene;
+@@ -140,6 +143,8 @@ bool gbLuaTest;
+ bool gbPedSpeech;
+ #endif
+ 
++
++
+ // TODO Fix this to work.
+ // This should change the police weapons to any from a list once I figure it out
+ //#ifdef CHANGE_POLICE_WEAPONS
+@@ -1997,14 +2002,20 @@ FrontendIdle(void)
+ void
+ InitialiseGame(void)
+ {
+-#ifdef IMPROVED_MENU_AND_INPUT // Random splash screen
+-	int index = CGeneral::GetRandomNumberInRange(0, 14);
++#define IMPROVED_MENU_AND_INPUT
++#ifdef IMPROVED_MENU_AND_INPUT // Random splash screen, customized a bit
++	//int index = CGeneral::GetRandomNumberInRange(0, 14);
++
++	// The other random number function seemed to always get the same loading screen.
++	int index = MiscUtil::GenerateRandomNumber(1, 14);
++
+ 	char splashName[16];
+ 	sprintf(splashName, "loadsc%d", index);
+ 	LoadingScreen(nil, nil, splashName);
+ #else
+ 	LoadingScreen(nil, nil, "loadsc0");
+ #endif
++#undef IMPROVED_MENU_AND_INPUT
+ 
+ #ifdef CUSTOM_CODE
+ 	CGame cGame;
+diff --git a/src/extras/menus/animation_menu.cpp b/src/extras/menus/animation_menu.cpp
+new file mode 100644
+index 00000000..37104573
+--- /dev/null
++++ b/src/extras/menus/animation_menu.cpp
+@@ -0,0 +1,230 @@
++#include "pch.h"
++
++#include "animation_menu.h"
++
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++//#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++
++
++// Extended Vice
++// For the animation ids, CPhotoMode::animList
++#include "PhotoMode.h"
++
++// ReVC
++#include "AnimBlendAssocGroup.h"
++#include "AnimationId.h"
++
++// TODO Possibly use this for playing animations
++#include "AnimManager.h"
++#include "ClumpModelInfo.h"
++#include "RpAnimBlend.h"
++#include "AnimBlendAssociation.h"
++
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Streaming.h"
++
++
++// TODO Replicate animation menu from here:
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/animation.cpp
++
++// Comes from AnimationId enum
++//AnimationId animId = ANIM_ATTACK_1;
++
++
++/// <summary>
++/// I got this to pretty much work now
++/// TODO Test looping features
++/// </summary>
++void
++PlayAttackAnimation(bool loop)
++{
++	CPed *playerPed = FindPlayerPed();
++	if(!playerPed) {
++		return; // Handle error
++	}
++
++	// TODO Test these, from PhotoMode.cpp.
++	//int screwdrvBlock = CAnimManager::GetAnimationBlockIndex("screwdrv");
++	//int golfclubBlock = CAnimManager::GetAnimationBlockIndex("golfclub");
++	//int baseballBlock = CAnimManager::GetAnimationBlockIndex("baseball");
++	//int knifeBlock = CAnimManager::GetAnimationBlockIndex("knife");
++	//int chainsawBlock = CAnimManager::GetAnimationBlockIndex("chainsaw");
++	//int grenadeBlock = CAnimManager::GetAnimationBlockIndex("grenade");
++	//int colt45Block = CAnimManager::GetAnimationBlockIndex("colt45");
++	//int pythonBlock = CAnimManager::GetAnimationBlockIndex("python");
++	//int shotgunBlock = CAnimManager::GetAnimationBlockIndex("shotgun");
++	//int buddyBlock = CAnimManager::GetAnimationBlockIndex("buddy");
++	//int uziBlock = CAnimManager::GetAnimationBlockIndex("uzi");
++	//int rifleBlock = CAnimManager::GetAnimationBlockIndex("rifle");
++	//int flameBlock = CAnimManager::GetAnimationBlockIndex("flame");
++
++	//CStreaming::RequestAnim(flameBlock, STREAMFLAGS_DEPENDENCY);
++
++	//CAnimManager::AddAnimBlockRef(screwdrvBlock);
++	//CAnimManager::AddAnimBlockRef(golfclubBlock);
++	//CAnimManager::AddAnimBlockRef(baseballBlock);
++	//CAnimManager::AddAnimBlockRef(knifeBlock);
++	//CAnimManager::AddAnimBlockRef(chainsawBlock);
++	//CAnimManager::AddAnimBlockRef(grenadeBlock);
++	//CAnimManager::AddAnimBlockRef(colt45Block);
++	//CAnimManager::AddAnimBlockRef(pythonBlock);
++	//CAnimManager::AddAnimBlockRef(shotgunBlock);
++	//CAnimManager::AddAnimBlockRef(buddyBlock);
++	//CAnimManager::AddAnimBlockRef(uziBlock);
++	//CAnimManager::AddAnimBlockRef(rifleBlock);
++	//CAnimManager::AddAnimBlockRef(flameBlock);
++	//
++
++	//CClumpModelInfo *pClump = playerPed->GetClump();
++	RpClump *playerClump = playerPed->GetClump();
++	if(!playerClump) {
++		return; // Handle error
++	}
++
++	CAnimBlendAssociation *pAnimAssoc = RpAnimBlendClumpGetFirstAssociation(playerClump);
++
++	//AssocGroupId animGroup = ASSOCGRP_PLAYER;
++	AssocGroupId animGroup = ASSOCGRP_STD;
++	//eAnimationGroup animGroup = ANIM_GROUP_MOVE; // Example: movement animations
++	//AnimationId animId = ANIM_ATTACK_1;         // Example: walk animation
++	//AnimationId animId = ANIM_STD_RUNFAST; // Example: walk animation
++	AnimationId animId = ANIM_STD_SWIM_BREAST; // Swimming animation
++
++	// TODO See if I can get this to work, possibly recreate this with std::map and AnimationId instead of const int.
++	//AnimationId animId = CPhotoMode::animList[0][0];
++
++
++	// TODO Try this instead of blend animation:
++	// Well combining this and BlendAnimation seems to work.
++	CAnimManager::AddAnimation(playerClump, animGroup, animId);
++
++	// Moved to below, for pAnimAssoc
++	//CAnimManager::BlendAnimation(playerClump, animGroup, animId, 1000.0f);
++
++	// TODO Figure out how to replicate the loop function from the Cheat Menu, this isn't working so far.
++
++	pAnimAssoc = CAnimManager::BlendAnimation(playerClump, animGroup, animId, 1000.0f);
++	pAnimAssoc->flags = ASSOC_RUNNING | ASSOC_MOVEMENT;
++
++	if(loop) { pAnimAssoc->flags |= ASSOC_REPEAT; }
++}
++
++
++// I copied in the base for this but it would need a lot of work, I wonder if I can do this some other way.
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/animation.cpp
++
++#ifdef ANIMATION_TEST
++
++bool
++_LoadAnimationBlock(const char *szBlockName)
++{
++	CAnimBlock *pAnimBlock = CAnimManager::GetAnimationBlock(szBlockName);
++	if(pAnimBlock) {
++		if(!pAnimBlock->bLoaded) {
++			int animIndex = ((unsigned char *)pAnimBlock - (unsigned char *)CAnimManager::ms_aAnimBlocks) / 32;
++			CStreaming::RequestModel(7916 + animIndex, 0x20 | MISSION_REQUIRED | PRIORITY_REQUEST);
++			CStreaming::LoadAllRequestedModels(true);
++			if(pAnimBlock->bLoaded) { return true; }
++		} else {
++			return true;
++		}
++	}
++	return false;
++}
++
++void
++_PlayAnim(RpClump *pClump, int animGroup, int animID, float blend, bool loop, bool secondary)
++{
++	if(animGroup < CAnimManager::ms_numAnimAssocDefinitions) {
++		CAnimationStyleDescriptor *pAnimDef = &CAnimManager::ms_aAnimAssocDefinitions[animGroup];
++		if(pAnimDef) {
++			if(!_LoadAnimationBlock(pAnimDef->blockName)) { return; }
++		}
++	}
++
++	CAnimBlendAssociation *pAnimAssoc = RpAnimBlendClumpGetFirstAssociation(pClump);
++	while(pAnimAssoc) {
++		if(pAnimAssoc->m_nAnimId == animID && pAnimAssoc->m_nAnimGroup == animGroup) {
++			// Destroy the animation
++			pAnimAssoc->~CAnimBlendAssociation();
++			break;
++		}
++		pAnimAssoc = RpAnimBlendGetNextAssociation(pAnimAssoc);
++	}
++	pAnimAssoc = CAnimManager::BlendAnimation(pClump, animGroup, animID, blend);
++	pAnimAssoc->m_nFlags = ANIMATION_STARTED | ANIMATION_MOVEMENT;
++
++	if(loop) { pAnimAssoc->m_nFlags |= ANIMATION_LOOPED; }
++
++	if(secondary) { pAnimAssoc->m_nFlags |= ANIMATION_PARTIAL; }
++}
++
++void
++AnimationMgr::Play(std::string &cat, std::string &anim, std::string &ifp)
++{
++	CPed *pPed = m_bPedAnim ? m_pTarget : FindPlayerPed();
++	if(!pPed) { return; }
++
++	int groupID, animID;
++	sscanf(ifp.c_str(), "%d$%d,", &groupID, &animID);
++	_PlayAnim(pPed->m_pRwClump, groupID, animID, 4.0f, m_Loop, m_bSecondary);
++}
++
++bool
++AnimationMgr::IsTargetFound()
++{
++	return m_bPedAnim && !m_pTarget;
++}
++
++void
++AnimationMgr::StopImmediately(CPed *ped)
++{
++	if(!ped) 
++	{ 
++		return; 
++	}
++
++	_PlayAnim(ped->m_pRwClump, ANIM_GROUP_MAN, ANIM_MAN_IDLE_STANCE, 4.0f, false, false);
++}
++#endif //ANIMATION_TEST
++
++
++bool animLooping = false;
++
++void
++AnimMenu::AnimSubTab()
++{
++	ImGui::Text("Animation tab");
++	ImGui::Text("This somewhat works, it doesn't loop and I don't have a listbox for it yet.");
++
++	ImGui::Checkbox("Loop animation", &animLooping);
++
++	// I got this to somewhat working without crashing
++	// TODO Add a looping option
++	// TODO Add a cancel animation option, unsure of how to do it yet.
++	if (ImGui::Button("Play Test Anim")) 
++	{ 
++		PlayAttackAnimation(animLooping);
++	}
++
++	ImGui::Separator();
++}
+\ No newline at end of file
+diff --git a/src/extras/menus/animation_menu.h b/src/extras/menus/animation_menu.h
+new file mode 100644
+index 00000000..7fbc9bfd
+--- /dev/null
++++ b/src/extras/menus/animation_menu.h
+@@ -0,0 +1,6 @@
++#pragma once
++class AnimMenu
++{
++public:
++	void AnimSubTab();
++};
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index a0f7691a..7428ae5f 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -39,6 +39,7 @@ extern "C" {
+ #include "ped_menu.h"
+ 
+ #include "game_menu.h"
++#include "animation_menu.h"
+ //
+ 
+ 
+@@ -55,17 +56,24 @@ extern "C" {
+ 
+ #include "Pad.h"
+ 
++// Enable the new sub tabs in this file.
++// TODO Refactor these a bit
++#define NEW_SUB_TABS
++
+ // TODO Setup config file from Cheat Menu
+ 
+ //DataStore gConfig = DataStore(FILE_NAME, true);
+ 
+ // Test
++// TODO What are these for?
+ int selectedIndex = 0;
+ bool showMainMenuBar = false;
+ // Test from debug_functions.cpp
+ 
+ //
+ 
++
++
+ // I have moved most of these menus into their own files under src/extras/menus
+ 
+ void
+@@ -127,6 +135,7 @@ ImGuiMenus::MainMenu(ImVec4 clear_color)
+ 	PedMenu pedMenu = PedMenu();
+ 
+ 	GameMenu gameMenu = GameMenu();
++	AnimMenu animMenu = AnimMenu();
+ 
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	float playerX = playerCoords.x;
+@@ -154,7 +163,35 @@ ImGuiMenus::MainMenu(ImVec4 clear_color)
+ 
+ 		// Player
+ 		if (ImGui::BeginTabItem("Player")) {
++			// TODO Setup this for multiple sub tabs, could be useful for something like vehicle spawners and stuff.
++			// This seems to work
++			// 
++			// ImGui sub tabs.
++			// Well I got this working so far.
++#ifdef NEW_SUB_TABS
++			if (ImGui::BeginTabBar("Test")) {
++				if (ImGui::BeginTabItem("Player"))
++				{ 
++					playerMenu.PlayerTab();
++					ImGui::EndTabItem();
++				}
++				// TODO Fix animation menu.
++				if(ImGui::BeginTabItem("Animation")) 
++				{ 
++					animMenu.AnimSubTab();
++					ImGui::EndTabItem(); 
++				}
++
++				// End test tab
++				ImGui::EndTabBar();
++				
++			}
++#else
++			// Original tab item
+ 			playerMenu.PlayerTab();
++#endif
++
++
+ 
+ 			ImGui::EndTabItem();
+ 		}
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 5fe85604..84b1278b 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -46,6 +46,8 @@
+ #include "PlayerPed.h"
+ #include "PlayerInfo.h"
+ 
++#include "Physical.h"
++
+ #include "Frontend.h"
+ #include "Text.h"
+ 
+@@ -280,12 +282,23 @@ MiscMenu::ClearCounterOnScreen()
+ 
+ bool counterEnabled = false;
+ /// <summary>
+-/// This works, but doesn't display the proper text.
++/// This works, and I got it to display the text
++/// TODO Add custom text option in here, the text needs to be in the american.gxt/american.txt file.
++/// TODO Figure out how to update the on screen counter.
+ /// </summary>
+ void 
+ MiscMenu::DisplayCounterOnScreen()
+ {
+-	// TODO Figure out how to fix the text, it doesn't get the right text.
++
++	char str[200];
++	wchar ustr[200];
++
++	sprintf(str, "KCEXLOG");
++
++	AsciiToUnicode(str, ustr);
++
++	// I fixed it, I'm quite sure it's from where I used above instead of using the text value in the counterEnabled.
++	// I'll leave it there for later.
+ 	if (counterEnabled) 
+ 	{
+ 		char onscreen_str[KEY_LENGTH_IN_SCRIPT];
+@@ -293,11 +306,16 @@ MiscMenu::DisplayCounterOnScreen()
+ 		//uint16 var = 16;
+ 		counterVar = 16;
+ 		// Extra Logging, placeholder message
+-		wchar *text = TheText.Get("KCEXLOG");
++		
++		//wchar *text = TheText.Get("KCEXLOG");
++
+ 		// Hmm, how is this working? It's converting the wchar into a char
+ 		// strncpy(onscreen_str, (char*)&CTheScripts::ScriptSpace[m_nIp], KEY_LENGTH_IN_SCRIPT);
+-		strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
+-		//CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++		//strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
++		// CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++
++		// This below works fine
++		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
+ 		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+ 	} else {
+ 		ClearCounterOnScreen();
+@@ -655,6 +673,23 @@ displayPlayerHealthMemAddress()
+ }
+ 
+ 
++/// <summary>
++/// This works for playing a sound.
++/// Well it was working.
++/// </summary>
++void
++playSoundTest()
++{
++	CPhysical cPhysical = CPhysical();
++	CPlayerPed *pPlayer = FindPlayerPed();
++	//DMAudio.PlayOneShot(cPhysical.m_audioEntityId, SOUND_CAR_WINDSHIELD_CRACK, 0.0f);
++	if (pPlayer) { 
++		int32 audioEntityId = pPlayer->m_audioEntityId;
++		DMAudio.PlayOneShot(audioEntityId, SOUND_WEAPON_SHOT_FIRED, 3.0f);
++	}
++	
++}
++
+ //
+ 
+ //----------- Misc tab ----------//
+@@ -676,8 +711,20 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+-	if(ImGui::Button("Play bridge open")) { CustomCheats::PlayAnnouncementTest(1); }
+-	if(ImGui::Button("Play bridge closed")) { CustomCheats::PlayAnnouncementTest(2); }
++	if(ImGui::Button("Play bridge open")) 
++	{ 
++		CustomCheats::PlayAnnouncementTest(1); 
++	}
++	
++	if(ImGui::Button("Play bridge closed")) 
++	{ 
++		CustomCheats::PlayAnnouncementTest(2); 
++	}
++
++	if(ImGui::Button("Play sound test")) 
++	{ 
++		playSoundTest(); 
++	}
+ 
+ 	// TODO Setup radius for this
+ 
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index fa35a7f5..0d39e7ed 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -1,9 +1,28 @@
+ #include "misc_util.h"
+ 
++#include <stdlib.h>
++
+ std::string
+ MiscUtil::AddressToString(void *address)
+ {
+ 	std::stringstream ss;
+ 	ss << address;
+ 	return ss.str();
+-}
+\ No newline at end of file
++}
++
++/// <summary>
++/// Generate a random number, the original function for
++/// getting random numbers didn't seem to change the loading screen for the game.
++/// https://stackoverflow.com/questions/29381843/generate-random-number-in-range-min-max
++/// </summary>
++/// <param name="min"></param>
++/// <param name="max"></param>
++/// <returns></returns>
++int
++MiscUtil::GenerateRandomNumber(int min, int max)
++{
++	srand(time(0));
++	// Get a random number between 1 and 14
++	int randomNum = min + rand() % (max - min + 1);
++	return randomNum;
++}
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index e5801db8..5db38973 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -6,4 +6,6 @@ class MiscUtil
+ {
+ public:
+ 	std::string AddressToString(void *address);
++
++	static int GenerateRandomNumber(int min, int max);
+ };
+-- 
+2.45.1.windows.1
+

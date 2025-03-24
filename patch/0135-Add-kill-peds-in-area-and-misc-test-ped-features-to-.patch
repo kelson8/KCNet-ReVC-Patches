@@ -1,0 +1,251 @@
+From 8b19854c09203eaf4b7bcce1a875d223be12531f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 12:52:38 -0400
+Subject: [PATCH 135/138] Add kill peds in area, and misc test ped features to
+ misc_util. Add those options to misc menu.
+
+---
+ src/extras/menus/misc_menu.cpp |  35 +++++++-
+ src/extras/utils/misc_util.cpp | 150 +++++++++++++++++++++++++++++++++
+ src/extras/utils/misc_util.h   |   5 ++
+ 3 files changed, 186 insertions(+), 4 deletions(-)
+
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 84b1278b..9dbca51f 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -709,6 +709,8 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
++	MiscUtil miscUtil = MiscUtil();
++
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+ 	if(ImGui::Button("Play bridge open")) 
+@@ -811,12 +813,37 @@ void MiscMenu::MiscTab()
+ 		logAreaTest(); 
+ 	}
+ 
+-	ImGui::Text("Logs the memory address to the player health");
+-	if (ImGui::Button("Player health mem addr")) 
+-	{ 
+-		displayPlayerHealthMemAddress();
++	//ImGui::Text("Logs the memory address to the player health");
++	//if (ImGui::Button("Player health mem addr")) 
++	//{ 
++	//	displayPlayerHealthMemAddress();
++	//}
++
++
++	//---------------
++	// Ped stuff
++	//---------------
++
++	ImGui::Separator();
++
++	if(ImGui::CollapsingHeader("Ped stuff")) {
++		ImGui::Separator();
++
++		ImGui::Text("I will be testing running stuff on multiple peds at once.");
++		if(ImGui::Button("Kill peds in area")) 
++		{
++			miscUtil.KillAllPedsInArea(); 
++		}
++
++		ImGui::Text("Misc ped testing");
++		if (ImGui::Button("Ped test")) 
++		{ 
++			miscUtil.TestPedFeatures();
++		}
+ 	}
+ 
++	//
++
+ 	ImGui::Separator();
+ 	// Fun functions
+ 	ImGui::Text("Fun functions");
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 0d39e7ed..d4020282 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -1,7 +1,60 @@
+ #include "misc_util.h"
+ 
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++#include "Pools.h"
++#include "Camera.h"
++#include "CarCtrl.h"
++#include "CutsceneMgr.h"
++#include "Fluff.h"
++#include "Font.h"
++#include "Game.h"
++#include "Gangs.h"
++#include "General.h"
++#include "Hud.h"
++#include "PathFind.h"
++#include "Ped.h"
++#include "Population.h"
++#include "Record.h"
++#include "Replay.h"
++#include "Stats.h"
++#include "Streaming.h"
++#include "Text.h"
++#include "Timer.h"
++#include "TrafficLights.h"
++#include "Vehicle.h"
++#include "Wanted.h"
++#include "WaterLevel.h"
++#include "Weather.h"
++#include "World.h"
++#include "platform.h"
++
++#include "Remote.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerInfo.h"
++
++#include "CopPed.h"
++
++#include "Heli.h"
++#include "Bike.h"
++
++
++// Defines - KCNet
++#include "defines.h"
++// Logging - KCNet
++#include "log_functions.h"
++
++
+ #include <stdlib.h>
+ 
++
++
+ std::string
+ MiscUtil::AddressToString(void *address)
+ {
+@@ -26,3 +79,100 @@ MiscUtil::GenerateRandomNumber(int min, int max)
+ 	int randomNum = min + rand() % (max - min + 1);
+ 	return randomNum;
+ }
++
++/// <summary>
++/// Kill all peds in the area, excluding the player
++/// </summary>
++void
++MiscUtil::KillAllPedsInArea()
++{
++	int i = CPools::GetPedPool()->GetSize();
++	while(i-- > 0) {
++		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) 
++		{ 
++			// Check if peds are not a player, I figured this out.
++			if (!ped->IsPlayer())
++			{
++				// Kill the peds
++				ped->m_fHealth = 0;
++			}		
++		}
++	}
++}
++
++void
++MiscUtil::TestPedFeatures()
++{
++	// int i = CPools::GetVehiclePool()->GetSize();
++	bool burstTires = false;
++
++	CPed *pPlayer = FindPlayerPed();
++	CVector pPlayerCoords = FindPlayerCoors();
++
++	float playerX = pPlayerCoords.x + 4.0f;
++	float playerY = pPlayerCoords.y + 4.0f;
++	float playerZ = pPlayerCoords.z;
++
++	CVector newCoords = CVector(playerX, playerY, playerZ);
++
++	int i = CPools::GetPedPool()->GetSize();
++	while(i-- > 0) {
++		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) {
++			// Check if peds are not a player, I figured this out.
++			if(!ped->IsPlayer()) {
++				// This works for teleporting the peds
++				//ped->Teleport(newCoords);
++
++				//ped->
++				//ped->SetObjective(eObjective)
++			
++				// TODO Make everyone leave their vehicles or something
++				//if (ped->m_pMyVehicle)
++				//{
++
++				//}
++			}
++		}
++	}
++
++	
++	int vehI = CPools::GetVehiclePool()->GetSize();
++	while(vehI-- > 0) {
++		if(CVehicle *veh = CPools::GetVehiclePool()->GetSlot(vehI))
++			// Check if ped is not a player in a vehicle.
++
++			if(CWorld::Players[CWorld::PlayerInFocus].m_pPed->m_pMyVehicle != veh) 
++			{ 
++				// This works
++				//veh->Teleport(newCoords);
++
++				// This didn't do anything
++				//veh->ApplyMoveForce(CVector(20.0f, 20.0f, 20.0f));
++				
++				// TODO Make function to check if the vehicle is a car, bike, or boat, this'll probably crash
++				
++				//switch (veh->m_vehType)
++				//{
++				//	
++				//}
++
++				// These work
++				if(burstTires) {
++
++					if(veh->IsCar()) {
++						for(int i = 0; i < 4; i++) { veh->BurstTyre(i, true); }
++					}
++
++					if(veh->IsBike()) {
++						for(int i = 0; i < 1; i++) { veh->BurstTyre(i, true); }
++					}
++				}
++
++
++				//veh->
++				//veh->ApplyMoveSpeed();
++			}
++	}
++}
++
++// TODO Try 
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 5db38973..2471c2c5 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -8,4 +8,9 @@ public:
+ 	std::string AddressToString(void *address);
+ 
+ 	static int GenerateRandomNumber(int min, int max);
++
++	void KillAllPedsInArea();
++
++	// Misc ped testing
++	void TestPedFeatures();
+ };
+-- 
+2.45.1.windows.1
+

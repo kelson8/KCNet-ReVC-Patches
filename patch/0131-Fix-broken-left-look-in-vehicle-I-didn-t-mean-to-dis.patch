@@ -1,0 +1,30 @@
+From 40b8cc4b4bb7f15310268746949441e78625a0e6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 01:45:44 -0400
+Subject: [PATCH 131/138] Fix broken left look in vehicle, I didn't mean to
+ disable this.
+
+---
+ src/core/Cam.cpp | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index 4efd6fae..02480ccd 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -404,9 +404,10 @@ CCam::Process(void)
+ 					CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_SUBMACHINEGUN &&
+ 					(CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot != WEAPONSLOT_HANDGUN || 
+ 					CWeaponInfo::GetWeaponInfo(ped->GetWeapon()->m_eWeaponType)->m_nWeaponSlot == WEAPONSLOT_HANDGUN && ped->GetWeapon()->m_eWeaponType == WEAPONTYPE_PYTHON)))){
+-#else
+-			}else if(CPad::GetPad(0)->GetLookLeft()){
++
+ #endif //FIRING_AND_AIMING
++#else
++			} else if(CPad::GetPad(0)->GetLookLeft()) {
+ #endif //_DISABLED_CODE
+ 				LookLeft();
+ 
+-- 
+2.45.1.windows.1
+

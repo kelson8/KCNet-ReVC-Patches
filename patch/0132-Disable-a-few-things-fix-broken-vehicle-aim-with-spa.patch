@@ -1,0 +1,182 @@
+From f03ee48bc65b983a781474443909dc3ba7751287 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 02:02:07 -0400
+Subject: [PATCH 132/138] Disable a few things, fix broken vehicle aim with
+ space. Disable moving while crouching for now.
+
+---
+ src/core/ControllerConfig.cpp |  3 ++
+ src/core/config.h             |  7 ++-
+ src/peds/PlayerPed.cpp        | 96 +++++++++++++++++++----------------
+ 3 files changed, 59 insertions(+), 47 deletions(-)
+
+diff --git a/src/core/ControllerConfig.cpp b/src/core/ControllerConfig.cpp
+index 2f0702e0..5f078c93 100644
+--- a/src/core/ControllerConfig.cpp
++++ b/src/core/ControllerConfig.cpp
+@@ -803,6 +803,9 @@ void CControllerConfigManager::UpdateJoyInConfigMenus_ButtonDown(int32 button, i
+ /// </summary>
+ /// <param name="button"></param>
+ /// <param name="type"></param>
++/// 
++// Well turning this off in here almost fixes the broken vehicle aiming with space.
++//#undef FIRING_AND_AIMING
+ void CControllerConfigManager::AffectControllerStateOn_ButtonDown(int32 button, eControllerType type)
+ {
+ 	bool process = true;
+diff --git a/src/core/config.h b/src/core/config.h
+index b3a486ca..76609f79 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -128,11 +128,14 @@
+ // Well one of these break aiming in a vehicle.
+ // TODO Figure out what is breaking free look in a chopper, I'm forced to aim with one of these.
+ // Well I disabled all of these and it didn't fix it, so something somewhere else is breaking freelook in a chopper.
+-#define FIRING_AND_AIMING
++// 
++// I turned these off, something here was breaking shooting in the vehicles, if pressing space it is broken
++//#define FIRING_AND_AIMING
+ // I think I mostly got this one completed also.
+-#define FIRST_PERSON
++//#define FIRST_PERSON
+ // The code for these are copied in
+ // Enable better crouching support
++// This doesn't work without one of the above, but I think it's needed for swimming.
+ #define CROUCH
+ 
+ // I got the code for this implemented into here
+diff --git a/src/peds/PlayerPed.cpp b/src/peds/PlayerPed.cpp
+index 4022c2ca..1bf54525 100644
+--- a/src/peds/PlayerPed.cpp
++++ b/src/peds/PlayerPed.cpp
+@@ -315,67 +315,71 @@ void CPlayerPed::ProcessCrouch(void)
+ 		return;
+ 	}
+ 
++#ifdef FIRING_AND_AIMING
+ 	// TODO Re-enable these once I get the FIRING_AND_AIMING define and FIRST_PERSON complete from the Extended Vice project
+ 	 if (bIsPlayerAiming && GetWeapon()->GetInfo()->m_nWeaponSlot == WEAPONSLOT_SNIPER)
+ 	 	return;
+ 
+-	 if (bIsPlayerAiming || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
+-	 	TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.4f;
++	 if(bIsPlayerAiming || TheCamera.Cams[TheCamera.ActiveCam].Mode == CCam::MODE_REAL_1ST_PERSON) {
++		 TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.4f;
++#endif
+ 
+-	 	if ((m_fMoveSpeed < 0.1f || (padLeftRight != 0 && padUpDown == 0)) && !curCrouchIdleAssoc && !bIsCurRollAnim || m_nPedState == PED_ROLL)
+-	 		curCrouchIdleAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
++		 if((m_fMoveSpeed < 0.1f || (padLeftRight != 0 && padUpDown == 0)) && !curCrouchIdleAssoc && !bIsCurRollAnim || m_nPedState == PED_ROLL)
++			 curCrouchIdleAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_IDLE, 4.0f);
+ 
+-	 	if (pad->GetTarget() && m_fMoveSpeed > 0.1f && (!curCrouchIdleAssoc || curCrouchIdleAssoc && curCrouchIdleAssoc->blendAmount >= 1.0f) && !bIsCurMoveAnim && !bIsCurRollAnim && 
+-	 		(padLeftRight < -20 || padLeftRight > 20)) {
++		 if(pad->GetTarget() && m_fMoveSpeed > 0.1f && (!curCrouchIdleAssoc || curCrouchIdleAssoc && curCrouchIdleAssoc->blendAmount >= 1.0f) &&
++		    !bIsCurMoveAnim && !bIsCurRollAnim && (padLeftRight < -20 || padLeftRight > 20)) {
+ 
+-	 		if (curCrouchForwardAssoc)
+-	 			delete curCrouchForwardAssoc;
++			 if(curCrouchForwardAssoc) delete curCrouchForwardAssoc;
+ 
+-	 		if (curCrouchBackwardAssoc)
+-	 			delete curCrouchBackwardAssoc;
++			 if(curCrouchBackwardAssoc) delete curCrouchBackwardAssoc;
+ 
+-	 		if (curCrouchFireAssoc) {
+-	 			delete curCrouchFireAssoc;
+-	 			ClearWeaponTarget();
+-	 		}
++			 if(curCrouchFireAssoc) {
++				 delete curCrouchFireAssoc;
++				 ClearWeaponTarget();
++			 }
+ 
+-	 		float angleToFace;
+-	 		angleToFace = CGeneral::GetRadianAngleBetweenPoints(
+-	 			GetPosition().x - TheCamera.GetRight().x, GetPosition().y - TheCamera.GetRight().y,
+-	 			GetPosition().x, GetPosition().y);
+-	 		angleToFace = CGeneral::LimitRadianAngle(angleToFace);
+-	 		m_fRotationCur = CGeneral::LimitRadianAngle(m_fRotationCur);
+-	 		m_fRotationCur = angleToFace;
++			 float angleToFace;
++			 angleToFace = CGeneral::GetRadianAngleBetweenPoints(GetPosition().x - TheCamera.GetRight().x, GetPosition().y - TheCamera.GetRight().y,
++			                                                     GetPosition().x, GetPosition().y);
++			 angleToFace = CGeneral::LimitRadianAngle(angleToFace);
++			 m_fRotationCur = CGeneral::LimitRadianAngle(m_fRotationCur);
++			 m_fRotationCur = angleToFace;
+ 
+-	 		bDontAllowWeaponChange = true;
++			 bDontAllowWeaponChange = true;
+ 
+-	 		SetPedState(PED_ROLL);
++			 SetPedState(PED_ROLL);
+ 
+-	 		delete curCrouchIdleAssoc;
++			 delete curCrouchIdleAssoc;
+ 
+-	 		if (padLeftRight < 0) {
+-	 			curCrouchRollLeftAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_ROLL_L, 4.0f);
+-	 			curCrouchRollLeftAssoc->SetFinishCallback(FinishRollCB, this);
+-	 		} else if (padLeftRight > 0) {
+-	 			curCrouchRollRightAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_ROLL_R, 4.0f);
+-	 			curCrouchRollRightAssoc->SetFinishCallback(FinishRollCB, this);
+-	 		}
++			 if(padLeftRight < 0) {
++				 curCrouchRollLeftAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_ROLL_L, 4.0f);
++				 curCrouchRollLeftAssoc->SetFinishCallback(FinishRollCB, this);
++			 } else if(padLeftRight > 0) {
++				 curCrouchRollRightAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_ROLL_R, 4.0f);
++				 curCrouchRollRightAssoc->SetFinishCallback(FinishRollCB, this);
++			 }
+ 
+-	 		return;
+-	 	}
++			 return;
++		 }
+ 
+-	 	if (m_fMoveSpeed > 0.1 && !bIsCurRollAnim) {
+-	 		if (padUpDown != 0) {
+-	 			if (padUpDown < 0) {
+-	 				if (!curCrouchForwardAssoc)
+-	 					curCrouchForwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_FORWARD, 4.0f);
+-	 			} else if (padUpDown > 0) {
+-	 				if (!curCrouchBackwardAssoc)
+-	 					curCrouchBackwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_BACKWARD, 4.0f);
+-	 			}
+-	 		}
+-	 	}
+-	 } else if (pad) {
++		 if(m_fMoveSpeed > 0.1 && !bIsCurRollAnim) {
++			 if(padUpDown != 0) {
++				 if(padUpDown < 0) {
++					 if(!curCrouchForwardAssoc)
++						 curCrouchForwardAssoc = CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_FORWARD, 4.0f);
++				 } else if(padUpDown > 0) {
++					 if(!curCrouchBackwardAssoc)
++						 curCrouchBackwardAssoc =
++						     CAnimManager::BlendAnimation(GetClump(), ASSOCGRP_STD, ANIM_STD_CROUCH_BACKWARD, 4.0f);
++				 }
++			 }
++		 }
++
++#ifdef FIRING_AND_AIMING
++	 }
++#endif
++		else if(pad) {
+ 	 	if (m_fMoveSpeed < 0.1f) {
+ 	 		TheCamera.Cams[TheCamera.ActiveCam].m_fTargetCameraPosZ = 0.6f;
+ 		
+@@ -414,8 +418,10 @@ void CPlayerPed::ProcessSwimming(void)
+ 	if (!bIsSwimming)
+ 		return;
+ 
++#ifdef FIRING_AND_AIMING
+ 	if (bIsPlayerAiming)
+ 		bIsPlayerAiming = false;
++#endif
+ 
+ 	if (m_pFire)
+ 		m_pFire->Extinguish();
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,94 @@
+From 3e0c17c5871a23256b1f4e7a47a9e41dd7529437 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 13:32:26 -0400
+Subject: [PATCH 137/138] Oops, forgot the gbFalloffBike variable in main.
+
+---
+ src/core/main.cpp | 20 +++++++++++++++++++-
+ src/core/main.h   |  4 ++++
+ 2 files changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 25963df9..ee95e413 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -143,6 +143,10 @@ bool gbLuaTest;
+ bool gbPedSpeech;
+ #endif
+ 
++#ifdef CUSTOM_CODE // Bike fall off toggle
++// Set to true by default, so the player can always fall off the bike unless turned off.
++bool gbFalloffBike = true;
++#endif
+ 
+ 
+ // TODO Fix this to work.
+@@ -1839,6 +1843,7 @@ Idle(void *arg)
+ 		RwV2d pos;
+ 		pos.x = SCREEN_WIDTH / 2.0f;
+ 		pos.y = SCREEN_HEIGHT / 2.0f;
++		// Well now, this is where the mouse position is being set.
+ 		RsMouseSetPos(&pos);
+ #endif
+ 
+@@ -1904,10 +1909,12 @@ Idle(void *arg)
+ 		ScreenDroplets::Render();
+ #endif
+ 
++		// Motion blue
+ 		tbStartTimer(0, "RenderMotionBlur");
+ 		TheCamera.RenderMotionBlur();
+ 		tbEndTimer("RenderMotionBlur");
+ 
++		// Render 2d stuff
+ 		tbStartTimer(0, "Render2dStuff");
+ 		Render2dStuff();
+ 		tbEndTimer("Render2dStuff");
+@@ -1924,6 +1931,7 @@ Idle(void *arg)
+ 			goto popret;
+ 	}
+ 
++	// Render menus
+ 	tbStartTimer(0, "RenderMenus");
+ 	RenderMenus();
+ 	tbEndTimer("RenderMenus");
+@@ -2019,10 +2027,20 @@ InitialiseGame(void)
+ 
+ #ifdef CUSTOM_CODE
+ 	CGame cGame;
++	// TODO Move into DATA\\ViceExtended\\GTA_VC.DAT
++#ifdef VICE_EXTENDED
++	// Well this just crashes it, trying to add extra neons from VCS.
++	// https://github.com/ThirteenAG/ViceCityNeons
++	//cGame.Initialise("DATA\\ViceExtended\\GTA_VC.DAT");
++	cGame.Initialise("DATA\\GTA_VC.DAT");
++
++#else
+ 	cGame.Initialise("DATA\\GTA_VC.DAT");
++	#endif // VICE_EXTENDED
++
+ 	#else
+ 	CGame::Initialise("DATA\\GTA_VC.DAT");
+-#endif
++#endif // CUSTOM_CODE
+ }
+ 
+ RsEventStatus
+diff --git a/src/core/main.h b/src/core/main.h
+index a9256728..64035489 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -107,6 +107,10 @@ extern bool gbDisplayPosn;
+ extern bool gbPedSpeech;
+ #endif
+ 
++#ifdef CUSTOM_CODE // Bike fall off toggle
++extern bool gbFalloffBike;
++#endif
++
+ // TODO Fix this to work
+ // This should change the police weapons to any from a list once I figure it out
+ //#ifdef CHANGE_POLICE_WEAPONS
+-- 
+2.45.1.windows.1
+
