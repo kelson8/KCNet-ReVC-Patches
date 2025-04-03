@@ -1,0 +1,309 @@
+From ecc03ac87e84d2a0a562666918fa32f6083eead7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 24 Mar 2025 22:32:43 -0400
+Subject: [PATCH 139/152] Add EX_YCBCR_CORRECTION for skygfx, it is broken
+ here. Add some extra shaders for it also.
+
+---
+ src/core/config.h                      |   6 +-
+ src/extras/functions/ini_functions.cpp |  20 +++++
+ src/extras/postfx.cpp                  | 119 +++++++++++++++++++++++++
+ src/extras/postfx.h                    |  10 +++
+ src/extras/shaders/gradingPS.hlsl      |  23 +++++
+ 5 files changed, 176 insertions(+), 2 deletions(-)
+ create mode 100644 src/extras/shaders/gradingPS.hlsl
+
+diff --git a/src/core/config.h b/src/core/config.h
+index 76609f79..2ba72b15 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -80,6 +80,10 @@
+ // Also, there is an option to toggle this under display settings.
+ #define EX_GPS
+ 
++// Well this complains and makes this have linker errors, I figured out how to build the shaders for it.
++// Linker error under CPostFX::Render
++// #define EX_YCBCR_CORRECTION // thank https://github.com/aap/skygfx/
++
+ // Adds radio icons from radio.txd for the radio wheel and in the sound settings.
+ #define EX_RADIO_ICONS
+ 
+@@ -336,8 +340,6 @@
+ 
+ 	#define EX_DISPLAYED_COLLECTIBLES
+ 
+-	#define EX_YCBCR_CORRECTION // thank https://github.com/aap/skygfx/
+-
+ 	#ifdef EX_SECOND_SAMPLE_BANK
+ 		#define EX_NEW_WEAPONS
+ 		#ifdef EX_NEW_WEAPONS
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 2e6b8513..890fae48 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1200,6 +1200,16 @@ LoadINISettings()
+ 	ReadIniIfExists("Rendering", "NewRenderer", &gbNewRenderer);
+ #endif
+ 
++#ifdef EX_YCBCR_CORRECTION // ini
++	ReadIniIfExists("Rendering", "YCbCrCorrection", &CPostFX::m_bYCbCrFilter);
++	ReadIniIfExists("Rendering", "lumaScale", &CPostFX::m_lumaScale);
++	ReadIniIfExists("Rendering", "lumaOffset", &CPostFX::m_lumaOffset);
++	ReadIniIfExists("Rendering", "CbScale", &CPostFX::m_cbScale);
++	ReadIniIfExists("Rendering", "CbOffset", &CPostFX::m_cbOffset);
++	ReadIniIfExists("Rendering", "CrScale", &CPostFX::m_crScale);
++	ReadIniIfExists("Rendering", "CrOffset", &CPostFX::m_crOffset);
++#endif
++
+ #ifdef PROPER_SCALING
+ 	ReadIniIfExists("Draw", "ProperScaling", &CDraw::ms_bProperScaling);
+ #endif
+@@ -1361,6 +1371,16 @@ SaveINISettings()
+ 	StoreIni("Rendering", "NewRenderer", gbNewRenderer);
+ #endif
+ 
++#ifdef EX_YCBCR_CORRECTION // ini
++	StoreIni("Rendering", "YCbCrCorrection", CPostFX::m_bYCbCrFilter);
++	StoreIni("Rendering", "lumaScale", CPostFX::m_lumaScale);
++	StoreIni("Rendering", "lumaOffset", CPostFX::m_lumaOffset);
++	StoreIni("Rendering", "CbScale", CPostFX::m_cbScale);
++	StoreIni("Rendering", "CbOffset", CPostFX::m_cbOffset);
++	StoreIni("Rendering", "CrScale", CPostFX::m_crScale);
++	StoreIni("Rendering", "CrOffset", CPostFX::m_crOffset);
++#endif
++
+ #ifdef PROPER_SCALING
+ 	StoreIni("Draw", "ProperScaling", CDraw::ms_bProperScaling);
+ #endif
+diff --git a/src/extras/postfx.cpp b/src/extras/postfx.cpp
+index ee6c3964..7ae3a3d6 100644
+--- a/src/extras/postfx.cpp
++++ b/src/extras/postfx.cpp
+@@ -27,6 +27,11 @@ static RwImVertexIndex Index[6] = { 0, 1, 2, 0, 2, 3 };
+ #ifdef RW_D3D9
+ void *colourfilterVC_PS;
+ void *contrast_PS;
++
++#ifdef EX_YCBCR_CORRECTION
++void *grading_PS;
++#endif
++
+ #endif
+ #ifdef RW_OPENGL
+ int32 u_blurcolor;
+@@ -36,6 +41,16 @@ rw::gl3::Shader *colourFilterVC;
+ rw::gl3::Shader *contrast;
+ #endif
+ 
++#ifdef EX_YCBCR_CORRECTION
++bool CPostFX::m_bYCbCrFilter = false;
++float CPostFX::m_lumaScale = 219.0f / 255.0f;
++float CPostFX::m_lumaOffset = 16.0f / 255.0f;
++float CPostFX::m_cbScale = 1.23f;
++float CPostFX::m_cbOffset = 0.0f;
++float CPostFX::m_crScale = 1.23f;
++float CPostFX::m_crOffset = 0.0f;
++#endif
++
+ void
+ CPostFX::InitOnce(void)
+ {
+@@ -150,6 +165,11 @@ CPostFX::Open(RwCamera *cam)
+ 	colourfilterVC_PS = rw::d3d::createPixelShader(colourfilterVC_PS_cso);
+ #include "shaders/obj/contrastPS.inc"
+ 	contrast_PS = rw::d3d::createPixelShader(contrastPS_cso);
++
++#ifdef EX_YCBCR_CORRECTION
++#include "shaders/obj/gradingPS.inc"
++	grading_PS = rw::d3d::createPixelShader(gradingPS_cso);
++#endif
+ #endif
+ #ifdef RW_OPENGL
+ 	using namespace rw::gl3;
+@@ -171,6 +191,9 @@ CPostFX::Open(RwCamera *cam)
+ 	contrast = Shader::create(vs, fs);
+ 	assert(contrast);
+ 	}
++#ifdef EX_YCBCR_CORRECTION
++	// TODO
++#endif
+ 
+ #endif
+ }
+@@ -195,6 +218,13 @@ CPostFX::Close(void)
+ 		rw::d3d::destroyPixelShader(contrast_PS);
+ 		contrast_PS = nil;
+ 	}
++
++#ifdef EX_YCBCR_CORRECTION
++	if (grading_PS) {
++		rw::d3d::destroyPixelShader(grading_PS);
++		grading_PS = nil;
++	}
++#endif
+ #endif
+ #ifdef RW_OPENGL
+ 	if(colourFilterVC){
+@@ -205,6 +235,10 @@ CPostFX::Close(void)
+ 		contrast->destroy();
+ 		contrast = nil;
+ 	}
++
++#ifdef EX_YCBCR_CORRECTION
++	// TODO
++#endif
+ #endif
+ }
+ 
+@@ -386,6 +420,27 @@ CPostFX::GetBackBuffer(RwCamera *cam)
+ 	RwRasterPopContext();
+ }
+ 
++#ifdef EX_YCBCR_CORRECTION
++static RwMatrix RGB2YUV = {
++	{  0.299f,	-0.168736f,	 0.500f }, 0,
++	{  0.587f,	-0.331264f,	-0.418688f }, 0,
++	{  0.114f,	 0.500f,	-0.081312f }, 0,
++	{  0.000f,	 0.000f,	 0.000f }, 0,
++};
++
++static RwMatrix YUV2RGB = {
++	{  1.000f,	 1.000f,	 1.000f }, 0,
++	{  0.000f,	-0.344136f,	 1.772f }, 0,
++	{  1.402f,	-0.714136f,	 0.000f }, 0,
++	{  0.000f,	 0.000f,	 0.000f }, 0,
++};
++
++struct Grade
++{
++	rw::float32 r, g, b, a;
++};
++#endif
++
+ void
+ CPostFX::Render(RwCamera *cam, uint32 red, uint32 green, uint32 blue, uint32 blur, int32 type, uint32 bluralpha)
+ {
+@@ -454,6 +509,70 @@ CPostFX::Render(RwCamera *cam, uint32 red, uint32 green, uint32 blue, uint32 blu
+ 		bJustInitialised = true;
+ 
+ 	POP_RENDERGROUP();
++
++#ifdef EX_YCBCR_CORRECTION // Render
++	if (m_bYCbCrFilter) {
++		RwRasterPushContext(pFrontBuffer);
++		RwRasterRenderFast(RwCameraGetRaster(cam), 0, 0);
++		RwRasterPopContext();
++
++		RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERNEAREST);
++		RwRenderStateSet(rwRENDERSTATEFOGENABLE, (void*)FALSE);
++		RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)FALSE);
++		RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)FALSE);
++		RwRenderStateSet(rwRENDERSTATETEXTURERASTER, (void*)pFrontBuffer);
++		RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void*)FALSE);
++
++		RwMatrix m = RGB2YUV;
++
++		RwMatrix m2;
++		m2.right.x = m_lumaScale;
++		m2.up.x = 0.0f;
++		m2.at.x = 0.0f;
++		m2.pos.x = m_lumaOffset;
++		m2.right.y = 0.0f;
++		m2.up.y = m_cbScale;
++		m2.at.y = 0.0f;
++		m2.pos.y = m_cbOffset;
++		m2.right.z = 0.0f;
++		m2.up.z = 0.0f;
++		m2.at.z = m_crScale;
++		m2.pos.z = m_crOffset;
++
++		RwMatrixOptimize(&m2, nil);
++
++		RwMatrixTransform(&m, &m2, rwCOMBINEPOSTCONCAT);
++		RwMatrixTransform(&m, &YUV2RGB, rwCOMBINEPOSTCONCAT);
++		Grade red2, green2, blue2;
++		red2.r = m.right.x;
++		red2.g = m.up.x;
++		red2.b = m.at.x;
++		red2.a = m.pos.x;
++		green2.r = m.right.y;
++		green2.g = m.up.y;
++		green2.b = m.at.y;
++		green2.a = m.pos.y;
++		blue2.r = m.right.z;
++		blue2.g = m.up.z;
++		blue2.b = m.at.z;
++		blue2.a = m.pos.z;
++
++		rw::d3d::d3ddevice->SetPixelShaderConstantF(0, (float*)&red2, 1);
++		rw::d3d::d3ddevice->SetPixelShaderConstantF(1, (float*)&green2, 1);
++		rw::d3d::d3ddevice->SetPixelShaderConstantF(2, (float*)&blue2, 1);
++
++		rw::d3d::im2dOverridePS = grading_PS;
++		RwIm2DRenderIndexedPrimitive(rwPRIMTYPETRILIST, Vertex, 4, Index, 6);
++		rw::d3d::im2dOverridePS = nil;
++
++		RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
++		RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*)TRUE);
++		RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*)TRUE);
++		RwRenderStateSet(rwRENDERSTATETEXTURERASTER, (void*)NULL);
++		RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void*)TRUE);
++	}
++#endif
++
+ }
+ 
+ int CPostFX::PrevRed[NUMAVERAGE], CPostFX::AvgRed;
+diff --git a/src/extras/postfx.h b/src/extras/postfx.h
+index db702bf3..4a26f3fb 100644
+--- a/src/extras/postfx.h
++++ b/src/extras/postfx.h
+@@ -28,6 +28,16 @@ public:
+ 	static int Next;
+ 	static int NumValues;
+ 
++#ifdef EX_YCBCR_CORRECTION
++	static bool m_bYCbCrFilter;
++	static float m_lumaScale;
++	static float m_lumaOffset;
++	static float m_cbScale;
++	static float m_cbOffset;
++	static float m_crScale;
++	static float m_crOffset;
++#endif
++
+ 	static void InitOnce(void);
+ 	static void Open(RwCamera *cam);
+ 	static void Close(void);
+diff --git a/src/extras/shaders/gradingPS.hlsl b/src/extras/shaders/gradingPS.hlsl
+new file mode 100644
+index 00000000..e74f91bc
+--- /dev/null
++++ b/src/extras/shaders/gradingPS.hlsl
+@@ -0,0 +1,23 @@
++uniform sampler2D tex : register(s0);
++uniform float4 redGrade : register(c0);
++uniform float4 greenGrade : register(c1);
++uniform float4 blueGrade : register(c2);
++
++struct PS_INPUT
++{
++	float3 texcoord0	: TEXCOORD0;
++};
++
++float4
++main(PS_INPUT IN) : COLOR
++{
++	float4 c = tex2D(tex, IN.texcoord0.xy);
++	c.a = 1.0f;
++
++	float4 o;
++	o.r = dot(redGrade, c);
++	o.g = dot(greenGrade, c);
++	o.b = dot(blueGrade, c);
++	o.a = 1.0f;
++	return o;
++}
+-- 
+2.45.1.windows.1
+

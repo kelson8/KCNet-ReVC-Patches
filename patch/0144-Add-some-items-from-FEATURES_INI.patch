@@ -1,0 +1,817 @@
+From eaafcb3290d68cd450bf69c30672b22871b7f695 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 26 Mar 2025 20:51:29 -0400
+Subject: [PATCH 144/152] Add some items from FEATURES_INI. Add Vice Extended
+ options to config for limits. Fix broken custom text output to screen. Fix
+ toggle radar and toggle hud options in menu. Add option to remove players
+ money and reset it to 0. Remove timer from imgui and set to run when the key
+ is just pressed. Slightly modify imgui in win.cpp, move key defines up top.
+ Add new defines for keybinds.
+
+---
+ src/core/PlayerInfo.cpp                 |  8 ++-
+ src/core/common.h                       | 10 ++-
+ src/core/config.h                       | 85 +++++++++++++++++++------
+ src/core/main.cpp                       |  8 ++-
+ src/extras/cheats/custom_cheats.cpp     | 26 ++++++--
+ src/extras/cheats/custom_cheats.h       |  1 +
+ src/extras/functions/ini_functions.cpp  | 15 ++++-
+ src/extras/functions/misc_functions.cpp | 51 ++++++++++++---
+ src/extras/functions/misc_functions.h   |  8 ++-
+ src/extras/menus/cheat_menu.cpp         | 11 ++++
+ src/extras/menus/misc_menu.cpp          | 13 +++-
+ src/renderer/Hud.cpp                    |  5 ++
+ src/renderer/SpecialFX.cpp              |  3 +
+ src/skel/win/win.cpp                    | 56 ++++++++++++----
+ src/vehicles/Automobile.cpp             | 15 ++++-
+ 15 files changed, 255 insertions(+), 60 deletions(-)
+
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index 5f06c501..9646e1ab 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -458,7 +458,11 @@ CPlayerInfo::Process(void)
+ 			}
+ 		}
+ 	}
+-	if (!(CTimer::GetFrameCounter() & 31)) {
++#ifdef FEATURES_INI // VehiclesDontCatchFireWhenTurningOver
++	if(!bVehiclesDontCatchFireWhenTurningOver && !(CTimer::GetFrameCounter() & 31)) {
++#else
++	if(!(CTimer::GetFrameCounter() & 31)) {
++#endif
+ 		CVehicle *veh = FindPlayerVehicle();
+ 		if (veh && m_pPed->bInVehicle && veh->GetUp().z < 0.0f
+ 			&& veh->m_vecMoveSpeed.Magnitude() < 0.05f && (veh->IsCar() || veh->IsBoat()) && !veh->bIsInWater) {
+@@ -473,6 +477,7 @@ CPlayerInfo::Process(void)
+ 			// 5-15-2024 @ 11:26PM
+ // I added this preprocessor to config.h, it should stay enabled.
+ //#define CUSTOM_CODE	
++#undef CUSTOM_CODE
+ #ifdef CUSTOM_CODE
+ 			//bool vehUpsidedownExplode = true;
+ 			
+@@ -496,6 +501,7 @@ CPlayerInfo::Process(void)
+ 			}
+ #endif // CUSTOM_CODE
+ 
++#define CUSTOM_CODE
+ 
+ 		} else {
+ 			m_nUpsideDownCounter = 0;
+diff --git a/src/core/common.h b/src/core/common.h
+index d91fef42..5c89c642 100644
+--- a/src/core/common.h
++++ b/src/core/common.h
+@@ -357,15 +357,21 @@ CVector InterpVector(CVector currentValue, CVector newValue, float interpSpeed);
+ // #endif
+ 
+ #ifdef FEATURES_INI
++extern bool bDisableBulletTraces;
+ extern bool bVehiclesDontCatchFireWhenTurningOver;
++extern bool bRemoveMoneyZerosInTheHud;
++#endif
++
++#ifdef FEATURES_INI1
++
++
+ extern bool bHealthRegenerationUpToHalf;
+ extern bool bWantedStarsHideOnScreenWhenThereIsNoSearch;
+-extern bool bRemoveMoneyZerosInTheHud;
++
+ extern bool bPlayerDoesntBounceAwayFromMovingCar;
+ extern bool bStandardCarsUseTurnSignals;
+ extern bool bCameraShakeInVehicleAtHighSpeed;
+ extern bool bMilitaryFiringFromTankAtPlayer;
+-extern bool bDisableBulletTraces;
+ extern CRGBA WaypointColor;
+ #endif
+ 
+diff --git a/src/core/config.h b/src/core/config.h
+index 2ba72b15..70684f22 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -87,6 +87,9 @@
+ // Adds radio icons from radio.txd for the radio wheel and in the sound settings.
+ #define EX_RADIO_ICONS
+ 
++// Features ini, extra features in ViceExtended/features.ini
++#define FEATURES_INI
++
+ 
+ // TODO Add these for crouch features and other stuff from Extended Vice.
+ // This will take a little bit.
+@@ -134,6 +137,8 @@
+ // Well I disabled all of these and it didn't fix it, so something somewhere else is breaking freelook in a chopper.
+ // 
+ // I turned these off, something here was breaking shooting in the vehicles, if pressing space it is broken
++
++// Well one of these might be needed, I start to lag a bit when a lot is going on and the sound glitches out.
+ //#define FIRING_AND_AIMING
+ // I think I mostly got this one completed also.
+ //#define FIRST_PERSON
+@@ -321,9 +326,6 @@
+ 
+ 	#define VICE_CRY
+ 
+-	#define EX_MORE_BUTTON_ICONS
+-	#define EX_PC_KEY_ICONS
+-
+ 	#if defined UTILS && defined EX_EXPERIMENTAL
+ 		#define EX_BRYX_LIGHTS
+ 	#endif
+@@ -332,10 +334,6 @@
+ 		#define EX_OUTER_SPACE
+ 	#endif
+ 
+-	#ifdef UTILS
+-		#define EX_LOADING_GAME_SAVE_ON_STARTUP
+-	#endif
+-
+ 	#define EX_PED_ANIMS_IN_CAR
+ 
+ 	#define EX_DISPLAYED_COLLECTIBLES
+@@ -359,11 +357,6 @@
+ 	#endif
+ 
+ 
+-	#ifdef MODLOADER
+-#undef USE_TXD_CDIMAGE
+-#undef ONE_THREAD_PER_CHANNEL
+-#undef FLUSHABLE_STREAMING
+-
+ /*#if !defined(_WIN32) || defined(__LP64__) || defined(_WIN64)
+ #error Mod Loader is currently only supported in win-x86 builds
+ #endif*/
+@@ -385,11 +378,21 @@
+ 
+ */
+ 
++// TODO Disable the Vice Extended features below if they crash.
++// One of these crash it so I disabled it
++
++#undef VICE_EXTENDED
++
+ enum Config {
+ 	NUMPLAYERS = 1,
+ 
+ 	NUMCDIMAGES = 6,  // gta3.img duplicates (not used on PC)
++
++#ifdef VICE_EXTENDED
++	MAX_CDIMAGES = 32, // additional cdimages
++#else
+ 	MAX_CDIMAGES = 8, // additional cdimages
++#endif
+ 	MAX_CDCHANNELS = 5,
+ 	
+ 	// New
+@@ -397,12 +400,28 @@ enum Config {
+ 	MAX_WHEELMODELS = 12,
+ #endif
+ 
++#ifdef VICE_EXTENDED
++	MODELINFOSIZE = 10000,
++	TXDSTORESIZE = 1485,
++	COLSTORESIZE = 100,
++	EXTRADIRSIZE = 512,
++#else
+ 	MODELINFOSIZE = 6500, // 4900 on PS2
+ 	TXDSTORESIZE = 1385,
+ 	COLSTORESIZE = 31,
+ 	EXTRADIRSIZE = 256,
++#endif
+ 	CUTSCENEDIRSIZE = 512,
+ 
++#ifdef VICE_EXTENDED
++	SIMPLEMODELSIZE = 10000,
++	TIMEMODELSIZE = 10000,
++	CLUMPMODELSIZE = 100,
++	WEAPONMODELSIZE = 77,
++	PEDMODELSIZE = 130,
++	VEHICLEMODELSIZE = 210,
++	TWODFXSIZE = 3000,
++#else
+ 	SIMPLEMODELSIZE = 3885,
+ 	TIMEMODELSIZE = 385,
+ 	CLUMPMODELSIZE = 5,
+@@ -410,6 +429,7 @@ enum Config {
+ 	PEDMODELSIZE = 130,
+ 	VEHICLEMODELSIZE = 110,
+ 	TWODFXSIZE = 1210,
++#endif
+ 
+ 	MAXVEHICLESLOADED = 50, // 70 on mobile
+ 
+@@ -428,13 +448,14 @@ enum Config {
+ 	NUMCOLMODELS = 4400,
+ 	NUMCUTSCENEOBJECTS = 50, // not a pool in VC
+ 
+-	NUMANIMBLOCKS = 35,
+-
+-	#ifdef VICE_EXTENDED
+-	NUMANIMATIONS = 471,
+-	#else
++#ifdef VICE_EXTENDED
++	//NUMANIMATIONS = 471,
++	NUMANIMATIONS = 500,
++	NUMANIMBLOCKS = 40,
++#else
+ 	NUMANIMATIONS = 450,
+-	#endif
++	NUMANIMBLOCKS = 35,
++#endif
+ 
+ 	NUMTEMPOBJECTS = 40,
+ 
+@@ -444,10 +465,20 @@ enum Config {
+ 	NUM_MAPOBJECTS = 1250,
+ 	NUM_PATHCONNECTIONS = 20400,
+ 
++#ifdef VICE_EXTENDED
++	// TODO Implement these
++	//NUM_WANTEDPATHNODES = 20,
++	//NUM_WANTEDPATHS = 100,
++#endif
++
+ 	// Link list lengths
+ 	NUMALPHALIST = 20,
+ 	NUMBOATALPHALIST = 20,
++#ifdef VICE_EXTENDED
++	NUMALPHAENTITYLIST = 2000,
++#else
+ 	NUMALPHAENTITYLIST = 200,
++#endif
+ 	NUMALPHAUNTERWATERENTITYLIST = 30,
+ 	NUMCOLCACHELINKS = 50,
+ 	NUMREFERENCES = 800,
+@@ -484,9 +515,19 @@ enum Config {
+ 
+ 	NUMONSCREENCLOCKS = 1,
+ 	NUMONSCREENCOUNTERS = 3,
++
++#ifdef VICE_EXTENDED
++	NUMRADARBLIPS = 300,
++#else
+ 	NUMRADARBLIPS = 75,
++#endif
+ 	NUMGENERALPICKUPS = 320,
++#ifdef VICE_EXTENDED
++	NUMSCRIPTEDPICKUPS = 100,
++#else
+ 	NUMSCRIPTEDPICKUPS = 16,
++#endif
++
+ 	NUMPICKUPS = NUMGENERALPICKUPS + NUMSCRIPTEDPICKUPS,
+ 	NUMCOLLECTEDPICKUPS = 20,
+ 	NUMPACMANPICKUPS = 256,
+@@ -498,7 +539,12 @@ enum Config {
+ 
+ 	NUM_ACCIDENTS = 20,
+ 	NUM_FIRES = 40,
++#ifdef VICE_EXTENDED
++	//NUM_GARAGES = 35,
+ 	NUM_GARAGES = 32,
++#else
++	NUM_GARAGES = 32,
++#endif
+ 	NUM_PROJECTILES = 32,
+ 
+ 	NUM_GLASSPANES = 45,
+@@ -540,6 +586,9 @@ enum Config {
+ 	NUM_SETPIECES = 96,
+ 	NUM_SHORTCUT_START_POINTS = 16
+ };
++
++#define VICE_EXTENDED
++
+ // #endif
+ 
+ // We don't expect to compile for PS2 or Xbox
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 900459d2..591bc04a 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -94,6 +94,10 @@
+ // Grab test text from menu
+ #include "misc_menu.h"
+ 
++// New - Grab test text from here
++#include "misc_functions.h"
++
++
+ // Setup program version and name
+ #include "defines.h"
+ 
+@@ -473,13 +477,13 @@ DoRWStuffEndOfFrame(void)
+ 
+ 	
+ 	// TODO Possibly use this later.
+-	//std::string menuText = MiscMenu::GetInstance().getTestText();
++	//std::string menuText = MiscFunctions::GetInstance().getTestText();
+ 
+ 	// Well this one works..
+ 	//miscMenu.setTestText("Test set in Misc menu");
+ 
+ 	// This works
+-	CustomCheats::SetText(MiscMenu::GetInstance().getTestText());
++	CustomCheats::SetText(MiscFunctions::GetInstance().getTestText());
+ 
+ 	// Old command
+ 	//CustomCheats::SetText("Test");
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 1f57fd48..975181e7 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -1,3 +1,4 @@
++// Oh oops, this is required, it wouldn't build without it..
+ #define WITHDINPUT
+ #include "common.h"
+ #include "crossplatform.h"
+@@ -6,6 +7,7 @@
+ #include <string>
+ 
+ #include "custom_cheats.h"
++#include "misc_util.h"
+ 
+ // Vehicle functions
+ #include "extras/functions/vehicle_functions.h"
+@@ -144,13 +146,21 @@ commandTest1()
+ void 
+ CustomCheats::MoneyCheat(int value)
+ {
+-	//CWorld::Players[CWorld::PlayerInFocus].m_nMoney += 250000;
+ 	CWorld::Players[CWorld::PlayerInFocus].m_nMoney += value;
+-	CHud::SetHelpMessage(TheText.Get("CHEAT6"), true);
+ }
+ 
+ /// <summary>
+-/// Set the players money to 0 for testing.
++/// Remove a set amount of money from the player
++/// </summary>
++/// <param name="value"></param>
++void
++CustomCheats::RemoveMoneyAmount(int value)
++{
++	CWorld::Players[CWorld::PlayerInFocus].m_nMoney -= value;
++}
++
++/// <summary>
++/// Set the players money to 0.
+ /// </summary>
+ void
+ CustomCheats::SetMoneyToZero()
+@@ -683,6 +693,7 @@ CustomCheats::CustomHelpMessage(std::string text)
+ {
+ 	char str[200];
+ 	wchar ustr[200];
++	//MiscUtil miscUtil = MiscUtil();
+ 
+ 	//std::string text = "Test text";
+ 
+@@ -692,6 +703,11 @@ CustomCheats::CustomHelpMessage(std::string text)
+ 
+ 	// Set the message
+ 	CHud::SetHelpMessage(ustr, false, false);
++
++	// Well, this didn't seem to work right somewhere
++	// TODO Fix this to work
++	//wchar *convertedMessage = miscUtil.ConvertToUnicode(text);
++	//CHud::SetHelpMessage(convertedMessage, false, false);
+ }
+ 
+ /// <summary>
+@@ -780,10 +796,10 @@ CustomCheats::SetText(std::string text)
+ 		// TODO Test this
+ 		CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
+ 		int controllerButton = cControllerConfigManager.GetJoyButtonJustDown();
+-		std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
++		//std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
+ 
+ 		// This works! My new function is setup so I don't have to duplicate this code as much.
+-		//SetupTextAndFont(text);
++		SetupTextAndFont(text);
+ 
+ 		// This seems to work.
+ 		// Display the vehicle speed on screen as a test.
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index bd38cf76..9ee699fc 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -85,6 +85,7 @@ public:
+ 	static void MoneyCheat(int value);
+ 	// Set the players money to zero for testing
+ 	static void SetMoneyToZero();
++	static void RemoveMoneyAmount(int value);
+ 
+ 	// Loading cutscene test
+ 	static void LoadCutscene(const char *name);
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 890fae48..00e15402 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -657,13 +657,22 @@ IniFunctions::ReadIniIfExists(const char *cat, const char *key, uint8 *out)
+ // extern uint16 MAXWHEELMODELS = ReadAndGetGameLimit("MAXWHEELMODELS");
+ // #endif
+ 
++
++
+ #ifdef FEATURES_INI
++extern bool bVehiclesDontCatchFireWhenTurningOver = ReadAndGetFeature("VehiclesDontCatchFireWhenTurningOver");
++extern bool bDisableBulletTraces = ReadAndGetFeature("DisableBulletTraces");
++extern bool bRemoveMoneyZerosInTheHud = ReadAndGetFeature("RemoveMoneyZerosInTheHud");
++
++#endif
++
++#ifdef FEATURES_INI1
+ 
+ // TODO Implement these
+-extern bool bVehiclesDontCatchFireWhenTurningOver = ReadAndGetFeature("VehiclesDontCatchFireWhenTurningOver");
++
+ extern bool bHealthRegenerationUpToHalf = ReadAndGetFeature("HealthRegenerationUpToHalf");
+ extern bool bWantedStarsHideOnScreenWhenThereIsNoSearch = ReadAndGetFeature("WantedStarsHideOnScreenWhenThereIsNoSearch");
+-extern bool bRemoveMoneyZerosInTheHud = ReadAndGetFeature("RemoveMoneyZerosInTheHud");
++
+ extern bool bPlayerDoesntBounceAwayFromMovingCar = ReadAndGetFeature("PlayerDoesntBounceAwayFromMovingCar");
+ 
+ // This one should work
+@@ -672,7 +681,7 @@ extern bool bStandardCarsUseTurnSignals = ReadAndGetFeature("StandardCarsUseTurn
+ // TODO Implement these
+ extern bool bCameraShakeInVehicleAtHighSpeed = ReadAndGetFeature("CameraShakeInVehicleAtHighSpeed");
+ extern bool bMilitaryFiringFromTankAtPlayer = ReadAndGetFeature("MilitaryFiringFromTankAtPlayer");
+-extern bool bDisableBulletTraces = ReadAndGetFeature("DisableBulletTraces");
++
+ 
+ #endif
+ 
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 137aca14..1c79a618 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -86,7 +86,9 @@
+ // Show the current directory in ImGui
+ bool showCurrentDirectory = false;
+ 
++// These are set to true by default.
+ bool showHud = true;
++bool showRadar = true;
+ 
+ // This will toggle the controller button that is shown in ImGui
+ //bool toggleControllerText = false;
+@@ -482,39 +484,68 @@ MiscFunctions::DisplayAreaCheckImGui()
+ CMenuManager frontEndMenuManager = CMenuManager();
+ 
+ // TODO Fix these functions
+-void
+-MiscFunctions::EnableHud()
+-{
+-	frontEndMenuManager.m_PrefsShowHud = true;
+-}
+ 
++
++/// <summary>
++/// Toggle the radar, this works
++/// </summary>
+ void
+-MiscFunctions::DisableHud()
++MiscFunctions::ToggleRadar()
+ {
+-	frontEndMenuManager.m_PrefsShowHud = false;
++	if(!showRadar) {
++		// 0 = Radar and Blips
++		// 1 = Blips only
++		// 2 = Off
++		 FrontEndMenuManager.m_PrefsRadarMode = 2;
++
++	} else {
++		 FrontEndMenuManager.m_PrefsRadarMode = 0;
++	}
+ }
+ 
++
++/// <summary>
++/// I got this to work, toggle the hud on and off
++/// </summary>
+ void
+ MiscFunctions::ToggleHud()
+ {
+ 	// frontEndMenuManager.m_PrefsShowHud = !frontEndMenuManager.m_PrefsShowHud;
+ 
+-	if(showHud) {
+-		DisableHud();
++	if(!showHud) {
++		FrontEndMenuManager.m_PrefsShowHud = false;
++		// 0 = Radar and Blips
++		// 1 = Blips only
++		// 2 = Off
++		//FrontEndMenuManager.m_PrefsRadarMode = 2;
++
+ 	} else {
+-		EnableHud();
++		FrontEndMenuManager.m_PrefsShowHud = true;
++		//FrontEndMenuManager.m_PrefsRadarMode = 0;
+ 	}
+ }
+ 
+ void
+ MiscFunctions::ShowHudToggle()
+ {
++
++	//ImGui::Checkbox("Toggle hud", &showHud); 
+ 	if(ImGui::Checkbox("Toggle hud", &showHud)) 
+ 	{ 
+ 		ToggleHud(); 
+ 	}
+ }
+ 
++void
++MiscFunctions::ShowRadarToggle()
++{
++	if(ImGui::Checkbox("Toggle radar", &showRadar)) 
++	{ 
++		ToggleRadar();
++	}
++	
++}
++
+ //----------- End Hud and radar toggles ----------//
+ 
+ 
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index 5a981de6..5f6e73bc 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -12,9 +12,10 @@ private:
+ 	void ToggleCurrentDirectory();
+ 
+ 	// Hud
+-	void EnableHud();
+-	void DisableHud();
++	//void EnableHud();
++	//void DisableHud();
+ 	void ToggleHud();
++	void ToggleRadar();
+ 
+ 	// Debug texts on screen
+ 	// Toggle the texts
+@@ -32,8 +33,9 @@ private:
+ 	void LogAreaTest();
+ 
+ public: 
+-	// Hud
++	// Hud, toggles
+ 	void ShowHudToggle();
++	void ShowRadarToggle();
+ 
+ 	// Debug texts on screen
+ 	void TogglePositionImGui();
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index f2ba9201..6ce13c6d 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -176,6 +176,17 @@ void CheatMenu::CheatTab()
+ 				CustomCheats::MoneyCheat(defaultMoneyValue);
+ 			}
+ 		}
++	    ImGui::SameLine();
++
++		if(ImGui::Button("Take Money")) {
++			 CustomCheats::RemoveMoneyAmount(moneyInt); 
++		}
++	    
++		ImGui::SameLine();
++
++		if(ImGui::Button("Reset Money")) { 
++			CustomCheats::SetMoneyToZero(); 
++		}
+ 
+ 		// Show the players current money on the screen.
+ 		ImGui::Checkbox("Show money", &showPlayerMoney);
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index d63a1cfc..8c49e10f 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -580,8 +580,17 @@ void MiscMenu::MiscTab()
+ 	ImGui::Separator();
+ 	ImGui::Text("Other tests");
+ 
+-	ImGui::Text("This doesn't work, I need to fix the toggle hud in the code.");
+-	miscFunctions.ShowHudToggle();
++
++	if (ImGui::CollapsingHeader("Radar and hud hiding.")) { 
++		// Hud toggle
++		miscFunctions.ShowHudToggle();
++		ImGui::Separator();
++		
++		// Radar toggle
++		miscFunctions.ShowRadarToggle();
++		ImGui::Separator();
++	}
++	
+ 
+ 	// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
+ 	miscFunctions.DisplayCounterImGui();
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index 47e4bd91..33a41329 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -559,6 +559,11 @@ void CHud::Draw()
+ 			m_LastDisplayScore = CWorld::Players[CWorld::PlayerInFocus].m_nVisibleMoney;
+ 		}
+ 		if (m_DisplayScoreState != FADED_OUT) {
++#ifdef FEATURES_INI // RemoveMoneyZerosInTheHud
++			if(bRemoveMoneyZerosInTheHud)
++				sprintf(sTemp, "$%01d", CWorld::Players[CWorld::PlayerInFocus].m_nVisibleMoney);
++			else
++#endif
+ 			sprintf(sTemp, "$%08d", CWorld::Players[CWorld::PlayerInFocus].m_nVisibleMoney);
+ 			AsciiToUnicode(sTemp, sPrint);
+ 
+diff --git a/src/renderer/SpecialFX.cpp b/src/renderer/SpecialFX.cpp
+index 6349e50d..a6c997a8 100644
+--- a/src/renderer/SpecialFX.cpp
++++ b/src/renderer/SpecialFX.cpp
+@@ -452,6 +452,9 @@ void CBulletTraces::AddTrace(CVector* start, CVector* end, float thickness, uint
+ 
+ void CBulletTraces::AddTrace(CVector* start, CVector* end, int32 weaponType, class CEntity* shooter)
+ {
++#ifdef FEATURES_INI // DisableBulletTraces
++	if(bDisableBulletTraces) return;
++#endif
+ 	CPhysical* player;
+ 	float speed;
+ 	int16 camMode;
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index c3b7bce6..bcf285a9 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -136,10 +136,18 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ #include "Timer.h"
+ #include "defines.h"
+ 
++
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                     \
++	 ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
+ // Test for disabling pause on focus loss
+ bool isGameFocused = true; // Initially focused
+ 
+-#endif //LUA_TEST
++#endif //CUSTOM_CODE - Lua
+ 
+ #define MAX_SUBSYSTEMS		(16)
+ 
+@@ -1209,7 +1217,7 @@ extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the devic
+ 
+ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+-
++	
+ 		POINTS points;
+ 		static BOOL noMemory = FALSE;
+ 
+@@ -1260,11 +1268,18 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 			        D3DPRESENT_PARAMETERS presentParams;
+ 			        ZeroMemory(&presentParams, sizeof(presentParams));
+ 			        presentParams.Windowed = TRUE;
+-			        presentParams.SwapEffect = D3DSWAPEFFECT_DISCARD;
++			        //presentParams.SwapEffect = D3DSWAPEFFECT_DISCARD;
++			        presentParams.SwapEffect = D3DSWAPEFFECT_FLIPEX;
+ 			        presentParams.BackBufferFormat = D3DFMT_UNKNOWN;
++			        //presentParams.BackBufferFormat = D3DFMT_A8R8G8B8;
+ 			        presentParams.EnableAutoDepthStencil = TRUE;
+ 			        presentParams.AutoDepthStencilFormat = D3DFMT_D16;
+-			        presentParams.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
++					// This can cause screen tearing. I'll try to use these others instead.
++			        //presentParams.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
++
++			        presentParams.PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
++			        //presentParams.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
++
+ 			        presentParams.hDeviceWindow = window;
+ 			        presentParams.BackBufferWidth = newWidth;
+ 			        presentParams.BackBufferHeight = newHeight;
+@@ -1287,7 +1302,6 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 
+ 				        // Update projection matrix (if needed)
+ 			        } else {
+-				        // Handle reset failure
+ 			        }
+ 		        }
+ 
+@@ -2989,9 +3003,19 @@ bool	luaInit = false;
+ 						//if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader &&
+ 						//	cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU && cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS)	
+ 
+-						if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
+-							// Well this check breaks it, it won't load the fast loader if I do this.
+-							//&& !FrontEndMenuManager.m_bMenuActive)
++						// Well this overrides it on the game startup, but I would like for it to revert to the last option which is
++						// Running the fast loader, I almost got this part working.
++						// Well now, I can have multiple of these and they only run on the frontend.
++					        //if(KEYDOWN(rsF2)) { gbFastLoader = false; }
++					        //if(KEYDOWN(rsF3)) { gbFastLoader = true; }
++
++						//if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
++					        if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader 
++								// TODO Test this, I should be able to cancel the fast load with a keybind.
++								// Well it disables it until the key is unpressed..
++								//&& !KEYDOWN(rsF2)
++								//&& !CTRLDOWN(rsF1)
++							)
+ 					        {
+ 								// TODO Test
+ 								// This doesn't work.
+@@ -3185,21 +3209,25 @@ bool	luaInit = false;
+ 
+ #ifdef LUA_TEST
+ 
+-						       
+-#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++						   
++
+ 
+ 								// This works without lua
+ 						        static int newTime = 0;
+ 
+ 								// TODO Make this get controller input also.
+-						        if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-							        newTime = CTimer::GetTimeInMilliseconds();
++						        //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++						        // This removes the need for the timer, it only runs once per button press
++								// Toggle ImGui
++								if(KEYJUSTDOWN(rsF8)) {
++						        //if(CTRLJUSTDOWN('N')) {
++							        //newTime = CTimer::GetTimeInMilliseconds();
+ 
+ 									// Toggle ImGui
+ 									imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+ 								}
+ 
+-								// Here is a test for reloading lua.
++								// Reload the lua function, I have it named InitLua for now.
+ 								if (KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 									newTime = CTimer::GetTimeInMilliseconds();
+ 
+@@ -3433,6 +3461,7 @@ HRESULT _InputInitialise()
+ 	return S_OK;
+ }
+ 
++// I could use this for making the mouse show up again with ImGui.
+ HRESULT _InputInitialiseMouse(bool exclusive)
+ {
+ 	HRESULT hr;
+@@ -3739,6 +3768,7 @@ void _InputShutdown()
+ 	SAFE_RELEASE(PSGLOBAL(dinterface));
+ }
+ 
++// TODO Possibly use this for messing with the mouse, I can probably turn it off from here.
+ void _InputShutdownMouse()
+ {
+ 	if (PSGLOBAL(mouse) == nil)
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index a18086b5..968148d3 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -5170,7 +5170,12 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 
+ 
+ 	#else
+-	if(GetUp().z < 0.0f && this != FindPlayerVehicle()){
++
++#ifdef FEATURES_INI // VehiclesDontCatchFireWhenTurningOver
++	if(!bVehiclesDontCatchFireWhenTurningOver && GetUp().z < 0.0f && this != FindPlayerVehicle()) {
++#else
++	if(GetUp().z < 0.0f && this != FindPlayerVehicle()) {
++#endif
+ 
+ 	if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater)
+ 		return;
+@@ -9404,6 +9409,10 @@ CAutomobile::TellPlaneToGoToCoors(float x, float y, float z, uint8 speed)
+ 		m_fOrientation = CGeneral::GetATanOfXY(GetForward().x, GetForward().y);
+ }
+ 
++/// <summary>
++/// TODO What is this?
++/// </summary>
++/// <param name=""></param>
+ void
+ CAutomobile::PopBoot(void)
+ {
+@@ -9421,6 +9430,10 @@ CAutomobile::PopBoot(void)
+ 	}
+ }
+ 
++/// <summary>
++/// TODO What is this?
++/// </summary>
++/// <param name=""></param>
+ void
+ CAutomobile::PopBootUsingPhysics(void)
+ {
+-- 
+2.45.1.windows.1
+

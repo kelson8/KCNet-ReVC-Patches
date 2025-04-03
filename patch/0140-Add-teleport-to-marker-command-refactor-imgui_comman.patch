@@ -1,0 +1,349 @@
+From 606c3048cfae8bc60b9a37282346b2f1c379cb81 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 26 Mar 2025 15:04:41 -0400
+Subject: [PATCH 140/152] Add teleport to marker command, refactor
+ imgui_commands a bit. Fix ped speech toggle option. Add toggle for moving the
+ imgui menu in the code. Update some comments. Add EX_YCBCR_CORRECTION to
+ debug menu.
+
+---
+ src/core/Wanted.h                       |  3 +--
+ src/core/main.cpp                       | 28 +++++++++++++++++++--
+ src/extras/debug/debug_functions.cpp    | 11 +++++++++
+ src/extras/functions/imgui_commands.cpp | 33 +++++++++++++++++++++++--
+ src/extras/menus/cheat_menu.cpp         |  9 +++++--
+ src/extras/menus/imgui_main_menu.cpp    | 18 ++++++++++++--
+ src/extras/utils/misc_util.cpp          |  6 +----
+ src/extras/utils/misc_util.h            |  5 ++++
+ src/peds/PedChat.cpp                    | 15 +++++++++++
+ 9 files changed, 113 insertions(+), 15 deletions(-)
+
+diff --git a/src/core/Wanted.h b/src/core/Wanted.h
+index 7fc6e1d7..2ba0194b 100644
+--- a/src/core/Wanted.h
++++ b/src/core/Wanted.h
+@@ -32,8 +32,7 @@ public:
+ 	CCopPed *m_pCops[10];
+ 
+ 	#ifdef _CUSTOM_CODE
+-	// Add test never wanted cheat
+-	// This still just toggles the cops and not the wanted stars
++	// Add properly working never wanted support.
+ 	bool m_bNeverWanted;
+ 	#endif //_CUSTOM_CODE
+ 
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index ee95e413..900459d2 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -139,8 +139,11 @@ uint8 gbGameSaveOnStartup = 0;
+ bool gbLuaTest;
+ #endif //LUA_TEST
+ 
+-#ifdef CUSTOM_CODE // Ped speech toggle
+-bool gbPedSpeech;
++#ifdef CUSTOM_CODE 
++// Ped speech toggle
++bool gbPedSpeech = true;
++// Toggle for peds with the constant beeping.
++bool gbPedHorns = true;
+ #endif
+ 
+ #ifdef CUSTOM_CODE // Bike fall off toggle
+@@ -1633,6 +1636,12 @@ RenderDebugShit(void)
+ 	POP_RENDERGROUP();
+ }
+ 
++/// <summary>
++/// Render glass, water cannons, special fx, ropes,
++/// shadows, skidmarks, antennas, rubbish, particles, pacman pickups
++/// weapon effects, point lights, moving things, and first person vehicle.
++/// </summary>
++/// <param name=""></param>
+ void
+ RenderEffects(void)
+ {
+@@ -1662,6 +1671,10 @@ RenderEffects(void)
+ 	POP_RENDERGROUP();
+ }
+ 
++/// <summary>
++/// This draws the hud and other stuff that seems to render on the screen.
++/// And has something to do with camera modes
++/// </summary>
+ void
+ Render2dStuff(void)
+ {
+@@ -1731,17 +1744,24 @@ Render2dStuff(void)
+ 		CPhotoMode::DrawMenuAndEffects();
+ 	else
+ #endif
++		// Draw the hud
+ 		CHud::Draw();
+ 	}
+ 
+ 
+ 
+ 	CSpecialFX::Render2DFXs();
++	// Process on screen timers
+ 	CUserDisplay::OnscnTimer.ProcessForDisplay();
++	// Process game messages
+ 	CMessages::Display();
++	// Process rampage messages
+ 	CDarkel::DrawMessages();
++	// Process garage messages
+ 	CGarages::PrintMessages();
++	// Process error messages for controllers
+ 	CPad::PrintErrorMessage();
++	// Draw the fonts to the screen
+ 	CFont::DrawFonts();
+ #ifndef MASTER
+ 	COcclusion::Render();
+@@ -1753,6 +1773,10 @@ Render2dStuff(void)
+ 	POP_RENDERGROUP();
+ }
+ 
++/// <summary>
++/// Draw the front end menus such as the pause menu.
++/// </summary>
++/// <param name=""></param>
+ void
+ RenderMenus(void)
+ {
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 9f315521..a11c88d1 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -1627,6 +1627,17 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddVarBool8("Render", "Neo Road Gloss enable", &CustomPipes::GlossEnable, nil);
+ 		DebugMenuAddVar("Render", "Mult", &CustomPipes::GlossMult, nil, 0.1f, 0, 1.0f);
+ #endif
++
++#ifdef EX_YCBCR_CORRECTION // Debug menu
++		DebugMenuAddVarBool8("Render", "YCbCrCorrection", &CPostFX::m_bYCbCrFilter, nil);
++		DebugMenuAddVar("Render", "LumaScale", &CPostFX::m_lumaScale, nil, 0.004f, 0.0f, 10.0f);
++		DebugMenuAddVar("Render", "LumaOffset", &CPostFX::m_lumaOffset, nil, 0.004f, -1.0f, 1.0f);
++		DebugMenuAddVar("Render", "CbScale", &CPostFX::m_cbScale, nil, 0.004f, 0.0f, 10.0f);
++		DebugMenuAddVar("Render", "CbOffset", &CPostFX::m_cbOffset, nil, 0.004f, -1.0f, 1.0f);
++		DebugMenuAddVar("Render", "CrScale", &CPostFX::m_crScale, nil, 0.004f, 0.0f, 10.0f);
++		DebugMenuAddVar("Render", "CrOffset", &CPostFX::m_crOffset, nil, 0.004f, -1.0f, 1.0f);
++#endif
++
+ 		DebugMenuAddVarBool8("Debug Render", "Show Ped Paths", &gbShowPedPaths, nil);
+ 		DebugMenuAddVarBool8("Debug Render", "Show Car Paths", &gbShowCarPaths, nil);
+ 		DebugMenuAddVarBool8("Debug Render", "Show Car Path Links", &gbShowCarPathsLinks, nil);
+diff --git a/src/extras/functions/imgui_commands.cpp b/src/extras/functions/imgui_commands.cpp
+index e6db5310..cb94f81e 100644
+--- a/src/extras/functions/imgui_commands.cpp
++++ b/src/extras/functions/imgui_commands.cpp
+@@ -41,6 +41,11 @@ extern "C" {
+ 
+ #include "lua_test.h"
+ 
++// Removed static from the void in debug_functions using a preprocessor.
++// This works.
++void
++TeleportToWaypoint(void);
++
+ /// <summary>
+ /// This works as a teleport command in ImGui, I can use the input box and make a command system like in Minecraft.
+ /// </summary>
+@@ -92,10 +97,24 @@ command_blowup(const std::vector<std::string> &args)
+ 	}
+ }
+ 
++/// <summary>
++/// Teleport to marker
++/// </summary>
++/// <param name="args"></param>
++void
++command_tpmarker(const std::vector<std::string>& args)
++{
++	if (args.size() == 0) { 
++		TeleportToWaypoint();
++	}
++
++}
++
+ // Command map
+ std::map<std::string, std::function<void(const std::vector<std::string> &)>> commands = {
+     {"teleport", command_teleport}, 
+-	{"blowup", command_blowup}
++	{"blowup", command_blowup},
++	{"tpmarker", command_tpmarker}
+ 	//{"heal", command_heal}
+ };
+ 
+@@ -105,7 +124,17 @@ ImGuiCommands::ImGuiCommandSystem()
+ 	ImGui::Separator();
+ 
+ 	ImGui::Text("Command System");
+-	ImGui::Text("Commands: teleport <x> <y> <z>, blowup (Blow up vehicles)");
++	
++	if(ImGui::CollapsingHeader("Commands")) {
++
++		ImGui::BulletText("blowup - Blow up vehicles");
++
++		ImGui::BulletText("teleport <x> <y> <z> - Teleport to set coords");
++
++		ImGui::BulletText("tpmarker - Teleport to the marker");
++	}
++
++
+ 	static char commandInput[256] = "";
+ 	static std::string commandOutput = "";
+ 
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index f80d4327..f2ba9201 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -121,11 +121,13 @@ GetPlayerMoney()
+ }
+ 
+ //----------- Ped speech enable/disable ----------//
++// I added this into PedChat - CPed::Say(uint16 audio)
++// TODO Is this needed? I'm doing this in the checkbox already.
+ bool pedSpeech = true;
+ void
+ togglePedSpeech()
+ {
+-	if(pedSpeech) 
++	if(!pedSpeech)
+ 	{
+ 		gbPedSpeech = false;
+ 		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+@@ -228,7 +230,10 @@ void CheatMenu::CheatTab()
+ 		// Ped speech
+ 		ImGui::Text("Ped talking toggle");
+ 
+-		if(ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) { togglePedSpeech(); }
++		//if(ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) { togglePedSpeech(); }
++	    ImGui::Checkbox("Toggle Ped Speech", &gbPedSpeech);
++
++
+ 	    
+ 		// TODO Fix this to work, I can't turn it back off.
+ 		//if(ImGui::Checkbox("Toggle Better Handling", &betterHandling)) 
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index 7428ae5f..b781f3c6 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -72,6 +72,9 @@ bool showMainMenuBar = false;
+ 
+ //
+ 
++// Enable this to enable menu movement and resize, it has some bad screen tearing.
++bool menuMovingEnabled = false;
++
+ 
+ 
+ // I have moved most of these menus into their own files under src/extras/menus
+@@ -155,9 +158,20 @@ ImGuiMenus::MainMenu(ImVec4 clear_color)
+ 	//ImGui::SetNextWindowPos(ImVec2(600, 400), ImGuiCond_FirstUseEver);
+ 	// Set the position every frame
+ 	// This works
+-	ImGui::SetNextWindowPos(ImVec2(200, 175), ImGuiCond_Always);
++	//ImGui::SetNextWindowPos(ImVec2(200, 175), ImGuiCond_Always);
++
+ 
+-	ImGui::Begin("KCNet ReVC ImGui", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
++	// I added a toggle to enable/disable moving of the window.
++	if (menuMovingEnabled)
++	{ 
++		ImGui::Begin("KCNet ReVC ImGui", nullptr);
++	} else 
++	{
++		ImGui::Begin("KCNet ReVC ImGui", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
++	}
++	//
++	// TODO Fix ImGui window movement, then I'll enable this.
++	
+ 
+ 	if (ImGui::BeginTabBar("Functions")) {
+ 
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index d4020282..abc35a19 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -143,14 +143,12 @@ MiscUtil::TestPedFeatures()
+ 
+ 			if(CWorld::Players[CWorld::PlayerInFocus].m_pPed->m_pMyVehicle != veh) 
+ 			{ 
+-				// This works
++				// This works, teleport all vehicles to one spot.
+ 				//veh->Teleport(newCoords);
+ 
+ 				// This didn't do anything
+ 				//veh->ApplyMoveForce(CVector(20.0f, 20.0f, 20.0f));
+ 				
+-				// TODO Make function to check if the vehicle is a car, bike, or boat, this'll probably crash
+-				
+ 				//switch (veh->m_vehType)
+ 				//{
+ 				//	
+@@ -174,5 +172,3 @@ MiscUtil::TestPedFeatures()
+ 			}
+ 	}
+ }
+-
+-// TODO Try 
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 2471c2c5..10aef943 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -5,10 +5,15 @@
+ class MiscUtil
+ {
+ public:
++	// Convert a memory address to a string
++	// Takes a value like '&pPlayer->m_fHealth' or any variable.
+ 	std::string AddressToString(void *address);
+ 
++	// Random number generator for use in the random load screen.
++	// The original one didn't seem to change the load screens.
+ 	static int GenerateRandomNumber(int min, int max);
+ 
++	// Kill all peds in the area, instead of just clearing them
+ 	void KillAllPedsInArea();
+ 
+ 	// Misc ped testing
+diff --git a/src/peds/PedChat.cpp b/src/peds/PedChat.cpp
+index ec6719c6..59fbb55e 100644
+--- a/src/peds/PedChat.cpp
++++ b/src/peds/PedChat.cpp
+@@ -4,6 +4,10 @@
+ #include "General.h"
+ #include "Ped.h"
+ 
++#ifdef CUSTOM_CODE // gbPedSpeech
++#include "main.h"
++#endif
++
+ // Corresponds to ped sounds (from SOUND_PED_DEATH to SOUND_PED_TAXI_CALL)
+ PedAudioData CommentWaitTime[56] = {
+   { 500, 800, 500, 2 },
+@@ -100,9 +104,20 @@ CPed::ServiceTalking(void)
+ 	}
+ }
+ 
++/// <summary>
++/// TODO Possibly disable peds talking here.
++/// </summary>
++/// <param name="audio"></param>
+ void
+ CPed::Say(uint16 audio)
+ {
++#ifdef CUSTOM_CODE
++	// I found the spot for this, I accidently had this reversed.
++	if(!gbPedSpeech) 
++	{ 
++		return; 
++	}
++#endif
+ 	if (3.0f + TheCamera.GetPosition().z < GetPosition().z)
+ 		return;
+ 
+-- 
+2.45.1.windows.1
+

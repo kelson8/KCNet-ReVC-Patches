@@ -1,0 +1,43 @@
+From 3e801c50a21c0445f4b3c6a67bd0a8db2b60c6bf Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 26 Mar 2025 20:16:34 -0400
+Subject: [PATCH 143/152] Add missing feature for EX_DISTANT_LIGHTS
+
+---
+ src/core/World.cpp | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/src/core/World.cpp b/src/core/World.cpp
+index ead12384..c8ba85ef 100644
+--- a/src/core/World.cpp
++++ b/src/core/World.cpp
+@@ -1933,6 +1933,26 @@ CWorld::Process(void)
+ {
+ 	if(!(CTimer::GetFrameCounter() & 63)) CReferences::PruneAllReferencesInWorld();
+ 
++#ifdef EX_DISTANT_LIGHTS
++	if(bEnableDistantLights) {
++		for(int i = CPools::GetDummyPool()->GetSize() - 1; i >= 0; i--) {
++			CDummy *entity = CPools::GetDummyPool()->GetSlot(i);
++
++			if(!entity) continue;
++
++			entity->ProcessDistantLights();
++		}
++
++		for(int i = CPools::GetBuildingPool()->GetSize() - 1; i >= 0; i--) {
++			CBuilding *entity = CPools::GetBuildingPool()->GetSlot(i);
++
++			if(!entity) continue;
++
++			entity->ProcessDistantLights();
++		}
++	}
++#endif
++
+ 	if(bProcessCutsceneOnly) {
+ 		for(int i = 0; i < NUMCUTSCENEOBJECTS; i++) {
+ 			CCutsceneObject *csObj = CCutsceneMgr::GetCutsceneObject(i);
+-- 
+2.45.1.windows.1
+

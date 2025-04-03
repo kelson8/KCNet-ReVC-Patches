@@ -1,0 +1,198 @@
+From 0dce7c45ebf680c39a9a8be49993b75527620a8b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 31 Mar 2025 22:19:00 -0400
+Subject: [PATCH 151/152] Move defines into utils folder.
+
+---
+ src/extras/functions/log_functions.cpp |  2 +-
+ src/extras/{ => utils}/defines.cpp     | 64 ++++++++++++++++++++------
+ src/extras/{ => utils}/defines.h       |  8 +++-
+ 3 files changed, 56 insertions(+), 18 deletions(-)
+ rename src/extras/{ => utils}/defines.cpp (55%)
+ rename src/extras/{ => utils}/defines.h (90%)
+
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index 555a2bd8..2f74c7fe 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -24,7 +24,7 @@
+ 
+ // Extras, KCNet
+ // Defines, extra files
+-#include "extras/defines.h"
++#include "defines.h"
+ 
+ // TODO Make this write over instead of appending the log file for now.
+ 
+diff --git a/src/extras/defines.cpp b/src/extras/utils/defines.cpp
+similarity index 55%
+rename from src/extras/defines.cpp
+rename to src/extras/utils/defines.cpp
+index 9b7a4f30..eeb2570d 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -2,30 +2,57 @@
+ 
+ #include "config.h"
+ 
++// Game path folder
++#if defined(GTAVC)
++std::string Defines::gamePathFolder = "ViceExtended/";
++#elif defined(GTA3)
++std::string Defines::gamePathFolder = "LibertyExtended/";
++#elif defined(GTALCS)
++std::string Defines::gamePathFolder = "LCSExtended/";
++#endif
++
++// TODO Remove this later
+ std::string viceExtendedFolder = "ViceExtended/";
+ 
+-std::string logFolderPath = viceExtendedFolder + "logs/";
++// std::string logFolderPath = viceExtendedFolder + "logs/";
++
++std::string logFolderPath = Defines::gamePathFolder + "logs/";
++
+ // This is mostly in use for cout in the -console of ReVC, so I can read the value easier.
+ std::string Defines::KcLogString = "||||&&&&KCNET&&&&|||| ";
+ 
+ // This is required.
+ // Set the log file path
++
++// Log files
++#if defined(GTAVC)
+ std::string Defines::logFile = "KCNet-ReVC.log";
++#elif defined(GTA3)
++std::string Defines::logFile = "KCNet-Re3.log";
++#elif defined(GTALCS)
++std::string Defines::logFile = "KCNet-ReLCS.log";
++#endif
+ 
+ std::string Defines::logFilePath = viceExtendedFolder + "/logs/" + Defines::logFile;
+ 
+ std::string Defines::pluginSdkTestLog = "KCNet-PluginSdk-Test.log";
+ 
++// Lua log file
+ #if defined(GTAVC)
+ std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
+ #elif defined(GTA3)
+ std::string Defines::luaLogFile = "KCNet-Re3-lua.log";
++#elif defined(GTALCS)
++std::string Defines::luaLogFile = "KCNet-ReLCS-lua.log";
+ #endif
+ 
++// ImGui Menu name
+ #if defined(GTAVC)
+ std::string Defines::imGuiMenuName = "KCNet ReVC ImGui";
+ #elif defined(GTA3)
+ std::string Defines::imGuiMenuName = "KCNet Re3 ImGui";
++#elif defined(GTALCS)
++std::string Defines::imGuiMenuName = "KCNet LCS ImGui";
+ #endif
+ 
+ std::string Defines::tomlLogFile = "KCNet-toml.log";
+@@ -33,31 +60,40 @@ std::string Defines::tomlLogFile = "KCNet-toml.log";
+ // Fonts
+ std::string Defines::fontFile = "cheat_menu.ttf";
+ 
+-// 
++// Modification name
++#if defined(GTAVC)
+ std::string Defines::modificationName = "KCNet-ReVC";
++#elif defined(GTA3)
++std::string Defines::modificationName = "KCNet-Re3";
++#elif defined(GTALCS)
++std::string Defines::modificationName = "KCNet-ReLCS";
++#endif
++//
+ 
++// ImGui menu name
+ #if defined(GTAVC)
+ std::string Defines::menuName = "KCNet-ReVC-ImGui";
+ #elif defined(GTA3)
+ std::string Defines::menuName = "KCNet-Re3-ImGui";
++#elif defined(GTALCS)
++std::string Defines::menuName = "KCNet-ReLCS-ImGui";
+ #endif
+ 
+-
+-
+ // TODO Display these somewhere, possibly in a pop up under the debug menu.
+ // Set the program modification author
+ std::string Defines::modificationAuthor = "kelson8";
+ 
+ // Set the program version.
+ // TODO Make this grab from my latest internal gitea releases or something.
+-//std::string Defines::programVersion = "1.1";
++// std::string Defines::programVersion = "1.1";
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ 
+ // Vice extended folder, lua scripts.
+ // For now I only have a test.lua in this but it works when wasted/busted and on game startup.
+ 
++std::string luaScriptsFolder = Defines::gamePathFolder + "lua_scripts/";
+ 
+-std::string luaScriptsFolder = viceExtendedFolder + "lua_scripts/";
++// std::string luaScriptsFolder = viceExtendedFolder + "lua_scripts/";
+ 
+ // Lua files, mostly in use in lua_test.cpp
+ // TODO Rename file to something else.
+@@ -66,19 +102,17 @@ std::string Defines::luaLocationsScript = luaScriptsFolder + "locations.lua";
+ 
+ std::string Defines::luaEventsScript = luaScriptsFolder + "kcnet-events.lua";
+ 
+-
+-// Ini files, ini_functions.cpp is now set to grab the file names from here.
+-// Oops... This is why my fast loader and no movies options never worked, they were in the file named "reVC.ini"
+-
++// Game ini files
+ #if defined(GTAVC)
+ std::string Defines::mainIniFile = "reVC.ini";
+ #elif defined(GTA3)
+ std::string Defines::mainIniFile = "re3.ini";
++#elif defined(GTALCS)
++std::string Defines::mainIniFile = "reLCS.ini";
+ #endif
+ 
+-std::string Defines::imGuiControlsIniFile = viceExtendedFolder + "ImGui-Controls.ini";
+-std::string Defines::warpsIniFile = viceExtendedFolder + "warps.ini";
+-std::string Defines::featuresIniFile = viceExtendedFolder + "features.ini";
+-
+-std::string Defines::vehiclesIniFile = viceExtendedFolder + "vehicles.ini";
++std::string Defines::imGuiControlsIniFile = Defines::gamePathFolder + "ImGui-Controls.ini";
++std::string Defines::warpsIniFile = Defines::gamePathFolder + "warps.ini";
++std::string Defines::featuresIniFile = Defines::gamePathFolder + "features.ini";
+ 
++std::string Defines::vehiclesIniFile = Defines::gamePathFolder + "vehicles.ini";
+\ No newline at end of file
+diff --git a/src/extras/defines.h b/src/extras/utils/defines.h
+similarity index 90%
+rename from src/extras/defines.h
+rename to src/extras/utils/defines.h
+index e64a5a2f..10455d97 100644
+--- a/src/extras/defines.h
++++ b/src/extras/utils/defines.h
+@@ -3,8 +3,8 @@
+ #include <iostream>
+ 
+ // New for dll logging
+-#define LOG_CLASS_TEST
+-#define LOG_DLL_TEST
++//#define LOG_CLASS_TEST
++//#define LOG_DLL_TEST
+ //
+ 
+ // TODO Move file path defines into here, so I can easily change the folder path from 'ViceExtended'
+@@ -25,6 +25,10 @@ public:
+ 	// Toml logging
+ 	static std::string tomlLogFile;
+ 
++
++	// New for specifying the game folder
++	static std::string gamePathFolder;
++
+ 	// Log string for cout, cerr debug
+ 	static std::string KcLogString;
+ 
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,1417 @@
+From 16c74d6e4287b4ef20713ea7aedd57841dc14a8e Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 26 Mar 2025 17:53:42 -0400
+Subject: [PATCH 142/152] Move most functions out of misc menu and into misc
+ functions. Add get wanted level and print message to lua. Add floatToString
+ to misc util. Make area check test into a boolean.
+
+---
+ src/extras/functions/misc_functions.cpp | 522 ++++++++++++++++++++++++
+ src/extras/functions/misc_functions.h   |  71 ++++
+ src/extras/lua/lua_functions.cpp        |  52 ++-
+ src/extras/lua/lua_functions.h          |   6 +
+ src/extras/lua/lua_test.cpp             |   6 +
+ src/extras/menus/misc_menu.cpp          | 376 ++++-------------
+ src/extras/menus/misc_menu.h            |  29 --
+ src/extras/test/area_check_test.cpp     |  54 ++-
+ src/extras/test/area_check_test.h       |   3 +-
+ src/extras/utils/misc_util.cpp          |  13 +
+ src/extras/utils/misc_util.h            |   3 +
+ 11 files changed, 784 insertions(+), 351 deletions(-)
+ create mode 100644 src/extras/functions/misc_functions.cpp
+ create mode 100644 src/extras/functions/misc_functions.h
+
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+new file mode 100644
+index 00000000..137aca14
+--- /dev/null
++++ b/src/extras/functions/misc_functions.cpp
+@@ -0,0 +1,522 @@
++#include "pch.h"
++
++#include "misc_functions.h"
++
++#include "misc_menu.h"
++#include "imgui.h"
++
++// Menus
++#include "imgui_main_menu.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++// Spawning a ped so far, doesn't work.
++#include "ped_functions.h"
++
++#include "imgui_commands.h"
++
++#include "defines.h"
++#include "./extras/test/enums/model_ids.h"
++
++#include "ControllerConfig.h"
++#include "Pad.h"
++
++#include "ini_functions.h"
++
++#include "player_util.h"
++
++// For area check command reimplementation
++#include "area_check_test.h"
++
++// TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
++#ifdef PLUGIN_SDK_TEST
++#include "../test/scriptcommands_test.h"
++#endif
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Physical.h"
++
++#include "Frontend.h"
++#include "Text.h"
++
++#include "Script.h"
++
++// CUserDisplay
++#include "User.h"
++
++// Set help message and more.
++#include "Hud.h"
++
++// For getting the PlayerInfo
++#include "World.h"
++
++// For getting the time cycles
++#include "Timecycle.h"
++
++// Extras
++#include <iostream>
++#include <vector>
++#include <format>
++
++#include <string>
++#include <locale>
++#include <codecvt>
++
++#include "misc_util.h"
++
++// TODO Move into a utilites file
++#include <direct.h>
++
++
++//---------- Booleans for misc functions ----------//
++// Show the current directory in ImGui
++bool showCurrentDirectory = false;
++
++bool showHud = true;
++
++// This will toggle the controller button that is shown in ImGui
++//bool toggleControllerText = false;
++
++// This will toggle the custom text I setup in CustomCheats::SetText
++bool drawKcNetText = false;
++
++
++// TODO Move functions from misc menu into here, the file is getting too cluttered.
++
++// TODO Replicate these
++/*
++        case COMMAND_SET_ALL_TAXI_LIGHTS:
++                CollectParameters(&m_nIp, 1);
++                CAutomobile::SetAllTaxiLights(ScriptParams[0] != 0);
++                return 0;
++        case COMMAND_IS_CAR_ARMED_WITH_ANY_BOMB:
++        {
++                CollectParameters(&m_nIp, 1);
++                CAutomobile* pCar = (CAutomobile*)CPools::GetVehiclePool()->GetAt(ScriptParams[0]);
++                script_assert(pCar);
++                script_assert(pCar->m_vehType == VEHICLE_TYPE_CAR);
++                UpdateCompareFlag(pCar->m_bombType != 0); //TODO: enum
++                return 0;
++        }
++
++*/
++
++//---------- Begin copied from misc_menu.cpp ----------//
++
++
++//---------- Begin Log tests ----------//
++
++/// <summary>
++/// Check if player is near the safehouse beside the stadium on the left side of the map.
++/// This seems to work fine.
++/// </summary>
++///
++
++// clang-format off
++void
++MiscFunctions::LogAreaTest()
++{
++	AreaCheckTest areaCheckTest = AreaCheckTest();
++	MiscUtil miscUtil = MiscUtil();
++	Defines defines = Defines();
++
++	float x1 = -839.0f;
++	float y1 = 1292.0f;
++	float z1 = 10.0f;
++
++	float x2 = -828.0f;
++	float y2 = 1307.0f;
++	float z2 = 13.0f;
++
++
++	// This works fine like this
++
++	bool isInArea = areaCheckTest.Area3DCheckCommand(x1, y1, z1, x2, y2, z2);
++
++	if (isInArea)
++	{
++			std::string isWithinAreaMessage = "Player is within area X1: " 
++				+ miscUtil.floatToString(x1) 
++				+ " Y1: " + miscUtil.floatToString(y1) 
++				+ " Z1: " + miscUtil.floatToString(z1) 
++				+ " X2: " + miscUtil.floatToString(x2)
++				+ " Y2: " + miscUtil.floatToString(y2) 
++				+ " Z2: " + miscUtil.floatToString(z2);
++			LogFunctions::LogInfo(defines.logFile, isWithinAreaMessage);
++		} else {
++		std::string isWithinAreaMessage = "Player is not within area X1: " 
++				+ miscUtil.floatToString(x1) 
++				+ " Y1: " + miscUtil.floatToString(y1) 
++				+ " Z1: " + miscUtil.floatToString(z1) 
++				+ " X2: " + miscUtil.floatToString(x2)
++				+ " Y2: " + miscUtil.floatToString(y2) 
++				+ " Z2: " + miscUtil.floatToString(z2);
++			LogFunctions::LogInfo(defines.logFile, isWithinAreaMessage);
++	}
++
++}
++//
++
++//---------- End Log tests ----------//
++
++
++// clang-format on
++
++//---------- Folder stuff ----------//
++
++void
++MiscFunctions::ToggleCurrentDirectory()
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	if(showCurrentDirectory) {
++		ImGui::Separator();
++		// std::string getCurrentDirString = "Current directory: " + GetCurrentWorkingDirectory();
++		std::string getCurrentDirString = "Current directory: " + imGuiFunctions.GetCurrentWorkingDirectory();
++		ImGui::Text(getCurrentDirString.c_str());
++	}
++}
++
++void
++MiscFunctions::ShowCurrentDirectory()
++{
++	ImGui::Checkbox("Show current directory", &showCurrentDirectory);
++
++	if(showCurrentDirectory) {
++		// ToggleCurrentDirectory();
++		ToggleCurrentDirectory();
++	}
++}
++
++//---------- End Folder stuff ----------//
++
++//---------- Debug text stuff ----------//
++
++// Position
++
++/// <summary>
++/// Toggle the position display in game from the debug menu.
++/// </summary>
++void
++MiscFunctions::ToggleDisplayPosn()
++{
++	if(gbDisplayPosn) {
++		gbDisplayPosn = true;
++	} else {
++		gbDisplayPosn = false;
++	}
++}
++
++/// <summary>
++/// I got this working like in the debug menu.
++/// </summary>
++void
++MiscFunctions::TogglePositionImGui()
++{
++	// I got this working like in the debug menu.
++	if(ImGui::Checkbox("Toggle position on screen", &gbDisplayPosn)) {
++		// TODO Fix this to not show up if the other texts are active
++		if(!drawKcNetText && !gbDrawVersionText)
++			ToggleDisplayPosn();
++	}
++}
++
++// Version
++
++/// <summary>
++/// Toggle the customized version text on the screen
++/// </summary>
++void
++MiscFunctions::ToggleVersionText()
++{
++	if(gbDrawVersionText) {
++		gbDrawVersionText = true;
++	} else {
++		gbDrawVersionText = false;
++	}
++}
++
++void
++MiscFunctions::ToggleVersionTextImGui()
++{
++	// Toggle the version text like in the debug menu.
++	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) {
++		// TODO Fix this to not show up if the other texts are active
++		if(!drawKcNetText && !gbDisplayPosn)
++			// toggleVersionText();
++			ToggleVersionText();
++	}
++}
++
++
++// Custom texts - KCNet
++
++void
++MiscFunctions::DrawKCNetTextBoxImGui()
++{
++	std::vector<char> buffer(41); // 40 characters + null terminator
++
++	// Copy the current text from MiscMenu into the buffer.
++	//std::string currentText = MiscMenu::GetInstance().getTestText();
++	std::string currentText = MiscFunctions::GetInstance().getTestText();
++
++	std::strncpy(buffer.data(), currentText.c_str(), 40);
++	buffer[40] = '\0'; // Ensure null termination
++
++	// New function, doesn't work
++	// Use ImGui::InputText to get input
++	// if(ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_EnterReturnsTrue)) {
++	//	std::string inputString(buffer.data());
++
++	//	// Post-process to remove unwanted characters
++	//	inputString.erase(std::remove_if(inputString.begin(), inputString.end(),
++	//	                                 [](char c) {
++	//		                                 return c == '!' || c == '@' || c == '#'; // Add characters to exclude
++	//	                                 }),
++	//	                  inputString.end());
++
++	//	MiscMenu::GetInstance().setTestText(inputString);
++	//	std::strncpy(buffer.data(), inputString.c_str(), 40); // update the buffer with the new string.
++	//	buffer[40] = '\0';
++	//}
++
++	// Original function, should still work
++	ImGui::Text("Warning, do not put the '~' symbol in this, you will crash!");
++	// Well this new function didn't work right for blocking certain characters, it won't let me type anything other then '~'
++	// ImguiTextboxWithCharFilterAndVector();
++	// if (ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_CallbackCharFilter, CharFilterCallback))
++	if(ImGui::InputText("Test text", buffer.data(), 41)) { MiscFunctions::GetInstance().setTestText(std::string(buffer.data())); }
++
++	// Moved from MiscTab
++	if(ImGui::Checkbox("Draw KCNet test", &drawKcNetText)) {
++
++		// TODO Fix this to not show up if the other texts are active
++		if(!gbDrawVersionText && !gbDisplayPosn) {
++			CustomCheats::ToggleText();
++
++			// Set the text to the custom text.
++			CustomCheats::SetText(buffer.data());
++		}
++	}
++
++	if(ImGui::Button("Set test text")) {
++		// This works very well.
++		MiscFunctions::GetInstance().setTestText(std::string(buffer.data()));
++
++		// setTestText("Test from ImGui");
++		//  This is being set, I wonder why it doesn't work in main.cpp
++		LogFunctions::LogInfo(defines.logFile, buffer.data());
++	}
++}
++
++/// <summary>
++/// TODO Figure out how to create a progress bar for chaos mode stuff.
++/// </summary>
++// void toggleTestProgressBar()
++//{
++//	//CRect
++// }
++
++//---------- End debug text stuff ----------//
++
++//----------- Plugin sdk test ----------//
++// Old functions
++// #ifdef PLUGIN_SDK_TEST
++////void
++////commandTest1()
++////{
++////	static CRunningScript script;
++////	script.m_bIsMissionScript = false;
++////	int8 retval = -1;
++////	++CTheScripts::CommandsExecuted;
++////	// int32 command = (uint16)CTheScripts::Read2BytesFromScript(&CRunningScript::m_nIp);
++////	// script.m_bNotFlag = (command & 0x8000);
++////	// command &= 0x7FFF;
++////	script.ProcessOneCommand();
++////	// script.m_bNotFlag =
++////}
++//
++//
++// using namespace plugin;
++//
++//// I highly doubt this will work.
++//
++//// Basically trying to recreate what the plugin sdk does in ReVC
++// void
++// CommandTest1()
++//{
++//	CPlayerPed *pPed = FindPlayerPed();
++//	CVector pPedCoords = FindPlayerCoors();
++//	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
++//	// Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++//
++//	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
++// }
++//
++// #endif
++
++//----------- End Plugin sdk test ----------//
++
++//----------- Counter tests and progress bars ----------//
++
++/// <summary>
++/// Values from Script4.cpp, and OnscreenTimer.h
++/// 	COUNTER_DISPLAY_NUMBER,
++///		COUNTER_DISPLAY_BAR,
++/// </summary>
++///
++
++// Copied from script.h
++// #define KEY_LENGTH_IN_SCRIPT 8
++
++// Inital value set to 0, this gets set in the displayCounterOnScreen function.
++uint16 counterVar = 0;
++
++// Replicated these from Script4.cpp.
++
++/// <summary>
++/// Clear the counter that was on the screen
++/// </summary>
++void
++MiscFunctions::ClearCounterOnScreen()
++{
++	// if (!counterEnabled)
++	//{
++	//  16 should be the right number, set in the var value of the function above.
++	// CUserDisplay::OnscnTimer.ClearCounter(16);
++	// TODO Make this grab from my new value setup
++	CUserDisplay::OnscnTimer.ClearCounter(counterVar);
++	//}
++}
++
++bool counterEnabled = false;
++/// <summary>
++/// This works, and I got it to display the text
++/// TODO Add custom text option in here, the text needs to be in the american.gxt/american.txt file.
++/// TODO Figure out how to update the on screen counter.
++/// </summary>
++void
++MiscFunctions::DisplayCounterOnScreen()
++{
++
++	char str[200];
++	wchar ustr[200];
++
++	sprintf(str, "KCEXLOG");
++
++	AsciiToUnicode(str, ustr);
++
++	// I fixed it, I'm quite sure it's from where I used above instead of using the text value in the counterEnabled.
++	// I'll leave it there for later.
++	if(counterEnabled) {
++		char onscreen_str[KEY_LENGTH_IN_SCRIPT];
++		// TODO Figure out what the var value is
++		// uint16 var = 16;
++		counterVar = 16;
++		// Extra Logging, placeholder message
++
++		// wchar *text = TheText.Get("KCEXLOG");
++
++		// Hmm, how is this working? It's converting the wchar into a char
++		// strncpy(onscreen_str, (char*)&CTheScripts::ScriptSpace[m_nIp], KEY_LENGTH_IN_SCRIPT);
++		// strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
++		// CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++
++		// This below works fine
++		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
++		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++	} else {
++		ClearCounterOnScreen();
++	}
++}
++
++
++/// <summary>
++/// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
++/// </summary>
++void
++MiscFunctions::DisplayCounterImGui()
++{
++	if(ImGui::Checkbox("Display counter test", &counterEnabled)) 
++	{
++		DisplayCounterOnScreen(); 
++	}
++}
++
++/// <summary>
++/// Button for logging if the player is in the area set above.
++/// Display if the player is in a specific area, log it to the logs.
++/// TODO Make this show to the screen 'Player is in area' or 'Player is not in area'
++/// </summary>
++void
++MiscFunctions::DisplayAreaCheckImGui()
++{
++	if(ImGui::Button("Area check test")) 
++	{ 
++		LogAreaTest(); 
++	}
++}
++
++//----------- End Counter tests and progress bars ----------//
++
++
++//----------- Begin Hud and radar toggles ----------//
++// TODO Add show/hide radar
++// TODO Add show/hide hud
++
++// Copied from visual.cpp in Cheat Menu
++
++CMenuManager frontEndMenuManager = CMenuManager();
++
++// TODO Fix these functions
++void
++MiscFunctions::EnableHud()
++{
++	frontEndMenuManager.m_PrefsShowHud = true;
++}
++
++void
++MiscFunctions::DisableHud()
++{
++	frontEndMenuManager.m_PrefsShowHud = false;
++}
++
++void
++MiscFunctions::ToggleHud()
++{
++	// frontEndMenuManager.m_PrefsShowHud = !frontEndMenuManager.m_PrefsShowHud;
++
++	if(showHud) {
++		DisableHud();
++	} else {
++		EnableHud();
++	}
++}
++
++void
++MiscFunctions::ShowHudToggle()
++{
++	if(ImGui::Checkbox("Toggle hud", &showHud)) 
++	{ 
++		ToggleHud(); 
++	}
++}
++
++//----------- End Hud and radar toggles ----------//
++
++
++
++//---------- End copied from misc_menu.cpp ----------//
+\ No newline at end of file
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+new file mode 100644
+index 00000000..5a981de6
+--- /dev/null
++++ b/src/extras/functions/misc_functions.h
+@@ -0,0 +1,71 @@
++#pragma once
++#include <string>
++#include "defines.h"
++
++
++class MiscFunctions
++{
++private:
++	Defines defines;
++
++	std::string m_testText;
++	void ToggleCurrentDirectory();
++
++	// Hud
++	void EnableHud();
++	void DisableHud();
++	void ToggleHud();
++
++	// Debug texts on screen
++	// Toggle the texts
++	void ToggleDisplayPosn();
++	void ToggleVersionText();
++
++	// Counter tests
++	// TODO Figure out how to use these and make them update.
++	// Clear
++	void ClearCounterOnScreen();
++	// Display
++	void DisplayCounterOnScreen();
++
++	// Log the area check text for ImGui
++	void LogAreaTest();
++
++public: 
++	// Hud
++	void ShowHudToggle();
++
++	// Debug texts on screen
++	void TogglePositionImGui();
++	
++	void ToggleVersionTextImGui();
++	// Draw custom text from my text box if enabled, certain characters crash it so I have it
++	// Set to nothing for now.
++	void DrawKCNetTextBoxImGui();
++	// 
++	
++
++	void ShowCurrentDirectory();
++
++	// Counter tests
++
++	// Show with ImGui
++	void DisplayCounterImGui();
++
++	// Display the area text ImGui function
++	void DisplayAreaCheckImGui();
++
++
++	// Singleton
++	static MiscFunctions &GetInstance()
++	{
++		static MiscFunctions instance; // Static instance created once
++		return instance;
++	}
++
++	// Setters
++	void setTestText(const std::string &text) { m_testText = text; }
++
++	// Getters
++	const std::string &getTestText() const { return m_testText; }
++};
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 6bde3290..29320991 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -162,7 +162,12 @@ logPlayerHeadingLua(lua_State *L)
+ 	return 1;
+ }
+ 
+-// TODO Set these up
++
++/// <summary>
++/// Push a boolean to lua.
++/// </summary>
++/// <param name="L"></param>
++/// <param name="value"></param>
+ void
+ pushBooleanToLua(lua_State *L, bool value)
+ {
+@@ -228,8 +233,49 @@ blowUpPlayerVehicleLua(lua_State *L)
+ extern "C"
+ {
+ 
++	// Display a help message to the hud using lua, this works
++	// To use this in lua: print_msg(message)
++	int
++	customHelpMessageLua(lua_State* L)
++	{
++	    const char *messageText = lua_tostring(L, 1);
++
++		if (lua_tostring(L, 1)) { 
++			CustomCheats::CustomHelpMessage(messageText);
++		}
++
++	    return 1;
++
++	}
++	
++
++	// This works, displays in lua if I have a wanted level more then 0, tested with this lua code:
++	/*
++	-- Display text on the hud as a help message
++	if display_help_text then
++	-- Works for displaying wanted level, should work for anything I setup in the C++ side also.
++	-- This will be very useful instead of logging the values unless I need to.
++	wanted_level = get_wanted_level()
++	print_msg("WL: " .. wanted_level)
++	end
++	*/
++	int
++	checkWantedLevelLua(lua_State* L)
++	{
++	        CPlayerPed *pPlayer = FindPlayerPed();
++	        PlayerCheats playerCheats = PlayerCheats();
++
++			int wantedLevel = playerCheats.GetWantedLevel();
++
++			if (wantedLevel > 0) { 
++				lua_pushinteger(L, wantedLevel);
++			}
++
++			return 1;
++	}
++
+ 	int
+-	killPlayerIfWantedLua(lua_State* l)
++	killPlayerIfWantedLua(lua_State* L)
+ 	{
+ 		PlayerCheats playerCheats = PlayerCheats();
+ 		if(playerCheats.GetWantedLevel() > 0) 
+@@ -266,8 +312,6 @@ extern "C"
+ 	int
+ 	changePlayerClothesLua(lua_State* L)
+ 	{
+-			// TODO Make this get value from lua
+-
+ 		std::string clothesStringLua = lua_tostring(L, 1);
+ 
+ 	    PlayerUtil playerUtil = PlayerUtil();
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 827296b9..ff357826 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -29,9 +29,15 @@ extern "C" {
+     extern int isPlayerAliveLua(lua_State *L);
+ 
+ 	extern int suicideCheatLua(lua_State *L);
++
++	extern int checkWantedLevelLua(lua_State *L);
++
+ 	
+ 	// Misc
+ 	extern int logMessageLua(lua_State *L);
++    extern int customHelpMessageLua(lua_State *L);
++
++	
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 31a0fca4..62d06027 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -546,6 +546,12 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Until I figure that out, I have disabled this.
+ 	//lua_register(L, "change_clothes", changePlayerClothesLua);
+ 
++	// Get the current wanted level if above 0
++	lua_register(L, "get_wanted_level", checkWantedLevelLua);
++
++	// Display a hud help message
++	lua_register(L, "print_msg", customHelpMessageLua);
++
+ 	// Log messages in lua
+ 	// This works, log an info message in lua
+ 	lua_register(L, "log_info", logMessageLua);
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 52953e17..d63a1cfc 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -17,6 +17,8 @@
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+ 
++#include "misc_functions.h"
++
+ // Spawning a ped so far, doesn't work.
+ #include "ped_functions.h"
+ 
+@@ -94,15 +96,15 @@
+ 
+ #include "Automobile.h"
+ 
+-bool showHud = true;
++
+ // This will toggle the controller button that is shown in ImGui
+ bool toggleControllerText = false;
+ 
+ // This will toggle the custom text I setup in CustomCheats::SetText
+-bool drawKcNetText = false;
++//bool drawKcNetText = false;
+ 
+ // Show the current directory in ImGui
+-bool showCurrentDirectory = false;
++//bool showCurrentDirectory = false;
+ 
+  // Timecyc stuff
+ static int m_nTimecycHour = 8;
+@@ -261,194 +263,68 @@ static std::vector<std::string> m_WeatherNames {
+ //#define KEY_LENGTH_IN_SCRIPT 8
+ 
+ // Inital value set to 0, this gets set in the displayCounterOnScreen function.
+-uint16 counterVar = 0;
++//uint16 counterVar = 0;
+ 
+ // Replicated these from Script4.cpp.
+ 
+ /// <summary>
+ /// Clear the counter that was on the screen
+ /// </summary>
+-void
+-MiscMenu::ClearCounterOnScreen()
+-{
+-	// if (!counterEnabled)
+-	//{
+-	//  16 should be the right number, set in the var value of the function above.
+-	//CUserDisplay::OnscnTimer.ClearCounter(16);
+-	// TODO Make this grab from my new value setup
+-	CUserDisplay::OnscnTimer.ClearCounter(counterVar);
+-	//}
+-}
+-
+-bool counterEnabled = false;
+-/// <summary>
+-/// This works, and I got it to display the text
+-/// TODO Add custom text option in here, the text needs to be in the american.gxt/american.txt file.
+-/// TODO Figure out how to update the on screen counter.
+-/// </summary>
+-void 
+-MiscMenu::DisplayCounterOnScreen()
+-{
+-
+-	char str[200];
+-	wchar ustr[200];
+-
+-	sprintf(str, "KCEXLOG");
+-
+-	AsciiToUnicode(str, ustr);
+-
+-	// I fixed it, I'm quite sure it's from where I used above instead of using the text value in the counterEnabled.
+-	// I'll leave it there for later.
+-	if (counterEnabled) 
+-	{
+-		char onscreen_str[KEY_LENGTH_IN_SCRIPT];
+-		// TODO Figure out what the var value is
+-		//uint16 var = 16;
+-		counterVar = 16;
+-		// Extra Logging, placeholder message
+-		
+-		//wchar *text = TheText.Get("KCEXLOG");
+-
+-		// Hmm, how is this working? It's converting the wchar into a char
+-		// strncpy(onscreen_str, (char*)&CTheScripts::ScriptSpace[m_nIp], KEY_LENGTH_IN_SCRIPT);
+-		//strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
+-		// CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+-
+-		// This below works fine
+-		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
+-		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+-	} else {
+-		ClearCounterOnScreen();
+-	}
+-
+-}
+-
+-
+-// Folder stuff
+-
+-void
+-ToggleCurrentDirectory()
+-{
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	if(showCurrentDirectory) {
+-		ImGui::Separator();
+-		//std::string getCurrentDirString = "Current directory: " + GetCurrentWorkingDirectory();
+-		std::string getCurrentDirString = "Current directory: " + imGuiFunctions.GetCurrentWorkingDirectory();
+-		ImGui::Text(getCurrentDirString.c_str());
+-	}
+-}
+-
+-
+-//----------- Plugin sdk test ----------//
+-// Old functions
+-//#ifdef PLUGIN_SDK_TEST
+-////void
+-////commandTest1()
+-////{
+-////	static CRunningScript script;
+-////	script.m_bIsMissionScript = false;
+-////	int8 retval = -1;
+-////	++CTheScripts::CommandsExecuted;
+-////	// int32 command = (uint16)CTheScripts::Read2BytesFromScript(&CRunningScript::m_nIp);
+-////	// script.m_bNotFlag = (command & 0x8000);
+-////	// command &= 0x7FFF;
+-////	script.ProcessOneCommand();
+-////	// script.m_bNotFlag =
+-////}
++//void
++//MiscMenu::ClearCounterOnScreen()
++//{
++//	// if (!counterEnabled)
++//	//{
++//	//  16 should be the right number, set in the var value of the function above.
++//	//CUserDisplay::OnscnTimer.ClearCounter(16);
++//	// TODO Make this grab from my new value setup
++//	CUserDisplay::OnscnTimer.ClearCounter(counterVar);
++//	//}
++//}
+ //
++//bool counterEnabled = false;
++///// <summary>
++///// This works, and I got it to display the text
++///// TODO Add custom text option in here, the text needs to be in the american.gxt/american.txt file.
++///// TODO Figure out how to update the on screen counter.
++///// </summary>
++//void 
++//MiscMenu::DisplayCounterOnScreen()
++//{
+ //
+-//using namespace plugin;
++//	char str[200];
++//	wchar ustr[200];
+ //
+-//// I highly doubt this will work.
++//	sprintf(str, "KCEXLOG");
+ //
+-//// Basically trying to recreate what the plugin sdk does in ReVC
+-//void
+-//CommandTest1()
+-//{
+-//	CPlayerPed *pPed = FindPlayerPed();
+-//	CVector pPedCoords = FindPlayerCoors();
+-//	// Explosion types: https://library.sannybuilder.com/#/vc/script/enums/ExplosionType
+-//	// Command<Commands::ADD_EXPLOSION>(pPedCoords.x, pPedCoords.y, pPedCoords.z, 0);
++//	AsciiToUnicode(str, ustr);
+ //
+-//	Command<Commands::EXPLODE_PLAYER_HEAD>(pPed);
+-//}
++//	// I fixed it, I'm quite sure it's from where I used above instead of using the text value in the counterEnabled.
++//	// I'll leave it there for later.
++//	if (counterEnabled) 
++//	{
++//		char onscreen_str[KEY_LENGTH_IN_SCRIPT];
++//		// TODO Figure out what the var value is
++//		//uint16 var = 16;
++//		counterVar = 16;
++//		// Extra Logging, placeholder message
++//		
++//		//wchar *text = TheText.Get("KCEXLOG");
++//
++//		// Hmm, how is this working? It's converting the wchar into a char
++//		// strncpy(onscreen_str, (char*)&CTheScripts::ScriptSpace[m_nIp], KEY_LENGTH_IN_SCRIPT);
++//		//strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
++//		// CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++//
++//		// This below works fine
++//		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
++//		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++//	} else {
++//		ClearCounterOnScreen();
++//	}
+ //
+-//#endif
+-
+-
+-//----------- Debug texts ----------//
+-
+-/// <summary>
+-/// TODO Figure out how to create a progress bar for chaos mode stuff.
+-/// </summary>
+-//void toggleTestProgressBar()
+-//{
+-//	//CRect
+ //}
+ 
+-/// <summary>
+-/// Toggle the customized version text on the screen
+-/// </summary>
+-void
+-MiscMenu::ToggleVersionText()
+-{
+-	if (gbDrawVersionText) { 
+-		gbDrawVersionText = true;
+-	} else {
+-		gbDrawVersionText = false;
+-	}
+-
+-}
+-
+-/// <summary>
+-/// Toggle the position display in game from the debug menu.
+-/// </summary>
+-void
+-MiscMenu::ToggleDisplayPosn()
+-{
+-	if(gbDisplayPosn) 
+-	{
+-		gbDisplayPosn = true;
+-	} else {
+-		gbDisplayPosn = false;
+-	}
+-		
+-}
+-
+-
+-//----------- Hud and radar toggles ----------//
+-// TODO Add show/hide radar
+-// TODO Add show/hide hud
+-
+-// Copied from visual.cpp in Cheat Menu
+-
+-CMenuManager frontEndMenuManager = CMenuManager();
+-
+-// TODO Fix these functions
+-void
+-MiscMenu::EnableHud()
+-{
+-	frontEndMenuManager.m_PrefsShowHud = true;
+-}
+-
+-void
+-MiscMenu::DisableHud()
+-{
+-	frontEndMenuManager.m_PrefsShowHud = false;
+-}
+-
+-void
+-MiscMenu::ToggleHud()
+-{
+-	// frontEndMenuManager.m_PrefsShowHud = !frontEndMenuManager.m_PrefsShowHud;
+-
+-	if(showHud) {
+-		DisableHud();
+-	} else {
+-		EnableHud();
+-	}
+-}
+-
+ // This didn't show anything, just showed 0.
+ void
+ MiscMenu::LogJoyButtonJustDown()
+@@ -529,6 +405,7 @@ CharFilterCallback(ImGuiInputTextCallbackData *data)
+ 
+ /// <summary>
+ /// TODO Fix this to work, should block the '~' symbol from the textbox which crashes the game if drawn.
++/// TODO Move into ImGui functions
+ /// </summary>
+ void
+ ImguiTextboxWithCharFilterAndVector()
+@@ -536,7 +413,7 @@ ImguiTextboxWithCharFilterAndVector()
+ 	static std::vector<char> buffer(41); // 40 characters + null terminator.
+ 
+ 	// Copy the current text from MiscMenu into the buffer:
+-	std::string currentText = MiscMenu::GetInstance().getTestText();
++	std::string currentText = MiscFunctions::GetInstance().getTestText();
+ 	std::strncpy(buffer.data(), currentText.c_str(), 40);
+ 	buffer[40] = '\0'; // Ensure null termination
+ 
+@@ -554,99 +431,13 @@ ImguiTextboxWithCharFilterAndVector()
+ 		std::strncpy(buffer.data(), inputString.c_str(), 40);
+ 		buffer[40] = '\0'; // Ensure null termination
+ 
+-		MiscMenu::GetInstance().setTestText(inputString);
++		MiscFunctions::GetInstance().setTestText(inputString);
+ 
+ 		std::cout << "Input after filtering: " << inputString << std::endl;
+ 	}
+ }
+ //
+ 
+-
+-void
+-MiscMenu::DrawKCNetTextBox()
+-{
+-	std::vector<char> buffer(41); // 40 characters + null terminator
+-
+-	// Copy the current text from MiscMenu into the buffer.
+-	std::string currentText = MiscMenu::GetInstance().getTestText();
+-	std::strncpy(buffer.data(), currentText.c_str(), 40);
+-	buffer[40] = '\0'; // Ensure null termination
+-
+-	// New function, doesn't work
+-	// Use ImGui::InputText to get input
+-	//if(ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_EnterReturnsTrue)) {
+-	//	std::string inputString(buffer.data());
+-
+-	//	// Post-process to remove unwanted characters
+-	//	inputString.erase(std::remove_if(inputString.begin(), inputString.end(),
+-	//	                                 [](char c) {
+-	//		                                 return c == '!' || c == '@' || c == '#'; // Add characters to exclude
+-	//	                                 }),
+-	//	                  inputString.end());
+-
+-	//	MiscMenu::GetInstance().setTestText(inputString);
+-	//	std::strncpy(buffer.data(), inputString.c_str(), 40); // update the buffer with the new string.
+-	//	buffer[40] = '\0';
+-	//}
+-
+-	// Original function, should still work
+-	ImGui::Text("Warning, do not put the '~' symbol in this, you will crash!");
+-	// Well this new function didn't work right for blocking certain characters, it won't let me type anything other then '~'
+-	//ImguiTextboxWithCharFilterAndVector();
+-	//if (ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_CallbackCharFilter, CharFilterCallback))
+-	if (ImGui::InputText("Test text", buffer.data(), 41))
+-	{
+-		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
+-	}
+-
+-	// Moved from MiscTab
+-	if(ImGui::Checkbox("Draw KCNet test", &drawKcNetText)) {
+-
+-		// TODO Fix this to not show up if the other texts are active
+-		if(!gbDrawVersionText && !gbDisplayPosn) {
+-			CustomCheats::ToggleText();
+-
+-			// Set the text to the custom text.
+-			CustomCheats::SetText(buffer.data());
+-		}
+-	}
+-
+-		if(ImGui::Button("Set test text")) {
+-		// This works very well.
+-		MiscMenu::GetInstance().setTestText(std::string(buffer.data()));
+-
+-		// setTestText("Test from ImGui");
+-		//  This is being set, I wonder why it doesn't work in main.cpp
+-		LogFunctions::LogInfo(defines.logFile, buffer.data());
+-
+-	}
+-}
+-
+-
+-
+-
+-/// <summary>
+-/// Check if player is near the safehouse beside the stadium on the left side of the map.
+-/// This seems to work fine.
+-/// TODO Make the Area3DCheckCommand into a boolean.
+-/// </summary>
+-void
+-logAreaTest()
+-{
+-	AreaCheckTest areaCheckTest = AreaCheckTest();
+-	float x1 = -839.0f;
+-	float y1 = 1292.0f;
+-	float z1 = 10.0f;
+-
+-	float x2 = -828.0f;
+-	float y2 = 1307.0f;
+-	float z2 = 13.0f;
+-
+-
+-	// TODO Make this into a bool.
+-	areaCheckTest.Area3DCheckCommand(x1, y1, z1, x2, y2, z2);
+-}
+-
+ /// <summary>
+ /// TODO Reimplement COMMAND_LOAD_AND_LAUNCH_MISSION_INTERNAL
+ /// </summary>
+@@ -710,6 +501,7 @@ void MiscMenu::MiscTab()
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 	MiscUtil miscUtil = MiscUtil();
++	MiscFunctions miscFunctions = MiscFunctions();
+ 
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+@@ -753,37 +545,28 @@ void MiscMenu::MiscTab()
+ 	// I have disabled this for now, broke it when moving into its own function.
+ 	//ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+ 
+-	// I got this working like in the debug menu.
+-	if(ImGui::Checkbox("Toggle position on screen", &gbDisplayPosn)) 
+-	{ 
+-		// TODO Fix this to not show up if the other texts are active
+-		if(!drawKcNetText && !gbDrawVersionText)
+-			//toggleDisplayPosn();
+-			ToggleDisplayPosn();
+-	}
++	// Display position from debug menu
++	miscFunctions.TogglePositionImGui();
++
+ 	// Toggle the version text like in the debug menu.
+-	if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) 
+-	{ 
+-		// TODO Fix this to not show up if the other texts are active
+-		if(!drawKcNetText && !gbDisplayPosn)
+-			//toggleVersionText();
+-			ToggleVersionText();
+-	}
++	miscFunctions.ToggleVersionTextImGui();
+ 
+ 	// Use ImGui::InputText to get input
+ 	// Draw the KCNet Test text box from C++.
+-	DrawKCNetTextBox();
++	// DrawKCNetTextBox();
++	miscFunctions.DrawKCNetTextBoxImGui();
+ 
+-	//if (ImGui::Checkbox("Show current directory: ", &showCurrentDirectory)) 
++	//if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) 
+ 	//{ 
+-	//	ToggleCurrentDirectory();
++	//	// TODO Fix this to not show up if the other texts are active
++	//	if(!drawKcNetText && !gbDisplayPosn)
++	//		//toggleVersionText();
++	//		ToggleVersionText();
+ 	//}
+ 
+-	ImGui::Checkbox("Show current directory", &showCurrentDirectory);
+ 
+-	if (showCurrentDirectory) { 
+-		ToggleCurrentDirectory();
+-	}
++
++	miscFunctions.ShowCurrentDirectory();
+ 	
+ 	// This works
+ 	imGuiFunctions.OpenCurrentDirectoryButton("Open game directory");
+@@ -798,20 +581,15 @@ void MiscMenu::MiscTab()
+ 	ImGui::Text("Other tests");
+ 
+ 	ImGui::Text("This doesn't work, I need to fix the toggle hud in the code.");
+-	if(ImGui::Checkbox("Toggle hud", &showHud)) { 
+-		ToggleHud();
+-	}
++	miscFunctions.ShowHudToggle();
+ 
+-	// Show a test counter on the screen like in the scripts, the text doesn't work and this doesn't do anything yet.
+-	if(ImGui::Checkbox("Display counter test", &counterEnabled)) 
+-	{ 
+-		DisplayCounterOnScreen();
+-	}
++	// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
++	miscFunctions.DisplayCounterImGui();
++
++	// Display if the player is in a specific area, log it to the logs.
++	// TODO Make this show to the screen 'Player is in area' or 'Player is not in area'
++	miscFunctions.DisplayAreaCheckImGui();
+ 
+-	if(ImGui::Button("Area check test")) 
+-	{ 
+-		logAreaTest(); 
+-	}
+ 
+ 	// This should display a custom message on the screen like cleo redux
+ 	// This works but crashes if there are too many characters input at once.
+diff --git a/src/extras/menus/misc_menu.h b/src/extras/menus/misc_menu.h
+index 5106f979..54ea4e38 100644
+--- a/src/extras/menus/misc_menu.h
++++ b/src/extras/menus/misc_menu.h
+@@ -9,45 +9,16 @@ private:
+ 	std::string m_testText;
+ 	Defines defines;
+ 
+-	void DrawKCNetTextBox();
+ 	void LogJoyButtonJustDown();
+ 
+ 	// TODO Move into player_util.cpp.
+ 	void ClearAreaAroundPlayer(int radius);
+ 
+-	// Hud toggles
+-	void EnableHud();
+-	void DisableHud();
+-	void ToggleHud();
+ 
+-	// Debug menu toggles
+-	void ToggleDisplayPosn();
+-	void ToggleVersionText();
+ 
+-	// Counter test, displays on screen like in missions but has broken text.
+-	// TODO Figure out how to use these and make them update.
+-	void DisplayCounterOnScreen();
+-	void ClearCounterOnScreen();
+ 
+ public:
+ 	void MiscTab();
+ 
+-	// Singleton test
+-	static MiscMenu& GetInstance()
+-	{ 
+-		static MiscMenu instance; // Static instance created once
+-		return instance;
+-	}
+-
+-	// Setter
+-	void setTestText(const std::string& text)
+-	{ 
+-		m_testText = text;
+-	}
+-
+-	// Getter
+-	const std::string& getTestText() const { 
+-		return m_testText;
+-	}
+ 	
+ };
+\ No newline at end of file
+diff --git a/src/extras/test/area_check_test.cpp b/src/extras/test/area_check_test.cpp
+index 21e8f276..7a015302 100644
+--- a/src/extras/test/area_check_test.cpp
++++ b/src/extras/test/area_check_test.cpp
+@@ -30,14 +30,20 @@
+ // COMMAND_IS_PLAYER_IN_AREA_3D
+ // I'm pretty much expanding out some of the commands so they can be used like this.
+ 
+-// TODO Test this
+-std::string
+-floatToString(float value)
+-{
+-	std::stringstream ss;
+-	ss << value;
+-	return ss.str();
+-}
++// TODO Move this file out of the test folder, and into my functions folder, rename to area_check_functions
++
++// TODO Test this template, should allow me to convert any value to a string
++// I've never really used these much before.
++// template <typename T>
++// std::string
++// toString(T value)
++//{
++//	std::stringstream ss;
++//	ss << value;
++//	return ss.str();
++//}
++
++
+ 
+ /// <summary>
+ /// Check your position in a 3d cube
+@@ -46,7 +52,7 @@ floatToString(float value)
+ /// bool IsWithinArea(float x1, float y1, float z1, float x2, float y2, float z2);
+ /// TODO Test this new method like this.. Add to lua or something.
+ /// </summary>
+-void
++bool
+ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2)
+ {
+ 	Defines defines = Defines();
+@@ -78,6 +84,21 @@ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float
+ 
+ 	// Check if the ped exists
+ 
++	// TODO Replicate these
++
++	/*
++	* 
++	*		TODO Figure out how this one works, what is ID for the first param?
++	*		CTheScripts::HighlightImportantArea(uint32 id, float x1, float y1, float x2, float y2, float z)
++	*
++	*		CTheScripts::HighlightImportantArea(x1, y1, z1, x2, y2, z2);
++	*		
++	*		Original functions
++	*			CTheScripts::HighlightImportantArea((uintptr)this + m_nIp, x1, y1, x2, y2, (z1 + z2) / 2);
++	*	if (CTheScripts::DbgFlag)
++	*		TODO Well this breifly shows up but disappears, I wonder how to make it constantly render?
++	*		CTheScripts::DrawDebugCube(x1, y1, z1, x2, y2, z2);
++	*/
+ 
+ 	if(pPlayerPed->bInVehicle) {
+ 		// Area check inside of vehicle 
+@@ -87,19 +108,16 @@ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float
+ 		//if(pedTest->m_pMyVehicle->IsWithinArea())
+ 		
+ 		//UpdateCompareFlag(ped->m_pMyVehicle->IsWithinArea(x1, y1, z1, x2, y2, z2));
++		// TODO Setup later
++		return false;
+ 	} else {
+ 		// Area check outside of vehicle
+ 		if(pPlayerPed->IsWithinArea(x1, y1, z1, x2, y2, z2))
+ 		{ 
+-			std::string isWithinAreaMessage = "Player is within area X1: " 
+-				+ floatToString(x1) + " Y1: " + floatToString(y1) + " Z1: " + floatToString(z1) 
+-				+ " X2: " + floatToString(x2) + " Y2: " + floatToString(y2) + " Z2: " + floatToString(z2);
+-			LogFunctions::LogInfo(defines.logFile, isWithinAreaMessage);
+-		} else {
+-			std::string isWithinAreaMessage = "Player is not within area X1: " + floatToString(x1) + " Y1: " + floatToString(y1) +
+-			                                  " Z1: " + floatToString(z1) + " X2: " + floatToString(x2) + " Y2: " + floatToString(y2) +
+-			                                  " Z2: " + floatToString(z2);
+-			LogFunctions::LogInfo(defines.logFile, isWithinAreaMessage);
++			// Well this breifly shows up but disappears, I wonder how to make it constantly render?
++			//CTheScripts::DrawDebugCube(x1, y1, z1, x2, y2, z2);
++
++			return true;
+ 		}
+ 	}
+ 	
+diff --git a/src/extras/test/area_check_test.h b/src/extras/test/area_check_test.h
+index 6f23ea17..ac73b36b 100644
+--- a/src/extras/test/area_check_test.h
++++ b/src/extras/test/area_check_test.h
+@@ -3,5 +3,6 @@
+ class AreaCheckTest {
+ public:
+ 	// Reimplemtation of COMMAND_IS_PLAYER_IN_AREA_3D as a helper function for C++.
+-	void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
++	//void Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
++	bool Area3DCheckCommand(float x1, float y1, float z1, float x2, float y2, float z2);
+ };
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index abc35a19..947556fa 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -54,6 +54,19 @@
+ #include <stdlib.h>
+ 
+ 
++/// <summary>
++/// Convert a float to a string, instead of using std::to_string everywhere.
++/// </summary>
++/// <param name="value">The float to convert</param>
++/// <returns>The float converted to string</returns>
++std::string
++MiscUtil::floatToString(float value)
++{
++	std::stringstream ss;
++	ss << value;
++	return ss.str();
++}
++
+ 
+ std::string
+ MiscUtil::AddressToString(void *address)
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 10aef943..fabdfb73 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -18,4 +18,7 @@ public:
+ 
+ 	// Misc ped testing
+ 	void TestPedFeatures();
++
++	// Convert a float to a string
++	std::string floatToString(float value);
+ };
+-- 
+2.45.1.windows.1
+

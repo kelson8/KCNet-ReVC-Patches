@@ -1,0 +1,286 @@
+From 2e7de59aadb68364dcb578c17896ac3acefee4b3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 30 Mar 2025 18:14:27 -0400
+Subject: [PATCH 149/152] Move fast loader into its own file. Add preprocessor
+ for disable pause on focus loss.
+
+---
+ src/core/config.h                |  7 +++
+ src/core/main.cpp                |  9 +++-
+ src/extras/utils/fast_loader.cpp | 77 ++++++++++++++++++++++++++++++++
+ src/extras/utils/fast_loader.h   |  6 +++
+ src/skel/win/win.cpp             | 75 ++++++-------------------------
+ 5 files changed, 111 insertions(+), 63 deletions(-)
+ create mode 100644 src/extras/utils/fast_loader.cpp
+ create mode 100644 src/extras/utils/fast_loader.h
+
+diff --git a/src/core/config.h b/src/core/config.h
+index d3af3c42..e04d8a40 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -27,6 +27,13 @@
+ // Enable the ImGui test, seems to work fine
+ #define _IMGUI_TEST
+ 
++// I added a toggle for the no pause on focus loss
++// If this is disabled on Re3 and you press the Windows key without pausing,
++// the mouse gets locked to the top left side and you have to taskkill the Re3 process.
++#define DISABLE_PAUSE_FOCUS_LOSS
++
++//
++
+ #ifdef LUA_TEST
+ // This works for basic lua events!!!
+ // I setup the blow_up_vehicle function in lua.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 591bc04a..2113dd83 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -1393,8 +1393,8 @@ DisplayGameDebugText()
+ #ifdef CUSTOM_CODE
+ 	if( gbDisplayPosn )
+ #else
+-	if(bDisplayPosn)
+-	#endif
++	if( bDisplayPosn )
++#endif
+ 	{
+ 		CVector pos = FindPlayerCoors();
+ 		int32 ZoneId = ARRAY_SIZE(ZonePrint)-1; // no zone
+@@ -1829,6 +1829,11 @@ Idle(void *arg)
+ 
+ 	CTimer::Update();
+ 
++//#ifdef CUSTOM_CODE
++	// TODO Add chaos mode timer test from misc_functions into here.
++	// TODO Setup getters and setters for the value.
++//#endif
++
+ 	tbInit();
+ 
+ 	CSprite2d::InitPerFrame();
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+new file mode 100644
+index 00000000..4c3b359a
+--- /dev/null
++++ b/src/extras/utils/fast_loader.cpp
+@@ -0,0 +1,77 @@
++#include "pch.h"
++
++#include "fast_loader.h"
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++#include "GenericGameStorage.h"
++#include "Script.h"
++#endif
++
++#include "Frontend.h"
++#include "Game.h"
++#include "PCSave.h"
++
++#include "config.h"
++
++void
++FastLoader::FastLoad()
++{
++	// TODO Move into misc_utils file or something outside of win.cpp
++	//************
++	// Begin Fast Loader
++	// ************/
++	// This seems to work as a fast loader, copied from Extended Vice project.
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++
++	// Only run if fastLoader is also enabled too with my ini settings, I can disable this for testing or if needed.
++	// I'm quite sure this breaks my menu option on the main menu, it automatically launches a game,
++	// as soon as I press the toggle for it to turn it on.
++	// TODO Fix this to work right on the main menu, check if user is on the main menu somewhere
++
++	// TODO Fix this to have a keybind to toggle it off, press control to disable fast loader on start.
++
++	// Well this didn't work.
++	// if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader &&
++	//	cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU && cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS)
++
++	// Well this overrides it on the game startup, but I would like for it to revert to the last option which is
++	// Running the fast loader, I almost got this part working.
++	// Well now, I can have multiple of these and they only run on the frontend.
++	// if(KEYDOWN(rsF2)) { gbFastLoader = false; }
++	// if(KEYDOWN(rsF3)) { gbFastLoader = true; }
++
++	// if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
++	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader
++	   // TODO Test this, I should be able to cancel the fast load with a keybind.
++	   // Well it disables it until the key is unpressed..
++	   //&& !KEYDOWN(rsF2)
++	   //&& !CTRLDOWN(rsF1)
++	) {
++		// TODO Test
++		// This doesn't work.
++		//     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
++		//        cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS &&
++		// cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
++
++		FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
++
++		FrontEndMenuManager.m_bWantToLoad = true;
++
++#ifdef USE_DEBUG_SCRIPT_LOADER
++		CTheScripts::ScriptToLoad = 0;
++#endif
++
++#ifdef XBOX_MESSAGE_SCREEN
++		SetDialogText("FELD_WR");
++		ToggleDialog(true);
++#else
++		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++#endif
++		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++		//}
++	}
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++       //*****************
++       // End Fast Loader
++       // ************/
++}
+diff --git a/src/extras/utils/fast_loader.h b/src/extras/utils/fast_loader.h
+new file mode 100644
+index 00000000..63b581f0
+--- /dev/null
++++ b/src/extras/utils/fast_loader.h
+@@ -0,0 +1,6 @@
++#pragma once
++class FastLoader
++{
++public:
++	void FastLoad();
++};
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 0d513b19..d4551381 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -79,8 +79,12 @@
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ #include "Script.h"
+ #include "GenericGameStorage.h"
++
++// My fast loader code, moved into here.
++#include "fast_loader.h"
+ #endif
+ 
++
+ #ifdef MODLOADER
+ #include "modloader.h"
+ #endif
+@@ -393,7 +397,7 @@ psTimer(void)
+ void
+ psMouseSetPos(RwV2d *pos)
+ {
+-#ifdef CUSTOM_CODE
++#ifdef DISABLE_PAUSE_FOCUS_LOSS
+ 	// Proper fix for focus loss, with this enabled and the CGame::InitAfterFocusLoss disabled in WM_KILLFOCUS
+ 	// It seems to work well.
+ 	// Checking for focus loss in WM_ACTIVATEAPP
+@@ -1663,7 +1667,7 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 			// TODO Re-enable this if needed
+ 			// Disabling this turns off the game pausing on focus loss, I also have this set in the psMouseSetPos and under the
+ 			// WM_ACTIVATEAPP
+-#ifndef CUSTOM_CODE
++#ifndef DISABLE_PAUSE_FOCUS_LOSS
+ 			CGame::InitAfterFocusLoss();
+ 			break;
+ #endif
+@@ -2711,6 +2715,10 @@ bool	luaInit = false;
+ 
+ #endif //_IMGUI_TEST
+ 
++#ifdef _FAST_LOADER
++	FastLoader fastLoader = FastLoader();
++#endif
++
+ 	while ( TRUE )
+ 	{
+ 		RwInitialised = TRUE;
+@@ -2955,66 +2963,9 @@ bool	luaInit = false;
+ 						if (wp.showCmd != SW_SHOWMINIMIZED)
+ 							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
+-						//************ 
+-						// Begin Fast Loader 
+-						// ************/
+-						// This seems to work as a fast loader, copied from Extended Vice project.
+-#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP 
+-
+-						// Only run if fastLoader is also enabled too with my ini settings, I can disable this for testing or if needed.
+-						// I'm quite sure this breaks my menu option on the main menu, it automatically launches a game,
+-						// as soon as I press the toggle for it to turn it on.
+-						// TODO Fix this to work right on the main menu, check if user is on the main menu somewhere
+-
+-						// TODO Fix this to have a keybind to toggle it off, press control to disable fast loader on start.
+-					       
+-						// Well this didn't work.
+-						//if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader &&
+-						//	cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU && cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS)	
+-
+-						// Well this overrides it on the game startup, but I would like for it to revert to the last option which is
+-						// Running the fast loader, I almost got this part working.
+-						// Well now, I can have multiple of these and they only run on the frontend.
+-					        //if(KEYDOWN(rsF2)) { gbFastLoader = false; }
+-					        //if(KEYDOWN(rsF3)) { gbFastLoader = true; }
+-
+-						//if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
+-					        if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader 
+-								// TODO Test this, I should be able to cancel the fast load with a keybind.
+-								// Well it disables it until the key is unpressed..
+-								//&& !KEYDOWN(rsF2)
+-								//&& !CTRLDOWN(rsF1)
+-							)
+-					        {
+-								// TODO Test
+-								// This doesn't work.
+-						   //     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
+-						   //        cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS &&
+-									//cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
+-
+-							        FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
+-
+-							        FrontEndMenuManager.m_bWantToLoad = true;
+-
+-#ifdef USE_DEBUG_SCRIPT_LOADER
+-							        CTheScripts::ScriptToLoad = 0;
+-#endif
+-
+-#ifdef XBOX_MESSAGE_SCREEN
+-							        SetDialogText("FELD_WR");
+-							        ToggleDialog(true);
+-#else
+-							        if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++						fastLoader.FastLoad();
+ #endif
+-							        FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+-						        //}
+-					        }
+-#endif // EX_LOADING_GAME_SAVE_ON_STARTUP 
+-						//***************** 
+-						// End Fast Loader 
+-						// ************/
+-
+-						//
+ 
+ #ifdef PS2_MENU
+ 						if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+@@ -3125,9 +3076,11 @@ bool	luaInit = false;
+ #endif
+ 					
+ 
++#ifdef _IMGUI_TEST
+ 							// Run the ImGui loop that checks for controller input, and mouse/keyboard input
+ 							imGuiSetup.ImGuiPlayingGameLoop();
+ 
++#endif
+ #ifdef LUA_TEST
+ 							// Run the Lua loop that checks for mouse/keyboard input
+ 						    LuaPlayingGameLoop();
+-- 
+2.45.1.windows.1
+

@@ -1,0 +1,938 @@
+From 9ea97dade1c571e20df32ee813903c456aff6d07 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 30 Mar 2025 14:10:49 -0400
+Subject: [PATCH 147/152] Move imgui init, keybinds and loop into imgui_setup.
+ Cleanup win.cpp quite a bit Rename ImGuiDone to ImGuiActive. Add re3.ini to
+ defines.
+
+---
+ src/core/Pad.cpp                       |   6 +-
+ src/core/config.h                      |   3 +
+ src/extras/debug/debug_functions.cpp   |   7 +-
+ src/extras/defines.cpp                 |   7 +
+ src/extras/functions/imgui_functions.h |   8 +
+ src/extras/functions/imgui_setup.cpp   | 321 +++++++++++++++++++++++++
+ src/extras/functions/imgui_setup.h     |  14 ++
+ src/extras/kcnet/pch.h                 |   1 +
+ src/extras/lua/lua_test.cpp            |   4 +
+ src/peds/Ped.cpp                       |  42 +++-
+ src/skel/win/win.cpp                   | 240 +++++++-----------
+ 11 files changed, 492 insertions(+), 161 deletions(-)
+ create mode 100644 src/extras/functions/imgui_setup.cpp
+ create mode 100644 src/extras/functions/imgui_setup.h
+
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 1b1b9094..1c4927ff 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -1095,7 +1095,11 @@ void CPad::UpdateMouse()
+ 	// This did nothing.
+ #ifdef _IMGUI_TEST
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	if(!imGuiFunctions.ImGuiDone) 
++#ifdef NEW_IMGUI_TESTS
++	if(imGuiFunctions.ImGuiActive)
++#else
++	if(!imGuiFunctions.ImGuiDone)
++#endif
+ 		return;
+ #endif
+ 	
+diff --git a/src/core/config.h b/src/core/config.h
+index d6b17d51..2a73f97a 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -21,6 +21,9 @@
+ // Define game as GTAVC, going to make my ImGui menu work between GTA 3 and Vice City (Re3, ReVC)
+ #define GTAVC
+ 
++// Enable the ImGuiActive boolean, instead of using !ImGuiDone everywhere
++#define NEW_IMGUI_TESTS
++
+ #ifdef LUA_TEST
+ // This works for basic lua events!!!
+ // I setup the blow_up_vehicle function in lua.
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index a11c88d1..1657a676 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -86,8 +86,6 @@
+ // Debug functions
+ /////////////////////
+ 
+-// TODO Move these into another file, and all debug functions.
+-
+ #ifdef _MOVE_DEBUG_FILE
+ 
+ #ifdef DEBUGMENU
+@@ -189,7 +187,12 @@ void
+ toggleImGui()
+ {
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++#ifdef NEW_IMGUI_TESTS
++	imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++#else
+ 	imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++#endif
++	
+ }
+ #endif
+ 
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 3b5160d4..9b7a4f30 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -68,7 +68,14 @@ std::string Defines::luaEventsScript = luaScriptsFolder + "kcnet-events.lua";
+ 
+ 
+ // Ini files, ini_functions.cpp is now set to grab the file names from here.
++// Oops... This is why my fast loader and no movies options never worked, they were in the file named "reVC.ini"
++
++#if defined(GTAVC)
+ std::string Defines::mainIniFile = "reVC.ini";
++#elif defined(GTA3)
++std::string Defines::mainIniFile = "re3.ini";
++#endif
++
+ std::string Defines::imGuiControlsIniFile = viceExtendedFolder + "ImGui-Controls.ini";
+ std::string Defines::warpsIniFile = viceExtendedFolder + "warps.ini";
+ std::string Defines::featuresIniFile = viceExtendedFolder + "features.ini";
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index 15055f7c..8c57b924 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -1,10 +1,13 @@
+ #pragma once
+ 
++#define NEW_IMGUI_TESTS
++
+ #ifdef _WIN32
+ #include <Windows.h>
+ #endif
+ 
+ #include "imgui.h"
++//#include "common.h"
+ 
+ #include <string>
+ 
+@@ -119,7 +122,12 @@ public:
+ 
+ 
+ 	static bool ShowSecondWindow;
++	//
++#ifdef NEW_IMGUI_TESTS
++	static bool ImGuiActive;
++#else
+ 	static bool ImGuiDone;
++#endif
+ 
+ 	// This prints to a VS 2022 debug output window.
+ 	// TODO Move this somewhere else
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+new file mode 100644
+index 00000000..4eb35b41
+--- /dev/null
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -0,0 +1,321 @@
++#include "pch.h"
++
++#include "imgui_setup.h"
++
++
++
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++
++
++#include "imgui_main_menu.h"
++
++#include <string>
++#include <iostream>
++
++#include "main.h"
++
++// Begin win.cpp headers
++#if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
++
++// Required for opening menu with Xbox controller.
++#include <Xinput.h>
++
++#define _WIN32_WINDOWS 0x0500
++#define WINVER 0x0500
++
++
++#include <winerror.h>
++#include <windows.h>
++#include <mmsystem.h>
++#include <shellapi.h>
++
++#include <windowsx.h>
++#include <basetsd.h>
++
++#include <regstr.h>
++#include <shlobj.h>
++
++#include <dbt.h>
++
++#endif
++
++#pragma warning(push)
++#pragma warning(disable : 4005)
++
++#include <ddraw.h>
++#include <DShow.h>
++#pragma warning( pop )
++
++#define WM_GRAPHNOTIFY	WM_USER+13
++
++//#ifndef USE_D3D9
++//#pragma comment( lib, "d3d8.lib" )
++//#endif
++//#pragma comment( lib, "ddraw.lib" )
++//#pragma comment( lib, "Winmm.lib" )
++//#pragma comment( lib, "dxguid.lib" )
++//#pragma comment( lib, "strmiids.lib" )
++//#pragma comment( lib, "dinput8.lib" )
++
++
++//#include "common.h"
++
++#if (defined(_MSC_VER))
++#include <tchar.h>
++#endif /* (defined(_MSC_VER)) */
++#include <stdio.h>
++#include "rwcore.h"
++#include "resource.h"
++#include "skeleton.h"
++
++//#include "platform.h"
++//#include "crossplatform.h"
++
++// End win.cpp headers
++
++// Lua test
++#ifdef CUSTOM_CODE
++#include "lua_test.h"
++
++#include "imgui_functions.h"
++
++// ReVC
++// Timer for the keybind
++#include "Timer.h"
++#include "Pad.h"
++
++
++#include "ControllerConfig.h"
++
++
++
++#include "defines.h"
++
++
++#ifdef CUSTOM_CODE
++
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                      \
++	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++
++// Test for disabling pause on focus loss
++//bool isGameFocused = true; // Initially focused
++
++#endif // CUSTOM_CODE - Lua
++
++bool imGuiInitalized = false;
++
++#ifdef NEW_IMGUI_TESTS
++// I have fixed the inverted boolean and renamed this to make it more clear
++// Now if its set to false the menu won't show up, instead of it being reversed
++bool ImGuiFunctions::ImGuiActive = false;
++#else
++// Set the boolean, this being set to true makes the menu hide, setting it to false will show the menu.
++bool ImGuiFunctions::ImGuiDone = true;
++#endif
++
++// TODO Move this in here, need to figure out how to get d3ddevice in here, works in win.cpp
++// rw::d3d::d3ddevice
++
++// I will have the ImGui init, shutdown, and controller handling for toggling the menu in this file.
++
++
++extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the device.
++
++//--------------------
++// ImGui setup
++//--------------------
++
++/// <summary>
++/// Run my imgui DirectX9 init with Win32
++/// </summary>
++/// <param name="window">The HWND for the program.</param>
++void
++ImGuiSetup::InitImGui(HWND window)
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	Defines defines = Defines();
++	// Check if the DirectX9 device is valid
++
++	if(rw::d3d::d3ddevice == nullptr) {
++		// Handle the error, return
++		TRACE("\nError: DirectX 9 device is null. ImGui initialization failed.\n");
++		return;
++	}
++
++	// Setup ImGui Context, and setup fonts.
++	imGuiFunctions.SetupContext();
++
++	// Setup Dear ImGui style
++	ImGui::StyleColorsDark();
++
++	// Setup the style from the Cheat Menu
++	// https://github.com/user-grinch/Cheat-Menu
++	ImGuiFunctions::ApplyStyle();
++
++	// Setup Platform/Renderer backends
++	ImGui_ImplWin32_Init(window);
++	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
++}
++
++/// <summary>
++/// This doesn't seem to be in use in here.
++/// </summary>
++void
++ImGuiSetup::ShutDownImGui()
++{
++	// Shutdown Imgui, was I forgetting that?
++	// Shutdown DX9 for this and cleanup
++	ImGui_ImplDX9_Shutdown();
++	ImGui_ImplWin32_Shutdown();
++	ImGui::DestroyContext();
++}
++
++// Function to poll XInput and toggle ImGui window
++/// <summary>
++/// This works, TODO Move this and other imgui functions into ImGuiFunctions out of this file.
++/// TODO Make this work off of a config file, possibly another ini file.
++/// </summary>
++void
++ImGuiSetup::HandleControllerInput()
++{
++	XINPUT_STATE state;
++	ZeroMemory(&state, sizeof(XINPUT_STATE));
++
++	// ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	// Well this works? I wasn't expecting it to work like this.
++	ImGuiFunctions imGuiFunctions;
++
++	uint16 button1 = imGuiFunctions.getImGuiButton1();
++	uint16 button2 = imGuiFunctions.getImGuiButton2();
++
++	DWORD result = XInputGetState(0, &state); // Get state of controller 0
++
++	static int newTime = 0;
++
++	if(result == ERROR_SUCCESS) {
++		// Check for button press (e.g., the 'A' button)
++		// if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
++		//
++		// New test with controller keybinds in 'ViceExtended/ImGui-Controls.ini'
++		// Oops I didn't fully test the menu with this, it somewhat shows up but goes away if I use any DPad button on the menu
++		// Instead of when both buttons are pressed.
++		//
++		// if(state.Gamepad.wButtons & button1
++		//&& state.Gamepad.wButtons & button2 &&
++		//  CTimer::GetTimeInMilliseconds() - newTime > 500) {
++		//
++
++		// Working code
++		if(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER && state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT &&
++		   CTimer::GetTimeInMilliseconds() - newTime > 500) {
++			//
++			// Reset timer
++			newTime = CTimer::GetTimeInMilliseconds();
++
++			// Toggle ImGui window visibility
++#ifdef NEW_IMGUI_TESTS
++			imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++#else
++			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++#endif }
++		} else {
++			// Handle controller not connected or error
++			// You might want to display a message or log an error
++		}
++	}
++}
++
++
++/// <summary>
++/// This runs the loop for ImGui under GS_PLAYING_GAME
++/// Moved this into its own function
++/// This checks for the keybind being pressed on the keyboard or controller.
++/// Disables the player controls while the menu is open.
++/// </summary>
++void ImGuiSetup::ImGuiPlayingGameLoop()
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
++
++	// This works without lua
++	static int newTime = 0;
++
++	// TODO Make this get controller input also.
++	// if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++	// This removes the need for the timer, it only runs once per button press
++	// Toggle ImGui
++	if(KEYJUSTDOWN(rsF8)) {
++		// if(CTRLJUSTDOWN('N')) {
++		// newTime = CTimer::GetTimeInMilliseconds();
++		//  Toggle ImGui
++#ifdef NEW_IMGUI_TESTS
++		imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++#else
++		imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++#endif
++	}
++
++	// 					// Well this dies in here...
++	// 					// ImGuiFunctions::ImGuiLoop();
++
++	// Resize check
++	// TODO Figure out how to get this.
++	// This should fix the resize being buggy but other then that this menu seems to work.
++	// if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
++	//         rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
++	//         g_d3dpp.BackBufferHeight = g_ResizeHeight;
++	//         g_ResizeWidth = g_ResizeHeight = 0;
++	//         ResetDevice();
++	//       }
++
++	// This works! It toggles with the Xbox controller.
++	HandleControllerInput();
++#ifdef NEW_IMGUI_TESTS
++	if(imGuiFunctions.ImGuiActive) {
++#else
++
++	if(!imGuiFunctions.ImGuiDone) {
++#endif
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++
++		// TODO Test this
++		// Well this didn't work.
++
++		//_InputShutdownMouse();
++		/*							if(_InputMouseNeedsExclusive()) {
++			                                                _InputShutdownMouse();
++			                                                _InputInitialiseMouse(false);
++			                                        }*/
++
++		// TODO Test these
++		pad->DisablePlayerControls = 1;
++
++		pad->ClearMouseHistory();
++		pad->NewState.DPadUp = 0;
++		pad->OldState.DPadUp = 0;
++		pad->NewState.DPadDown = 0;
++		pad->OldState.DPadDown = 0;
++
++		// CPad::UpdatePads();
++
++		// Well this breaks the menu from being toggled.
++		// cpad.Clear(true);
++
++	} else {
++		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++	}
++}
++
++
++#endif // ??
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_setup.h b/src/extras/functions/imgui_setup.h
+new file mode 100644
+index 00000000..1fd3575c
+--- /dev/null
++++ b/src/extras/functions/imgui_setup.h
+@@ -0,0 +1,14 @@
++#pragma once
++#include <Windows.h>
++
++class ImGuiSetup
++{
++public:
++	void InitImGui(HWND window);
++	void ShutDownImGui();
++	void HandleControllerInput();
++
++	void ImGuiPlayingGameLoop();
++
++
++};
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+index ced46998..0e5a0588 100644
+--- a/src/extras/kcnet/pch.h
++++ b/src/extras/kcnet/pch.h
+@@ -8,6 +8,7 @@
+ #ifdef _WIN32
+ // TODO Is this needed? Seems to be auto disabled in common.h if it's active.
+ #define WITHDINPUT
++#define WITHD3D
+ #endif
+ 
+ #include "common.h"
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index b5ae7f7d..234d1cf4 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -157,7 +157,11 @@ extern "C" int
+ toggleImGuiLua(lua_State *L)
+ {
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++#ifdef NEW_IMGUI_TESTS
++	imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++#else
+ 	imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++#endif
+ 	return 1;
+ }
+ #endif
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 9cc506a9..0fc88f2e 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -51,6 +51,13 @@
+ #include "PhotoMode.h"
+ #endif
+ 
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++
++#include "imgui_functions.h"
++
++#endif
++
+ 
+ CPed *gapTempPedList[50];
+ uint16 gnNumTempPedList;
+@@ -97,6 +104,11 @@ CPed::CPed(uint32 pedType) : m_pedIK(this)
+ 	m_soundStart = 0;
+ 	m_lastQueuedSound = SOUND_NO_SOUND;
+ 	m_queuedSound = SOUND_NO_SOUND;
++	// Hmm, this is in the constructor, can i add a toggle for all peds using this somehow?
++	// Possibly make a while loop that runs only if the checkbox is selected.
++	// Use my ped selector that I made and run this on them? I would have to use CTimer or something and add a wait.
++	// This might work.
++	// Being set in AudioLogic.cpp
+ 	m_canTalk = true;
+ 
+ 	m_type = ENTITY_TYPE_PED;
+@@ -1585,13 +1597,6 @@ CPed::ScanForInterestingStuff(void)
+ bool
+ CPed::WillChat(CPed *stranger)
+ {
+-#ifdef CUSTOM_CODE // Toggle ped speech
+-	// TODO This didn't work, figure out where this goes.
+-	if (gbPedSpeech) { 
+-		return false;
+-	}
+-#endif
+-
+ 	if (m_pNextPathNode && m_pLastPathNode) {
+ 		if (m_pNextPathNode != m_pLastPathNode && ThePaths.TestCrossesRoad(m_pNextPathNode, m_pLastPathNode)) {
+ 			return false;
+@@ -2181,6 +2186,18 @@ CPed::ProcessBuoyancy(void)
+ void
+ CPed::ProcessControl(void)
+ {
++
++	#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	// TODO Test this, should disable the mouse moving when ImGui is open, so if the player is looking left/right it won't keep on doing that
++	// Well this didn't work the way I wanted, although I can make the player float with this being here.
++	//if(!imGuiFunctions.ImGuiActive && IsPlayer()) 
++	//{ 
++	//	return; 
++	//}
++#endif
++
+ 	CColPoint foundCol;
+ 	CEntity *foundEnt = nil;
+ 
+@@ -8305,6 +8322,8 @@ CPed::CheckForExplosions(CVector2D &area)
+ 			case EVENT_ENTITY_VEHICLE:
+ 				actualEntity = CPools::GetVehicle(gaEvent[event].entityRef);
+ 				break;
++// Fix for this here.
++#undef GetObject
+ 			case EVENT_ENTITY_OBJECT:
+ 				actualEntity = CPools::GetObject(gaEvent[event].entityRef);
+ 				break;
+@@ -10430,6 +10449,15 @@ CPed::Dress(void)
+ void
+ CPed::Say(uint16 audio, int32 time)
+ {
++
++	// Hmm, can I can add the gb ped speech toggle into here and possibly turn off peds talking?
++	// TODO Test this.
++	//// Well this didn't work.
++	//if (!gbPedSpeech)
++	//{
++	//	return;
++	//}
++
+ 	if (m_delayedSoundID == -1) {
+ 		m_delayedSoundID = audio;
+ 		m_delayedSoundTimer = CTimer::GetTimeInMilliseconds() + time;
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index bcf285a9..dde486cc 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -85,12 +85,13 @@
+ #include "modloader.h"
+ #endif
+ 
+-// I have a quick test for this setup under GS_PLAYING_GAME
+-// I got it to show up on a separate window.
+-// But if I attempt to close it it kills the game.
++// I have ImGui pretty much fully working besides resizing and moving, it's a bit glitchy so I disabled movement for it.
+ #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ 
++// Moved ImGui init, ImGui loop, controller and mouse/keyboard keybinds into here
++#include "imgui_setup.h"
++
+ #include "imgui.h"
+ #include "imgui_impl_dx9.h"
+ #include "imgui_impl_win32.h"
+@@ -105,8 +106,6 @@ bool bInit = false;
+ HWND mainWindow = nullptr;
+ 
+ // ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-// Set the boolean, this being set to true makes the menu hide, setting it to false will show the menu.
+-bool ImGuiFunctions::ImGuiDone = true;
+ 
+ // Set the resize variables
+ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+@@ -408,13 +407,19 @@ psMouseSetPos(RwV2d *pos)
+ 
+ 	// Well... Placing this here seems to have fixed the mouse being locked.
+ 	// I just guessed where this was and it works!
+-	#define _IMGUI_TEST
+-	#ifdef _IMGUI_TEST
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++#ifdef NEW_IMGUI_TESTS
++	if(imGuiFunctions.ImGuiActive) {
++#else
+ 	if (!imGuiFunctions.ImGuiDone) {
++#endif
++	
++
+ 		return;
+ 	}
+-	#endif
++#endif
+ 	#undef _IMGUI_TEST
+ 	POINT point;
+ 
+@@ -1111,109 +1116,82 @@ void HandleGraphEvent(void)
+ #define _IMGUI_TEST
+ 
+ #ifdef _IMGUI_TEST
+-IDirect3DDevice9 *g_pd3dDevice = nullptr; // Global device pointer
++//IDirect3DDevice9 *g_pd3dDevice = nullptr; // Global device pointer
+ 
++//****************************/
++// Lua stuff
++//****************************/
+ 
+ 
+ /// <summary>
+-/// Run my imgui DirectX9 init with Win32
++/// This will run the loop for checking if the lua keybind is pressed.
+ /// </summary>
+-/// <param name="window">The HWND for the program.</param>
+-void
+-InitImGui(HWND window)
++void LuaPlayingGameLoop()
+ {
++	#ifdef LUA_TEST
++						   
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	LuaTest luaTest = LuaTest();
+ 
+-	Defines defines = Defines();
+-	// Check if the DirectX9 device is valid
++	CPad cpad = CPad();
+ 
+-	if (rw::d3d::d3ddevice == nullptr) {
+-		// Handle the error, return
+-		TRACE("\nError: DirectX 9 device is null. ImGui initialization failed.\n");
+-		return;
+-	}
++	CPad *pad = CPad::GetPad(0);
+ 
+-	// Setup ImGui Context, and setup fonts.
+-	imGuiFunctions.SetupContext();
++								// This works without lua
++						        static int newTime = 0;
++								// Reload the lua function, I have it named InitLua for now.
++								if (KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++									newTime = CTimer::GetTimeInMilliseconds();
+ 
+-	// Setup Dear ImGui style
+-	ImGui::StyleColorsDark();
++									// Reinit lua.
++									luaTest.InitLua();
++								}
++								
+ 
+-	// Setup the style from the Cheat Menu
+-	// https://github.com/user-grinch/Cheat-Menu
+-	ImGuiFunctions::ApplyStyle();
++								// TODO Figure out how to make this use Control + M
++//#define CTRLJUSTDOWN(key)                                                                                                                                      \
++//	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++//#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ 
+-	// Setup Platform/Renderer backends
+-	ImGui_ImplWin32_Init(window);
+-	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
+-}
+ 
+-/// <summary>
+-/// This doesn't seem to be in use in here.
+-/// </summary>
+-void
+-shutDownImGui()
+-{
+-	// Shutdown Imgui, was I forgetting that?
+-	// Shutdown DX9 for this and cleanup
+-	ImGui_ImplDX9_Shutdown();
+-	ImGui_ImplWin32_Shutdown();
+-	ImGui::DestroyContext();
+-}
++								// static int newTime = 0;
++								// Some of the idea for this test came from here:
++								// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
++								
++								// I think I fixed the delay, I made the newTime variable static.
++								// TODO Do more testing with this later.
+ 
+-// Function to poll XInput and toggle ImGui window
+-/// <summary>
+-/// This works, TODO Move this and other imgui functions into ImGuiFunctions out of this file.
+-/// TODO Make this work off of a config file, possibly another ini file.
+-/// </summary>
+-void
+-HandleControllerInput()
+-{
+-	XINPUT_STATE state;
+-	ZeroMemory(&state, sizeof(XINPUT_STATE));
+-
+-	// ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	// Well this works? I wasn't expecting it to work like this.
+-	ImGuiFunctions imGuiFunctions;
+-
+-	uint16 button1 = imGuiFunctions.getImGuiButton1();
+-	uint16 button2 = imGuiFunctions.getImGuiButton2();
+-
+-	DWORD result = XInputGetState(0, &state); // Get state of controller 0
+-
+-	static int newTime = 0;
+-
+-	if(result == ERROR_SUCCESS) {
+-		// Check for button press (e.g., the 'A' button)
+-		//if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
+-		// 
+-		// New test with controller keybinds in 'ViceExtended/ImGui-Controls.ini'
+-		// Oops I didn't fully test the menu with this, it somewhat shows up but goes away if I use any DPad button on the menu
+-		// Instead of when both buttons are pressed.
+-		// 
+-		 //if(state.Gamepad.wButtons & button1
+-			//&& state.Gamepad.wButtons & button2 &&
+-		 //  CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-		 // 
+-		 
+-		 // Working code
+-		if(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER
+-			&& state.Gamepad.wButtons &XINPUT_GAMEPAD_DPAD_RIGHT &&
+-		   CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-			// 
+-			// Reset timer
+-			newTime = CTimer::GetTimeInMilliseconds();
+-
+-			// Toggle ImGui window visibility
+-			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+-		}
+-	} else {
+-		// Handle controller not connected or error
+-		// You might want to display a message or log an error
+-	}
++								
++
++
++								// I moved the ImGui test above outside of the lua test.
++								// TODO Make this lua test auto run on startup, it can set infinite health and never wanted by default.
++								// I added this to the ReVC.ini file.
++								// If this is enabled in there, this will run otherwise it does nothing.
++								// 
++								
++								// I have disabled the lua keybind for now, right now it is setup to 
++								// auto teleport the player, setup never wanted and setup infinte health on game startup if enabled.
++						     //           if(gbLuaTest) {
++
++							    //            //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++							    //            if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++											//// TODO Figure out how to make this use Control + M
++							    //            //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++								   //             // Wow this seems to work, with a delay now.
++								   //             // I figured out how to output this to a log.
++
++								   //             newTime = CTimer::GetTimeInMilliseconds();
++								   //             luaTest.InitLua();
++							    //            }
++						     //           }
++#endif //LUA_TEST
+ }
+ 
+-extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the device.
++//****************************/
++// End lua stuff
++//****************************/
++
+ 
+ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+@@ -1221,9 +1199,9 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 		POINTS points;
+ 		static BOOL noMemory = FALSE;
+ 
+-		mainWindow = window;
+-
++		
+ #ifdef _IMGUI_TEST
++	        mainWindow = window;
+ 	        // Setup the proc handler for ImGui mouse and keyboard input.
+ 
+ 			// This is spammy in the console
+@@ -2732,15 +2710,17 @@ bool	luaInit = false;
+ 	// 8-7-2024 @ 8:30PM
+ 	// I think I found the main entry point to the program.
+ 	
+-	 #define _IMGUI_TEST
+-	#ifdef _IMGUI_TEST
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 	CPad cpad = CPad();
+ 
+ 	CPad *pad = CPad::GetPad(0);
+ 
++	ImGuiSetup imGuiSetup = ImGuiSetup();
+ 
+-	#endif //_IMGUI_TEST
++
++#endif //_IMGUI_TEST
+ 
+ 	while ( TRUE )
+ 	{
+@@ -2822,7 +2802,7 @@ bool	luaInit = false;
+ 						        if(RwInitialised) {
+ 							        // Init ImGui
+ 
+-							        InitImGui(mainWindow);
++							        imGuiSetup.InitImGui(mainWindow);
+ 						        }
+ 					        }
+ 
+@@ -3154,60 +3134,17 @@ bool	luaInit = false;
+ 								luaInit = true;
+ 							}
+ #endif
+-							
+-#define _IMGUI_TEST
+-#ifdef _IMGUI_TEST
+-// 					// Well this dies in here...
+-// 					// ImGuiFunctions::ImGuiLoop();
+-
+-								// Resize check
+-								// TODO Figure out how to get this.
+-								// This should fix the resize being buggy but other then that this menu seems to work.
+-							//if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
+-							//        rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
+-							//        g_d3dpp.BackBufferHeight = g_ResizeHeight;
+-							//        g_ResizeWidth = g_ResizeHeight = 0;
+-							//        ResetDevice();
+-						 //       }
+-
+-							// TThis works! It toggles with the Xbox controller.
+-							HandleControllerInput();
+-							if (!imGuiFunctions.ImGuiDone) {
+-							        CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-							        
+-
+-
+-									// TODO Test this
+-									// Well this didn't work.
+-
+-									//_InputShutdownMouse();
+-		/*							if(_InputMouseNeedsExclusive()) {
+-								        _InputShutdownMouse();
+-								        _InputInitialiseMouse(false);
+-							        }*/
+-
+-									// TODO Test these
+-							        pad->DisablePlayerControls = 1;
+-									
+-									pad->ClearMouseHistory();
+-							        pad->NewState.DPadUp = 0;
+-							        pad->OldState.DPadUp = 0;
+-							        pad->NewState.DPadDown = 0;
+-							        pad->OldState.DPadDown = 0;
+-
+-									//CPad::UpdatePads();
+-
+-									// Well this breaks the menu from being toggled.
+-							        //cpad.Clear(true);
++					
+ 
+-							}
+-							else {
+-							        CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-							}
+-#endif
+-#undef _IMGUI_TEST
++							// Run the ImGui loop that checks for controller input, and mouse/keyboard input
++							imGuiSetup.ImGuiPlayingGameLoop();
+ 
+ #ifdef LUA_TEST
++							// Run the Lua loop that checks for mouse/keyboard input
++						    LuaPlayingGameLoop();
++#endif
++						#undef LUA_TEST
++#ifdef LUA_TEST
+ 
+ 						   
+ 
+@@ -3274,6 +3211,7 @@ bool	luaInit = false;
+ 							    //            }
+ 						     //           }
+ #endif //LUA_TEST
++#define LUA_TEST
+ 						}
+ 						break;
+ 					}
+-- 
+2.45.1.windows.1
+

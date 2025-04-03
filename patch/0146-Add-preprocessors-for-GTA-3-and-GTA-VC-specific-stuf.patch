@@ -1,0 +1,1315 @@
+From cc08308e740d6e119ce39bcddaad8df0b147a5f4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 30 Mar 2025 02:02:25 -0400
+Subject: [PATCH 146/152] Add preprocessors for GTA 3 and GTA VC specific stuff
+ for the cheat menu. Cleanup code a bit, move imgui window title into defines.
+ Add names for Re3 cheat menu in defines. Add make ped flee, give ped max
+ armor, and modify the TestPedFeatures in misc_util a bit. Add GTAVC
+ preprocessor to config.h Add blow up all vehicles to lua. Make a list of all
+ lua functions in test.lua.
+
+---
+ src/core/config.h                       |  11 +-
+ src/extras/PhotoMode.h                  |   7 ++
+ src/extras/cheats/custom_cheats.cpp     |  28 +++++
+ src/extras/cheats/custom_cheats.h       |   7 +-
+ src/extras/defines.cpp                  |  19 ++-
+ src/extras/defines.h                    |   3 +
+ src/extras/functions/misc_functions.cpp | 134 +++++++++++++++++++-
+ src/extras/functions/misc_functions.h   |  11 ++
+ src/extras/lua/lua_functions.cpp        |  17 +++
+ src/extras/lua/lua_functions.h          |   9 +-
+ src/extras/lua/lua_test.cpp             |   7 ++
+ src/extras/menus/animation_menu.cpp     |  12 +-
+ src/extras/menus/cheat_menu.cpp         |  17 ++-
+ src/extras/menus/game_menu.cpp          |   9 +-
+ src/extras/menus/imgui_main_menu.cpp    |   4 +-
+ src/extras/menus/misc_menu.cpp          |  95 ++------------
+ src/extras/menus/vehicle_menu.cpp       |   3 +-
+ src/extras/menus/vehicle_spawn_menu.cpp |  10 +-
+ src/extras/shaders/.gitignore           |   1 +
+ src/extras/test/area_check_test.cpp     |   3 +-
+ src/extras/utils/misc_util.cpp          | 158 ++++++++++++++++++++++++
+ src/extras/utils/misc_util.h            |   2 +-
+ utils/lua/test.lua                      | 114 ++++++++++++++++-
+ 23 files changed, 566 insertions(+), 115 deletions(-)
+ create mode 100644 src/extras/shaders/.gitignore
+
+diff --git a/src/core/config.h b/src/core/config.h
+index 314cbfd5..d6b17d51 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -18,6 +18,9 @@
+ // Toggle the lua test, so far this just has a F8 keybind that sets the players position.
+ #define LUA_TEST
+ 
++// Define game as GTAVC, going to make my ImGui menu work between GTA 3 and Vice City (Re3, ReVC)
++#define GTAVC
++
+ #ifdef LUA_TEST
+ // This works for basic lua events!!!
+ // I setup the blow_up_vehicle function in lua.
+@@ -133,14 +136,12 @@
+ // Begin working
+ 
+ // Well one of these break aiming in a vehicle.
+-// TODO Figure out what is breaking free look in a chopper, I'm forced to aim with one of these.
+-// Well I disabled all of these and it didn't fix it, so something somewhere else is breaking freelook in a chopper.
+-// 
+ // I turned these off, something here was breaking shooting in the vehicles, if pressing space it is broken
+ 
+ // Well one of these might be needed, I start to lag a bit when a lot is going on and the sound glitches out.
+ //#define FIRING_AND_AIMING
+ // I think I mostly got this one completed also.
++
+ //#define FIRST_PERSON
+ // The code for these are copied in
+ // Enable better crouching support
+@@ -423,8 +424,8 @@ enum Config {
+ 	TWODFXSIZE = 3000,
+ #else
+ 	SIMPLEMODELSIZE = 3885,
+-	//TIMEMODELSIZE = 385,
+-	TIMEMODELSIZE = 10000,
++	TIMEMODELSIZE = 385,
++	//TIMEMODELSIZE = 10000,
+ 	CLUMPMODELSIZE = 5,
+ 	WEAPONMODELSIZE = 37,
+ 	PEDMODELSIZE = 130,
+diff --git a/src/extras/PhotoMode.h b/src/extras/PhotoMode.h
+index c02f5dc5..38cac1e2 100644
+--- a/src/extras/PhotoMode.h
++++ b/src/extras/PhotoMode.h
+@@ -23,6 +23,11 @@ public:
+ 
+ 	static void DrawMenuAndEffects();
+ 
++#ifdef CUSTOM_CODE
++	// Moved into public class, for use in other files.
++	const static int animList[][2];
++#endif
++
+ private:
+ 	enum eTabs {
+ 		TAB_CAMERA,
+@@ -159,7 +164,9 @@ private:
+ 
+ 	static CPed* fakePlayer;
+ 	const static char* clothesList[];
++#ifndef CUSTOM_CODE
+ 	const static int animList[][2];
++#endif
+ 	static CParticle* muzzleFlashParticles[MAX_MUZZLE_PARTICLES];
+ 	static CVector playerPos;
+ 	static CVector lightPos;
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 975181e7..e6168bc3 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -140,6 +140,8 @@ commandTest1()
+ //void
+ //BlowUpCarsCheat();
+ 
++//-------- Money cheats ---------//
++
+ /// <summary>
+ /// Money cheat, copied from Pad.cpp for modifications.
+ /// </summary>
+@@ -168,6 +170,8 @@ CustomCheats::SetMoneyToZero()
+ 	CWorld::Players[CWorld::PlayerInFocus].m_nMoney = 0;
+ }
+ 
++//-------- End Money cheats ---------//
++
+ /// <summary>
+ /// Play the bridge open and close announcements
+ /// </summary>
+@@ -702,7 +706,11 @@ CustomCheats::CustomHelpMessage(std::string text)
+ 	AsciiToUnicode(str, ustr);
+ 
+ 	// Set the message
++#if defined(GTAVC)
+ 	CHud::SetHelpMessage(ustr, false, false);
++#elif defined(GTA3)
++	CHud::SetHelpMessage(ustr, false);
++#endif
+ 
+ 	// Well, this didn't seem to work right somewhere
+ 	// TODO Fix this to work
+@@ -735,7 +743,11 @@ SetupTextAndFont(std::string text)
+ 	CFont::SetWrapx(SCREEN_STRETCH_X(DEFAULT_SCREEN_WIDTH));
+ 
+ 	// Set font style
++#if defined(GTAVC)
+ 	CFont::SetFontStyle(FONT_STANDARD);
++#elif defined(GTA3)
++	CFont::SetFontStyle(FONT_BANK);
++#endif
+ 	// CFont::SetFontStyle(FONT_HEADING);
+ 
+ 	// Set the drop color, shadow position
+@@ -841,6 +853,22 @@ TankRapidFireToggle()
+ // Begin Weapon cheats from pad.cpp
+ //--------------------
+ 
++// New weapon cheat
++
++/// <summary>
++/// Clear the weapons from the player.
++/// </summary>
++void
++CustomCheats::RemovePlayerWeapons()
++{
++	CPed *pPlayer = FindPlayerPed();
++
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++	pPlayerInfo.m_pPed->ClearWeapons();
++	
++}
++
++
+ /// <summary>
+ /// Give the player brass knuckles, baseball bat, molotovs,
+ /// a colt45 pistol, a regular shotgun, tec9, ruger, sniper, and flamethrower.
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index 9ee699fc..46393d03 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -83,8 +83,9 @@ public:
+ 
+ 	// Money cheat from Pad.cpp
+ 	static void MoneyCheat(int value);
+-	// Set the players money to zero for testing
++	// Set the players money to zero.
+ 	static void SetMoneyToZero();
++	// Remove a specified amount of money
+ 	static void RemoveMoneyAmount(int value);
+ 
+ 	// Loading cutscene test
+@@ -127,6 +128,10 @@ public:
+ 	//--------------------
+ 	// Begin Weapon cheats from pad.cpp
+ 	//--------------------
++	// 
++	// Custom
++	// Clear all weapons from player
++	static void RemovePlayerWeapons();
+ 	// Weapon cheats
+ 	static void WeaponCheat1();
+ 	static void WeaponCheat2();
+diff --git a/src/extras/defines.cpp b/src/extras/defines.cpp
+index 371ef334..3b5160d4 100644
+--- a/src/extras/defines.cpp
++++ b/src/extras/defines.cpp
+@@ -1,5 +1,7 @@
+ #include "defines.h"
+ 
++#include "config.h"
++
+ std::string viceExtendedFolder = "ViceExtended/";
+ 
+ std::string logFolderPath = viceExtendedFolder + "logs/";
+@@ -14,7 +16,17 @@ std::string Defines::logFilePath = viceExtendedFolder + "/logs/" + Defines::logF
+ 
+ std::string Defines::pluginSdkTestLog = "KCNet-PluginSdk-Test.log";
+ 
++#if defined(GTAVC)
+ std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
++#elif defined(GTA3)
++std::string Defines::luaLogFile = "KCNet-Re3-lua.log";
++#endif
++
++#if defined(GTAVC)
++std::string Defines::imGuiMenuName = "KCNet ReVC ImGui";
++#elif defined(GTA3)
++std::string Defines::imGuiMenuName = "KCNet Re3 ImGui";
++#endif
+ 
+ std::string Defines::tomlLogFile = "KCNet-toml.log";
+ 
+@@ -24,7 +36,11 @@ std::string Defines::fontFile = "cheat_menu.ttf";
+ // 
+ std::string Defines::modificationName = "KCNet-ReVC";
+ 
++#if defined(GTAVC)
+ std::string Defines::menuName = "KCNet-ReVC-ImGui";
++#elif defined(GTA3)
++std::string Defines::menuName = "KCNet-Re3-ImGui";
++#endif
+ 
+ 
+ 
+@@ -34,7 +50,8 @@ std::string Defines::modificationAuthor = "kelson8";
+ 
+ // Set the program version.
+ // TODO Make this grab from my latest internal gitea releases or something.
+-std::string Defines::programVersion = "1.1";
++//std::string Defines::programVersion = "1.1";
++std::string Defines::programVersion = "1.2a - Pre Release";
+ 
+ // Vice extended folder, lua scripts.
+ // For now I only have a test.lua in this but it works when wasted/busted and on game startup.
+diff --git a/src/extras/defines.h b/src/extras/defines.h
+index afe8391b..e64a5a2f 100644
+--- a/src/extras/defines.h
++++ b/src/extras/defines.h
+@@ -46,6 +46,9 @@ public:
+ 	// Vehicles
+ 	static std::string vehiclesIniFile;
+ 
++	// ImGui info
++	static std::string imGuiMenuName;
++
+ 
+ 	// Program info
+ 	static std::string modificationName;
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 9b7fb2ac..0b737548 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -72,6 +72,15 @@
+ // For getting the time cycles
+ #include "Timecycle.h"
+ 
++#include "Zones.h"
++
++// For pickups
++#include "Pickups.h"
++
++#if defined(GTA3)
++#include "PathFind.h"
++#endif
++
+ // Extras
+ #include <iostream>
+ #include <vector>
+@@ -122,6 +131,116 @@ bool drawKcNetText = false;
+ 
+ */
+ 
++//---------- Begin Script functions ----------//
++
++// TODO Test these
++
++void
++MiscFunctions::SwitchPedRoadsOn(float x1, float x2, float y1, float y2, float z1, float z2)
++{
++	ThePaths.SwitchPedRoadsOffInArea(x1, x2, y1, y2, z1, z2, false);
++}
++
++void
++MiscFunctions::SwitchPedRoadsOff(float x1, float x2, float y1, float y2, float z1, float z2)
++{
++	ThePaths.SwitchPedRoadsOffInArea(x1, x2, y1, y2, z1, z2, true);
++}
++
++void
++SetZoneCarInfo()
++{
++	//CTheZones::SetZoneCarInfo(zone, ScriptParams[0], ScriptParams[1], ScriptParams[11], gangDensities);
++}
++
++// Objects
++
++// TODO Recreate these
++// CREATE_OBJECT
++/* Script examples:
++CREATE_OBJECT_NO_OFFSET ci_gatesclosed 11.697 963.176 12.258 porn_north_gate_closed
++DONT_REMOVE_OBJECT porn_north_gate_closed
++
++*/
++
++void
++MiscFunctions::CreateObject(int modelId)
++{
++	// Well this doesn't work
++	//CObject *pObj = new CObject(modelId, false);
++
++	// Name can be grabbed from 'data/object.dat'
++	// TODO Figure out how to get the id, the object.dat only contains the names
++	// I think I need to use a map editor
++	//int model = ;
++}
++
++void
++CreateObjectNoOffset()
++{
++
++}
++
++void
++DontRemoveObject()
++{
++
++}
++
++// Pickups
++
++/// <summary>
++/// This shows up and works, I don't think replacing the current weapon was working.
++/// This places a weapon pickup at the players coords, with +3 on the X and Y.
++/// TODO Do more testing on this later.
++/// Adapted from COMMAND_CREATE_PICKUP
++/// </summary>
++void
++MiscFunctions::CreateWeaponPickup(uint32 weaponModel)
++{
++	CPed *pPlayer = FindPlayerPed();
++	//uint32 weaponModel = MI_MINIGUN;
++
++	// This checks for most invalid weapons models
++	// Well MI_MISSLE has a crazy effect on the ground and picking it up gives the player a
++	// Rocket launcher missle with no icon on the hud, doesn't crash though.
++#if defined(GTAVC)
++	if (weaponModel < MI_BRASS_KNUCKLES || weaponModel > MI_MINIGUN2 
++		|| weaponModel == MI_MISSILE) 
++	{ 
++		return;
++	}
++#elif defined (GTA3)
++	if(weaponModel < MI_GRENADE || weaponModel > MI_BOMB) 
++	{ 
++		return; 
++	}
++#endif
++
++	// Add 3 to the x and y
++	CVector pos = pPlayer->GetPosition();
++	float playerX = pos.x + 3;
++	float playerY = pos.y + 3;
++	float playerZ = pos.z;
++	CVector newPos = CVector(playerX, playerY, playerZ);
++
++	/* Possibly not needed
++			if (pos.z <= MAP_Z_LOW_LIMIT)
++			pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y) + PICKUP_PLACEMENT_OFFSET;
++	*/
++	// TODO Figure out how to use this
++	//CPickups::GetActualPickupIndex(weaponModel);
++
++	CPickups::GenerateNewOne(newPos, weaponModel, PICKUP_ON_STREET_SLOW, 1000);
++	
++}
++
++
++
++//---------- End Script functions ----------//
++
++
++
+ //---------- Begin copied from misc_menu.cpp ----------//
+ 
+ 
+@@ -510,7 +629,11 @@ MiscFunctions::DisplayCounterOnScreen()
+ 
+ 		// This below works fine
+ 		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
++#if defined(GTAVC)
+ 		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
++#else
++		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str);
++#endif
+ 	} else {
+ 		ClearCounterOnScreen();
+ 	}
+@@ -550,19 +673,19 @@ MiscFunctions::DisplayAreaCheckImGui()
+ // TODO Add show/hide radar
+ // TODO Add show/hide hud
+ 
+-// Copied from visual.cpp in Cheat Menu
+ 
+-CMenuManager frontEndMenuManager = CMenuManager();
+-
+-// TODO Fix these functions
+ 
++// TODO Fix these functions for GTA 3
+ 
+ /// <summary>
+ /// Toggle the radar, this works
+ /// </summary>
++#if defined (GTAVC)
+ void
+ MiscFunctions::ToggleRadar()
+ {
++	// Copied from visual.cpp in Cheat Menu
++	CMenuManager frontEndMenuManager = CMenuManager();
+ 	if(!showRadar) {
+ 		// 0 = Radar and Blips
+ 		// 1 = Blips only
+@@ -573,11 +696,13 @@ MiscFunctions::ToggleRadar()
+ 		 FrontEndMenuManager.m_PrefsRadarMode = 0;
+ 	}
+ }
++#endif
+ 
+ 
+ /// <summary>
+ /// I got this to work, toggle the hud on and off
+ /// </summary>
++#if defined(GTAVC)
+ void
+ MiscFunctions::ToggleHud()
+ {
+@@ -616,6 +741,7 @@ MiscFunctions::ShowRadarToggle()
+ 	}
+ 	
+ }
++#endif
+ 
+ //----------- End Hud and radar toggles ----------//
+ 
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index 25c30a0a..0574042f 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -70,6 +70,17 @@ public:
+ 	// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
+ 	void TimerBarTest();
+ 
++	// Ped road toggling, this toggles the peds in the specified area like in the scripts.
++	void SwitchPedRoadsOn(float x1, float x2, float y1, float y2, float z1, float z2);
++	void SwitchPedRoadsOff(float x1, float x2, float y1, float y2, float z1, float z2);
++	
++	// Objects
++	// Create object, not implemented yet
++	void CreateObject(int modelId);
++
++	// Pickups
++	// Creating an item pickup, this one works for weapons
++	void CreateWeaponPickup(uint32 weaponModel);
+ 
+ 	// Singleton
+ 	static MiscFunctions &GetInstance()
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 29320991..3c7993cb 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -230,6 +230,23 @@ blowUpPlayerVehicleLua(lua_State *L)
+ 	return 1;
+ }
+ 
++// Vehicle
++
++extern "C"
++{
++	/// <summary>
++	/// Blow up all vehicles, lua function.
++	/// </summary>
++	int
++	blowUpAllVehiclesLua(lua_State* L)
++	{
++		CustomCheats::BlowUpAllCars();
++		return 1;
++	}
++}
++
++// TODO Sort these below, add these into different 'extern "C"' blocks 
++// and label them above like I did with the vehicle one.
+ extern "C"
+ {
+ 
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index ff357826..0123d489 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -7,6 +7,7 @@ extern "C" {
+ #include <lualib.h>
+ }
+ 
++// clang-format off
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -19,8 +20,11 @@ extern "C" {
+ 	extern int logPlayerHeadingLua(lua_State *L);
+ 
+ 	// Player
++	// Vehicle
+ 	extern int isPlayerInVehicleLua(lua_State *L);
+     extern int blowUpPlayerVehicleLua(lua_State *L);
++    extern int blowUpAllVehiclesLua(lua_State *L);
++	//
+     
+ 
+ 	extern int changePlayerClothesLua(lua_State *L);
+@@ -43,8 +47,11 @@ extern "C" {
+ }
+ #endif
+ 
++// clang-format on
++
++// TODO Is this needed? I'm using this global above.
+ class LuaFunctions
+ {
+ 
+ 
+-	};
++};
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 62d06027..b5ae7f7d 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -528,10 +528,15 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_register(L, "log_player_coords", logPlayerCoordsLua);
+ 	lua_register(L, "log_player_heading", logPlayerHeadingLua);
+ 
++	// Vehicle
+ 	// Check if player is in a vehicle
+ 	lua_register(L, "is_player_in_vehicle", isPlayerInVehicleLua);
+ 	// Blow up the players vehicle
+ 	lua_register(L, "blow_up_vehicle", blowUpPlayerVehicleLua);
++	// Blow up all vehicles
++	lua_register(L, "blow_up_all_vehicles", blowUpAllVehiclesLua);
++
++	//
+ 
+ 	// Kill the player if wanted
+ 	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
+@@ -549,6 +554,8 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Get the current wanted level if above 0
+ 	lua_register(L, "get_wanted_level", checkWantedLevelLua);
+ 
++	//------------- Messages ------------//
++
+ 	// Display a hud help message
+ 	lua_register(L, "print_msg", customHelpMessageLua);
+ 
+diff --git a/src/extras/menus/animation_menu.cpp b/src/extras/menus/animation_menu.cpp
+index 37104573..f4f72505 100644
+--- a/src/extras/menus/animation_menu.cpp
++++ b/src/extras/menus/animation_menu.cpp
+@@ -104,10 +104,16 @@ PlayAttackAnimation(bool loop)
+ 
+ 	//AssocGroupId animGroup = ASSOCGRP_PLAYER;
+ 	AssocGroupId animGroup = ASSOCGRP_STD;
+-	//eAnimationGroup animGroup = ANIM_GROUP_MOVE; // Example: movement animations
+-	//AnimationId animId = ANIM_ATTACK_1;         // Example: walk animation
+-	//AnimationId animId = ANIM_STD_RUNFAST; // Example: walk animation
++	//eAnimationGroup animGroup = ANIM_GROUP_MOVE;
++	//AnimationId animId = ANIM_ATTACK_1; 
++	//AnimationId animId = ANIM_STD_RUNFAST;
++
++#if defined(GTA3)
++	AnimationId animId = ANIM_STD_RUNFAST;
++#elif defined(GTAVC) && defined(SWIMMING)
+ 	AnimationId animId = ANIM_STD_SWIM_BREAST; // Swimming animation
++#endif
++
+ 
+ 	// TODO See if I can get this to work, possibly recreate this with std::map and AnimationId instead of const int.
+ 	//AnimationId animId = CPhotoMode::animList[0][0];
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index 6ce13c6d..0d292194 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -47,8 +47,10 @@ void
+ SlowTimeCheat();
+ 
+ // Test this, should be the perfect handling cheat.
++#if defined(GTAVC)
+ void
+ SpecialCarCheats();
++#endif
+ 
+ //----------- Police -----------//
+ 
+@@ -143,13 +145,20 @@ void CheatMenu::CheatTab()
+ {
+ 	//if(ImGui::CollapsingHeader("Weapons")) {
+ 
+-		ImGui::Text("Weapons");
++#if defined(GTAVC)
++	ImGui::Text("Weapons");
+ 
+-		if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
++	if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
+ 
+-		if(ImGui::Button("Weapon2")) { CustomCheats::WeaponCheat2(); }
++	if(ImGui::Button("Weapon2")) { CustomCheats::WeaponCheat2(); }
+ 
+-		if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
++	if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
++#elif defined(GTA3)
++	ImGui::Text("Give weapons");
++	if(ImGui::Button("Weapons")) { CustomCheats::WeaponCheat(); }
++#endif
++
++		if (ImGui::Button("Clear Weapons")) { CustomCheats::RemovePlayerWeapons(); }
+ 	//}
+ 
+ 	// Money cheats
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index 98dc3783..b87db233 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -112,19 +112,24 @@ GameMenu::GameTab()
+ 
+ 		ImGui::SameLine();
+ 
++#if defined(GTAVC)
+ 		if(ImGui::Button("Extra Sunny")) { CWeather::ForceWeatherNow(WEATHER_EXTRA_SUNNY); }
+-
++#endif
+ 		if(ImGui::Button("Cloudy")) { CWeather::ForceWeatherNow(WEATHER_CLOUDY); }
+ 
+ 		ImGui::SameLine();
+ 
+ 		if(ImGui::Button("Foggy")) { CWeather::ForceWeatherNow(WEATHER_FOGGY); }
+ 
++#if defined(GTAVC)
+ 		if(ImGui::Button("Extra Colors")) { CWeather::ForceWeatherNow(WEATHER_EXTRACOLOURS); }
+-
++#endif
+ 		if(ImGui::Button("Rainy")) { CWeather::ForceWeatherNow(WEATHER_RAINY); }
++#if defined(GTAVC)
+ 		ImGui::SameLine();
++
+ 		if(ImGui::Button("Hurricane")) { CWeather::ForceWeatherNow(WEATHER_HURRICANE); }
++#endif
+ 	}
+ 
+ 	if (ImGui::CollapsingHeader("Time")) { 
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index b781f3c6..f3325d2c 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -164,10 +164,10 @@ ImGuiMenus::MainMenu(ImVec4 clear_color)
+ 	// I added a toggle to enable/disable moving of the window.
+ 	if (menuMovingEnabled)
+ 	{ 
+-		ImGui::Begin("KCNet ReVC ImGui", nullptr);
++		ImGui::Begin(Defines::imGuiMenuName.c_str(), nullptr);
+ 	} else 
+ 	{
+-		ImGui::Begin("KCNet ReVC ImGui", nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
++		ImGui::Begin(Defines::imGuiMenuName.c_str(), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+ 	}
+ 	//
+ 	// TODO Fix ImGui window movement, then I'll enable this.
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index ded56cef..02812a47 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -105,14 +105,9 @@
+ // This will toggle the controller button that is shown in ImGui
+ bool toggleControllerText = false;
+ 
++// Display the timer bar test for my future chaos mod.
+ bool timerBarTest = false;
+ 
+-// This will toggle the custom text I setup in CustomCheats::SetText
+-//bool drawKcNetText = false;
+-
+-// Show the current directory in ImGui
+-//bool showCurrentDirectory = false;
+-
+  // Timecyc stuff
+ static int m_nTimecycHour = 8;
+ static std::vector<std::string> m_WeatherNames {
+@@ -257,81 +252,6 @@ static std::vector<std::string> m_WeatherNames {
+ // TODO Figure out how to replicate this
+ 
+ 
+-//----------- Counter tests and progress bars ----------//
+-
+-/// <summary>
+-/// Values from Script4.cpp, and OnscreenTimer.h
+-/// 	COUNTER_DISPLAY_NUMBER,
+-///		COUNTER_DISPLAY_BAR,
+-/// </summary>
+-/// 
+-
+-// Copied from script.h
+-//#define KEY_LENGTH_IN_SCRIPT 8
+-
+-// Inital value set to 0, this gets set in the displayCounterOnScreen function.
+-//uint16 counterVar = 0;
+-
+-// Replicated these from Script4.cpp.
+-
+-/// <summary>
+-/// Clear the counter that was on the screen
+-/// </summary>
+-//void
+-//MiscMenu::ClearCounterOnScreen()
+-//{
+-//	// if (!counterEnabled)
+-//	//{
+-//	//  16 should be the right number, set in the var value of the function above.
+-//	//CUserDisplay::OnscnTimer.ClearCounter(16);
+-//	// TODO Make this grab from my new value setup
+-//	CUserDisplay::OnscnTimer.ClearCounter(counterVar);
+-//	//}
+-//}
+-//
+-//bool counterEnabled = false;
+-///// <summary>
+-///// This works, and I got it to display the text
+-///// TODO Add custom text option in here, the text needs to be in the american.gxt/american.txt file.
+-///// TODO Figure out how to update the on screen counter.
+-///// </summary>
+-//void 
+-//MiscMenu::DisplayCounterOnScreen()
+-//{
+-//
+-//	char str[200];
+-//	wchar ustr[200];
+-//
+-//	sprintf(str, "KCEXLOG");
+-//
+-//	AsciiToUnicode(str, ustr);
+-//
+-//	// I fixed it, I'm quite sure it's from where I used above instead of using the text value in the counterEnabled.
+-//	// I'll leave it there for later.
+-//	if (counterEnabled) 
+-//	{
+-//		char onscreen_str[KEY_LENGTH_IN_SCRIPT];
+-//		// TODO Figure out what the var value is
+-//		//uint16 var = 16;
+-//		counterVar = 16;
+-//		// Extra Logging, placeholder message
+-//		
+-//		//wchar *text = TheText.Get("KCEXLOG");
+-//
+-//		// Hmm, how is this working? It's converting the wchar into a char
+-//		// strncpy(onscreen_str, (char*)&CTheScripts::ScriptSpace[m_nIp], KEY_LENGTH_IN_SCRIPT);
+-//		//strncpy(onscreen_str, (char *)text, KEY_LENGTH_IN_SCRIPT);
+-//		// CUserDisplay::OnscnTimer.AddCounter(var, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+-//
+-//		// This below works fine
+-//		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
+-//		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+-//	} else {
+-//		ClearCounterOnScreen();
+-//	}
+-//
+-//}
+-
+ // This didn't show anything, just showed 0.
+ void
+ MiscMenu::LogJoyButtonJustDown()
+@@ -454,7 +374,7 @@ loadAndLaunchMissionInternal()
+ 
+ }
+ 
+-
++#if defined(GTAVC)
+ void 
+ displayPlayerHealthMemAddress()
+ {
+@@ -469,6 +389,7 @@ displayPlayerHealthMemAddress()
+ 	LogFunctions::LogInfo(defines.logFile, memAddressString);
+ 
+ }
++#endif
+ 
+ 
+ /// <summary>
+@@ -606,6 +527,7 @@ void MiscMenu::MiscTab()
+ 	ImGui::Text("Other tests");
+ 
+ 
++#if defined(GTAVC)
+ 	if (ImGui::CollapsingHeader("Radar and hud hiding.")) { 
+ 		// Hud toggle
+ 		miscFunctions.ShowHudToggle();
+@@ -615,6 +537,7 @@ void MiscMenu::MiscTab()
+ 		miscFunctions.ShowRadarToggle();
+ 		ImGui::Separator();
+ 	}
++#endif
+ 	
+ 
+ 	// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
+@@ -638,11 +561,13 @@ void MiscMenu::MiscTab()
+ 		CustomCheats::CustomHelpMessage(customTextBuf);
+ 	}
+ 
++#if defined(GTAVC)
+ 	//ImGui::Text("Logs the memory address to the player health");
+ 	//if (ImGui::Button("Player health mem addr")) 
+ 	//{ 
+ 	//	displayPlayerHealthMemAddress();
+ 	//}
++#endif
+ 
+ 
+ 	//---------------
+@@ -707,6 +632,12 @@ void MiscMenu::MiscTab()
+ 		}
+ 
+ 
++		ImGui::Text("This creates a minigun pickup near the player");
++		if (ImGui::Button("Minigun pickup")) 
++		{ 
++			miscFunctions.CreateWeaponPickup(MI_MINIGUN2);
++		}
++
+ 	}
+ 
+ 
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index d9ffee79..aa134708 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -198,7 +198,6 @@ VehicleMenu::VehicleTab()
+ 
+ 	if (ImGui::Button("Lock vehicle")) 
+ 	{ 
+-		//lockVehicle();
+ 		vehicleFunctions.LockVehicle();
+ 	}
+ 
+@@ -226,11 +225,13 @@ VehicleMenu::VehicleTab()
+ 		ImGui::EndDisabled();
+ 	}
+ 
++#if defined(GTAVC)
+ 	ImGui::Separator();
+ 	ImGui::Text("Toggle falling off bikes for the player, this is on by default.");
+ 	// Well this works! This is set to true by default in main.cpp, so it can be toggled off.
+ 	// Also you won't lose health when hitting something if this is turned off.
+ 	ImGui::Checkbox("Fall off bike", &gbFalloffBike);
++#endif
+ 
+ 	ImGui::Separator();
+ 	// Fun functions
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+index 60d4786e..cf31c28e 100644
+--- a/src/extras/menus/vehicle_spawn_menu.cpp
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -103,6 +103,8 @@ VehicleSpawnMenu::ImGuiCarColors()
+ /// This shows up a list box with the vehicles, and has a button on it.
+ /// </summary>
+ /// 
++// This is in ini_functions, disabled for Re3
++#if defined(GTAVC)
+ void
+ VehicleSpawnMenu::ImGuiVehicleList()
+ {
+@@ -192,6 +194,7 @@ VehicleSpawnMenu::ImGuiVehicleList()
+ 
+ 	ImGui::Separator();
+ }
++#endif
+ 
+ void
+ VehicleSpawnMenu::VehicleSpawnTab()
+@@ -215,11 +218,14 @@ VehicleSpawnMenu::VehicleSpawnTab()
+ 
+ 	// Test a new vehicle list, moved spawn in vehicle, vehicle list box, and submit button in here.
+ 	// I will be using this one for now, I still need to work on the one below that lists everything.
+-	if (ImGui::CollapsingHeader("Old vehicle list"))
+-	{
++
++	// Crashes Re3, it is the ReVC vehicle list.
++#if defined(GTAVC)
++	if(ImGui::CollapsingHeader("Old vehicle list")) {
+ 		ImGuiVehicleList();
+ 		ImGuiCarColors();
+ 	}
++#endif
+ 
+ 	// This is a new test in the iniFunctions file, reads vehicles.ini in 'ViceExtended/'
+ 	// Well this new category works now, it doesn't look as neat as it can be and the names are internal like this:
+diff --git a/src/extras/shaders/.gitignore b/src/extras/shaders/.gitignore
+new file mode 100644
+index 00000000..ef67d40a
+--- /dev/null
++++ b/src/extras/shaders/.gitignore
+@@ -0,0 +1 @@
++obj-backup/
+\ No newline at end of file
+diff --git a/src/extras/test/area_check_test.cpp b/src/extras/test/area_check_test.cpp
+index 7a015302..390c2489 100644
+--- a/src/extras/test/area_check_test.cpp
++++ b/src/extras/test/area_check_test.cpp
+@@ -102,12 +102,11 @@ AreaCheckTest::Area3DCheckCommand(float x1, float y1, float z1, float x2, float
+ 
+ 	if(pPlayerPed->bInVehicle) {
+ 		// Area check inside of vehicle 
+-		// // CPlaceable::IsWithinArea()
++		// CPlaceable::IsWithinArea()
+ 		//pPlayerPed.m_pMyVehicle;
+ 
+ 		//if(pedTest->m_pMyVehicle->IsWithinArea())
+ 		
+-		//UpdateCompareFlag(ped->m_pMyVehicle->IsWithinArea(x1, y1, z1, x2, y2, z2));
+ 		// TODO Setup later
+ 		return false;
+ 	} else {
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 0bf50b9d..d3668e9b 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -33,6 +33,10 @@
+ #include "World.h"
+ #include "platform.h"
+ 
++
++#include "Script.h"
++
++
+ #include "Remote.h"
+ 
+ #include "Entity.h"
+@@ -53,6 +57,27 @@
+ 
+ #include <stdlib.h>
+ 
++// TODO Move these into another file
++void makePedFlee(CPed *ped)
++{
++	// Well this seems to work, taken from Fire.cpp
++	// Make the peds run away and scream
++#ifdef GTAVC
++	ped->bMakeFleeScream = true;
++#endif
++	CVector2D pos = ped->GetPosition();
++	ped->SetFlee(pos, 10000);
++}
++
++void
++giveMaxHealthAndArmor(CPed* ped)
++{
++	// They shouldn't ever die anymore now
++	// This gives them so much health
++	 ped->m_fHealth = 9999.0f;
++	 ped->m_fArmour = 9999.0f;
++}
++
+ // Convert ascii to unicode (wchar) for use in the game hud and stuff
+ // I copied this from custom_cheats and modified it a bit
+ // Well this didn't seem to work right.
+@@ -142,6 +167,18 @@ MiscUtil::TestPedFeatures()
+ 	// int i = CPools::GetVehiclePool()->GetSize();
+ 	bool burstTires = false;
+ 
++	// Make the peds run away
++	bool pedsFlee = false;
++	// Make the peds render as burned
++	bool renderScorched = false;
++
++	// Give the peds 9999 health and armor
++	bool maxHealthAndArmorToggle = false;
++
++	// Set a timer for this function
++
++	uint32 timer = CTimer::GetTimeInMilliseconds();
++
+ 	CPed *pPlayer = FindPlayerPed();
+ 	CVector pPlayerCoords = FindPlayerCoors();
+ 
+@@ -151,6 +188,27 @@ MiscUtil::TestPedFeatures()
+ 
+ 	CVector newCoords = CVector(playerX, playerY, playerZ);
+ 
++
++	// The part that works is CPedType::SetThreats, this activates the MayemMode cheat
++	// Taken from chaos_functions.cpp
++	for(int i = PEDTYPE_CIVMALE; i < PEDTYPE_SPECIAL; i++) {
++
++		// This below doesn't work.
++		// Set this to PED_FLAG_PLAYER1 to PED_FLAG_PLAYER4
++		//for (int x = PED_FLAG_PLAYER1; x < PED_FLAG_PLAYER4; x++)
++		//{ 
++		//	CPedType::AddThreat(i, x);
++		//}
++		 //CPedType::AddThreat(i, PED_FLAG_PLAYER1);
++
++
++		// This works like the riot cheat, the above doesn't make everyone attack the player though.
++		// CPedType::SetThreats(i, PED_FLAG_PLAYER1 | PED_FLAG_PLAYER2 | PED_FLAG_PLAYER3 | PED_FLAG_PLAYER4 | PED_FLAG_CIVMALE | PED_FLAG_CIVFEMALE |
++		//                            PED_FLAG_COP | PED_FLAG_GANG1 | PED_FLAG_GANG2 | PED_FLAG_GANG3 | PED_FLAG_GANG4 | PED_FLAG_GANG5 | PED_FLAG_GANG6
++		//                            | PED_FLAG_GANG7 | PED_FLAG_GANG8 | PED_FLAG_GANG9 | PED_FLAG_EMERGENCY | PED_FLAG_PROSTITUTE | PED_FLAG_CRIMINAL
++		//                            | PED_FLAG_SPECIAL);
++	}
++
+ 	int i = CPools::GetPedPool()->GetSize();
+ 	while(i-- > 0) {
+ 		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) {
+@@ -159,6 +217,66 @@ MiscUtil::TestPedFeatures()
+ 				// This works for teleporting the peds
+ 				//ped->Teleport(newCoords);
+ 
++				// Hmm, I wonder if this'll work? The peds in the radius should no longer be able to catch fire
++				// I think this works
++				//ped->bFireProof = true;
++
++
++				// This should work for making them leave the cars
++				// Well this is somewhat fun, makes them leave the vehicles and other peds get in, sometimes more then 1.
++				if (ped->m_pMyVehicle) { 
++					
++					//ped->SetObjective(OBJECTIVE_FLEE_CAR);
++					//ped->bFleeAfterExitingCar = true;
++				} else {
++					// Well this makes the peds all look burnt when alive lol.
++					if (renderScorched)
++					{ 
++						ped->bRenderScorched = true;
++					}
++
++					// Give the peds 9999 health and armor
++					if (maxHealthAndArmorToggle)
++					{ 
++						giveMaxHealthAndArmor(ped);
++					}
++					
++
++					// Moved into function, make all peds in the area run awawy
++					if(pedsFlee) 
++					{ 
++						makePedFlee(ped); 
++					}
++					
++					
++					// TODO Possibly use this for an objective timer and use CTimer with it.
++					// I might be able to do multiple objectives like this.
++					//ped->m_objectiveTimer;
++
++
++					// TODO Test this, the peds shouldn't flee or run away, not sure though.
++					// // This didn't work.
++					//ped->m_fearFlags = 0;
++
++					// Taken syntax from Script.cpp, should make everyone hate the player and try to kill him.
++					// Well this didn't work either, not sure about the m_fearFlags
++					//ped->m_fearFlags |= PEDTYPE_PLAYER1;
++
++					// Well this seems to work, taken from Fire.cpp
++					// Make the peds run away and scream
++
++
++
++
++
++				// If not in a vehicle, make them steal another car.
++					//ped->SetObjective(OBJECTIVE_STEAL_ANY_CAR);
++				}
++
++				
++
++				
++
+ 				//ped->
+ 				//ped->SetObjective(eObjective)
+ 			
+@@ -190,17 +308,57 @@ MiscUtil::TestPedFeatures()
+ 				//	
+ 				//}
+ 
++
++				// Will this actually work? Let me kill some people and test it.
++				// This actually works, blows up an ambulance if they are nearby.
++				//if (veh->bIsAmbulanceOnDuty) 
++				//{ 
++				//	veh->m_fHealth = 0;
++				//}
++
++				// This works if a ped hits another car, time to turn their speeds up and run this in a loop lol.
++				// TODO Make that into a chaos feature, the peds go really fast and this runs.
++				//if (veh->bIsDamaged) { 
++				//	veh->m_fHealth = 0;
++				//	veh->BlowUpCar(nil);
++				//}
++
++				if (veh->IsCar())
++				{ 
++					// This should blow up the vehicles if they are stopped, well this doesn't work right.
++					//if(CTheScripts::IsVehicleStopped(veh)) 
++					//{ 
++					//	veh->BlowUpCar(nil);
++					//}
++
++					// TODO Add a timer using CTimer for this, make this have a delay if possible.
++					// Open the left side door
++					//veh->OpenDoor(CAR_DOOR_LF, eDoors::DOOR_FRONT_LEFT, 1.0f);
++					// 
++					//timer = CTimer::GetTimeInMilliseconds();
++					// This closes the doors
++					//veh->OpenDoor(CAR_DOOR_LF, eDoors::DOOR_FRONT_LEFT, 0.0f);
++				}
++				
++
++
+ 				// These work
+ 				if(burstTires) {
+ 
+ 					if(veh->IsCar()) {
++#if defined(GTAVC)
+ 						for(int i = 0; i < 4; i++) { veh->BurstTyre(i, true); }
++#elif defined (GTA3)
++						for(int i = 0; i < 4; i++) { veh->BurstTyre(i); }
++#endif
+ 					}
+ 
++#if defined(GTAVC)
+ 					if(veh->IsBike()) {
+ 						for(int i = 0; i < 1; i++) { veh->BurstTyre(i, true); }
+ 					}
+ 				}
++#endif
+ 
+ 
+ 				//veh->
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 7dff8f4b..deaaf895 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -1,5 +1,5 @@
+ #pragma once
+-#include <sstream> // Include the header
++#include <sstream>
+ #include <string>
+ 
+ // For wchar
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 82fc493a..c7eb0b83 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -10,6 +10,96 @@
+ -- This lua file runs when the game starts up, and when the player is busted/wasted.
+ -- I could make it load specific parts of this if a player is in a vehicle.
+ 
++-----------
++-- All lua functions
++-----------
++
++-- Run a test for the cheats, this was a basic test to run C++ functions but it isn't needed anymore.
++-- cheat_test()
++
++-- Toggle the players control on/off
++-- toggle_control()
++
++-- A toggle for ImGui, I moved to using a keybind for this.
++-- toggle_imgui()
++
++------
++-- Toggles
++------
++
++-- Turn on never wanted
++-- enable_never_wanted()
++
++-- Turn on infinite health
++-- enable_infinite_health()
++
++-- Set ped density to 0, disable peds
++-- disable_peds()
++
++-- Set vehicle density to 0, disable vehicles
++-- disable_vehicles()
++
++------
++-- Player functions
++------
++
++-- Set the players position to the specified coords
++-- set_position(x, y, z)
++
++-- Heal the player to full health and give max armor
++-- heal_player()
++
++-- Set the players spawn point, TODO Make this get the respawn point from the locations.lua
++-- set_respawn_point(x, y, z, heading)
++
++-- Cancel the respawn, not sure if this works right
++-- cancel_override_restart()
++
++-- Toggles for losing weapons when dying.
++-- enable_lose_weapons_on_death()
++-- disable_lose_weapons_on_death()
++
++-- Log the players coords and heading
++-- log_player_coords()
++-- log_player_heading()
++
++-- Check if player is in a vehicle
++-- is_player_in_vehicle()
++
++-- Blow up the players vehicle
++-- blow_up_vehicle()
++
++-- Blow up all vehicles (Doesn't blow up the players vehicle)
++-- blow_up_all_vehicles()
++
++-- Kill the player if wanted
++-- kill_wanted_player()
++
++-- Kill the player
++-- kill_player()
++
++-- Check if the player is alive
++-- is_player_alive()
++
++-- Change the players clothes, due to a crash with invalid models I have disabled this in the C++ code.
++-- TODO Fix this and stop it from crashing on invalid models
++-- change_clothes("clothesName")
++
++-- Get the current wanted level if above 0
++-- get_wanted_level()
++
++------
++-- Message functions
++------
++
++-- Display a hud help message
++-- print_msg(message)
++
++-- Log messages in lua
++-- Log an info message
++-- log_info(message)
++
++
+ -----------
+ -- Toggles
+ -----------
+@@ -49,6 +139,15 @@ local log_test = false
+ -- Due to the invalid models crashing this I disabled it in the C++ code, now it won't do anything.
+ local change_clothes_enabled = false
+ 
++-- Display a help message on the hud
++-- Uses CustomCheats::CustomHelpMessage(string)
++local display_help_text = false
++
++
++-- Blow up all cars
++-- Uses CustomCheats::BlowUpAllCars()
++local blow_up_cars_toggle = false
++
+ -----------
+ -- Locations
+ -----------
+@@ -112,10 +211,13 @@ if change_clothes_enabled then
+ 	-- change_clothes("invalid")
+ end
+ 
+--- TODO Test this
+--- Should just log to the file for now.
+-
+--- lose_weapons_bool = false
++-- Display text on the hud as a help message
++if display_help_text then
++	-- Works for displaying wanted level, should work for anything I setup in the C++ side also.
++	-- This will be very useful instead of logging the values unless I need to.
++	wanted_level = get_wanted_level()
++	print_msg("WL: " .. wanted_level)
++end
+ 
+ -- If the player will lose their weapons when dying, set to true by default
+ -- If set to false, the player will not lose weapons when dying.
+@@ -128,6 +230,10 @@ else
+ end
+ 
+ 
++if blow_up_cars_toggle then
++	blow_up_all_vehicles()
++end
++
+ 
+ -- Disabled
+ -- toggle_lose_weapons_on_death()
+-- 
+2.45.1.windows.1
+

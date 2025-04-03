@@ -1,0 +1,102 @@
+From 73c81ed94ccabbb9dcb0197e6cff530b79c1804e Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 26 Mar 2025 15:43:01 -0400
+Subject: [PATCH 141/152] Add option to display custom text as a help message.
+
+---
+ src/extras/cheats/custom_cheats.cpp | 27 +++++++++++++++++++++++++++
+ src/extras/cheats/custom_cheats.h   |  2 ++
+ src/extras/menus/misc_menu.cpp      | 13 +++++++++++++
+ 3 files changed, 42 insertions(+)
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 25e115f8..1f57fd48 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -671,6 +671,29 @@ CustomCheats::ToggleText()
+ 	toggleText = !toggleText;
+ }
+ 
++/// <summary>
++/// This displays a custom message in the top left like cleo redux.
++/// This works!
++/// Crashes if there are more then like 16 or 18 characters on one line
++/// TODO Figure out how to make this split the text if it's too long
++/// Possibly make multiple text inputs for the value it accepts?
++/// </summary>
++void
++CustomCheats::CustomHelpMessage(std::string text)
++{
++	char str[200];
++	wchar ustr[200];
++
++	//std::string text = "Test text";
++
++	sprintf(str, text.c_str());
++	// Convert the string to a wchar with this AsciiToUnicode function
++	AsciiToUnicode(str, ustr);
++
++	// Set the message
++	CHud::SetHelpMessage(ustr, false, false);
++}
++
+ /// <summary>
+ /// Moved the setup for my custom text into here, so I don't have to keep redefining this.
+ /// </summary>
+@@ -707,12 +730,16 @@ SetupTextAndFont(std::string text)
+ 	CFont::SetColor(CRGBA(0, 0, 0, 255));
+ 
+ 	// Setting the position to the black part of the text
++	// TODO Add config to grab the x and y for this from imgui as a test, using a float slider.
++	// Set default to 41.0f.
+ 	CFont::PrintString(41.0f, 41.0f, ustr);
+ 
+ 	// Set the yellow color for the second part of the text
+ 	CFont::SetColor(CRGBA(205, 205, 0, 255));
+ 
+ 	// Setting the position to the yellow part of the text
++	// TODO Add config to grab the x and y for this from imgui as a test, using a float slider.
++	// Set default to 40.0f.
+ 	CFont::PrintString(40.0f, 40.0f, ustr);
+ 
+ 	// Quite sure this is for drawing the fonts
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index d6b5a8ef..bd38cf76 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -134,6 +134,8 @@ public:
+ 	//--------------------
+ 	// End Weapon cheats from pad.cpp
+ 	//--------------------
++	
++	static void CustomHelpMessage(std::string text);
+ 
+ 
+ 	#endif //_TEST
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 9dbca51f..52953e17 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -813,6 +813,19 @@ void MiscMenu::MiscTab()
+ 		logAreaTest(); 
+ 	}
+ 
++	// This should display a custom message on the screen like cleo redux
++	// This works but crashes if there are too many characters input at once.
++	// Oh it tries to go off the screen
++	//static char customTextBuf[200] = "";
++	// TODO Figure out how to make this split up the text on multiple lines, this crashes somewhere after 16
++	static char customTextBuf[16] = "";
++
++
++	ImGui::InputText("Custom text", customTextBuf, sizeof(customTextBuf));
++	if (ImGui::Button("Custom help msg")) {
++		CustomCheats::CustomHelpMessage(customTextBuf);
++	}
++
+ 	//ImGui::Text("Logs the memory address to the player health");
+ 	//if (ImGui::Button("Player health mem addr")) 
+ 	//{ 
+-- 
+2.45.1.windows.1
+

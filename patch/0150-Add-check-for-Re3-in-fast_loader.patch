@@ -1,0 +1,29 @@
+From 6341f71f2af919293b8af1c939b8c0b636cf4a39 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 30 Mar 2025 18:22:39 -0400
+Subject: [PATCH 150/152] Add check for Re3 in fast_loader.
+
+---
+ src/extras/utils/fast_loader.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 4c3b359a..d357ff4d 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -65,7 +65,12 @@ FastLoader::FastLoad()
+ 		SetDialogText("FELD_WR");
+ 		ToggleDialog(true);
+ #else
++#if defined(GTAVC) || defined(GTALCS)
+ 		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++#elif defined(GTA3)
++		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR");
++#endif
++
+ #endif
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 		//}
+-- 
+2.45.1.windows.1
+

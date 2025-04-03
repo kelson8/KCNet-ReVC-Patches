@@ -1,0 +1,142 @@
+From fdf8121f7033c4652f31595671880d2957987197 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 30 Mar 2025 15:26:12 -0400
+Subject: [PATCH 148/152] Remove extra defines and undefines for _IMGUI_TEST in
+ win.cpp and a couple other files. Move _IMGUI_TEST preprocessor into config.h
+
+---
+ src/core/config.h                    |  3 +++
+ src/extras/debug/debug_functions.cpp |  1 -
+ src/extras/lua/lua_functions.cpp     |  1 -
+ src/skel/win/win.cpp                 | 21 +++++----------------
+ 4 files changed, 8 insertions(+), 18 deletions(-)
+
+diff --git a/src/core/config.h b/src/core/config.h
+index 2a73f97a..d3af3c42 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -24,6 +24,9 @@
+ // Enable the ImGuiActive boolean, instead of using !ImGuiDone everywhere
+ #define NEW_IMGUI_TESTS
+ 
++// Enable the ImGui test, seems to work fine
++#define _IMGUI_TEST
++
+ #ifdef LUA_TEST
+ // This works for basic lua events!!!
+ // I setup the blow_up_vehicle function in lua.
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 1657a676..18d4ad7e 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -75,7 +75,6 @@
+ #include "log_functions.h"
+ #include "vehicle_functions.h"
+ 
+-#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ #include "imgui_functions.h"
+ 
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 3c7993cb..c5e0b696 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -26,7 +26,6 @@
+ #include "player_cheats.h"
+ 
+ // ImGui test
+-#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ #include "imgui_functions.h"
+ #endif
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index dde486cc..0d513b19 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -86,7 +86,6 @@
+ #endif
+ 
+ // I have ImGui pretty much fully working besides resizing and moving, it's a bit glitchy so I disabled movement for it.
+-#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ 
+ // Moved ImGui init, ImGui loop, controller and mouse/keyboard keybinds into here
+@@ -122,7 +121,6 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ // #include "imgui_impl_dx9.h"
+ // #include "imgui_impl_win32.h"
+ #endif
+-#undef _IMGUI_TEST
+ 
+ #ifdef PLUGIN_SDK_TEST
+ #include "plugin_manager.h"
+@@ -407,7 +405,6 @@ psMouseSetPos(RwV2d *pos)
+ 
+ 	// Well... Placing this here seems to have fixed the mouse being locked.
+ 	// I just guessed where this was and it works!
+-#define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ #ifdef NEW_IMGUI_TESTS
+@@ -415,12 +412,9 @@ psMouseSetPos(RwV2d *pos)
+ #else
+ 	if (!imGuiFunctions.ImGuiDone) {
+ #endif
+-	
+-
+ 		return;
+ 	}
+ #endif
+-	#undef _IMGUI_TEST
+ 	POINT point;
+ 
+ 	point.x = (RwInt32) pos->x;
+@@ -1219,7 +1213,6 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 	        ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ #endif
+-#undef _IMGUI_TEST
+ 
+ 	switch( message )
+ 	{
+@@ -1298,7 +1291,7 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 			if (RwInitialised && r.h > 0 && r.w > 0)
+ 			{
+ 				
+-				#ifdef _IMGUI_TEST
++#ifdef _IMGUI_TEST
+ 
+ 	//			if (rw::d3d::d3ddevice != NULL && wParam !=
+ 	//				SIZE_MINIMIZED)
+@@ -1336,8 +1329,7 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 				//	        g_ResizeHeight = HIWORD(lParam);
+ 				//        }
+ 				//   }
+-				#endif
+-				#undef _IMGUI_TEST
++#endif
+ 
+ 				RsEventHandler(rsCAMERASIZE, &r);
+ 
+@@ -1710,16 +1702,13 @@ InitApplication(HANDLE instance)
+ 	windowClass.lpszClassName = AppClassName;
+ 
+ 	// TODO Test this for ImGui window.
+-
+-	#define _IMGUI_TEST
+-	#ifdef _IMGUI_TEST
++#ifdef _IMGUI_TEST
+ 	windowClass.hbrBackground = NULL;
+ 	windowClass.style = CS_BYTEALIGNWINDOW | CS_OWNDC;
+-	#else 
++#else 
+ 	windowClass.hbrBackground = nil;
+ 	windowClass.style = CS_BYTEALIGNWINDOW;
+-	#endif
+-	#undef _IMGUI_TEST
++#endif
+ 
+ 	return RegisterClass(&windowClass);
+ }
+-- 
+2.45.1.windows.1
+

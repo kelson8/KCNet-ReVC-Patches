@@ -1,0 +1,772 @@
+From 42338e24324073277e52089204d7b4bde6b6c5f2 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 27 Mar 2025 13:00:25 -0400
+Subject: [PATCH 145/152] Add message_util for hud messages. Add guide on using
+ colors to imgui functions. Add more comments and label imgui functions a bit
+ more. Add test for a timer bar on top of the screen Need to fix the timer bar
+ to always draw to screen. Add red color to some text in misc functions. Move
+ some items around in misc menu, refactor it a bit. Add convert to unicode
+ into misc util, doesn't work right yet. Update time model size in config for
+ VCS neons. Update patch and commit number.
+
+---
+ guides/create-patches.md                 |   2 +-
+ src/core/config.h                        |   4 +-
+ src/extras/functions/imgui_functions.cpp |  42 +++++-
+ src/extras/functions/misc_functions.cpp  |  89 ++++++++++--
+ src/extras/functions/misc_functions.h    |  26 +++-
+ src/extras/menus/misc_menu.cpp           | 170 +++++++++++++----------
+ src/extras/menus/misc_menu.h             |   2 +
+ src/extras/utils/message_util.cpp        |  49 +++++++
+ src/extras/utils/message_util.h          |  15 ++
+ src/extras/utils/misc_util.cpp           |  23 +++
+ src/extras/utils/misc_util.h             |   8 ++
+ 11 files changed, 342 insertions(+), 88 deletions(-)
+ create mode 100644 src/extras/utils/message_util.cpp
+ create mode 100644 src/extras/utils/message_util.h
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 8cebb233..e19195a6 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 137, patch number: 137)
++(Currently on commit 145, patch number: 145)
+ 
+ 1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/core/config.h b/src/core/config.h
+index 70684f22..314cbfd5 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -423,7 +423,8 @@ enum Config {
+ 	TWODFXSIZE = 3000,
+ #else
+ 	SIMPLEMODELSIZE = 3885,
+-	TIMEMODELSIZE = 385,
++	//TIMEMODELSIZE = 385,
++	TIMEMODELSIZE = 10000,
+ 	CLUMPMODELSIZE = 5,
+ 	WEAPONMODELSIZE = 37,
+ 	PEDMODELSIZE = 130,
+@@ -543,6 +544,7 @@ enum Config {
+ 	//NUM_GARAGES = 35,
+ 	NUM_GARAGES = 32,
+ #else
++	// Original
+ 	NUM_GARAGES = 32,
+ #endif
+ 	NUM_PROJECTILES = 32,
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 02d29354..3783662f 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -25,9 +25,25 @@
+ 
+ #include <direct.h>
+ 
++// Well adding this I can move my functions out of ini functions into the warp menu and vehicle menu.
++//#include "ini.h"
+ 
+ // I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with myself.
+ 
++// https://stackoverflow.com/questions/61853584/how-can-i-change-text-color-of-my-inputtext-in-imgui
++/* This is how to set some colors on a specific part of text in ImGui:
++* The IM_COL32 values are RGBA so they can be obtained from a tool online like this:
++* https://rgbacolorpicker.com/
++* 
++	// Set the custom color
++    // This works for changing the colors
++    // Set to red, push the style to the elements before PopStyleColor is called.
++    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
++    ImGui::Text("Red text");
++    // Remove the custom color
++    ImGui::PopStyleColor();
++*/
++
+ ///// <summary>
+ ///// Add a help marker
+ ///// </summary>
+@@ -124,7 +140,13 @@ ImGuiFunctions::VehiclesListBox(int &selectedItem)
+ }
+ 
+ 
++//---------- Begin ImGui setup/shutdown functions ----------//
+ 
++/// <summary>
++/// Setup the imgui fonts
++/// TODO Make vice extended path public in defines and use that.
++/// </summary>
++/// <param name="io"></param>
+ void
+ ImGuiFunctions::SetupFonts(ImGuiIO &io)
+ {
+@@ -146,12 +168,14 @@ ImGuiFunctions::SetupFonts(ImGuiIO &io)
+ 	// - Read 'docs/FONTS.md' for more instructions and details.
+ 	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
+ 
+-	// TODO Test this
+ 	io.Fonts->AddFontDefault();
+ 	std::string fontFilePath = fontsPath + defines.fontFile;
+ 	io.Fonts->AddFontFromFileTTF(fontFilePath.c_str(), 1.15f);
+ }
+ 
++/// <summary>
++/// Setup the ImGui context
++/// </summary>
+ void
+ ImGuiFunctions::SetupContext()
+ {
+@@ -247,6 +271,8 @@ void ImGuiFunctions::ApplyStyle()
+ 
+ bool ImGuiFunctions::ShowSecondWindow = false;
+ 
++//---------- End ImGui setup/shutdown functions ----------//
++
+ // Code moved out of d3ddevice.cpp in librw
+ // TODO Make this work later.
+ #ifdef _MOVE_CODE
+@@ -358,6 +384,8 @@ ImGuiFunctions::RunImGui()
+ 
+ #endif //_MOVE_CODE
+ 
++//---------- Begin ReVC Color stuff ----------//
++
+ // Convert ImVec4 to RGBA
+ 
+ // Reverse this function: https://github.com/ocornut/imgui/issues/5102
+@@ -384,6 +412,8 @@ ImGuiFunctions::IV4toRGBA(ImVec4 color)
+ 	LogFunctions::LogInfo(defines.logFile, colorString);
+ }
+ 
++
++
+ //------------
+ // Vehicle colors
+ //------------
+@@ -473,6 +503,10 @@ ImGuiFunctions::GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
+ 	return {index1, index2};
+ }
+ 
++//---------- End ReVC Color stuff ----------//
++
++
++//---------- Begin folder stuff ----------//
+ 
+ // Moved out of misc_menu
+ // TODO Move this into a utilities file, possible win_util.cpp or something.
+@@ -500,8 +534,10 @@ ImGuiFunctions::OpenDirectoryButton(std::string folder, const char *buttonLabel)
+ 	Defines defines = Defines();
+ 	// std::string currentDir = GetCurrentWorkingDirectory() + folder;
+ 	if(!folder.empty() && ImGui::Button(buttonLabel)) {
+-		LogFunctions::LogInfo(defines.logFile, "Folder path: " + folder);
++		//LogFunctions::LogInfo(defines.logFile, "Folder path: " + folder);
+ 		// ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+ 		ShellExecuteA(nullptr, "explore", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+ 	}
+-}
+\ No newline at end of file
++}
++
++//---------- End folder stuff ----------//
+\ No newline at end of file
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 1c79a618..9b7fb2ac 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -27,6 +27,11 @@
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
++// Random number generator
++#include "misc_util.h"
++
++//
++
+ #include "ControllerConfig.h"
+ #include "Pad.h"
+ 
+@@ -120,6 +125,61 @@ bool drawKcNetText = false;
+ //---------- Begin copied from misc_menu.cpp ----------//
+ 
+ 
++//---------- Begin chaos mod timer bar test ----------//
++
++/// <summary>
++/// Credit to user-grinch for this:
++/// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
++/// This displays on the screen but only when the imgui menu is open, I will toggle this elsewhere.
++/// TODO Move the toggle into this and use getters and setters to enable/disable it.
++/// TODO Fix a working timer for this.
++/// TODO Try to place this in DoRWStuffEndOfFrame
++/// Or possibly FrontendIdle or Idle
++/// </summary>
++/// 
++// clang-format off
++void
++MiscFunctions::TimerBarTest()
++{
++	static uint32 m_nTimer = 0;
++	uint32 timer = CTimer::GetTimeInMilliseconds();
++
++	if ((timer - m_nTimer) > static_cast<uint16>(m_nInterval)) 
++	{ 
++		int id = MiscUtil::GenerateRandomNumber(0, 91);
++		for(int i = 0; i < 92; i++) {
++			if (i == id) 
++			{
++				m_nTimer = timer;
++			}
++		}
++	}
++
++	if(this->getChaosTimerBarToggle()) {
++
++		
++
++		int32 screenWidth = FrontEndMenuManager.m_nPrefsWidth;
++		int32 screenHeight = FrontEndMenuManager.m_nPrefsHeight;
++		
++
++		uint32 totalTime = 10;
++		float progress = (totalTime - (timer - m_nTimer) / 1000.0f) / totalTime;
++
++		CRect sizeBox = CRect(0, 0, screenWidth, screenHeight / 50);
++		CRect sizeProgress = CRect(0, 0, screenWidth * progress, screenHeight / 50);
++		CRGBA colorBG = CRGBA(24, 99, 44, 255);
++		CRGBA colorProgress = CRGBA(33, 145, 63, 255);
++
++		CSprite2d::DrawRect(sizeBox, colorBG);
++		CSprite2d::DrawRect(sizeProgress, colorProgress);
++	}
++}
++
++// clang-format on
++
++//---------- End chaos mod timer bar test ----------//
++
+ //---------- Begin Log tests ----------//
+ 
+ /// <summary>
+@@ -296,7 +356,17 @@ MiscFunctions::DrawKCNetTextBoxImGui()
+ 	//}
+ 
+ 	// Original function, should still work
++	
++	// Changing the color of this text only, this works fine
++	// https://stackoverflow.com/questions/61853584/how-can-i-change-text-color-of-my-inputtext-in-imgui
++	// Set the custom color
++	// This works for changing the colors
++	// Set to red
++	ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
+ 	ImGui::Text("Warning, do not put the '~' symbol in this, you will crash!");
++	// Remove the custom color
++	ImGui::PopStyleColor();
++
+ 	// Well this new function didn't work right for blocking certain characters, it won't let me type anything other then '~'
+ 	// ImguiTextboxWithCharFilterAndVector();
+ 	// if (ImGui::InputText("Test text", buffer.data(), 41, ImGuiInputTextFlags_CallbackCharFilter, CharFilterCallback))
+@@ -313,15 +383,16 @@ MiscFunctions::DrawKCNetTextBoxImGui()
+ 			CustomCheats::SetText(buffer.data());
+ 		}
+ 	}
+-
+-	if(ImGui::Button("Set test text")) {
+-		// This works very well.
+-		MiscFunctions::GetInstance().setTestText(std::string(buffer.data()));
+-
+-		// setTestText("Test from ImGui");
+-		//  This is being set, I wonder why it doesn't work in main.cpp
+-		LogFunctions::LogInfo(defines.logFile, buffer.data());
+-	}
++	
++	// This automatically runs, disabled the button.
++	//if(ImGui::Button("Set test text")) {
++	//	// This works very well.
++	//	MiscFunctions::GetInstance().setTestText(std::string(buffer.data()));
++
++	//	// setTestText("Test from ImGui");
++	//	//  This is being set, I wonder why it doesn't work in main.cpp
++	//	LogFunctions::LogInfo(defines.logFile, buffer.data());
++	//}
+ }
+ 
+ /// <summary>
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index 5f6e73bc..25c30a0a 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -9,6 +9,11 @@ private:
+ 	Defines defines;
+ 
+ 	std::string m_testText;
++	std::string m_chaosTimerBarText;
++	bool m_bChaosTimerBar;
++
++	int m_nInterval = 10;
++
+ 	void ToggleCurrentDirectory();
+ 
+ 	// Hud
+@@ -32,7 +37,11 @@ private:
+ 	// Log the area check text for ImGui
+ 	void LogAreaTest();
+ 
+-public: 
++public:
++	// Constructor, initalize the boolean also
++	// TODO Test this
++	//MiscFunctions(bool timerBarInitialValue) : m_bChaosTimerBar(timerBarInitialValue) {}
++
+ 	// Hud, toggles
+ 	void ShowHudToggle();
+ 	void ShowRadarToggle();
+@@ -57,6 +66,10 @@ public:
+ 	// Display the area text ImGui function
+ 	void DisplayAreaCheckImGui();
+ 
++	// Test for timer bar, from here:
++	// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
++	void TimerBarTest();
++
+ 
+ 	// Singleton
+ 	static MiscFunctions &GetInstance()
+@@ -67,7 +80,18 @@ public:
+ 
+ 	// Setters
+ 	void setTestText(const std::string &text) { m_testText = text; }
++	void setChaosTimerBarText(const std::string &text) { m_chaosTimerBarText = text; }
++
++	// This doesn't seem to work from misc menu to misc functions.
++	void setChaosTimerBarToggle(bool toggle) { m_bChaosTimerBar = toggle; }
+ 
+ 	// Getters
+ 	const std::string &getTestText() const { return m_testText; }
++	const std::string &getChaosTimerBarText() const { return m_chaosTimerBarText; }
++
++	const bool &getChaosTimerBarToggle() const { return m_bChaosTimerBar; }
++
++	// Toggles
++	void toggleChaosBarTimer() { m_bChaosTimerBar = !m_bChaosTimerBar; }
++
+ };
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 8c49e10f..ded56cef 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -3,6 +3,9 @@
+ #include "misc_menu.h"
+ #include "imgui.h"
+ 
++// TODO Move some of these into the pch later!
++// Mostly my custom functions and extras needed for ReVC, so I don't have to find them everytime.
++
+ // Menus
+ #include "imgui_main_menu.h"
+ 
+@@ -10,29 +13,28 @@
+ #include "imgui_functions.h"
+ // Cheat functions
+ #include "custom_cheats.h"
+-
+ #include "vehicle_cheats.h"
+ #include "player_cheats.h"
+ 
++// Game functions
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+-
+ #include "misc_functions.h"
+ 
+ // Spawning a ped so far, doesn't work.
+ #include "ped_functions.h"
++#include "ini_functions.h"
+ 
++// ImGui command system
+ #include "imgui_commands.h"
+ 
+ #include "defines.h"
+ #include "./extras/test/enums/model_ids.h"
+ 
+-#include "ControllerConfig.h"
+-#include "Pad.h"
+-
+-#include "ini_functions.h"
+-
++// Util
+ #include "player_util.h"
++#include "message_util.h"
++#include "misc_util.h"
+ 
+ // For area check command reimplementation
+ #include "area_check_test.h"
+@@ -43,6 +45,9 @@
+ #endif
+ 
+ // ReVC
++#include "ControllerConfig.h"
++#include "Pad.h"
++
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+@@ -76,7 +81,7 @@
+ #include <locale>
+ #include <codecvt>
+ 
+-#include "misc_util.h"
++
+ 
+ // TODO Move into a utilites file
+ #include <direct.h>
+@@ -100,6 +105,8 @@
+ // This will toggle the controller button that is shown in ImGui
+ bool toggleControllerText = false;
+ 
++bool timerBarTest = false;
++
+ // This will toggle the custom text I setup in CustomCheats::SetText
+ //bool drawKcNetText = false;
+ 
+@@ -501,7 +508,7 @@ void MiscMenu::MiscTab()
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 	MiscUtil miscUtil = MiscUtil();
+-	MiscFunctions miscFunctions = MiscFunctions();
++	
+ 
+ 	ImGui::Text("Sounds");
+ 	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
+@@ -540,42 +547,60 @@ void MiscMenu::MiscTab()
+ 	}
+ 
+ 	ImGui::Separator();
+-	ImGui::Text("Debug functions");
+-
+-	// I have disabled this for now, broke it when moving into its own function.
+-	//ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+-
+-	// Display position from debug menu
+-	miscFunctions.TogglePositionImGui();
+-
+-	// Toggle the version text like in the debug menu.
+-	miscFunctions.ToggleVersionTextImGui();
+-
+-	// Use ImGui::InputText to get input
+-	// Draw the KCNet Test text box from C++.
+-	// DrawKCNetTextBox();
+-	miscFunctions.DrawKCNetTextBoxImGui();
+-
+-	//if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText)) 
+-	//{ 
+-	//	// TODO Fix this to not show up if the other texts are active
+-	//	if(!drawKcNetText && !gbDisplayPosn)
+-	//		//toggleVersionText();
+-	//		ToggleVersionText();
+-	//}
+-
+-
+-
+-	miscFunctions.ShowCurrentDirectory();
+-	
+-	// This works
+-	imGuiFunctions.OpenCurrentDirectoryButton("Open game directory");
+-
+-	// TODO Fix this, should open a custom directory.
+-	//imGuiFunctions.OpenDirectoryButton("/ViceExtended/logs", "Open logs directory");
+-	std::string currentDir = imGuiFunctions.GetCurrentWorkingDirectory() + "/ViceExtended/logs/";
+-	imGuiFunctions.OpenDirectoryButton(currentDir.c_str(), "Open logs directory");
+-
++	if(ImGui::CollapsingHeader("Debug Functions")) {
++		ImGui::Text("Debug functions");
++
++		// I have disabled this for now, broke it when moving into its own function.
++		// ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
++
++		// Display position from debug menu
++		miscFunctions.TogglePositionImGui();
++
++		// Toggle the version text like in the debug menu.
++		miscFunctions.ToggleVersionTextImGui();
++
++		// Use ImGui::InputText to get input
++		// Draw the KCNet Test text box from C++.
++		// DrawKCNetTextBox();
++		miscFunctions.DrawKCNetTextBoxImGui();
++
++		// if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText))
++		//{
++		//	// TODO Fix this to not show up if the other texts are active
++		//	if(!drawKcNetText && !gbDisplayPosn)
++		//		//toggleVersionText();
++		//		ToggleVersionText();
++		// }
++
++		// Show current directory toggle
++		miscFunctions.ShowCurrentDirectory();
++
++		// This works
++		imGuiFunctions.OpenCurrentDirectoryButton("Open game directory");
++		ImGui::SameLine();
++
++		// TODO Fix this, should open a custom directory.
++		// imGuiFunctions.OpenDirectoryButton("/ViceExtended/logs", "Open logs directory");
++		std::string currentDir = imGuiFunctions.GetCurrentWorkingDirectory() + "/ViceExtended/logs/";
++		imGuiFunctions.OpenDirectoryButton(currentDir.c_str(), "Open logs directory");
++
++		// Well this shows up but only when the menu is open, if I can get this to change with time
++		// and stay up, I could make a basic chaos mod test for random events.
++		// It goes away if the menu goes away, I'll probably need to put it somewhere like FrontendIdle, Idle, or DoRWStuffEndOfFrame.
++		ImGui::Checkbox("Timer bar toggle", &timerBarTest);
++
++		// This works if I have the toggle disabled in the function
++		// Well now, this works with a toggle if i put the toggle in here
++		if(timerBarTest) {
++			// This works fine.
++			miscFunctions.setChaosTimerBarToggle(timerBarTest);
++			// This below doesn't work
++			// TODO Fix this to work.
++			// MiscFunctions::GetInstance().setChaosTimerBarToggle(timerBarTest);
++			miscFunctions.TimerBarTest();
++		}
++	}
++	//
+ 
+ 	ImGui::Separator();
+ 	ImGui::Text("Other tests");
+@@ -646,47 +671,46 @@ void MiscMenu::MiscTab()
+ 
+ 	ImGui::Separator();
+ 	// Fun functions
+-	ImGui::Text("Fun functions");
+-
+-	if(ImGui::Button("Drop bomb")) 
+-	{ 
+-		CustomCheats::ExplosionCheat();
+-	}
++	if(ImGui::CollapsingHeader("Fun functions")) {
+ 
+-	// Display some text from the american.gxt file in game.
+-	if (ImGui::Button("Text test")) 
+-	{
+-		std::string message = "test";
+-		std::wstring_convert<std::codecvt_utf8<wchar>> converter;
+-		
++		ImGui::Text("Fun functions");
+ 
+-		//wchar test = std::to_wstring("L");
++		if(ImGui::Button("Drop bomb")) { CustomCheats::ExplosionCheat(); }
+ 
+-		const size_t size = strlen(message.c_str()) + 1;
+-		// wchar_t *wc = new wchar_t[size];
+-		wchar *wc = new wchar[size];
++		// Display some text from the american.gxt file in game.
++		if(ImGui::Button("Text test")) {
++			std::string message = "test";
++			std::wstring_convert<std::codecvt_utf8<wchar>> converter;
+ 
+-		//utf16ToString(TheText.Get("KCCARUK"));
+-		wchar *carUnlockText = TheText.Get("KCCARUK");
++			// wchar test = std::to_wstring("L");
+ 
++			const size_t size = strlen(message.c_str()) + 1;
++			// wchar_t *wc = new wchar_t[size];
++			wchar *wc = new wchar[size];
+ 
++			// utf16ToString(TheText.Get("KCCARUK"));
++			wchar *carUnlockText = TheText.Get("KCCARUK");
+ 
+-		CHud::SetHelpMessage(carUnlockText, false, false);
++			// CHud::SetHelpMessage(carUnlockText, false, false);
++			MessageUtil::SetMessage(carUnlockText);
+ 
++			// Some of this breaks it.
++			// std::wstring_convert<std::codecvt_utf8<wchar>> converter;
++			// std::wstring wide_string = converter.from_bytes(*carUnlockText);
++			// std::string regular_string = utf16ToString(wide_string);
+ 
+-		// Some of this breaks it.
+-		// std::wstring_convert<std::codecvt_utf8<wchar>> converter;
+-		//std::wstring wide_string = converter.from_bytes(*carUnlockText);
+-		//std::string regular_string = utf16ToString(wide_string);
++			// LogFunctions::LogInfo(defines.logFile, createVectorFromWchar(TheText.Get("KCCARUK"), sizeof(TheText.Get("KCCARUK"));
++			// LogFunctions::LogInfo(defines.logFile, wide_string);
++			//  mbstowcs(wc, message.c_str(), size);
++			// CHud::SetHelpMessage(wc, false, false);
++			// CHud::SetHelpMessage(converter.from_bytes(message), false, false);
++		}
+ 
+-		//LogFunctions::LogInfo(defines.logFile, createVectorFromWchar(TheText.Get("KCCARUK"), sizeof(TheText.Get("KCCARUK"));
+-		//LogFunctions::LogInfo(defines.logFile, wide_string);
+-		// mbstowcs(wc, message.c_str(), size);
+-		//CHud::SetHelpMessage(wc, false, false);
+-		//CHud::SetHelpMessage(converter.from_bytes(message), false, false);
+ 
+ 	}
+ 
++
++
+ 	// Run the test command system for ImGui.
+ 	// This works fairly well, I can add chat commands like in minecraft.
+ 	imGuiCommands.ImGuiCommandSystem();
+diff --git a/src/extras/menus/misc_menu.h b/src/extras/menus/misc_menu.h
+index 54ea4e38..fd195a97 100644
+--- a/src/extras/menus/misc_menu.h
++++ b/src/extras/menus/misc_menu.h
+@@ -2,12 +2,14 @@
+ 
+ #include <string>
+ #include "defines.h"
++#include "misc_functions.h"
+ 
+ class MiscMenu
+ {
+ private:
+ 	std::string m_testText;
+ 	Defines defines;
++	MiscFunctions miscFunctions;
+ 
+ 	void LogJoyButtonJustDown();
+ 
+diff --git a/src/extras/utils/message_util.cpp b/src/extras/utils/message_util.cpp
+new file mode 100644
+index 00000000..072b85a3
+--- /dev/null
++++ b/src/extras/utils/message_util.cpp
+@@ -0,0 +1,49 @@
++#include "pch.h"
++#include "message_util.h"
++
++// ReVC
++#include "Hud.h"
++#include "Font.h"
++
++/// <summary>
++/// Show a help message to the hud
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetMessage(wchar *message)
++{
++	CHud::SetHelpMessage(message, false, false);
++}
++
++/// <summary>
++/// Not sure what this does, it didn't work
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetBigMessage(wchar* message)
++{
++	CHud::SetBigMessage(message, FONT_STANDARD);
++}
++
++/// <summary>
++/// I don't think ReVC had pager messages, this might work on Re3
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetPagerMessage(wchar *message)
++{
++	CHud::SetPagerMessage(message);
++}
++
++/// <summary>
++/// Draw a message to the bottom of the screen, TODO Setup a loop for this somewhere.
++/// TODO Come up with a better name for this.. Or rename 'SetMessage' to SetHelpMessage'
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetMessageOnScreen(wchar *message)
++{
++	// This draws to the screen like missions but goes away,
++	// TODO Setup a loop for this to display messages at the bottom instead of on the top left for the hud
++	CHud::SetMessage(message);
++}
+diff --git a/src/extras/utils/message_util.h b/src/extras/utils/message_util.h
+new file mode 100644
+index 00000000..a52854b8
+--- /dev/null
++++ b/src/extras/utils/message_util.h
+@@ -0,0 +1,15 @@
++#pragma once
++#include "pch.h"
++
++class MessageUtil
++{
++public:
++	// Hud message
++	static void SetMessage(wchar *message);
++	// Doesn't work
++	static void SetBigMessage(wchar *message);
++	// Possibly GTA 3 specific
++	static void SetPagerMessage(wchar *message);
++	// Show a message at the bottom of the screen, needs to be in a loop.
++	static void SetMessageOnScreen(wchar *message);
++};
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 947556fa..0bf50b9d 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -53,6 +53,29 @@
+ 
+ #include <stdlib.h>
+ 
++// Convert ascii to unicode (wchar) for use in the game hud and stuff
++// I copied this from custom_cheats and modified it a bit
++// Well this didn't seem to work right.
++wchar*
++MiscUtil::ConvertToUnicode(std::string text)
++{
++	char str[200];
++	wchar ustr[200];
++
++	// std::string text = "Test text";
++
++	sprintf(str, text.c_str());
++	// Convert the string to a wchar with this AsciiToUnicode function
++	AsciiToUnicode(str, ustr);
++
++
++	// Return the message
++	return ustr;
++	//// Set the message
++	//CHud::SetHelpMessage(ustr, false, false);
++}
++
++
+ 
+ /// <summary>
+ /// Convert a float to a string, instead of using std::to_string everywhere.
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index fabdfb73..7dff8f4b 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -2,6 +2,9 @@
+ #include <sstream> // Include the header
+ #include <string>
+ 
++// For wchar
++#include "common.h"
++
+ class MiscUtil
+ {
+ public:
+@@ -21,4 +24,9 @@ public:
+ 
+ 	// Convert a float to a string
+ 	std::string floatToString(float value);
++
++	// Convert a regular string to unicode string for use in the hud and other game messages.
++	// Well this didn't seem to work right.
++	wchar *ConvertToUnicode(std::string text);
++
+ };
+-- 
+2.45.1.windows.1
+

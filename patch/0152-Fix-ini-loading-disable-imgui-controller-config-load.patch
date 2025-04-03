@@ -1,0 +1,1266 @@
+From a0d942725e93adff847ffc4e15a98188ede04723 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Apr 2025 12:24:46 -0400
+Subject: [PATCH 152/152] Fix ini loading, disable imgui controller config
+ loading
+
+* Add extra blips, and extras from IMPROVED_TECH_PART
+Make gbFalloffBike work on ReVC and ReLCS.
+
+* Add game check to player_util.
+Add versions for all 3 Re games, ReVC, Re3, and ReLCS.
+
+* Fix a few warnings in warp_menu.
+
+* Fix warning in player_menu, make it not crash on the other games.
+
+* Disable the format include.
+
+* Label some items in Game.cpp.
+
+* Label some items in Clock.cpp.
+
+* Label the escalators code in Fluff.cpp.
+
+* Label some items in Frontend.cpp.
+
+* Fix some spelling mistakes.
+
+* Fix maps to load from ViceExtended folder instead of data folder.
+
+* Add more to the american.txt.
+
+* Update patch and commit number to 152.
+* Fix players clothes to not reset when wasted/busted.
+---
+ guides/create-patches.md                   |  4 +-
+ src/control/GameLogic.cpp                  | 44 ++++++++++++-
+ src/core/Clock.cpp                         |  8 +++
+ src/core/FileLoader.cpp                    | 13 ++--
+ src/core/Frontend.cpp                      | 10 ++-
+ src/core/Game.cpp                          | 47 ++++++++++++--
+ src/core/Radar.cpp                         | 74 ++++++++++++++++++++--
+ src/core/Radar.h                           | 15 +++++
+ src/core/config.h                          |  9 +--
+ src/core/main.cpp                          |  2 +-
+ src/extras/cheats/vehicle_cheats.cpp       |  4 ++
+ src/extras/functions/chaos_functions.cpp   |  2 +-
+ src/extras/functions/imgui_setup.cpp       | 12 ++++
+ src/extras/functions/ini_functions.cpp     | 69 ++++++++++++--------
+ src/extras/functions/misc_functions.cpp    |  4 +-
+ src/extras/functions/vehicle_functions.cpp |  6 ++
+ src/extras/menus/misc_menu.cpp             |  2 +-
+ src/extras/menus/player_menu.cpp           | 38 ++++++++++-
+ src/extras/menus/warp_menu.cpp             | 13 +++-
+ src/extras/utils/defines.cpp               |  7 +-
+ src/extras/utils/player_util.cpp           | 17 +++++
+ src/renderer/Fluff.cpp                     |  2 +
+ src/vehicles/Bike.cpp                      |  5 +-
+ src/weapons/Weapon.cpp                     | 17 ++++-
+ utils/gxt/american.txt                     | 26 ++++++++
+ 25 files changed, 384 insertions(+), 66 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index e19195a6..1f885cd9 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 145, patch number: 145)
++(Currently on commit 152, patch number: 152)
+ 
+-1. Run this command in the root of this project: git format-patch \<patchnumber\> -o patches
++1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 539fb946..5c5e7d4e 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -98,10 +98,15 @@ CGameLogic::SortOutStreamingAndMemory(const CVector &pos)
+ 	CStreaming::DeleteRwObjectsAfterDeath(pos);
+ 	CStreaming::RemoveUnusedModelsInLoadedList();
+ 	CGame::DrasticTidyUpMemory(true);
++
++#ifndef IMPROVED_TECH_PART // Player's clothes are not reset after death or arrest
+ 	CWorld::Players[CWorld::PlayerInFocus].m_pPed->Undress("player");
++#endif
+ 	CStreaming::LoadSceneCollision(pos);
+ 	CStreaming::LoadScene(pos);
++#ifndef IMPROVED_TECH_PART // Player's clothes are not reset after death or arrest
+ 	CWorld::Players[CWorld::PlayerInFocus].m_pPed->Dress();
++#endif
+ 	CTimer::Update();
+ }
+ 
+@@ -384,7 +389,7 @@ CGameLogic::Update()
+ 			luaTest.InitLua();
+ #endif
+ 			//
+-			// Get time to pass value from lua
++			// Get time to pass value from lua, TODO Add config option for this in lua
+ #ifdef LUA_TEST
+ 			
+ 			std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
+@@ -484,48 +489,85 @@ CGameLogic::RestorePlayerStuffDuringResurrection(CPlayerPed *pPlayerPed, CVector
+ {
+ 	ClearShortCut();
+ 	CPlayerInfo* pPlayerInfo = pPlayerPed->GetPlayerInfoForThisPlayerPed();
++
++	// Set health back to max, set armor to 0
+ 	pPlayerPed->m_fHealth = pPlayerInfo->m_nMaxHealth;
+ 	pPlayerPed->m_fArmour = 0.0f;
++
++	// Set the player as visible
+ 	pPlayerPed->bIsVisible = true;
++
++	// Reset the bloody footprints
+ 	pPlayerPed->m_bloodyFootprintCountOrDeathTime = 0;
+ 	pPlayerPed->bDoBloodyFootprints = false;
++
++	// Reset the drunkness
+ 	pPlayerPed->m_nDrunkenness = 0;
+ 	pPlayerPed->m_nFadeDrunkenness = 0;
+ 	CMBlur::ClearDrunkBlur();
+ 	pPlayerPed->m_nDrunkCountdown = 0;
++
++	// Reset adrenaline and stamina
+ 	pPlayerPed->ClearAdrenaline();
+ 	pPlayerPed->m_fCurrentStamina = pPlayerPed->m_fMaxStamina;
++
++	// Extinguish the fire on the player
+ 	if (pPlayerPed->m_pFire)
+ 		pPlayerPed->m_pFire->Extinguish();
++
++	// Set the player as not in any vehicle
+ 	pPlayerPed->bInVehicle = false;
+ 	pPlayerPed->m_pMyVehicle = nil;
+ 	pPlayerPed->m_pVehicleAnim = nil;
++
+ 	pPlayerPed->m_pWanted->Reset();
+ 	pPlayerPed->bCancelEnteringCar = false;
+ 	pPlayerPed->RestartNonPartialAnims();
++
+ 	pPlayerInfo->MakePlayerSafe(false);
+ 	pPlayerPed->bRemoveFromWorld = false;
++
+ 	pPlayerPed->ClearWeaponTarget();
++
++	// Set the initial state, clear interesting vehicles
++	// Unsure of what the interesting vehicles is.
+ 	pPlayerPed->SetInitialState();
+ 	CCarCtrl::ClearInterestingVehicleList();
++
++	// Teleport, set move speed, rotation, and heading.
+ 	pPlayerPed->Teleport(pos + CVector(0.0f, 0.0f, 1.0f));
+ 	pPlayerPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
+ 	pPlayerPed->m_fRotationCur = DEGTORAD(angle);
+ 	pPlayerPed->m_fRotationDest = pPlayerPed->m_fRotationCur;
+ 	pPlayerPed->SetHeading(pPlayerPed->m_fRotationCur);
++
++	// Clear the area, change heading rate back to normal.
+ 	CTheScripts::ClearSpaceForMissionEntity(pos, pPlayerPed);
+ 	CWorld::ClearExcitingStuffFromArea(pos, 4000.0f, true);
+ 	pPlayerPed->RestoreHeadingRate();
++
++	// Set the area outside of an interior.
+ 	CGame::currArea = AREA_MAIN_MAP;
+ 	CStreaming::RemoveBuildingsNotInArea(AREA_MAIN_MAP);
++
++	// Restore the camera
+ 	TheCamera.SetCameraDirectlyInFrontForFollowPed_CamOnAString();
+ 	TheCamera.Restore();
++
+ 	CReferences::RemoveReferencesToPlayer();
++
++	// Close garages
+ 	CGarages::PlayerArrestedOrDied();
+ 	CStats::CheckPointReachedUnsuccessfully();
++
++	// Remove and re-add the player to the world
+ 	CWorld::Remove(pPlayerPed);
+ 	CWorld::Add(pPlayerPed);
++
++	// Clear the wasted text
+ 	CHud::ResetWastedText();
++
++	// Unsure of what these do
+ 	CStreaming::StreamZoneModels(pos);
+ 	clearWaterDrop = true;
+ }
+diff --git a/src/core/Clock.cpp b/src/core/Clock.cpp
+index a3298343..c5649b27 100644
+--- a/src/core/Clock.cpp
++++ b/src/core/Clock.cpp
+@@ -118,6 +118,10 @@ CClock::GetIsTimeInRange(uint8 h1, uint8 h2)
+ 		return ms_nGameClockHours >= h1 && ms_nGameClockHours < h2;
+ }
+ 
++/// <summary>
++/// TODO Test this later, see what exactly it does.
++/// </summary>
++/// <param name=""></param>
+ void
+ CClock::StoreClock(void)
+ {
+@@ -127,6 +131,10 @@ CClock::StoreClock(void)
+ 	ms_bClockHasBeenStored = true;
+ }
+ 
++/// <summary>
++/// TODO Test this later, see what exactly it does.
++/// </summary>
++/// <param name=""></param>
+ void
+ CClock::RestoreClock(void)
+ {
+diff --git a/src/core/FileLoader.cpp b/src/core/FileLoader.cpp
+index 3e931c7d..4426ce33 100644
+--- a/src/core/FileLoader.cpp
++++ b/src/core/FileLoader.cpp
+@@ -1438,13 +1438,14 @@ CFileLoader::ReloadObjectTypes(const char *filename)
+ 	CModelInfo::ReInit2dEffects();
+ 	debug("Reloading object types from %s...\n", filename);
+ 
+-	// TODO Change this to load from ViceExtended\\DATA\\MAPS
+-	// It crashes if I try to move the files in there.
+-//#ifdef VICE_EXTENDED
+-//	CFileMgr::ChangeDir("ViceExtended\\DATA\\MAPS\\");
+-//#else
++	// Well I got this working, now it loads from the new folder.
++	// TODO Try to add this mod to this if I can load more into here:
++	// VCS Neons in ReVC: https://github.com/ThirteenAG/ViceCityNeons
++#ifdef VICE_EXTENDED
++	CFileMgr::ChangeDir("\\ViceExtended\\DATA\\MAPS\\");
++#else
+ 	CFileMgr::ChangeDir("\\DATA\\MAPS\\");
+-//#endif // VICE_EXTENDED
++#endif // VICE_EXTENDED
+ 	
+ 	int fd = CFileMgr::OpenFile(filename, "r");
+ 	assert(fd > 0);
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 4d0713a1..7e4e9680 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -7009,6 +7009,10 @@ CMenuManager::DrawQuitGameScreen(void)
+ 	m_AllowNavigation = false;
+ }
+ 
++/// <summary>
++/// Print the radar map to the map menu.
++/// </summary>
++/// <param name=""></param>
+ void
+ CMenuManager::PrintMap(void)
+ {
+@@ -7020,6 +7024,7 @@ CMenuManager::PrintMap(void)
+ 
+ 	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*)rwFILTERLINEAR);
+ 
++	// Disabling these removes pieces from the map in the menu.
+ 	if (SCREEN_WIDTH >= m_fMapCenterX - m_fMapSize || SCREEN_HEIGHT >= m_fMapCenterY - m_fMapSize) {
+ 		m_aFrontEndSprites[MENUSPRITE_MAPTOP01].Draw(CRect(m_fMapCenterX - m_fMapSize, m_fMapCenterY - m_fMapSize,
+ 			m_fMapCenterX - halfTile, m_fMapCenterY - halfTile), CRGBA(255, 255, 255, FadeIn(255)));
+@@ -7069,6 +7074,8 @@ CMenuManager::PrintMap(void)
+ 	CRadar::DrawGPS();
+ #endif
+ 
++//#ifdef DISABLED_CODE
++	// Well this will disable the blips and mostly everything on the map besides the map itself, I could add a toggle for this.
+ 	CRadar::DrawBlips();
+ 	if (m_PrefsShowLegends) {
+ 		CFont::SetWrapx(MENU_X_RIGHT_ALIGNED(40.0f));
+@@ -7126,6 +7133,7 @@ CMenuManager::PrintMap(void)
+ 		mapCrosshair.x = m_nMousePosX;
+ 		mapCrosshair.y = m_nMousePosY;
+ 	}
++#endif
+ 
+ 	CSprite2d::DrawRect(CRect(mapCrosshair.x - MENU_X(1.0f), 0.0f,
+ 		mapCrosshair.x + MENU_X(1.0f), SCREEN_HEIGHT),
+@@ -7134,7 +7142,7 @@ CMenuManager::PrintMap(void)
+ 		SCREEN_WIDTH, mapCrosshair.y - MENU_X(1.0f)),
+ 		CRGBA(0, 0, 0, 150));
+ 
+-#endif
++//#endif
+ 	m_bMenuMapActive = false;
+ 
+ 	CFont::SetWrapx(MENU_X_RIGHT_ALIGNED(MENU_X_MARGIN));
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 5a7ba4c9..51353f60 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -617,15 +617,16 @@ bool CGame::Initialise(const char* datFile)
+ 
+ // Not using these below
+ 
+-// #ifdef VICE_EXTENDED// ViceExtended folder - ViceEx.dat
+-// 	CFileLoader::LoadLevel("ViceExtended\\DATA\\ViceEx.DAT");
+-// #endif
++ //#ifdef VICE_EXTENDED// ViceExtended folder - ViceEx.dat
++ //	CFileLoader::LoadLevel("ViceExtended\\DATA\\ViceEx.DAT");
++ //#endif
+ 
+-// #ifdef VICE_EXTENDED // ViceExtended folder - default.dat
++ //#ifdef VICE_EXTENDED // ViceExtended folder - default.dat
+ 	// CFileLoader::LoadLevel("ViceExtended\\DATA\\DEFAULT.DAT");
+-// #else
++ //#else
+ 
+ 	CFileLoader::LoadLevel("DATA\\DEFAULT.DAT");
++//#endif
+ 	CFileLoader::LoadLevel(datFile);
+ 
+ 	LoadingScreen("Loading the Game", "Add Particles", nil);
+@@ -758,6 +759,7 @@ bool CGame::Initialise(const char* datFile)
+ 	return true;
+ }
+ 
++// TODO Add lua shutdown and other stuff to shutdown here if needed.
+ bool CGame::ShutDown(void)
+ {
+ #ifdef USE_TEXTURE_POOL
+@@ -1017,18 +1019,23 @@ void CGame::InitialiseWhenRestarting(void)
+ /// </summary>
+ void CGame::Process(void) 
+ {
++	// This doesn't seem to exist but it's called, not sure where it is.
+ 	CPad::UpdatePads();
+ #ifdef USE_CUSTOM_ALLOCATOR
+ 	ProcessTidyUpMemory();
+ #endif
+ #ifdef DEBUGMENU
++	// Process debug menu input
+ 	DebugMenuProcess();
+ #endif
++	// Run the updates to the cutscene code.
+ 	CCutsceneMgr::Update();
+ 
++	// Unsure of what this one is doing.
+ 	if (!CCutsceneMgr::IsCutsceneProcessing() && !CTimer::GetIsCodePaused())
+ 		FrontEndMenuManager.Process();
+ 
++	// Update the players current zone
+ 	CTheZones::Update();
+ #ifdef SECUROM
+ 	if (CTimer::GetTimeInMilliseconds() >= (35 * 60 * 1000) && gameProcessPirateCheck == 0){
+@@ -1043,7 +1050,7 @@ void CGame::Process(void)
+ 	uint32 processTime = CTimer::GetCurrentTimeInCycles() / CTimer::GetCyclesPerMillisecond() - startTime;
+ 	CWindModifiers::Number = 0;
+ 
+-	#ifdef EX_PHOTO_MODE // CGame::Process
++#ifdef EX_PHOTO_MODE // CGame::Process
+ 	if (!CTimer::GetIsPaused() && !CPhotoMode::IsPhotoModeEnabled())
+ #else
+ 	if (!CTimer::GetIsPaused())
+@@ -1062,35 +1069,53 @@ void CGame::Process(void)
+ #endif
+ 		CSprite2d::SetRecipNearClip();
+ 		CSprite2d::InitPerFrame();
++
+ 		CFont::InitPerFrame();
++
+ 		CRecordDataForGame::SaveOrRetrieveDataForThisFrame();
+ 		CRecordDataForChase::SaveOrRetrieveDataForThisFrame();
+ 		// Run the cheats
+ 		CPad::DoCheats();
+ 		// Update the clock
+ 		CClock::Update();
++		// Update the weather
+ 		CWeather::Update();
+ 
+ 		PUSH_MEMID(MEMID_SCRIPT);
++		// Process everything for the scripts.
+ 		CTheScripts::Process();
+ 		POP_MEMID();
+ 
++		// This one seems to be a NOP function, meaning it has nothing there.
+ 		CCollision::Update();
+ 		CScriptPaths::Update();
++		// Update the trains, only in GTA 3
+ 		CTrain::UpdateTrains();
+ 		CPlane::UpdatePlanes();
+ 		CHeli::UpdateHelis();
++		// Update the rampages
+ 		CDarkel::Update();
++
++		// Show the skid marks from vehicles, TODO Try disabling this.
+ 		CSkidmarks::Update();
++		// What are Antennas for in ReVC?
++		// Looks like it's for dynamic antennas like radio towers or something, not too sure though.
++		// Actually, I think this is for the antennas on the vehicles, I noticed that when looking at the gta extended
++		// (Vice Extended) code here: https://github.com/x87/gta-extended/blob/miami/src/renderer/Antennas.cpp
+ 		CAntennas::Update();
++		// Update glass panes, such as when they are destroyed.
+ 		CGlass::Update();
+ 
+ #ifdef GTA_SCENE_EDIT
++		// Run the Scene Editor in the debug menu.
+ 		CSceneEdit::Update();
+ #endif
+ 		CSetPieces::Update();
++		// Run the built in events
+ 		CEventList::Update();
++		// Update the particles
+ 		CParticle::Update();
++		// Updates the fire manager, and process ongoing fires.
+ 		gFireManager.Update();
+ 
+ 		///////////////////////////
+@@ -1104,13 +1129,16 @@ void CGame::Process(void)
+ #else
+ 		if (processTime >= 2) {
+ #endif
++			// Remove peds, update population without adding peds
+ 			CPopulation::Update(false);
+ 		} else {
+ 			uint32 startTime = CTimer::GetCurrentTimeInCycles() / CTimer::GetCyclesPerMillisecond();
++			// Remove peds, update population and add peds
+ 			CPopulation::Update(true);
+ 			processTime = CTimer::GetCurrentTimeInCycles() / CTimer::GetCyclesPerMillisecond() - startTime;
+ 		}
+ 
++		// Runs most of the code for updating the weapons, shot info, explosions, projectile info and bullet info
+ 		CWeapon::UpdateWeapons();
+ 
+ 		// Only if CCutsceneMgr or CReplay not running, process the car generators and cranes.
+@@ -1119,13 +1147,20 @@ void CGame::Process(void)
+ 		if (!CReplay::IsPlayingBack())
+ 			CCranes::UpdateCranes();
+ 
++		// Update the clouds
+ 		CClouds::Update();
++		// Update the escalators, plane trails, plane banners,  
+ 		CMovingThings::Update();
++		// Update the water cannons, possibly for the fire trucks
+ 		CWaterCannons::Update();
++		// Process place names, on screen timers, pagers, and current vehicles displaying on the screen.
+ 		CUserDisplay::Process();
++		// Process the game replay code, possibly disable this later since it crashes.
+ 		CReplay::Update();
+ 
+ 		PUSH_MEMID(MEMID_WORLD);
++
++		// Process world events
+ 		CWorld::Process();
+ 		POP_MEMID();
+ 
+diff --git a/src/core/Radar.cpp b/src/core/Radar.cpp
+index b2dc67ff..a89914a2 100644
+--- a/src/core/Radar.cpp
++++ b/src/core/Radar.cpp
+@@ -15,17 +15,19 @@
+ #include "Pools.h"
+ #include "Script.h"
+ #include "TxdStore.h"
+-#include "World.h"
+ #include "SaveBuf.h"
+ #include "Streaming.h"
+ #include "SpecialFX.h"
+ #include "Font.h"
+-#include "SaveBuf.h"
+ 
+ #ifdef IMPROVED_MENU_AND_INPUT
+ #include "Pad.h"
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // New blips
++#include "Pickups.h"
++#endif
++
+ float CRadar::m_radarRange;
+ sRadarTrace CRadar::ms_RadarTrace[NUMRADARBLIPS];
+ CVector2D vec2DRadarOrigin;
+@@ -70,10 +72,18 @@ CSprite2d CRadar::RadioVCPRSprite;
+ CSprite2d CRadar::RadioEspantosoSprite;
+ CSprite2d CRadar::RadioEmotionSprite;
+ CSprite2d CRadar::RadioWaveSprite;
++
+ #ifdef MAP_ENHANCEMENTS
+ CSprite2d CRadar::WaypointSprite;
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // New blips
++CSprite2d CRadar::HouseForSaleSprite;
++CSprite2d CRadar::BombShopSprite;
++CSprite2d CRadar::RaceSprite;
++CSprite2d CRadar::StoreSprite;
++#endif
++
+ CSprite2d *CRadar::RadarSprites[RADAR_SPRITE_COUNT] = { 
+ 	nil,
+ 	&CentreSprite,
+@@ -118,6 +128,13 @@ CSprite2d *CRadar::RadarSprites[RADAR_SPRITE_COUNT] = {
+ #ifdef MAP_ENHANCEMENTS
+ 	&WaypointSprite,
+ #endif
++
++#ifdef IMPROVED_TECH_PART // New blips
++    &HouseForSaleSprite,
++    &BombShopSprite,
++    &RaceSprite,
++    &StoreSprite,
++#endif
+ };
+ 
+ // Why this doesn't coincide with world coordinates i don't know
+@@ -545,6 +562,9 @@ void CRadar::Draw3dMarkers()
+ 	}
+ }
+ 
++/// <summary>
++/// Looks like this draws all the blips on the radar.
++/// </summary>
+ void CRadar::DrawBlips()
+ {
+ 	if (!TheCamera.m_WideScreenOn && CHud::m_Wants_To_Draw_Hud) {
+@@ -1336,7 +1356,13 @@ CRadar::LoadTextures()
+ 	KCabsSprite.SetTexture("kcabs");
+ 	LovefistSprite.SetTexture("lovefist");
+ 	PrintworksSprite.SetTexture("printworks");
++
++#ifdef IMPROVED_TECH_PART // New blips
++	PropertySprite.SetTexture("business");
++#else
+ 	PropertySprite.SetTexture("property");
++#endif
++
+ 	SunYardSprite.SetTexture("SunYard");
+ 	SpraySprite.SetTexture("spray");
+ 	TShirtSprite.SetTexture("tshirt");
+@@ -1388,6 +1414,13 @@ CRadar::LoadTextures()
+ #undef WAYPOINT_B
+ 	}
+ #endif
++#ifdef IMPROVED_TECH_PART // New blips
++	HouseForSaleSprite.SetTexture("property");
++	BombShopSprite.SetTexture("bomb");
++	RaceSprite.SetTexture("race");
++	StoreSprite.SetTexture("store");
++#endif
++
+ 	CTxdStore::PopCurrentTxd();
+ }
+ 
+@@ -1585,6 +1618,14 @@ void CRadar::Shutdown()
+ #ifdef MAP_ENHANCEMENTS
+ 	WaypointSprite.Delete();
+ #endif
++
++#ifdef IMPROVED_TECH_PART // New blips
++	HouseForSaleSprite.Delete();
++	BombShopSprite.Delete();
++	RaceSprite.Delete();
++	StoreSprite.Delete();
++#endif
++
+ 	RemoveRadarSections();
+ }
+ 
+@@ -1695,6 +1736,11 @@ CRadar::InitFrontEndMap()
+ 	ArrowBlipColour2 = CRGBA(0, 0, 0, 0);
+ }
+ 
++/// <summary>
++/// TODO Is this drawing the sprite for the players position?
++/// </summary>
++/// <param name="x"></param>
++/// <param name="y"></param>
+ void
+ CRadar::DrawYouAreHereSprite(float x, float y)
+ {
+@@ -2009,9 +2055,11 @@ CRadar::DrawLegend(int32 x, int32 y, int32 sprite)
+ 		case RADAR_SPRITE_PRINTWORKS:
+ 			text = TheText.Get("LG_20");
+ 		break;
+-		case RADAR_SPRITE_PROPERTY:
+-			text = TheText.Get("LG_21");
+-		break;
++#ifndef IMPROVED_TECH_PART // TEMPORARY, business blip
++	        case RADAR_SPRITE_PROPERTY: 
++				text = TheText.Get("LG_21");
++				break;
++#endif
+ 		case RADAR_SPRITE_SUNYARD:
+ 			text = TheText.Get("LG_36");
+ 		break;
+@@ -2058,6 +2106,22 @@ CRadar::DrawLegend(int32 x, int32 y, int32 sprite)
+         case RADAR_SPRITE_WAYPOINT:
+ 			text = TheText.Get("LG_38");
+ 		break;
++
++#ifdef IMPROVED_TECH_PART // New blips
++	case RADAR_SPRITE_HOUSE_FOR_SALE:
++	case RADAR_SPRITE_PROPERTY:	
++		text = TheText.Get("LG_39"); 
++		break;
++	case RADAR_SPRITE_BOMB_SHOP: 
++		text = TheText.Get("LG_40"); 
++		break;
++	case RADAR_SPRITE_RACE: 
++		text = TheText.Get("LG_41"); 
++		break;
++	case RADAR_SPRITE_STORE: 
++		text = TheText.Get("LG_42"); 
++		break;
++#endif
+ #endif
+ 		default:
+ 		break;
+diff --git a/src/core/Radar.h b/src/core/Radar.h
+index 8735cc26..8628da53 100644
+--- a/src/core/Radar.h
++++ b/src/core/Radar.h
+@@ -97,6 +97,13 @@ enum eRadarSprite
+ 	RADAR_SPRITE_WAYPOINT,
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // New blips
++	RADAR_SPRITE_HOUSE_FOR_SALE,
++	RADAR_SPRITE_BOMB_SHOP,
++	RADAR_SPRITE_RACE,
++	RADAR_SPRITE_STORE,
++#endif
++
+ 	RADAR_SPRITE_COUNT
+ };
+ 
+@@ -227,6 +234,14 @@ public:
+ 	static CSprite2d RadioEspantosoSprite;
+ 	static CSprite2d RadioEmotionSprite;
+ 	static CSprite2d RadioWaveSprite;
++
++#ifdef IMPROVED_TECH_PART // New blips
++	static CSprite2d HouseForSaleSprite;
++	static CSprite2d BombShopSprite;
++	static CSprite2d RaceSprite;
++	static CSprite2d StoreSprite;
++#endif
++
+ 	static CSprite2d *RadarSprites[RADAR_SPRITE_COUNT];
+ 	static float cachedCos;
+ 	static float cachedSin;
+diff --git a/src/core/config.h b/src/core/config.h
+index e04d8a40..c3d95b87 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -202,7 +202,7 @@
+ // #define EX_IMPROVED_TECH_PART
+ 
+ // TODO Fix this, if enabled in the features.ini the rocket launcher doesn't have the proper animations, and won't work.
+-#define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
++//#define EX_ROCKET_LAUNCHER_THIRD_PERSON_AIM
+ 
+ 
+ 
+@@ -592,7 +592,7 @@ enum Config {
+ 
+ 	NUM_CRANES = 8,
+ 	NUM_ESCALATORS = 22,
+-	// Well changing this and changing it in Fluff.cpp also disables the elevators and makes them have a flat surface.
++	// Well changing this and changing it in Fluff.cpp also disables the escalators and makes them have a flat surface.
+ 	// TODO Can I place these anywhere?
+ 	//NUM_ESCALATORS = 21,
+ 	NUM_WATER_CREATURES = 8,
+@@ -866,9 +866,10 @@ static_assert(false, "SUPPORT_XBOX_SCRIPT and SUPPORT_MOBILE_SCRIPT are mutually
+ // TODO Change this later to test it.
+ #define USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 
+-#undef CUSTOM_CODE
++// I Set this back to 1, 2 is too spammy.
++//#undef CUSTOM_CODE
+ #ifdef CUSTOM_CODE
+-#define SCRIPT_LOG_FILE_LEVEL 2 // 0 == no log, 1 == overwrite every frame, 2 == full log
++#define SCRIPT_LOG_FILE_LEVEL 1 // 0 == no log, 1 == overwrite every frame, 2 == full log
+ #else
+ #define SCRIPT_LOG_FILE_LEVEL 0 // 0 == no log, 1 == overwrite every frame, 2 == full log
+ #endif //CUSTOM_CODE
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 2113dd83..d45a8021 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -150,7 +150,7 @@ bool gbPedSpeech = true;
+ bool gbPedHorns = true;
+ #endif
+ 
+-#ifdef CUSTOM_CODE // Bike fall off toggle
++#if defined(CUSTOM_CODE) && defined (GTAVC) || defined (GTALCS) // Bike fall off toggle
+ // Set to true by default, so the player can always fall off the bike unless turned off.
+ bool gbFalloffBike = true;
+ #endif
+diff --git a/src/extras/cheats/vehicle_cheats.cpp b/src/extras/cheats/vehicle_cheats.cpp
+index f9c04a69..4dd3dcef 100644
+--- a/src/extras/cheats/vehicle_cheats.cpp
++++ b/src/extras/cheats/vehicle_cheats.cpp
+@@ -260,7 +260,9 @@ VehicleCheats::NoUpsideDownBlowUpCheat(bool toggle)
+ 		// return;
+ 
+ 		// This just gives an unresolved linker error
++#if defined(GTAVC)
+ 		cPlayerInfo->vehUpsidedownExplode = false;
++#endif
+ 		CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+ 
+ 		// playerInfo.m_nUpsideDownCounter += 2;
+@@ -280,7 +282,9 @@ VehicleCheats::NoUpsideDownBlowUpCheat(bool toggle)
+ 	} else {
+ 
+ 		// This just gives an unresolved linker error
++#if defined(GTAVC)
+ 		cPlayerInfo->vehUpsidedownExplode = true;
++#endif
+ 		CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+ 
+ 		// if(FindPlayerVehicle()) {
+diff --git a/src/extras/functions/chaos_functions.cpp b/src/extras/functions/chaos_functions.cpp
+index c61cc311..a78963e1 100644
+--- a/src/extras/functions/chaos_functions.cpp
++++ b/src/extras/functions/chaos_functions.cpp
+@@ -2,7 +2,7 @@
+ 
+ #include <iomanip>
+ 
+-// Lua test
++// TODO Move to pch
+ #define WITHDINPUT
+ #include "common.h"
+ #include "crossplatform.h"
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index 4eb35b41..c1aea4c8 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -287,7 +287,13 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 
+ 	if(!imGuiFunctions.ImGuiDone) {
+ #endif
++#if defined(GTAVC)
+ 		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
+ 
+ 		// TODO Test this
+ 		// Well this didn't work.
+@@ -313,7 +319,13 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 		// cpad.Clear(true);
+ 
+ 	} else {
++#if defined(GTAVC)
+ 		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_PHONE);
++#elif defined(GTALCS)
++	        CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#endif
+ 	}
+ }
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 00e15402..bfdc3944 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -104,7 +104,16 @@
+ 
+ 
+ // I have moved these values into defines to make it easier to modify them.
+-mINI::INIFile ini(Defines::mainIniFile);
++// TODO Why does this format break in ReLCS and Re3?
++//mINI::INIFile ini(Defines::mainIniFile);
++// 
++
++// TODO Test this, it stopped loading fast loader and no movies from ini on here.
++// This is getting ridiculous, why did my fast loader, no movies and everything in the ini stop being loaded?
++// This happened in ReLCS but reverting this fixed it.. 
++// Idk what's wrong with it.
++mINI::INIFile ini("reVC.ini");
++
+ mINI::INIStructure cfg;
+ 
+ 
+@@ -244,8 +253,10 @@ IniFunctions::DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &
+ 		for(const auto &category : categories) {
+ 			if(ImGui::CollapsingHeader(category.name.c_str())) {
+ 
++				// I added a fix in ReLCS to where all the vehicle menus were the same size.
+ 				if(ImGui::BeginListBox(("##" + category.name).c_str(),
+-				                       ImVec2(-FLT_MIN, category.vehicles.size() * ImGui::GetTextLineHeightWithSpacing()))) {
++				                       // ImVec2(-FLT_MIN, category.vehicles.size() * ImGui::GetTextLineHeightWithSpacing()))) {
++				                       ImVec2(-FLT_MIN, category.vehicles.size() + 10 * ImGui::GetTextLineHeightWithSpacing()))) {
+ 
+ 					for(const auto &vehicle : category.vehicles) {
+ 						ImGui::Text("%s", vehicle.first.c_str()); // Display the vehicle name
+@@ -1088,29 +1099,32 @@ LoadINISettings()
+ {
+ 	if(!ini.read(cfg)) return false;
+ 
+-#ifdef CUSTOM_CODE //ImGui controller config
+-	// This keybind from the file works now, I had it named wrong in the ini.
+-	if(!imguiIni.read(imguiCfg)) return false;
+-
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	Defines defines = Defines();
+-
+-	// TODO Rename these to ImGuiControllerButton1 and ImGuiControllerButton2
+-	// TODO Make this get values for the keyboard input also.
+-	uint16 toggleImGuiButton1 = ReadAndGetImGuiConfig("ImGuiButton1");
+-	uint16 toggleImGuiButton2 = ReadAndGetImGuiConfig("ImGuiButton2");
++// OMG disabling this fixed the ini loading!!!!
++// Why?????
+ 
+-	imGuiFunctions.setImGuiButton1(toggleImGuiButton1);
+-	imGuiFunctions.setImGuiButton2(toggleImGuiButton2);
+-
+-	// No wonder, these are being set to 0, I fixed it, the value was named wrong in the ini.
+-	//std::string buttonString =
+-	//    "Button1: " + std::to_string(imGuiFunctions.getImGuiButton1()) 
+-	//	+ " Button2: " + std::to_string(imGuiFunctions.getImGuiButton2());
+-
+-	//LogFunctions::LogInfo(defines.logFile, buttonString);
+-
+-#endif
++//#ifdef CUSTOM_CODE //ImGui controller config
++//	// This keybind from the file works now, I had it named wrong in the ini.
++//	if(!imguiIni.read(imguiCfg)) return false;
++//
++//	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++//	Defines defines = Defines();
++//
++//	// TODO Rename these to ImGuiControllerButton1 and ImGuiControllerButton2
++//	// TODO Make this get values for the keyboard input also.
++//	uint16 toggleImGuiButton1 = ReadAndGetImGuiConfig("ImGuiButton1");
++//	uint16 toggleImGuiButton2 = ReadAndGetImGuiConfig("ImGuiButton2");
++//
++//	imGuiFunctions.setImGuiButton1(toggleImGuiButton1);
++//	imGuiFunctions.setImGuiButton2(toggleImGuiButton2);
++//
++//	// No wonder, these are being set to 0, I fixed it, the value was named wrong in the ini.
++//	//std::string buttonString =
++//	//    "Button1: " + std::to_string(imGuiFunctions.getImGuiButton1()) 
++//	//	+ " Button2: " + std::to_string(imGuiFunctions.getImGuiButton2());
++//
++//	//LogFunctions::LogInfo(defines.logFile, buttonString);
++//
++//#endif
+ 
+ #ifdef IMPROVED_VIDEOMODE
+ 	ReadIniIfExists("VideoMode", "Width", &FrontEndMenuManager.m_nPrefsWidth);
+@@ -1249,16 +1263,17 @@ LoadINISettings()
+ 	ReadIniIfExists("KCNet", "LuaTest", &gbLuaTest);
+ #endif
+ 
+-//
+-
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+ 	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif
++	//
++
++
+ 
+ 
+ #ifdef IMPROVED_TECH_PART // Other settings
+ // ReadIniIfExists("Other", "Autosave", &FrontEndMenuManager.m_PrefsAutosave);
+-ReadIniIfExists("Other", "StoreGalleryPhotos", &FrontEndMenuManager.m_PrefsStoreGalleryPhotos);
++	ReadIniIfExists("Other", "StoreGalleryPhotos", &FrontEndMenuManager.m_PrefsStoreGalleryPhotos);
+ #endif
+ 
+ #ifdef EX_WEAPON_SIGHT // Menu
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 0b737548..f645b739 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -84,7 +84,7 @@
+ // Extras
+ #include <iostream>
+ #include <vector>
+-#include <format>
++//#include <format>
+ 
+ #include <string>
+ #include <locale>
+@@ -631,7 +631,7 @@ MiscFunctions::DisplayCounterOnScreen()
+ 		strncpy(onscreen_str, str, KEY_LENGTH_IN_SCRIPT);
+ #if defined(GTAVC)
+ 		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str, 0);
+-#else
++#elif defined(GTA3)
+ 		CUserDisplay::OnscnTimer.AddCounter(counterVar, COUNTER_DISPLAY_BAR, onscreen_str);
+ #endif
+ 	} else {
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 848052ad..bcba3538 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -565,7 +565,9 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 			// Some extra chaos features
+ 			if (chaosMode) {
+ 				playerVeh->m_fHealth = 0;
++#if defined(GTAVC)
+ 				playerVeh->ActivateBomb();
++#endif
+ 				// pPed->m_fHealth = 0;
+ 			}
+ 
+@@ -846,9 +848,11 @@ VehicleFunctions::SetBombOnCar()
+ 	CVector playerCoords = playerUtil.PlayerCoords();
+ 	if(vehicleFunctions.IsPlayerInVehicle()) {
+ 		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++#if defined(GTAVC)
+ 		playerVeh->m_bombType = CARBOMB_ONIGNITION;
+ 		// playerVeh->m_bombType = CARBOMB_ONIGNITIONACTIVE;
+ 		playerVeh->ActivateBomb();
++#endif
+ 	}
+ }
+ 
+@@ -864,7 +868,9 @@ VehicleFunctions::RemoveBombFromCar()
+ 
+ 	if(vehicleFunctions.IsPlayerInVehicle()) {
+ 		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
++#if defined(GTAVC)
+ 		playerVeh->m_bombType = CARBOMB_NONE;
++#endif
+ 	}
+ }
+ 
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 02812a47..e684b2fa 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -75,7 +75,7 @@
+ // Extras
+ #include <iostream>
+ #include <vector>
+-#include <format>
++//#include <format>
+ 
+ #include <string>
+ #include <locale>
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 2932ae41..52290e86 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -81,6 +81,7 @@ PlayerMenu::ToggleGetOfJailFree()
+ 
+ // clang-format off
+ 
++#if defined(GTAVC)
+ std::map<std::string, const char*> skinsMap = {
+ 	// Special
+ 	{"Sonny Forelli", "IGSonny"},			{"Alex Shrub", "IGalscb"},
+@@ -96,6 +97,7 @@ std::map<std::string, const char*> skinsMap = {
+ 	{"Chef", "Chef"}, {"Fsfa", "FSFA"}, {"Courier", "COURIER"},
+ 	{"Sgc", "SGC"}, {"Psycho", "PSYCHO"}, {"Striper", "STRIPA"},
+ };
++#endif
+ 
+ // clang-format on
+ 
+@@ -122,12 +124,28 @@ PlayerMenu::ChangeClothesMenu()
+ 		clothes.push_back(name.c_str()); 
+ 	}
+ 
++	// Possible fix for the size_t to int warning
++	int clothesSize = 0;
++	if (clothes.size() <= INT_MAX)
++	{ 
++		clothesSize = static_cast<int>(clothes.size());
++	} else 
++	{
++
++		// This shouldn't need to be too high of a number
++		clothesSize = 45;
++	}
++
++
+ 	ImGui::Separator();
+ 	if(ImGui::CollapsingHeader("Clothes")) {
+ 
+ 		ImGui::Text("Select clothes");
+ 
+-		ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothes.size());
++
++		//ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothes.size());
++		// Possible fix for the size_t to int warning
++		ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothesSize);
+ 
+ 		if(ImGui::Button("Change Clothes")) { // Add the button
+ 			if(selectedItem >= 0 && selectedItem < clothes.size()) {
+@@ -152,6 +170,7 @@ PlayerMenu::ChangeClothesMenu()
+ /// <summary>
+ /// Menu for changing the players skins.
+ /// </summary>
++#if defined(GTAVC)
+ void
+ PlayerMenu::ChangeSkinsMenu()
+ {
+@@ -167,12 +186,24 @@ PlayerMenu::ChangeSkinsMenu()
+ 		skins.push_back(name.c_str()); 
+ 	}
+ 
++	// Possible fix for the size_t to int warning
++	int skinsSize = 0;
++	if(skins.size() <= INT_MAX) {
++		skinsSize = static_cast<int>(skins.size());
++	} else {
++
++		// This shouldn't need to be too high of a number
++		skinsSize = 45;
++	}
++
+ 	ImGui::Separator();
+ 	if(ImGui::CollapsingHeader("Skins")) {
+ 
+ 		ImGui::Text("Select skin");
+ 
+-		ImGui::ListBox("Skins", &selectedItem, skins.data(), skins.size());
++		//ImGui::ListBox("Skins", &selectedItem, skins.data(), skins.size());
++		// Possible fix for the size_t to int warning
++		ImGui::ListBox("Skins", &selectedItem, skins.data(), skinsSize);
+ 
+ 		if(ImGui::Button("Change Skins")) { // Add the button
+ 			if(selectedItem >= 0 && selectedItem < skins.size()) {
+@@ -192,6 +223,7 @@ PlayerMenu::ChangeSkinsMenu()
+ 
+ 
+ }
++#endif
+ 
+ 
+ 
+@@ -252,7 +284,9 @@ PlayerMenu::PlayerTab()
+ 	// Change the players clothes.
+ 	ChangeClothesMenu();
+ 
++#if defined(GTAVC)
+ 	// Change the players skins
+ 	ChangeSkinsMenu();
++#endif
+ 
+ }
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 75268376..68e27897 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -115,7 +115,18 @@ imGuiWarpList()
+ 		warpNames.push_back(warp.name.c_str());
+ 	}
+ 
+-	if (ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpNames.size()))
++	// Possible fix for the size_t to int warning
++	int warpsSize = 0;
++	if(warpNames.size() <= INT_MAX) {
++		warpsSize = static_cast<int>(warpNames.size());
++	} else {
++
++		// This shouldn't need to be too high of a number
++		warpsSize = 300;
++	}
++
++	//if (ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpNames.size()))
++	if (ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpsSize))
+ 	{
+ 		// Listbox selection handling is done for you by imgui.
+ 	}
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index eeb2570d..5036eecd 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -79,14 +79,19 @@ std::string Defines::menuName = "KCNet-Re3-ImGui";
+ std::string Defines::menuName = "KCNet-ReLCS-ImGui";
+ #endif
+ 
+-// TODO Display these somewhere, possibly in a pop up under the debug menu.
+ // Set the program modification author
+ std::string Defines::modificationAuthor = "kelson8";
+ 
+ // Set the program version.
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
++#if defined(GTAVC)
++std::string Defines::programVersion = "1.2a - Pre Release";
++#elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
++#elif defined(GTALCS)
++std::string Defines::programVersion = "1.0a - Pre Release";
++#endif
+ 
+ // Vice extended folder, lua scripts.
+ // For now I only have a test.lua in this but it works when wasted/busted and on game startup.
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index bd4dfedc..242d028d 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -15,12 +15,28 @@
+ 
+ // Begin Clothes
+ // clang-format off
++#if defined (GTAVC)
+ std::map<std::string, const char *> PlayerUtil::clothesMap = {
+ 	{"Default", "Player"}, {"Suit Plain", "Player2"}, {"Worker", "Player3"},
+ 	{"Golfer", "Player4"}, {"Cuban", "Player5"},      {"Cop", "Player6"},
+     {"Bank", "Player7"},   {"Simple", "Player8"},     {"Suit Stripe", "Player9"}
+ };
++#elif defined(GTALCS)
+ 
++// https://docs.sannybuilder.com/scm-documentation/lcs/clothes
++std::map<std::string, const char *> PlayerUtil::clothesMap = 
++{
++	{"Leone's Suit", "PLR"}, {"Lawyer's Suit", "PLR2"}, {"Casual Clothes", "PLR3"},
++	{"Chauffeur's clothes", "PLR4"}, {"Overalls", "PLR5"}, {"Tuxedo", "PLR6"},
++	{"Avenging Angel's fatigues", "PLR7"}, {"'The King' jumpsuit", "PLR8"}, {"Cox Mascot suit", "PLR9"},
++	{"Underwear", "PLR10"}, {"Hero garb", "PLR11"}, {"Dragon' jumpsuit", "PLR12"},
++	{"Antonio", "PLR13"}, {"Sweats", "PLR14"}, {"Wiseguy", "PLR15"}, {"Goodfella", "PLR16"}
++	
++};
++#endif
++
++
++#if defined (GTAVC)
+ // TODO Setup skins in here later, for now they are in player_menu.cpp
+ std::map<std::string, const char*> PlayerUtil::skinsMap = {
+ 	// Special
+@@ -37,6 +53,7 @@ std::map<std::string, const char*> PlayerUtil::skinsMap = {
+ 	{"Chef", "Chef"}, {"Fsfa", "FSFA"}, {"Courier", "COURIER"},
+ 	{"Sgc", "SGC"}, {"Psycho", "PSYCHO"}, {"Striper", "STRIPA"},
+ };
++#endif
+ 
+ 
+ /// <summary>
+diff --git a/src/renderer/Fluff.cpp b/src/renderer/Fluff.cpp
+index 737afcf1..80e947d3 100644
+--- a/src/renderer/Fluff.cpp
++++ b/src/renderer/Fluff.cpp
+@@ -1067,6 +1067,8 @@ CEscalators::Init(void) {
+ 	Shutdown();
+ 	NumEscalators = 0;
+ 
++	// Hmm, I'm going to try to toggle this and see what it does
++	// Well these can  be turned off, I think I have to set it up in the config.h but it works.
+ 	AddOne(CVector(-9.82999f, -938.04498f, 9.4219f), CVector(-8.573f, -938.04498f, 9.4219f),
+ 		CVector(-0.747f, -938.045f, 15.065f), CVector(0.88f, -938.045f, 15.065f), TRUE);
+ 
+diff --git a/src/vehicles/Bike.cpp b/src/vehicles/Bike.cpp
+index 9656ee7b..0a70b380 100644
+--- a/src/vehicles/Bike.cpp
++++ b/src/vehicles/Bike.cpp
+@@ -2360,7 +2360,7 @@ CBike::VehicleDamage(void)
+ 			if(pDriver){
+ 				dir = pDriver->GetLocalDirection(-m_vecDamageNormal);
+ 
+-#ifdef CUSTOM_CODE
++#ifdef CUSTOM_CODE // Toggle fall off bike
+ 				// Check if fall off bike is enabled, if not do nothing
+ 				// Fix for losing health when fall off bike is disabled.
+ 				if(gbFalloffBike) 
+@@ -3027,8 +3027,7 @@ CBike::PlayCarHorn(void)
+ void
+ CBike::KnockOffRider(eWeaponType weapon, uint8 direction, CPed *ped, bool bGetBackOn)
+ {
+-	// Hmm, can I add a toggle for this?
+-#ifdef CUSTOM_CODE
++#ifdef CUSTOM_CODE // Toggle fall off bike
+ 	if (ped->IsPlayer()) 
+ 	{
+ 		if (!gbFalloffBike) 
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 842d44cc..9363e266 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -42,6 +42,10 @@
+ #include "Frontend.h"
+ #endif
+ 
++#ifdef IMPROVED_TECH_PART // moving Moon
++#include "Timecycle.h"
++#endif
++
+ #ifdef IMPROVED_MENU_AND_INPUT
+ #include "Frontend.h"
+ #endif
+@@ -2439,7 +2443,13 @@ CWeapon::FireSniper(CEntity *shooter)
+ 	CVector source = cam->Source;
+ 	CVector dir    = cam->Front;
+ 
+-	if ( DotProduct(dir, CVector(0.0f, -0.9894f, 0.145f)) > 0.997f )
++	// TODO Test this later
++#ifdef IMPROVED_TECH_PART // moving Moon
++	CVector moonDirection = -CTimeCycle::GetSunDirection();
++	if(DotProduct(dir, CVector(moonDirection.x, moonDirection.y, moonDirection.z)) > 0.997f)
++#else
++	if(DotProduct(dir, CVector(0.0f, -0.9894f, 0.145f)) > 0.997f)
++#endif
+ 		CCoronas::MoonSize = (CCoronas::MoonSize+1) & 7;
+ 
+ 	dir.Normalise();
+@@ -3215,11 +3225,14 @@ CWeapon::Update(int32 audioEntity, CPed *pedToAdjustSound)
+ 					if (CTimer::GetTimeInMilliseconds() > m_nTimer && reloadAssoc->GetProgress() < 0.9f) {
+ 						m_nTimer = CTimer::GetTimeInMilliseconds();
+ 					}
+-				} else {
++				} 
++#ifndef IMPROVED_TECH_PART // double reload sound fix
++				else {
+ 					uint32 timePassed = m_nTimer - CWeaponInfo::ms_aReloadSampleTime[m_eWeaponType];
+ 					if (CTimer::GetPreviousTimeInMilliseconds() < timePassed && CTimer::GetTimeInMilliseconds() >= timePassed)
+ 						DMAudio.PlayOneShot(audioEntity, SOUND_WEAPON_RELOAD, m_eWeaponType);
+ 				}
++#endif
+ 			}
+ 
+ 			if ( CTimer::GetTimeInMilliseconds() > m_nTimer )
+diff --git a/utils/gxt/american.txt b/utils/gxt/american.txt
+index f7f2498c..d017ce8f 100644
+--- a/utils/gxt/american.txt
++++ b/utils/gxt/american.txt
+@@ -3583,6 +3583,9 @@ Test
+ [FEO_PLA]
+ Player Setup
+ 
++{ KCNet Custom }
++
++
+ [FEO_GEN]
+ General Settings
+ 
+@@ -3622,6 +3625,29 @@ Car Locked
+ [KCCARUK]
+ Car Unlocked
+ 
++[EXPLDIS]
++Vehicles can no longer explode when upside down.
++
++[EXPLEN]
++Vehicles can now explode when upside down.
++
++[POLWDIS]
++Custom police weapons disabled
++
++[POLWEN]
++Custom police weapons enabled
++
++[PLSPKDS]
++Police spike strips disabled
++
++[PLSPKEN]
++Police spike strips enabled
++
++[KCEXLOG]
++Extra Logging
++
++{ End KCNet Custom }
++
+ [FEA_OUT]
+ Output
+ 
+-- 
+2.45.1.windows.1
+
