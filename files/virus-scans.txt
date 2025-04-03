@@ -1,0 +1,2 @@
+premake5.exe:
+ https://www.virustotal.com/gui/file/12d741d3b70445b025c03e26148e2d129801041fa5ddde61b4ac888a76017395

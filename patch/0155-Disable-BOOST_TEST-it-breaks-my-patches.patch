@@ -1,0 +1,41 @@
+From 6291f49dc340cd96c775f28aeed075a2accb77e4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Apr 2025 14:29:58 -0400
+Subject: [PATCH 155/155] Disable BOOST_TEST, it breaks my patches. Update
+ patch number to 155.
+
+---
+ guides/create-patches.md       | 2 +-
+ src/extras/test/boost_test.cpp | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 43d2c958..23f6dd49 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 154, patch number: 154)
++(Currently on commit 155, patch number: 155)
+ 
+ 1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/extras/test/boost_test.cpp b/src/extras/test/boost_test.cpp
+index e393ffe3..31aad4d6 100644
+--- a/src/extras/test/boost_test.cpp
++++ b/src/extras/test/boost_test.cpp
+@@ -13,7 +13,7 @@
+ // Possibly replace std::optional in datastore.h under src/extras/util with this.
+ // The project doesn't support C++17, it only works on C++14.
+ 
+-#define BOOST_TEST
++//#define BOOST_TEST
+ 
+ #ifdef BOOST_TEST
+ 
+-- 
+2.45.1.windows.1
+

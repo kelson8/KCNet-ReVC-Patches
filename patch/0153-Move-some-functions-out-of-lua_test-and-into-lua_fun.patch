@@ -1,0 +1,1115 @@
+From fd71fb38bfb2097151d62d9e5324232d174592b3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Apr 2025 13:25:26 -0400
+Subject: [PATCH 153/155] Move some functions out of lua_test and into
+ lua_functions
+
+* Cleanup and organize lua_functions.cpp quite a bit.
+* Add clear_area(radius) in lua.
+
+* Add lua-documentation.md which will contain a list of my lua functions.
+
+* Update test.lua, add clear_area to test.lua.
+
+* Add file-changes.md, this will contain a list of most of my changes and where I moved the game files.
+
+* Update patch/commit number to 153.
+---
+ guides/create-patches.md         |   2 +-
+ guides/file-changes.md           |  50 ++++
+ guides/lua-documentation.md      | 107 +++++++
+ src/core/config.h                |   4 +
+ src/extras/lua/lua_functions.cpp | 486 +++++++++++++++++++++----------
+ src/extras/lua/lua_functions.h   |  27 +-
+ src/extras/lua/lua_test.cpp      | 132 ++-------
+ utils/lua/test.lua               |  35 ++-
+ 8 files changed, 567 insertions(+), 276 deletions(-)
+ create mode 100644 guides/file-changes.md
+ create mode 100644 guides/lua-documentation.md
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 1f885cd9..0e58ca87 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 152, patch number: 152)
++(Currently on commit 153, patch number: 153)
+ 
+ 1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/guides/file-changes.md b/guides/file-changes.md
+new file mode 100644
+index 00000000..d256f5db
+--- /dev/null
++++ b/guides/file-changes.md
+@@ -0,0 +1,50 @@
++This is a list of most new files or files that have been moved out of the game folder.
++
++# Moved into ViceExtended
++Here is a list of files that I have moved into 'ViceExtended/data'
++* main.scm
++* main_d.scm
++* freeroam_miami.scm
++* object.dat
++* particle.cfg
++* weapon.dat
++
++Here is a list of files that I have moved into 'ViceExtended/models'
++* Most txd files from the models folder.
++* Added: 'frontend_ds5.txd'
++* Modifed: 'hud.txd' 
++
++The only new files that seems like is in 'ViceExtended/models' are these:
++* weaponSights.txd - For extra weapon sights, this doesn't work right with complex and is broken in my version.
++* radio.txd - For extra radio icons. For other devs: search '#ifdef EX_RADIO_ICONS' in the code to find usages.
++
++# In game folders
++Here is a list of files that are currently in the regular 'data' folder:
++* gta_vc.dat - Don't modify the one in 'ViceExtended', I made that mistake earlier
++
++These files have been modified from the originals outside of the 'ViceExtended' folders:
++* Mostly all files in the 'txd' folder have been replaced with HD versions for the loading screens. I have a random loding screen system to cycle between them on game start.
++* 'TEXT/american.gxt' - I have added the KCNet custom texts in this file
++
++# New files and additions:
++
++'ViceExtended/lua_scripts' folder, these files can be found in the 'utils/lua' directory in this repo.
++* kcnet-events.lua - Events defined in this file will constantly run, so don't place anything in here that may crash the game, I don't have any protections in place for that currently. 
++* locations.lua - This file isn't in use yet, it could be used for teleport locations using the F9 keybind later on.
++* test.lua - Main testing for my lua code, I need to rename this one to kcnet-main.lua. This one runs on game init, wasted, busted, and when F9 is pressed so not all the time like the events. 
++
++Lua info for devs:
++* kcnet-events.lua - This is set under the 'void CGame::Process' inside of Game.cpp.
++* test.lua - This is running under 'WBSTATE_WASTED' and 'WBSTATE_BUSTED' switch statements in GameLogic.cpp, and in the 'GS_PLAYING_GAME' switch statement within win.cpp.
++
++'ViceExtended' folder {My additions} (TODO Move these into 'ViceExtended/kcnet' folder or something):
++
++My items:
++* ImGui-Controls.ini - This will contain a config for xbox controller keybinds once I setup the config for ImGui with it.
++* vehicles.ini - List of vehicles from the Cheat Menu of user-grinch on github.
++* warps.ini - List of warps from the Cheat Menu of user-grinch on github.
++
++'ViceExtended' folder {From ViceExtended project}:
++* features.ini - This can toggle features on/off within the game code.
++* gamecontrollerdb.txt - I think this is from the ReVC project originally, just moved into here.
++* limits.ini - This can adjust the limits in the game, not too sure if I have this active in the code or not.
+diff --git a/guides/lua-documentation.md b/guides/lua-documentation.md
+new file mode 100644
+index 00000000..5eeeb3ac
+--- /dev/null
++++ b/guides/lua-documentation.md
+@@ -0,0 +1,107 @@
++## Info about my lua test
++I will have a list of all functions that work in my lua test in here
++
++TODO I need to rename the test.lua file to kcnet-revc.lua or kcnet-revc-init.lua.
++It will need renamed in the C++ code and the file itself.
++
++These will always run on game startup, wasted, and busted if placed in the test.lua file under ViceExtended/lua_scripts.
++
++Warning: DO NOT place some of these in the kcnet-events.lua file
++
++TODO Make a list of what not to place in the kcnet-events.lua file.
++
++# Misc
++Run a test for the cheats, this was a basic test to run C++ functions but it isn't needed anymore.
++* cheat_test(Cheat)
++
++* List of items for cheat_test():
++1. BLOWMEUP - Blow up the players current vehicle
++2. KILLME - Run the suicide cheat
++3. SPAWNCAR - Test for spawning a car
++4. IMGUITG - This is a leftover and disabled, it used to be my original ImGui toggle.
++
++
++Toggle the players control on/off
++* toggle_control()
++
++-- A toggle for ImGui, I moved to using a keybind for this.
++* toggle_imgui()
++
++# Player
++Toggles
++
++Turn on never wanted
++* enable_never_wanted()
++
++Turn on infinite health
++* enable_infinite_health()
++
++Functions
++
++Set the players position to the specified coords
++* set_position(x, y, z)
++
++Heal the player to full health and give max armor
++* heal_player()
++
++Set the players spawn point, TODO Make this get the respawn point from the locations.lua
++* set_respawn_point(x, y, z, heading)
++
++Cancel the respawn, not sure if this works right
++* cancel_override_restart()
++
++Toggles for losing weapons when dying.
++* enable_lose_weapons_on_death()
++* disable_lose_weapons_on_death()
++
++Log the players coords and heading
++* log_player_coords()
++* log_player_heading()
++
++Check if player is in a vehicle
++* is_player_in_vehicle()
++
++Blow up the players vehicle
++* blow_up_vehicle()
++
++Kill the player if wanted
++* kill_wanted_player()
++
++Kill the player
++* kill_player()
++
++Change the players clothes, due to a crash with invalid models I have disabled this in the C++ code.
++TODO Fix this and stop it from crashing on invalid models
++* change_clothes("clothesName")
++
++Booleans/Other:
++
++Check if the player is alive
++* is_player_alive()
++
++Get the current wanted level if above 0
++* get_wanted_level()
++
++# Messages
++Display a hud help message
++* print_msg(message)
++
++Log messages in lua
++
++Log an info message
++* log_info(message)
++
++# World
++
++Clear the area of any peds and vehicles
++* clear_area(radius)
++
++Set ped density to 0, disable peds
++* disable_peds()
++
++Set vehicle density to 0, disable vehicles
++* disable_vehicles()
++
++Blow up all vehicles (Doesn't blow up the players vehicle)
++* blow_up_all_vehicles()
++
+diff --git a/src/core/config.h b/src/core/config.h
+index c3d95b87..94a67c88 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -39,6 +39,10 @@
+ // I setup the blow_up_vehicle function in lua.
+ // Just don't put anything that'll constantly run in this lua file.
+ #define LUA_EVENT_TEST
++
++// Moves some lua functions out of lua_test, I'm nearly done with this.
++// I will possibly separate this out like lua_player_functions.cpp, lua_world_functions.cpp, and more.
++#define MOVE_LUA_FUNCTIONS
+ #endif
+ 
+ // Move most debug functions into src/extras/debug/debug_functions.cpp
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index c5e0b696..be509514 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -57,182 +57,169 @@
+ 
+ // Well I got this stuff working in this file.
+ 
+-//------- Toggle lose weapons on death --------//
++/* Lua help:
++* To get a string: 
++*	lua_tostring(L, 1);
+ 
+-extern "C" int
+-enableLoseWeaponsOnDeathLua(lua_State *L)
+-{
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++* To get a float: 
++Example for player coords with 3 values:
++*	float playerPosX = (float)lua_tonumber(L, 1);
++*	float playerPosY = (float)lua_tonumber(L, 2);
++*	float playerPosZ = (float)lua_tonumber(L, 3);
+ 
+-	LuaTest luaTest = LuaTest();
+-	Defines defines = Defines();
+-	pPlayerInfo.m_bGetOutOfHospitalFree = true;
+-	pPlayerInfo.m_bGetOutOfJailFree = true;
++* To get an int:
++*	
+ 
+-	std::string toggleWeaponsDeathString = "You will now lose weapons on death";
++* To push a boolean:
++*	I have a custom function called pushBooleanToLua which can be used to push a boolean from C++
++*	to the lua code.
+ 
+-	LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+-	return 1;
+-}
+ 
+-extern "C" int
+-disableLoseWeaponsOnDeathLua(lua_State *L)
+-{
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++*/
+ 
+-	LuaTest luaTest = LuaTest();
+-	Defines defines = Defines();
+-	pPlayerInfo.m_bGetOutOfHospitalFree = false;
+-	pPlayerInfo.m_bGetOutOfJailFree = false;
++//------- Lua utils --------//
+ 
+-	// This is annoying, it runs everytime the game starts or lua inits
+-	//std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
+-	//LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+-	return 1;
++/// <summary>
++/// Push a boolean to lua.
++/// </summary>
++/// <param name="L"></param>
++/// <param name="value"></param>
++void
++pushBooleanToLua(lua_State *L, bool value)
++{
++	lua_pushboolean(L, value);
+ }
+ 
+-// Disabled this for now.
+-extern "C" int
+-toggleLoseWeaponsOnDeathLua(lua_State *L)
++
++
++
++
++
++// clang-format off
++//------- Log utils/ Message utils --------//
++extern "C" 
+ {
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+ 
+-	LuaTest luaTest = LuaTest();
+-	Defines defines = Defines();
++	/// <summary>
++	/// Log the players coords to the lua file, this works.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	logPlayerCoordsLua(lua_State *L)
++	{
++		Defines defines = Defines();
++		PlayerUtil playerUtil = PlayerUtil();
+ 
+-	// TODO Test this
+-	// pPlayerInfo.m_bGetOutOfHospitalFree = luaTest.toggleLoseWeaponsOnDeath;
++		CVector playerCoords = playerUtil.PlayerCoords();
++		float playerX = playerCoords.x;
++		float playerY = playerCoords.y;
++		float playerZ = playerCoords.z;
+ 
+-	if(luaTest.toggleLoseWeaponsOnDeath) {
+-		pPlayerInfo.m_bGetOutOfHospitalFree = true;
+-	} else {
+-		pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		LogFunctions::LogInfo(defines.luaLogFile,
++	                      "Player coords X:" + std::to_string(playerX) + " Y: " + std::to_string(playerY) + " Z: " + std::to_string(playerZ));
++
++		return 1;
+ 	}
+ 
+-	std::string toggleWeaponsDeathString =
+-	    luaTest.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
+-	// LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++	/// <summary>
++        /// Log the players heading to the lua file, this works.
++        /// </summary>
++        /// <param name="L"></param>
++        /// <returns></returns>
++	int
++    logPlayerHeadingLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    PlayerUtil playerUtil = PlayerUtil();
+ 
+-	// if (luaTest.toggleLoseWeaponsOnDeath)
+-	//{
+-	// }
++	    float playerHeading = playerUtil.PlayerHeading();
++	    LogFunctions::LogInfo(defines.luaLogFile, "Player heading: " + std::to_string(playerHeading));
+ 
+-	return 1;
+-}
++	    return 1;
++	}
+ 
+-/// <summary>
+-/// Log the players coords to the lua file, this works.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int 
+-logPlayerCoordsLua(lua_State* L)
+-{
+-	Defines defines = Defines();
+-	PlayerUtil playerUtil = PlayerUtil();
+-	
+-	CVector playerCoords = playerUtil.PlayerCoords();
+-	float playerX = playerCoords.x;
+-	float playerY = playerCoords.y;
+-	float playerZ = playerCoords.z;
++	/// <summary>
++    /// This works, log an info message using lua.
++    /// </summary>
++    /// <param name="L"></param>
++    /// <returns></returns>
++    extern "C" int
++    logMessageLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    // std::string logString = lua_tostring(L, 1);
++	    const char *logString = lua_tostring(L, 1);
++
++	    if(logString == nullptr) {
++			// Oops, forgot this.
++		    lua_pushstring(L, "Error: missing string argument");
++		    return 1;
++		}
+ 
++	    LogFunctions::LogInfo(defines.luaLogFile, logString);
+ 
+-	LogFunctions::LogInfo(defines.luaLogFile, "Player coords X:" + std::to_string(playerX) 
+-		+ " Y: " + std::to_string(playerY) 
+-		+ " Z: " + std::to_string(playerZ));
++	    return 1;
++	}
+ 
+-	return 1;
+-}
+ 
+-/// <summary>
+-/// Log the players heading to the lua file, this works.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int
+-logPlayerHeadingLua(lua_State *L)
+-{
+-	Defines defines = Defines();
+-	PlayerUtil playerUtil = PlayerUtil();
++	// Display a help message to the hud using lua, this works
++	// To use this in lua: print_msg(message)
++	int
++	customHelpMessageLua(lua_State* L)
++	{
++	    const char *messageText = lua_tostring(L, 1);
+ 
+-	float playerHeading = playerUtil.PlayerHeading();
+-	LogFunctions::LogInfo(defines.luaLogFile, "Player heading: " + std::to_string(playerHeading));
++		if (lua_tostring(L, 1)) { 
++			CustomCheats::CustomHelpMessage(messageText);
++		}
+ 
+-	return 1;
+-}
++	    return 1;
+ 
++	}
+ 
+-/// <summary>
+-/// Push a boolean to lua.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <param name="value"></param>
+-void
+-pushBooleanToLua(lua_State *L, bool value)
+-{
+-	lua_pushboolean(L, value);
+ }
+ 
+-/// <summary>
+-/// This works for logging if the player is in a vehicle, tested with logMessageLua in lua.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int 
+-isPlayerInVehicleLua(lua_State* L)
+-{
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-	bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
+-	pushBooleanToLua(L, isInVehicle);
+-	return 1;
+-}
+ 
+-/// <summary>
+-/// This works, log an info message using lua.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int
+-logMessageLua(lua_State* L)
++// clang-format off
++
++//-----------------------
++// World options
++//-----------------------
++extern "C"
+ {
+-	Defines defines = Defines();
+-	//std::string logString = lua_tostring(L, 1);
+-	const char* logString = lua_tostring(L, 1);
++	// Clear items in the specified area
++	// TODO Test this
++	int
++	clearAreaLua(lua_State* L)
++	{
++		CustomCheats customCheats = CustomCheats();
++		int radius = lua_tointeger(L, 1);
++		
++		customCheats.ClearItemsFromArea(radius);
+ 
+-	if (logString == nullptr) { 
+-		// Oops, forgot this.
+-		lua_pushstring(L, "Error: missing string argument");
+ 		return 1;
+ 	}
+ 
+-	LogFunctions::LogInfo(defines.luaLogFile, logString);
+-	
+-	return 1;
+-}
+-
+-/// <summary>
+-/// TODO Test this for the events in lua.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int
+-blowUpPlayerVehicleLua(lua_State *L)
+-{
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-	bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
++	int
++	disablePedsLua(lua_State *L)
++	{
++		PlayerCheats playerCheats = PlayerCheats();
++		CPopulation::PedDensityMultiplier = 0.0f;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Peds have been disabled");
+ 
+-	if (isInVehicle) 
+-	{ 
+-		vehicleFunctions.BlowUpVehicle();
++		return 1;
+ 	}
+ 
+-	return 1;
+-}
++	int
++	disableVehiclesLua(lua_State *L)
++	{
++		CCarCtrl::CarDensityMultiplier = 0.0f;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Vehicles have been disabled");
+ 
+-// Vehicle
++		return 1;
++	}
+ 
+-extern "C"
+-{
+ 	/// <summary>
+ 	/// Blow up all vehicles, lua function.
+ 	/// </summary>
+@@ -242,28 +229,226 @@ extern "C"
+ 		CustomCheats::BlowUpAllCars();
+ 		return 1;
+ 	}
++
+ }
+ 
+-// TODO Sort these below, add these into different 'extern "C"' blocks 
+-// and label them above like I did with the vehicle one.
++//-----------------------
++// Player options
++//-----------------------
++
++// Moved from lua_test.cpp
++
+ extern "C"
+ {
+-
+-	// Display a help message to the hud using lua, this works
+-	// To use this in lua: print_msg(message)
++	/// <summary>
++	/// This sets the position in the lua function I have defined as a test.
++	/// The values even are able to be changed without restarting the game.
++	/// This will be very useful for later once I figure out menus.
++	/// lua function: set_position(X, Y, Z)
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
+ 	int
+-	customHelpMessageLua(lua_State* L)
++	SetPlayerPositionLua(lua_State *L)
+ 	{
+-	    const char *messageText = lua_tostring(L, 1);
++		CPlayerPed *pPed = FindPlayerPed();
++		CVector pPlayerPos = FindPlayerCoors();
+ 
+-		if (lua_tostring(L, 1)) { 
+-			CustomCheats::CustomHelpMessage(messageText);
++		// These seem to work in lua.
++		float playerPosX = (float)lua_tonumber(L, 1);
++		float playerPosY = (float)lua_tonumber(L, 2);
++		float playerPosZ = (float)lua_tonumber(L, 3);
++
++		// pPlayerPos.x = playerPosX;
++		// pPlayerPos.y = playerPosY;
++		// pPlayerPos.z = playerPosZ;
++
++		CVector newPlayerPos = CVector(playerPosX, playerPosY, playerPosZ);
++		// FindPlayerPed()->SetPosition(playerPos);
++
++		FindPlayerPed()->SetPosition(newPlayerPos);
++
++		// TODO Test this for ImGui
++		// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++
++		// This is being called?
++		// CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++
++		// Ok, the values are there, this is printing properly it looks like
++		LogFunctions::LogInfo(Defines::luaLogFile,
++	                      "X: " + std::to_string(playerPosX) + " Y: " + std::to_string(playerPosY) + "Z: " + std::to_string(playerPosZ));
++
++		// TRACE("X: %s Y: %s Z: %s", playerPosX, playerPosY, playerPosZ);
++
++		// Test setting the player at random coords
++
++		// Make a random number generator
++		// Make it pick between lists of numbers within the range of the map
++
++		// This return value is the amount of parameters I'm quite sure.
++		return 3;
++	}
++
++	// Well this toggles the players control on/off
++	// Could be useful for ImGui.
++	bool playerControl = true;
++	int
++	TogglePlayerControlLua(lua_State *L)
++	{
++		playerControl = !playerControl;
++		if(!playerControl) {
++			CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++		} else {
++			CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++			// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_ENABLED);
++			CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+ 		}
+ 
+-	    return 1;
++		return 1;
++	}
++
++	int
++	enableNeverWantedLua(lua_State *L)
++	{
++		PlayerCheats::EnableNeverWanted();
++		LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
++
++		return 1;
++	}
++
++	int
++	enablePlayerInfiniteHealthLua(lua_State *L)
++	{
++		PlayerCheats playerCheats = PlayerCheats();
++		playerCheats.EnableInfiniteHealth();
++		LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was enabled");
++
++		return 1;
++	}
++
++
++	/// <summary>
++	/// Basic test for healing the player in lua, this works.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	HealPlayerLua(lua_State *L)
++	{
++		CPlayerPed *pPed = FindPlayerPed();
++		pPed->m_fHealth = 250;
++		pPed->m_fArmour = 100;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Player was healed");
++
++		return 1;
++	}
++
++
++	//------- Vehicle --------//
++
++	/// <summary>
++	/// This works for logging if the player is in a vehicle, tested with logMessageLua in lua.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	extern "C" int 
++	isPlayerInVehicleLua(lua_State* L)
++	{
++		VehicleFunctions vehicleFunctions = VehicleFunctions();
++		bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
++		pushBooleanToLua(L, isInVehicle);
++		return 1;
++	}
++
++
++
++	/// <summary>
++	/// TODO Test this for the events in lua.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	blowUpPlayerVehicleLua(lua_State *L)
++	{
++		VehicleFunctions vehicleFunctions = VehicleFunctions();
++		bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
++
++		if (isInVehicle) 
++		{ 
++			vehicleFunctions.BlowUpVehicle();
++		}
+ 
++		return 1;
+ 	}
++	//
++
++
++	//------- Toggle lose weapons on death --------//
++
++	int
++	enableLoseWeaponsOnDeathLua(lua_State *L)
++	{
++		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+ 	
++		LuaTest luaTest = LuaTest();
++		Defines defines = Defines();
++		pPlayerInfo.m_bGetOutOfHospitalFree = true;
++		pPlayerInfo.m_bGetOutOfJailFree = true;
++
++		std::string toggleWeaponsDeathString = "You will now lose weapons on death";
++
++		LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		return 1;
++	}
++
++	int
++	disableLoseWeaponsOnDeathLua(lua_State *L)
++	{
++		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++		LuaTest luaTest = LuaTest();
++		Defines defines = Defines();
++		pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		pPlayerInfo.m_bGetOutOfJailFree = false;
++
++		// This is annoying, it runs everytime the game starts or lua inits
++		//std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
++		//LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		return 1;
++	}
++
++	// Disabled this for now.
++	int
++	toggleLoseWeaponsOnDeathLua(lua_State *L)
++	{
++		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++		LuaTest luaTest = LuaTest();
++		Defines defines = Defines();
++
++		// TODO Test this
++		// pPlayerInfo.m_bGetOutOfHospitalFree = luaTest.toggleLoseWeaponsOnDeath;
++
++		if(luaTest.toggleLoseWeaponsOnDeath) 
++		{
++			pPlayerInfo.m_bGetOutOfHospitalFree = true;
++		} else {
++			pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		}
++
++
++		std::string toggleWeaponsDeathString =
++			luaTest.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
++		// LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++
++		// if (luaTest.toggleLoseWeaponsOnDeath)
++		//{
++		// }
++
++		return 1;
++	}
++
+ 
+ 	// This works, displays in lua if I have a wanted level more then 0, tested with this lua code:
+ 	/*
+@@ -335,4 +520,9 @@ extern "C"
+ 	    return 1;
+ 	}
+ 
+-}
+\ No newline at end of file
++}
++
++//
++
++
++// clang-format on
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 0123d489..9d41d4a1 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -19,13 +19,21 @@ extern "C" {
+ 	extern int logPlayerCoordsLua(lua_State *L);
+ 	extern int logPlayerHeadingLua(lua_State *L);
+ 
+-	// Player
++	
++
++	//------------- Player ------------//
+ 	// Vehicle
+ 	extern int isPlayerInVehicleLua(lua_State *L);
+     extern int blowUpPlayerVehicleLua(lua_State *L);
+     extern int blowUpAllVehiclesLua(lua_State *L);
+-	//
+-    
++
++	extern int SetPlayerPositionLua(lua_State *L);
++	extern int TogglePlayerControlLua(lua_State *L);
++	extern int HealPlayerLua(lua_State *L);
++
++	// 
++	extern int enableNeverWantedLua(lua_State *L);
++	extern int enablePlayerInfiniteHealthLua(lua_State *L);
+ 
+ 	extern int changePlayerClothesLua(lua_State *L);
+ 
+@@ -36,8 +44,17 @@ extern "C" {
+ 
+ 	extern int checkWantedLevelLua(lua_State *L);
+ 
+-	
+-	// Misc
++	//
++
++	//------------- World ------------//
++	extern int clearAreaLua(lua_State* L);
++
++	extern int disablePedsLua(lua_State *L);
++	extern int disableVehiclesLua(lua_State *L);
++	//
++    
++
++	//------------- Messages ------------//
+ 	extern int logMessageLua(lua_State *L);
+     extern int customHelpMessageLua(lua_State *L);
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 234d1cf4..b6ab513c 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -234,57 +234,9 @@ CheatTestNew(lua_State *L)
+ 	return 1;
+ }
+ 
+-/// <summary>
+-/// This sets the position in the lua function I have defined as a test.
+-/// The values even are able to be changed without restarting the game.
+-/// This will be very useful for later once I figure out menus.
+-/// lua function: set_position(X, Y, Z)
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int
+-SetPlayerPositionLua(lua_State *L)
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPlayerPos = FindPlayerCoors();
+-
+-	// These seem to work in lua.
+-	float playerPosX = (float)lua_tonumber(L, 1);
+-	float playerPosY = (float)lua_tonumber(L, 2);
+-	float playerPosZ = (float)lua_tonumber(L, 3);
+-
+-	// pPlayerPos.x = playerPosX;
+-	// pPlayerPos.y = playerPosY;
+-	// pPlayerPos.z = playerPosZ;
+-
+-	CVector newPlayerPos = CVector(playerPosX, playerPosY, playerPosZ);
+-	// FindPlayerPed()->SetPosition(playerPos);
+-
+-	FindPlayerPed()->SetPosition(newPlayerPos);
+-
+-	// TODO Test this for ImGui
+-	// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-
+-	// This is being called?
+-	// CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-
+-	// Ok, the values are there, this is printing properly it looks like
+-	LogFunctions::LogInfo(Defines::luaLogFile,
+-	                      "X: " + std::to_string(playerPosX) + " Y: " + std::to_string(playerPosY) + "Z: " + std::to_string(playerPosZ));
+-
+-	// TRACE("X: %s Y: %s Z: %s", playerPosX, playerPosY, playerPosZ);
+-
+-	// Test setting the player at random coords
+-
+-	// Make a random number generator
+-	// Make it pick between lists of numbers within the range of the map
+-
+-	// This return value is the amount of parameters I'm quite sure.
+-	return 3;
+-}
+-
+ // Well this toggles the players control on/off
+ // Could be useful for ImGui.
++#ifndef MOVE_LUA_FUNCTIONS
+ bool playerControl = true;
+ extern "C" int
+ TogglePlayerControlLua(lua_State *L)
+@@ -301,60 +253,7 @@ TogglePlayerControlLua(lua_State *L)
+ 
+ 	return 1;
+ }
+-
+-/// <summary>
+-/// Basic test for healing the player in lua, this works.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int
+-HealPlayerLua(lua_State *L)
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->m_fHealth = 250;
+-	pPed->m_fArmour = 100;
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Player was healed");
+-
+-	return 1;
+-}
+-
+-extern "C" int
+-enableNeverWantedLua(lua_State *L)
+-{
+-	PlayerCheats::EnableNeverWanted();
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
+-
+-	return 1;
+-}
+-
+-extern "C" int
+-enablePlayerInfiniteHealthLua(lua_State *L)
+-{
+-	PlayerCheats playerCheats = PlayerCheats();
+-	playerCheats.EnableInfiniteHealth();
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was enabled");
+-
+-	return 1;
+-}
+-
+-extern "C" int
+-disablePedsLua(lua_State *L)
+-{
+-	PlayerCheats playerCheats = PlayerCheats();
+-	CPopulation::PedDensityMultiplier = 0.0f;
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Peds have been disabled");
+-
+-	return 1;
+-}
+-
+-extern "C" int
+-disableVehiclesLua(lua_State *L)
+-{
+-	CCarCtrl::CarDensityMultiplier = 0.0f;
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Vehicles have been disabled");
+-
+-	return 1;
+-}
++#endif
+ 
+ /// <summary>
+ /// This works for respawning the player.
+@@ -498,19 +397,14 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Test for ImGui
+ 	lua_register(L, "toggle_imgui", toggleImGuiLua);
+ 
++	//------------- Player ------------//
++
+ 	// Auto enable never wanted in the lua script
+ 	lua_register(L, "enable_never_wanted", enableNeverWantedLua);
+ 
+ 	// Auto enable infinite health in the lua script
+ 	lua_register(L, "enable_infinite_health", enablePlayerInfiniteHealthLua);
+ 
+-	// Auto disable peds and vehicles in the lua script
+-	lua_register(L, "disable_peds", disablePedsLua);
+-	lua_register(L, "disable_vehicles", disableVehiclesLua);
+-	
+-
+-	//------------- Player ------------//
+-
+ 	// This seems to work now.
+ 	lua_register(L, "set_position", SetPlayerPositionLua);
+ 	// lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
+@@ -540,8 +434,6 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Blow up all vehicles
+ 	lua_register(L, "blow_up_all_vehicles", blowUpAllVehiclesLua);
+ 
+-	//
+-
+ 	// Kill the player if wanted
+ 	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
+ 
+@@ -553,11 +445,23 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	// TODO Setup changing player clothes, check if the model is invalid.
+ 	// Until I figure that out, I have disabled this.
+-	//lua_register(L, "change_clothes", changePlayerClothesLua);
++	// lua_register(L, "change_clothes", changePlayerClothesLua);
+ 
+ 	// Get the current wanted level if above 0
+ 	lua_register(L, "get_wanted_level", checkWantedLevelLua);
+ 
++	//
++
++	//-------------- World --------------//
++	// Auto disable peds and vehicles in the lua script
++	lua_register(L, "disable_peds", disablePedsLua);
++	lua_register(L, "disable_vehicles", disableVehiclesLua);
++
++	// Clear the area of any peds and vehicles.
++	// Example: clear_area(radius)
++	lua_register(L, "clear_area", clearAreaLua);
++	//
++
+ 	//------------- Messages ------------//
+ 
+ 	// Display a hud help message
+@@ -764,7 +668,9 @@ LuaTest::InitLua()
+ 	}
+ 
+ 
++	//-------------------
+ 	// First lua file
++	//-------------------
+ 
+ 	// TODO Figure out how to get this.
+ 	// For now I'll just use the toggles above.
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index c7eb0b83..3c957768 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -33,12 +33,6 @@
+ -- Turn on infinite health
+ -- enable_infinite_health()
+ 
+--- Set ped density to 0, disable peds
+--- disable_peds()
+-
+--- Set vehicle density to 0, disable vehicles
+--- disable_vehicles()
+-
+ ------
+ -- Player functions
+ ------
+@@ -78,9 +72,6 @@
+ -- Kill the player
+ -- kill_player()
+ 
+--- Check if the player is alive
+--- is_player_alive()
+-
+ -- Change the players clothes, due to a crash with invalid models I have disabled this in the C++ code.
+ -- TODO Fix this and stop it from crashing on invalid models
+ -- change_clothes("clothesName")
+@@ -88,6 +79,10 @@
+ -- Get the current wanted level if above 0
+ -- get_wanted_level()
+ 
++-- Booleans:
++-- Check if the player is alive
++-- is_player_alive()
++
+ ------
+ -- Message functions
+ ------
+@@ -99,6 +94,18 @@
+ -- Log an info message
+ -- log_info(message)
+ 
++------
++-- World functions
++------
++-- Clear the area of any peds and vehicles
++-- clear_area(radius)
++
++-- Set ped density to 0, disable peds
++-- disable_peds()
++
++-- Set vehicle density to 0, disable vehicles
++-- disable_vehicles()
++
+ 
+ -----------
+ -- Toggles
+@@ -148,6 +155,8 @@ local display_help_text = false
+ -- Uses CustomCheats::BlowUpAllCars()
+ local blow_up_cars_toggle = false
+ 
++local clear_area_toggle = true
++
+ -----------
+ -- Locations
+ -----------
+@@ -230,10 +239,18 @@ else
+ end
+ 
+ 
++-- Blow up all cars cheat
+ if blow_up_cars_toggle then
+ 	blow_up_all_vehicles()
+ end
+ 
++-- Clear the area of any peds and vehicles.
++if clear_area_toggle then
++	clear_area(25)
++end
++
++
++
+ 
+ -- Disabled
+ -- toggle_lose_weapons_on_death()
+-- 
+2.45.1.windows.1
+

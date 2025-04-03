@@ -1,0 +1,73 @@
+From 1f87da2134cf591e6e8c3fda5944166db2c7e8ad Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Apr 2025 14:25:12 -0400
+Subject: [PATCH 154/155] Disable TOML_TEST, it breaks my patches
+
+* Add new folders to premake.
+
+* Update patch/commit number to 154.
+---
+ guides/create-patches.md          |  2 +-
+ premake5.lua                      | 12 ++++++++++++
+ src/extras/functions/toml_imgui.h |  2 +-
+ 3 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 0e58ca87..43d2c958 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 153, patch number: 153)
++(Currently on commit 154, patch number: 154)
+ 
+ 1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/premake5.lua b/premake5.lua
+index 64797055..f18ef135 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -333,6 +333,12 @@ project "reVC"
+ 	files { addSrcFiles("src/extras/debug") }
+ 	files { addSrcFiles("src/extras/functions") }
+ 	files { addSrcFiles("src/extras/lua") }
++	
++	-- New, KCNet folder
++	files { addSrcFiles("src/extras/kcnet") }
++	files { addSrcFiles("src/extras/kcnet/api") }
++	--
++	
+ 	files { addSrcFiles("src/extras/menus") }
+ 	files { addSrcFiles("src/extras/test") }
+ 	files { addSrcFiles("src/extras/utils") }
+@@ -371,6 +377,12 @@ project "reVC"
+ 	includedirs { "src/extras/debug" }
+ 	includedirs { "src/extras/functions" }
+ 	includedirs { "src/extras/lua" }
++	
++	-- New, KCNet folder
++	includedirs { "src/extras/kcnet" }
++	includedirs { "src/extras/kcnet/api" }
++	--
++	
+ 	includedirs { "src/extras/menus" }
+ 	includedirs { "src/extras/test" }
+ 	includedirs { "src/extras/utils" }
+diff --git a/src/extras/functions/toml_imgui.h b/src/extras/functions/toml_imgui.h
+index 9579fc1e..8fc8dc5f 100644
+--- a/src/extras/functions/toml_imgui.h
++++ b/src/extras/functions/toml_imgui.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#define TOML_TEST
++//#define TOML_TEST
+ 
+ #ifdef TOML_TEST
+ class TomlImGui
+-- 
+2.45.1.windows.1
+
