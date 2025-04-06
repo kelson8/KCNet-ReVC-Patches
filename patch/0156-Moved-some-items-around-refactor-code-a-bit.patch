@@ -1,0 +1,1030 @@
+From 0937091886437d877deaecdb0b6051b8283516c7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Apr 2025 22:41:04 -0400
+Subject: [PATCH 156/165] Moved some items around, refactor code a bit
+
+* Added a toggle in the ini for the ImGui menu.
+
+* Added a toggle in the ini for the lua being enabled/disabled.
+
+* Fix the alt key to not freeze the game with ImGui.
+
+* Add objective test to misc_menu and ped_functions.
+
+* Moved lua loop into lua_setup.cpp.
+
+* Update patch/commit number to 156.
+---
+ guides/create-patches.md               |   2 +-
+ src/core/main.cpp                      |   4 +
+ src/core/main.h                        |   4 +
+ src/extras/functions/imgui_setup.cpp   | 102 +++----
+ src/extras/functions/ini_functions.cpp |   8 +
+ src/extras/functions/ped_functions.cpp |  75 ++++++
+ src/extras/functions/ped_functions.h   |   3 +
+ src/extras/lua/lua_setup.cpp           | 177 ++++++++++++
+ src/extras/lua/lua_setup.h             |   7 +
+ src/extras/menus/misc_menu.cpp         |   8 +
+ src/extras/utils/misc_util.cpp         |   6 +-
+ src/skel/win/win.cpp                   | 355 +++++++------------------
+ 12 files changed, 447 insertions(+), 304 deletions(-)
+ create mode 100644 src/extras/lua/lua_setup.cpp
+ create mode 100644 src/extras/lua/lua_setup.h
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 23f6dd49..fb122d38 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 155, patch number: 155)
++(Currently on commit 156, patch number: 156)
+ 
+ 1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index d45a8021..13ed692e 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -143,6 +143,10 @@ uint8 gbGameSaveOnStartup = 0;
+ bool gbLuaTest;
+ #endif //LUA_TEST
+ 
++#ifdef _IMGUI_TEST
++bool gbImGuiToggle;
++#endif
++
+ #ifdef CUSTOM_CODE 
+ // Ped speech toggle
+ bool gbPedSpeech = true;
+diff --git a/src/core/main.h b/src/core/main.h
+index 64035489..16f943df 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -99,6 +99,10 @@ extern uint8 gbGameSaveOnStartup;
+ extern bool gbLuaTest;
+ #endif
+ 
++#ifdef _IMGUI_TEST
++extern bool gbImGuiToggle;
++#endif
++
+ #ifdef CUSTOM_CODE
+ extern bool gbDisplayPosn;
+ #endif
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index c1aea4c8..b4b11457 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -255,77 +255,83 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 	// if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 	// This removes the need for the timer, it only runs once per button press
+ 	// Toggle ImGui
+-	if(KEYJUSTDOWN(rsF8)) {
+-		// if(CTRLJUSTDOWN('N')) {
+-		// newTime = CTimer::GetTimeInMilliseconds();
+-		//  Toggle ImGui
++
++	
++	// Check if this is enabled in the ini config, if so run the keybind.
++	if(gbImGuiToggle) {
++
++		if(KEYJUSTDOWN(rsF8)) {
++			// if(CTRLJUSTDOWN('N')) {
++			// newTime = CTimer::GetTimeInMilliseconds();
++			//  Toggle ImGui
+ #ifdef NEW_IMGUI_TESTS
+-		imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++			imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
+ #else
+-		imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+ #endif
+-	}
++		}
+ 
+-	// 					// Well this dies in here...
+-	// 					// ImGuiFunctions::ImGuiLoop();
+-
+-	// Resize check
+-	// TODO Figure out how to get this.
+-	// This should fix the resize being buggy but other then that this menu seems to work.
+-	// if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
+-	//         rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
+-	//         g_d3dpp.BackBufferHeight = g_ResizeHeight;
+-	//         g_ResizeWidth = g_ResizeHeight = 0;
+-	//         ResetDevice();
+-	//       }
+-
+-	// This works! It toggles with the Xbox controller.
+-	HandleControllerInput();
++		// 					// Well this dies in here...
++		// 					// ImGuiFunctions::ImGuiLoop();
++
++		// Resize check
++		// TODO Figure out how to get this.
++		// This should fix the resize being buggy but other then that this menu seems to work.
++		// if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
++		//         rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
++		//         g_d3dpp.BackBufferHeight = g_ResizeHeight;
++		//         g_ResizeWidth = g_ResizeHeight = 0;
++		//         ResetDevice();
++		//       }
++
++		// This works! It toggles with the Xbox controller.
++		HandleControllerInput();
+ #ifdef NEW_IMGUI_TESTS
+-	if(imGuiFunctions.ImGuiActive) {
++		if(imGuiFunctions.ImGuiActive) {
+ #else
+ 
+-	if(!imGuiFunctions.ImGuiDone) {
++		if(!imGuiFunctions.ImGuiDone) {
+ #endif
+ #if defined(GTAVC)
+-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+ #elif defined(GTA3)
+-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
+ #elif defined(GTALCS)
+-	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
+ #endif
+ 
+-		// TODO Test this
+-		// Well this didn't work.
++			// TODO Test this
++			// Well this didn't work.
+ 
+-		//_InputShutdownMouse();
+-		/*							if(_InputMouseNeedsExclusive()) {
+-			                                                _InputShutdownMouse();
+-			                                                _InputInitialiseMouse(false);
+-			                                        }*/
++			//_InputShutdownMouse();
++			/*							if(_InputMouseNeedsExclusive()) {
++			                                                        _InputShutdownMouse();
++			                                                        _InputInitialiseMouse(false);
++			                                                }*/
+ 
+-		// TODO Test these
+-		pad->DisablePlayerControls = 1;
++			// TODO Test these
++			pad->DisablePlayerControls = 1;
+ 
+-		pad->ClearMouseHistory();
+-		pad->NewState.DPadUp = 0;
+-		pad->OldState.DPadUp = 0;
+-		pad->NewState.DPadDown = 0;
+-		pad->OldState.DPadDown = 0;
++			pad->ClearMouseHistory();
++			pad->NewState.DPadUp = 0;
++			pad->OldState.DPadUp = 0;
++			pad->NewState.DPadDown = 0;
++			pad->OldState.DPadDown = 0;
+ 
+-		// CPad::UpdatePads();
++			// CPad::UpdatePads();
+ 
+-		// Well this breaks the menu from being toggled.
+-		// cpad.Clear(true);
++			// Well this breaks the menu from being toggled.
++			// cpad.Clear(true);
+ 
+-	} else {
++		} else {
+ #if defined(GTAVC)
+-		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++			CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+ #elif defined(GTA3)
+-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_PHONE);
++			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_PHONE);
+ #elif defined(GTALCS)
+-	        CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+ #endif
++		}
+ 	}
+ }
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index bfdc3944..584b4176 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1263,6 +1263,10 @@ LoadINISettings()
+ 	ReadIniIfExists("KCNet", "LuaTest", &gbLuaTest);
+ #endif
+ 
++#ifdef _IMGUI_TEST
++	ReadIniIfExists("KCNet", "ImGuiMenuToggle", &gbImGuiToggle);
++#endif
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+ 	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif
+@@ -1436,6 +1440,10 @@ SaveINISettings()
+ 	StoreIni("KCNet", "LuaTest", gbLuaTest);
+ #endif
+ 
++#ifdef _IMGUI_TEST
++	StoreIni("KCNet", "ImGuiMenuToggle", gbImGuiToggle);
++#endif
++
+ //
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 30012d80..81d09087 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -14,6 +14,8 @@
+ #include "Zones.h"
+ #include "Population.h"
+ 
++#include "Pools.h"
++
+ #include "Streaming.h"
+ #include <thread>
+ 
+@@ -22,6 +24,79 @@
+ // https://wiki.gtaconnected.com/File:Model-Ped-VC-12.png
+ 
+ 
++/// <summary>
++/// Run an objective on all peds in the area
++/// </summary>
++/// <param name="givePedsWeapons">This gives all peds in the area weapons if enabled.</param>
++/// <param name="attackPlayer">This makes all peds in the area attack the player if enabled.</param>
++void
++PedFunctions::PedObjectiveTest(bool givePedsWeapons, bool attackPlayer)
++{
++
++    // Give all the peds in the area a weapon specified below.
++    //bool givePedsWeapons = true;
++
++    // Set all peds in the area to attack the player
++    //bool attackPlayer = true;
++
++	CPed *pPlayer = FindPlayerPed();
++	CVector pPlayerCoords = FindPlayerCoors();
++
++	float playerX = pPlayerCoords.x + 4.0f;
++	float playerY = pPlayerCoords.y + 4.0f;
++	float playerZ = pPlayerCoords.z;
++
++    int weaponModel = MI_COLT45;
++	eWeaponType weaponType = WEAPONTYPE_COLT45;
++
++    // First, request the weapon model
++	if(givePedsWeapons) 
++    {
++		CStreaming::RequestModel(weaponModel, STREAMFLAGS_DONT_REMOVE);
++		CStreaming::LoadAllRequestedModels(false);
++	}
++
++	CVector newCoords = CVector(playerX, playerY, playerZ);
++
++	int i = CPools::GetPedPool()->GetSize();
++	while(i-- > 0) {
++		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) {
++			// Check if peds are not a player, I figured this out.
++			if(!ped->IsPlayer()) 
++            {
++                // Give all the peds weapons 
++                // This seems to work but they run away.
++                // Adapted from COMMAND_GIVE_WEAPON_TO_CHAR
++                // TODO Add vehicle check.
++                if (givePedsWeapons)
++                { 
++                    ped->SetCurrentWeapon(ped->GiveWeapon(weaponType, 1000));
++                }
++				
++                // This works for making everyone attack the player
++                if (attackPlayer)
++                { 
++                    ped->SetObjective(OBJECTIVE_KILL_CHAR_ANY_MEANS, pPlayer);
++                }
++
++				//ped->GiveWeapon(WEAPONTYPE_RUGER, 1000);
++				// Well, I can add stuff to these objectives.
++				//ped->SetObjective(OBJECTIVE_HASSLE_CHAR, pPlayer);
++                // TODO Test this, make the peds aim a gun at the player
++                // Well this didn't work.
++				//ped->SetObjective(OBJECTIVE_AIM_GUN_AT, pPlayerCoords);
++            }
++		}
++	}
++
++    // Lastly, set the weapon model as deletable
++    if (givePedsWeapons) 
++    { 
++        CStreaming::SetModelIsDeletable(weaponModel);
++    }
++	
++}
++
+ /// <summary>
+ /// This should create a ped
+ /// I got this to not crash, but it doesn't do anything.
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+index e6d86121..c7941dc5 100644
+--- a/src/extras/functions/ped_functions.h
++++ b/src/extras/functions/ped_functions.h
+@@ -11,4 +11,7 @@ class PedFunctions
+ {
+ public:
+ 	void CreatePed(ePedType pedType, uint32 modelIndex);
++
++	// Test setting objectives on all peds in the area.
++	void PedObjectiveTest(bool givePedsWeapons, bool attackPlayer);
+ };
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+new file mode 100644
+index 00000000..4fafa2d5
+--- /dev/null
++++ b/src/extras/lua/lua_setup.cpp
+@@ -0,0 +1,177 @@
++#include "lua_setup.h"
++
++#include "pch.h"
++
++#include "imgui_setup.h"
++
++
++
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++
++
++#include "imgui_main_menu.h"
++
++#include <string>
++#include <iostream>
++
++#include "main.h"
++
++// Begin win.cpp headers
++#if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
++
++// Required for opening menu with Xbox controller.
++//#include <Xinput.h>
++
++//#include <winerror.h>
++#include <windows.h>
++//#include <mmsystem.h>
++//#include <shellapi.h>
++//
++//#include <windowsx.h>
++//#include <basetsd.h>
++
++//#include <regstr.h>
++//#include <shlobj.h>
++//
++//#include <dbt.h>
++
++#endif
++
++//#pragma warning(push)
++//#pragma warning(disable : 4005)
++//
++//#include <ddraw.h>
++//#include <DShow.h>
++//#pragma warning( pop )
++//
++//#define WM_GRAPHNOTIFY	WM_USER+13
++
++//#ifndef USE_D3D9
++//#pragma comment( lib, "d3d8.lib" )
++//#endif
++//#pragma comment( lib, "ddraw.lib" )
++//#pragma comment( lib, "Winmm.lib" )
++//#pragma comment( lib, "dxguid.lib" )
++//#pragma comment( lib, "strmiids.lib" )
++//#pragma comment( lib, "dinput8.lib" )
++
++
++//#include "common.h"
++
++#if (defined(_MSC_VER))
++#include <tchar.h>
++#endif /* (defined(_MSC_VER)) */
++#include <stdio.h>
++#include "rwcore.h"
++#include "resource.h"
++#include "skeleton.h"
++
++//#include "platform.h"
++//#include "crossplatform.h"
++
++// End win.cpp headers
++
++// Lua test
++#include "lua_test.h"
++
++#include "imgui_functions.h"
++
++// ReVC
++// Timer for the keybind
++#include "Timer.h"
++#include "Pad.h"
++
++
++#include "ControllerConfig.h"
++
++
++
++#include "defines.h"
++
++//****************************/
++// Lua stuff
++//****************************/
++
++//---------------
++// Keybinds
++//---------------
++
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                      \
++	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++//
++
++/// <summary>
++/// This will run the loop for checking if the lua keybind is pressed.
++/// </summary>
++void
++LuaSetup::LuaPlayingGameLoop()
++{
++#ifdef LUA_TEST
++
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	LuaTest luaTest = LuaTest();
++
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
++
++	// This works without lua
++	static int newTime = 0;
++	// Check if lua is enabled in the config before running
++	// Reload the lua function, I have it named InitLua for now.
++	if(gbLuaTest) {
++		if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++			newTime = CTimer::GetTimeInMilliseconds();
++			// Reinit lua.
++			luaTest.InitLua();
++		}
++	}
++
++	// TODO Figure out how to make this use Control + M
++	//#define CTRLJUSTDOWN(key)                                                                                                                                      \
++//	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++	// #define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++	// static int newTime = 0;
++	// Some of the idea for this test came from here:
++	// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
++
++	// I think I fixed the delay, I made the newTime variable static.
++	// TODO Do more testing with this later.
++
++	// I moved the ImGui test above outside of the lua test.
++	// TODO Make this lua test auto run on startup, it can set infinite health and never wanted by default.
++	// I added this to the ReVC.ini file.
++	// If this is enabled in there, this will run otherwise it does nothing.
++	//
++
++	// I have disabled the lua keybind for now, right now it is setup to
++	// auto teleport the player, setup never wanted and setup infinte health on game startup if enabled.
++	//           if(gbLuaTest) {
++
++	//            //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++	//            if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++	//// TODO Figure out how to make this use Control + M
++	//            //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++	//             // Wow this seems to work, with a delay now.
++	//             // I figured out how to output this to a log.
++
++	//             newTime = CTimer::GetTimeInMilliseconds();
++	//             luaTest.InitLua();
++	//            }
++	//           }
++#endif // LUA_TEST
++}
++
++
++//****************************/
++// End lua stuff
++//****************************/
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_setup.h b/src/extras/lua/lua_setup.h
+new file mode 100644
+index 00000000..ceda3544
+--- /dev/null
++++ b/src/extras/lua/lua_setup.h
+@@ -0,0 +1,7 @@
++#pragma once
++class LuaSetup
++{
++public:
++	// Main loop for running lua with the keybind.
++	void LuaPlayingGameLoop();
++};
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index e684b2fa..252e48b3 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -590,6 +590,14 @@ void MiscMenu::MiscTab()
+ 		{ 
+ 			miscUtil.TestPedFeatures();
+ 		}
++
++
++		ImGui::Text("Objective testing");
++		// TODO Setup checkbox for toggling this value
++		if (ImGui::Button("Set peds objective")) 
++		{
++			pedFunctions.PedObjectiveTest(true, true);
++		}
+ 	}
+ 
+ 	//
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index d3668e9b..4f34d826 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -242,13 +242,13 @@ MiscUtil::TestPedFeatures()
+ 					}
+ 					
+ 
+-					// Moved into function, make all peds in the area run awawy
++					// Moved into function, make all peds in the area run away
+ 					if(pedsFlee) 
+ 					{ 
+ 						makePedFlee(ped); 
+ 					}
+-					
+-					
++
++
+ 					// TODO Possibly use this for an objective timer and use CTimer with it.
+ 					// I might be able to do multiple objectives like this.
+ 					//ped->m_objectiveTimer;
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index d4551381..a5ab84a3 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -132,7 +132,14 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ 
+ // Lua test
+ #ifdef CUSTOM_CODE
++
++
++#ifdef LUA_TEST
+ #include "lua_test.h"
++
++
++#include "lua_setup.h"
++#endif //LUA_TEST
+ // Timer for the keybind
+ #include "Timer.h"
+ #include "defines.h"
+@@ -148,7 +155,7 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ // Test for disabling pause on focus loss
+ bool isGameFocused = true; // Initially focused
+ 
+-#endif //CUSTOM_CODE - Lua
++#endif //CUSTOM_CODE
+ 
+ #define MAX_SUBSYSTEMS		(16)
+ 
+@@ -1116,80 +1123,6 @@ void HandleGraphEvent(void)
+ #ifdef _IMGUI_TEST
+ //IDirect3DDevice9 *g_pd3dDevice = nullptr; // Global device pointer
+ 
+-//****************************/
+-// Lua stuff
+-//****************************/
+-
+-
+-/// <summary>
+-/// This will run the loop for checking if the lua keybind is pressed.
+-/// </summary>
+-void LuaPlayingGameLoop()
+-{
+-	#ifdef LUA_TEST
+-						   
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	LuaTest luaTest = LuaTest();
+-
+-	CPad cpad = CPad();
+-
+-	CPad *pad = CPad::GetPad(0);
+-
+-								// This works without lua
+-						        static int newTime = 0;
+-								// Reload the lua function, I have it named InitLua for now.
+-								if (KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-									newTime = CTimer::GetTimeInMilliseconds();
+-
+-									// Reinit lua.
+-									luaTest.InitLua();
+-								}
+-								
+-
+-								// TODO Figure out how to make this use Control + M
+-//#define CTRLJUSTDOWN(key)                                                                                                                                      \
+-//	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-//#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-
+-
+-								// static int newTime = 0;
+-								// Some of the idea for this test came from here:
+-								// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
+-								
+-								// I think I fixed the delay, I made the newTime variable static.
+-								// TODO Do more testing with this later.
+-
+-								
+-
+-
+-								// I moved the ImGui test above outside of the lua test.
+-								// TODO Make this lua test auto run on startup, it can set infinite health and never wanted by default.
+-								// I added this to the ReVC.ini file.
+-								// If this is enabled in there, this will run otherwise it does nothing.
+-								// 
+-								
+-								// I have disabled the lua keybind for now, right now it is setup to 
+-								// auto teleport the player, setup never wanted and setup infinte health on game startup if enabled.
+-						     //           if(gbLuaTest) {
+-
+-							    //            //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
+-							    //            if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-											//// TODO Figure out how to make this use Control + M
+-							    //            //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-								   //             // Wow this seems to work, with a delay now.
+-								   //             // I figured out how to output this to a log.
+-
+-								   //             newTime = CTimer::GetTimeInMilliseconds();
+-								   //             luaTest.InitLua();
+-							    //            }
+-						     //           }
+-#endif //LUA_TEST
+-}
+-
+-//****************************/
+-// End lua stuff
+-//****************************/
+-
+ 
+ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ {
+@@ -1230,58 +1163,72 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 			break; // is this correct ?
+ 		}
+ 		
+-		case WM_SIZE:
+-		{
++#ifdef _IMGUI_TEST // Fix alt button freezing the game
++	        case WM_SYSCOMMAND:
++				if ((wParam & 0xfff0) == SC_KEYMENU)
++				{
++			        // Disable ALT application menu
++			        return 0L;
++				}
+ 
+-#define _IMGUI_TEST
+-#ifdef _IMGUI_TEST
+-		        // New test
+-		        if(rw::d3d::d3ddevice != nullptr && wParam != SIZE_MINIMIZED) {
+-			        int newWidth = LOWORD(lParam);
+-			        int newHeight = HIWORD(lParam);
+-
+-			        D3DPRESENT_PARAMETERS presentParams;
+-			        ZeroMemory(&presentParams, sizeof(presentParams));
+-			        presentParams.Windowed = TRUE;
+-			        //presentParams.SwapEffect = D3DSWAPEFFECT_DISCARD;
+-			        presentParams.SwapEffect = D3DSWAPEFFECT_FLIPEX;
+-			        presentParams.BackBufferFormat = D3DFMT_UNKNOWN;
+-			        //presentParams.BackBufferFormat = D3DFMT_A8R8G8B8;
+-			        presentParams.EnableAutoDepthStencil = TRUE;
+-			        presentParams.AutoDepthStencilFormat = D3DFMT_D16;
+-					// This can cause screen tearing. I'll try to use these others instead.
+-			        //presentParams.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+-
+-			        presentParams.PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
+-			        //presentParams.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+-
+-			        presentParams.hDeviceWindow = window;
+-			        presentParams.BackBufferWidth = newWidth;
+-			        presentParams.BackBufferHeight = newHeight;
+-
+-			        // Well this needs to be up here.
+-			        ImGui_ImplDX9_InvalidateDeviceObjects();
+-
+-			        HRESULT hr = rw::d3d::d3ddevice->Reset(&presentParams);
+-			        if(SUCCEEDED(hr)) {
+-				        ImGui_ImplDX9_CreateDeviceObjects();
+-				        // Update viewport
+-				        D3DVIEWPORT9 viewport;
+-				        viewport.X = 0;
+-				        viewport.Y = 0;
+-				        viewport.Width = newWidth;
+-				        viewport.Height = newHeight;
+-				        viewport.MinZ = 0.0f;
+-				        viewport.MaxZ = 1.0f;
+-				        rw::d3d::d3ddevice->SetViewport(&viewport);
+-
+-				        // Update projection matrix (if needed)
+-			        } else {
+-			        }
+-		        }
++				// For other WM_SYSCOMMAND messages, let the default procedure handle them
++				// This is a fix for running stuff like Alt + F4 to close the game
++				return DefWindowProc(window, message, wParam, lParam);
+ 
+ #endif
+ 
++		case WM_SIZE:
++		{
++
++//#define _IMGUI_TEST
++//#ifdef _IMGUI_TEST
++//		        // New test
++//		        if(rw::d3d::d3ddevice != nullptr && wParam != SIZE_MINIMIZED) {
++//			        int newWidth = LOWORD(lParam);
++//			        int newHeight = HIWORD(lParam);
++//
++//			        D3DPRESENT_PARAMETERS presentParams;
++//			        ZeroMemory(&presentParams, sizeof(presentParams));
++//			        presentParams.Windowed = TRUE;
++//			        //presentParams.SwapEffect = D3DSWAPEFFECT_DISCARD;
++//			        presentParams.SwapEffect = D3DSWAPEFFECT_FLIPEX;
++//			        presentParams.BackBufferFormat = D3DFMT_UNKNOWN;
++//			        //presentParams.BackBufferFormat = D3DFMT_A8R8G8B8;
++//			        presentParams.EnableAutoDepthStencil = TRUE;
++//			        presentParams.AutoDepthStencilFormat = D3DFMT_D16;
++//					// This can cause screen tearing. I'll try to use these others instead.
++//			        //presentParams.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
++//
++//			        presentParams.PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT;
++//			        //presentParams.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
++//
++//			        presentParams.hDeviceWindow = window;
++//			        presentParams.BackBufferWidth = newWidth;
++//			        presentParams.BackBufferHeight = newHeight;
++//
++//			        // Well this needs to be up here.
++//			        ImGui_ImplDX9_InvalidateDeviceObjects();
++//
++//			        HRESULT hr = rw::d3d::d3ddevice->Reset(&presentParams);
++//			        if(SUCCEEDED(hr)) {
++//				        ImGui_ImplDX9_CreateDeviceObjects();
++//				        // Update viewport
++//				        D3DVIEWPORT9 viewport;
++//				        viewport.X = 0;
++//				        viewport.Y = 0;
++//				        viewport.Width = newWidth;
++//				        viewport.Height = newHeight;
++//				        viewport.MinZ = 0.0f;
++//				        viewport.MaxZ = 1.0f;
++//				        rw::d3d::d3ddevice->SetViewport(&viewport);
++//
++//				        // Update projection matrix (if needed)
++//			        } else {
++//			        }
++//		        }
++//
++//#endif
++
+ 			RwRect r;
+ 
+ 			r.x = 0;
+@@ -1290,51 +1237,8 @@ LRESULT CALLBACK MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lP
+ 			r.h = HIWORD(lParam);
+ 
+ 
+-
+-
+ 			if (RwInitialised && r.h > 0 && r.w > 0)
+ 			{
+-				
+-#ifdef _IMGUI_TEST
+-
+-	//			if (rw::d3d::d3ddevice != NULL && wParam !=
+-	//				SIZE_MINIMIZED)
+-	//			{
+-	//			    g_ResizeWidth = LOWORD(lParam);
+-	//				g_ResizeHeight = HIWORD(lParam);
+-	//				
+-	//				// Reset DirectX9 and ImGui
+-	//				// TODO Test this
+-	//			        ImGui_ImplDX9_InvalidateDeviceObjects();
+-	//			        ResetDevice(window);
+-	//					// TODO Fix this
+-	//			        //HRESULT hr = rw::d3d::d3ddevice->Reset(&g_pd3dDevice); // presentParams must be defined.
+-	///*					if (SUCCEEDED(hr)) { 
+-	//						ImGui_ImplDX9_CreateDeviceObjects();
+-	//					}*/
+-
+-	//						D3DVIEWPORT9 viewport;
+-	//			            viewport.X = 0;
+-	//			            viewport.Y = 0;
+-	//			            viewport.Width = g_ResizeWidth;
+-	//			            viewport.Height = g_ResizeHeight;
+-	//			            viewport.MinZ = 0.0f;
+-	//			            viewport.MaxZ = 1.0f;
+-	//			            rw::d3d::d3ddevice->SetViewport(&viewport);
+-	//			}
+-
+-				//
+-
+-				// Original below
+-
+-				//if (!imGuiFunctions.ImGuiDone) {
+-				//        if(rw::d3d::d3ddevice != NULL && wParam != SIZE_MINIMIZED) {
+-				//	        g_ResizeWidth = LOWORD(lParam);
+-				//	        g_ResizeHeight = HIWORD(lParam);
+-				//        }
+-				//   }
+-#endif
+-
+ 				RsEventHandler(rsCAMERASIZE, &r);
+ 
+ 				if (r.w != LOWORD(lParam) && r.h != HIWORD(lParam))
+@@ -1706,13 +1610,13 @@ InitApplication(HANDLE instance)
+ 	windowClass.lpszClassName = AppClassName;
+ 
+ 	// TODO Test this for ImGui window.
+-#ifdef _IMGUI_TEST
+-	windowClass.hbrBackground = NULL;
+-	windowClass.style = CS_BYTEALIGNWINDOW | CS_OWNDC;
+-#else 
++//#ifdef _IMGUI_TEST
++//	windowClass.hbrBackground = NULL;
++//	windowClass.style = CS_BYTEALIGNWINDOW | CS_OWNDC;
++//#else 
+ 	windowClass.hbrBackground = nil;
+ 	windowClass.style = CS_BYTEALIGNWINDOW;
+-#endif
++//#endif
+ 
+ 	return RegisterClass(&windowClass);
+ }
+@@ -2719,6 +2623,10 @@ bool	luaInit = false;
+ 	FastLoader fastLoader = FastLoader();
+ #endif
+ 
++#ifdef LUA_TEST
++	LuaSetup luaSetup = LuaSetup();
++#endif
++
+ 	while ( TRUE )
+ 	{
+ 		RwInitialised = TRUE;
+@@ -2789,9 +2697,10 @@ bool	luaInit = false;
+ #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ 
+-					        // I added an extra toggle for this so I don't have to keep fighting with the preprocessors.
+-					        bool imguiEnabled = true;
+-					        if(imguiEnabled) {
++							// Check if ImGui bool above is enabled in the ini.
++					        // This fixes the mouse showing up on game start when I have this toggled off
++					        // TODO Make the ImGui test not always show a mouse until it's hidden.
++					        if(gbImGuiToggle) {
+ 
+ 						        // Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
+ 						        // This shows up!!
+@@ -3067,92 +2976,33 @@ bool	luaInit = false;
+ 
+ #ifdef LUA_TEST
+ 							// This works well!
+-							// TODO Make a separate lua file for auto load variables like these.
++						    // TODO Make a separate lua file for auto load variables like these.
++						    // First, check if lua is enabled in the ini, if not run the lua init.
+ 						    LuaTest luaTest = LuaTest();
+-							if (!luaInit) {
+-							    luaTest.InitLua();
+-								luaInit = true;
+-							}
++							if(gbLuaTest) {
++								if(!luaInit) {
++									luaTest.InitLua();
++									luaInit = true;
++								}
++						    }
+ #endif
+ 					
+ 
+ #ifdef _IMGUI_TEST
+-							// Run the ImGui loop that checks for controller input, and mouse/keyboard input
+-							imGuiSetup.ImGuiPlayingGameLoop();
++							// Run the ImGui loop that checks for controller input, and mouse/keyboard input if enabled in the ini
++							if(gbImGuiToggle) 
++							{ 
++								imGuiSetup.ImGuiPlayingGameLoop();
++							}
+ 
+ #endif
+ #ifdef LUA_TEST
+-							// Run the Lua loop that checks for mouse/keyboard input
+-						    LuaPlayingGameLoop();
++							// Run the Lua loop that checks for mouse/keyboard input if enabled in the ini
++							if(gbLuaTest) 
++							{
++							    luaSetup.LuaPlayingGameLoop();
++							}
+ #endif
+-						#undef LUA_TEST
+-#ifdef LUA_TEST
+-
+-						   
+-
+-
+-								// This works without lua
+-						        static int newTime = 0;
+-
+-								// TODO Make this get controller input also.
+-						        //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-						        // This removes the need for the timer, it only runs once per button press
+-								// Toggle ImGui
+-								if(KEYJUSTDOWN(rsF8)) {
+-						        //if(CTRLJUSTDOWN('N')) {
+-							        //newTime = CTimer::GetTimeInMilliseconds();
+-
+-									// Toggle ImGui
+-									imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+-								}
+-
+-								// Reload the lua function, I have it named InitLua for now.
+-								if (KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-									newTime = CTimer::GetTimeInMilliseconds();
+-
+-									// Reinit lua.
+-									luaTest.InitLua();
+-								}
+-								
+-
+-								// TODO Figure out how to make this use Control + M
+-//#define CTRLJUSTDOWN(key)                                                                                                                                      \
+-//	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-//#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-
+-
+-								// static int newTime = 0;
+-								// Some of the idea for this test came from here:
+-								// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
+-								
+-								// I think I fixed the delay, I made the newTime variable static.
+-								// TODO Do more testing with this later.
+-
+-								
+-
+-
+-								// I moved the ImGui test above outside of the lua test.
+-								// TODO Make this lua test auto run on startup, it can set infinite health and never wanted by default.
+-								// I added this to the ReVC.ini file.
+-								// If this is enabled in there, this will run otherwise it does nothing.
+-								// 
+-								
+-								// I have disabled the lua keybind for now, right now it is setup to 
+-								// auto teleport the player, setup never wanted and setup infinte health on game startup if enabled.
+-						     //           if(gbLuaTest) {
+-
+-							    //            //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
+-							    //            if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-											//// TODO Figure out how to make this use Control + M
+-							    //            //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+-								   //             // Wow this seems to work, with a delay now.
+-								   //             // I figured out how to output this to a log.
+-
+-								   //             newTime = CTimer::GetTimeInMilliseconds();
+-								   //             luaTest.InitLua();
+-							    //            }
+-						     //           }
+-#endif //LUA_TEST
+ #define LUA_TEST
+ 						}
+ 						break;
+@@ -4150,6 +4000,7 @@ int strncasecmp(const char *str1, const char *str2, size_t len)
+ // I don't know what removed this...
+ #endif
+ 
+-#endif 
++// TODO Move this preprocessor...
++#endif //_IMGUI_TEST?? Why?
+ 
+ #endif //!_SPLIT_WIN_FILE
+-- 
+2.49.0.windows.1
+

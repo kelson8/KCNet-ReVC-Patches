@@ -1,0 +1,394 @@
+From 6ab807173f9766ff7ba9ad690c46bf9c9eaec6b3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Apr 2025 14:35:26 -0400
+Subject: [PATCH 157/165] Refactor imgui_setup
+
+* I copied the changes from ReLCS, now my imgui setup is more organized.
+
+* I added these functions to imgui_setup
+
+For disabling imgui on game pause:
+* void DisableImGuiOnGamePause()
+
+* Labeled items in imgui_setup.h and imgui_setup.cpp a bit.
+
+For player control
+* void DisablePlayerControl()
+* EnablePlayerControl()
+---
+ src/extras/functions/imgui_setup.cpp | 198 ++++++++++++++++-----------
+ src/extras/functions/imgui_setup.h   |  10 +-
+ 2 files changed, 124 insertions(+), 84 deletions(-)
+
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index b4b11457..4898e43b 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -2,18 +2,23 @@
+ 
+ #include "imgui_setup.h"
+ 
+-
++// TODO Figure out how to make this work on Linux.
++// It shouldn't be too hard if I can get this ImGui setup code migrated over
++// And also I need to switch from DirectX9 in skel/win.cpp, to using OpenGL or something in skel/glfw.cpp
++// I'm not too sure on how to use OpenGL just yet with ImGui.
++// I am currently loading ImGui by adding it into the d3ddevice.cpp file in librw.
+ 
+ #include "imgui.h"
++
++#ifdef _WIN32
+ #include "imgui_impl_dx9.h"
+ #include "imgui_impl_win32.h"
+-
+-
++#endif
+ 
+ #include "imgui_main_menu.h"
+ 
+-#include <string>
+ #include <iostream>
++#include <string>
+ 
+ #include "main.h"
+ 
+@@ -26,53 +31,40 @@
+ #define _WIN32_WINDOWS 0x0500
+ #define WINVER 0x0500
+ 
+-
+-#include <winerror.h>
+-#include <windows.h>
+ #include <mmsystem.h>
+ #include <shellapi.h>
++#include <windows.h>
++#include <winerror.h>
+ 
+-#include <windowsx.h>
+ #include <basetsd.h>
++#include <windowsx.h>
+ 
+ #include <regstr.h>
+ #include <shlobj.h>
+ 
+ #include <dbt.h>
+ 
+-#endif
++#endif // defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
+ 
+ #pragma warning(push)
+ #pragma warning(disable : 4005)
+ 
+-#include <ddraw.h>
+ #include <DShow.h>
+-#pragma warning( pop )
+-
+-#define WM_GRAPHNOTIFY	WM_USER+13
+-
+-//#ifndef USE_D3D9
+-//#pragma comment( lib, "d3d8.lib" )
+-//#endif
+-//#pragma comment( lib, "ddraw.lib" )
+-//#pragma comment( lib, "Winmm.lib" )
+-//#pragma comment( lib, "dxguid.lib" )
+-//#pragma comment( lib, "strmiids.lib" )
+-//#pragma comment( lib, "dinput8.lib" )
+-
++#include <ddraw.h>
++#pragma warning(pop)
+ 
+-//#include "common.h"
++#define WM_GRAPHNOTIFY WM_USER + 13
+ 
+ #if (defined(_MSC_VER))
+ #include <tchar.h>
+ #endif /* (defined(_MSC_VER)) */
+-#include <stdio.h>
+-#include "rwcore.h"
+ #include "resource.h"
++#include "rwcore.h"
+ #include "skeleton.h"
++#include <stdio.h>
+ 
+-//#include "platform.h"
+-//#include "crossplatform.h"
++// #include "platform.h"
++// #include "crossplatform.h"
+ 
+ // End win.cpp headers
+ 
+@@ -84,18 +76,19 @@
+ 
+ // ReVC
+ // Timer for the keybind
+-#include "Timer.h"
+ #include "Pad.h"
++#include "Timer.h"
+ 
++// New for disabling menu on pause
++#include "Camera.h"
+ 
+ #include "ControllerConfig.h"
+ 
+-
+-
+ #include "defines.h"
+ 
+-
+-#ifdef CUSTOM_CODE
++// TODO Why is this duplicated under CUSTOM_CODE
++// Fix this later
++#ifdef CUSTOM_CODE // CUSTOM_CODE - Lua
+ 
+ #define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
+ #define CTRLJUSTDOWN(key)                                                                                                                                      \
+@@ -104,9 +97,8 @@
+ 
+ #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+ 
+-
+ // Test for disabling pause on focus loss
+-//bool isGameFocused = true; // Initially focused
++// bool isGameFocused = true; // Initially focused
+ 
+ #endif // CUSTOM_CODE - Lua
+ 
+@@ -126,13 +118,75 @@ bool ImGuiFunctions::ImGuiDone = true;
+ 
+ // I will have the ImGui init, shutdown, and controller handling for toggling the menu in this file.
+ 
+-
+ extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the device.
+ 
++//--------------------
++// Disable/enable player control
++//--------------------
++
++/// <summary>
++/// Disable players control, the camera process code seems to be doing that when I have ImGui open.
++/// This runs just in case it isn't
++/// </summary>
++void
++ImGuiSetup::DisablePlayerControl()
++{
++#if defined(GTAVC)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
++
++	// I don't think these are needed
++	// pad->DisablePlayerControls = 1;
++
++	// pad->ClearMouseHistory();
++	// pad->NewState.DPadUp = 0;
++	// pad->OldState.DPadUp = 0;
++	// pad->NewState.DPadDown = 0;
++	// pad->OldState.DPadDown = 0;
++
++	// Old
++	// CPad::UpdatePads();
++
++	// Well this breaks the menu from being toggled.
++	// cpad.Clear(true);
++}
++
++/// <summary>
++/// Enable players control, the camera process code seems to be doing that when I have ImGui open.
++/// This runs just in case it isn't
++/// </summary>
++void
++ImGuiSetup::EnablePlayerControl()
++{
++#if defined(GTAVC)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_PHONE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
++}
++
+ //--------------------
+ // ImGui setup
+ //--------------------
+ 
++// Disable ImGui on pause
++void
++ImGuiSetup::DisableImGuiOnGamePause()
++{
++	ImGuiFunctions imGuiFunctions;
++
++	// First, check if the game is paused, if so disable the menu.
++	// This works right here.
++	// TODO Implement this into ReVC, and Re3.
++	if(imGuiFunctions.ImGuiActive && CTimer::GetIsPaused()) { imGuiFunctions.ImGuiActive = false; }
++}
++
+ /// <summary>
+ /// Run my imgui DirectX9 init with Win32
+ /// </summary>
+@@ -161,6 +215,11 @@ ImGuiSetup::InitImGui(HWND window)
+ 	// https://github.com/user-grinch/Cheat-Menu
+ 	ImGuiFunctions::ApplyStyle();
+ 
++	// Fix for the mouse cursor showing on game start
++	ShowCursor(FALSE);
++	SetCursor(nil);
++	//
++
+ 	// Setup Platform/Renderer backends
+ 	ImGui_ImplWin32_Init(window);
+ 	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
+@@ -234,13 +293,13 @@ ImGuiSetup::HandleControllerInput()
+ 	}
+ }
+ 
+-
+ /// <summary>
+ /// This runs the loop for ImGui under GS_PLAYING_GAME
+ /// Moved this into its own function
+ /// This checks for the keybind being pressed on the keyboard or controller.
+ /// Disables the player controls while the menu is open.
+ /// </summary>
++// clang-format off
+ void ImGuiSetup::ImGuiPlayingGameLoop()
+ {
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+@@ -251,12 +310,10 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 	// This works without lua
+ 	static int newTime = 0;
+ 
+-	// TODO Make this get controller input also.
+ 	// if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 	// This removes the need for the timer, it only runs once per button press
+ 	// Toggle ImGui
+ 
+-	
+ 	// Check if this is enabled in the ini config, if so run the keybind.
+ 	if(gbImGuiToggle) {
+ 
+@@ -265,14 +322,11 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 			// newTime = CTimer::GetTimeInMilliseconds();
+ 			//  Toggle ImGui
+ #ifdef NEW_IMGUI_TESTS
+-			imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++				imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
+ #else
+-			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++				imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+ #endif
+-		}
+-
+-		// 					// Well this dies in here...
+-		// 					// ImGuiFunctions::ImGuiLoop();
++			}
+ 
+ 		// Resize check
+ 		// TODO Figure out how to get this.
+@@ -283,57 +337,35 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 		//         g_ResizeWidth = g_ResizeHeight = 0;
+ 		//         ResetDevice();
+ 		//       }
++		
++		// First, check if the game is paused, if so disable the menu.
++		// This works right here.
++		// TODO Implement this into Re3.
++		// TODO Add a config option for this in the ini or something.
++		// 
++		this->DisableImGuiOnGamePause();
+ 
+ 		// This works! It toggles with the Xbox controller.
+-		HandleControllerInput();
++		// TODO Add config in ini to disable/enable controller input for the menu.
++		this->HandleControllerInput();
+ #ifdef NEW_IMGUI_TESTS
+ 		if(imGuiFunctions.ImGuiActive) {
+ #else
+ 
+ 		if(!imGuiFunctions.ImGuiDone) {
+ #endif
+-#if defined(GTAVC)
+-			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-#elif defined(GTA3)
+-			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
+-#elif defined(GTALCS)
+-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
+-#endif
+ 
+-			// TODO Test this
+-			// Well this didn't work.
+-
+-			//_InputShutdownMouse();
+-			/*							if(_InputMouseNeedsExclusive()) {
+-			                                                        _InputShutdownMouse();
+-			                                                        _InputInitialiseMouse(false);
+-			                                                }*/
+-
+-			// TODO Test these
+-			pad->DisablePlayerControls = 1;
+-
+-			pad->ClearMouseHistory();
+-			pad->NewState.DPadUp = 0;
+-			pad->OldState.DPadUp = 0;
+-			pad->NewState.DPadDown = 0;
+-			pad->OldState.DPadDown = 0;
+-
+-			// CPad::UpdatePads();
+-
+-			// Well this breaks the menu from being toggled.
+-			// cpad.Clear(true);
++			// Disable the players control and movement.
++			this->DisablePlayerControl();
+ 
+ 		} else {
+-#if defined(GTAVC)
+-			CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-#elif defined(GTA3)
+-			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_PHONE);
+-#elif defined(GTALCS)
+-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-#endif
++			// Enable the players control and movement.
++			this->EnablePlayerControl();
+ 		}
+ 	}
+ }
+ 
+ 
+-#endif // ??
+\ No newline at end of file
++#endif // CUSTOM_CODE
++
++// clang-format on
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_setup.h b/src/extras/functions/imgui_setup.h
+index 1fd3575c..a13eaa0b 100644
+--- a/src/extras/functions/imgui_setup.h
++++ b/src/extras/functions/imgui_setup.h
+@@ -4,11 +4,19 @@
+ class ImGuiSetup
+ {
+ public:
++	// Init ImGui, this runs in win.cpp.
+ 	void InitImGui(HWND window);
+ 	void ShutDownImGui();
++	// This is what allows my menu to be used with a controller.
+ 	void HandleControllerInput();
+ 
++	// Run the main loop for ImGui keyboard/mouse input handling, toggling the menu,
++	// disabling camera movement, and running controller input handling.
+ 	void ImGuiPlayingGameLoop();
++	// Disable ImGui when paused
++	void DisableImGuiOnGamePause();
+ 
+-
++	// Player control
++	void DisablePlayerControl();
++	void EnablePlayerControl();
+ };
+-- 
+2.49.0.windows.1
+

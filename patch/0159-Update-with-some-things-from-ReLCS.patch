@@ -1,0 +1,333 @@
+From 5882800dca1d9f853f825627545ce61d292f23c0 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Apr 2025 15:17:18 -0400
+Subject: [PATCH 159/165] Update with some things from ReLCS.
+
+* Add changes from imgui_main_menu into ReVC.
+
+Added into misc_util:
+* Add Display Player Health Memory address
+* Add Display Base Address for program
+* Add Get Module Base Address
+
+* Modify game_menu from ReLCS changes.
+* Add red color for text in vehicle_menu.
+---
+ src/extras/menus/game_menu.cpp       |  44 ++++++++--
+ src/extras/menus/imgui_main_menu.cpp |   6 ++
+ src/extras/menus/vehicle_menu.cpp    |   5 +-
+ src/extras/utils/misc_util.cpp       | 126 +++++++++++++++++++++++++++
+ src/extras/utils/misc_util.h         |  13 +++
+ 5 files changed, 187 insertions(+), 7 deletions(-)
+
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index b87db233..cc5fbaa9 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -97,6 +97,7 @@ GameMenu::SetTime(int hour, int minute)
+ int gameMenuHour = 0;
+ int gameMenuMinute = 0;
+ 
++// clang-format off
+ void
+ GameMenu::GameTab()
+ {
+@@ -155,7 +156,9 @@ GameMenu::GameTab()
+ 
+ 		ImGui::Separator();
+ 
+-		if(ImGui::Button("Day")) { SetTime(8, 0);
++		if(ImGui::Button("Day")) 
++		{ 
++			SetTime(8, 0);
+ 		}
+ 
+ 		if (ImGui::Button("Night"))
+@@ -168,37 +171,64 @@ GameMenu::GameTab()
+ 	{ 
+ 		ImGui::Text("This doens't work yet.");
+ 		ImGui::Text("Garages");
++#if defined(GTAVC)
+ 		ImGui::Text("Ids from here: https://docs.sannybuilder.com/scm-documentation/vc/garages");
+-		
++#endif
++
+ 		// Temporary for now.
++#if defined(GTAVC)
+ 		if (ImGui::Button("Teleport to garage 16"))
+-		{ 
++		{
+ 			CVector garage16Pos = CVector(443.4f, 639.6f, 11.2f);
++#elif defined(GTALCS)
++		if(ImGui::Button("Teleport to hideout 1")) 
++		{
++			CVector garage16Pos = CVector(1157.6f, -258.1f, 17.5f);
++#endif
++		
+ 			PlayerCheats::SetPlayerPosition(garage16Pos.x, garage16Pos.y, garage16Pos.z);
+ 			
+ 		}
+ 
++#if defined(GTAVC)
+ 		if (ImGui::Button("Deactivate garage 16")) 
++#elif defined(GTALCS)
++		if (ImGui::Button("Deactivate hideout 1"))
++#endif
+ 		{ 
+ 			garageFunctions.DeactivateGarage(GARAGE_HIDEOUT_ONE);
+ 		}
+ 
+ 		ImGui::SameLine();
+ 
+-		if(ImGui::Button("Activate garage 16")) { 
++
++#if defined(GTAVC)
++		if(ImGui::Button("Activate garage 16")) 
++#elif defined(GTALCS)
++		if(ImGui::Button("Activate hideout 1"))
++#endif
++		{ 
+ 			garageFunctions.ActivateGarage(GARAGE_HIDEOUT_ONE); 
+ 		}
+ 
+ 
+ 		// Well these don't seem to work.
++#if defined(GTAVC)
+ 		if(ImGui::Button("Open garage 16")) 
++#elif defined(GTALCS)
++		if(ImGui::Button("Open hideout 1"))
++#endif
+ 		{ 
+ 			garageFunctions.OpenGarage(GARAGE_HIDEOUT_ONE); 
+ 		}
+ 
+ 		ImGui::SameLine();
+ 
+-		if (ImGui::Button("Close garage 16")) 
++#if defined(GTAVC)
++		if (ImGui::Button("Close garage 16"))
++#elif defined(GTALCS)
++		if(ImGui::Button("Close hideout 1"))
++#endif
+ 		{ 
+ 			garageFunctions.CloseGarage(GARAGE_HIDEOUT_ONE);
+ 		}
+@@ -206,4 +236,6 @@ GameMenu::GameTab()
+ 
+ 	}
+ 
+-}
+\ No newline at end of file
++}
++
++// clang-format on
+\ No newline at end of file
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index f3325d2c..80e7b884 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -73,8 +73,14 @@ bool showMainMenuBar = false;
+ //
+ 
+ // Enable this to enable menu movement and resize, it has some bad screen tearing.
++// Seems to work fine on ReLCS for some reason though.
++#if defined(GTALCS)
++bool menuMovingEnabled = true;
++#else
+ bool menuMovingEnabled = false;
+ 
++#endif
++
+ 
+ 
+ // I have moved most of these menus into their own files under src/extras/menus
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index aa134708..337b92a5 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -3,6 +3,9 @@
+ #include "vehicle_menu.h"
+ #include "imgui.h"
+ 
++// Add shortcuts for ImGui colors, and a lot of other ImGui commands
++#include "imgui_defines.h"
++
+ // My functions
+ #include "imgui_functions.h"
+ // Cheat functions
+@@ -181,7 +184,7 @@ VehicleMenu::VehicleTab()
+ 	// Spawn vehicle tab
+ 	vehicleSpawnMenu.VehicleSpawnTab();
+ 
+-
++	PUSH_TEXT_COLOR(IMGUI_RGBA_RED);
+ 	ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
+ 	if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) 
+ 	{ 
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 4f34d826..264e9428 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -49,6 +49,15 @@
+ #include "Bike.h"
+ 
+ 
++#ifdef _WIN32
++#include <Windows.h>
++#include <Psapi.h>
++#endif
++
++#include <cstddef>
++
++
++
+ // Defines - KCNet
+ #include "defines.h"
+ // Logging - KCNet
+@@ -366,3 +375,120 @@ MiscUtil::TestPedFeatures()
+ 			}
+ 	}
+ }
++
++
++//-------------- Memory address util ------------/
++// This should work between all 3 games
++#if defined(GTAVC) || defined(GTALCS) || defined(GTA3)
++void
++MiscUtil::DisplayPlayerHealthMemAddress()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	Defines defines = Defines();
++	MiscUtil miscUtil = MiscUtil();
++
++	float playerHealth = pPlayer->m_fHealth;
++
++	// uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
++
++	std::string memAddressString = "The memory address to player health is: " + miscUtil.AddressToString(&playerHealth);
++	// std::string memAddresStringNew = "Addr: " + miscUtil.AddressToString(&playerHealth);
++	// std::string memAddresStringNew = "Offset: " + offsetof(CPlayerPed, playerHealth);
++	//  Get the offset
++	//  TODO Fix this, try to use this:
++	/*
++	uintptr_t healthAddress = 0x000000CE452FA6B4; // Your health address
++
++	uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
++	uintptr_t baseAddress = // Base address
++	size_t healthOffset = healthAddress - baseAddress;
++	*/
++
++	// TODO Test this
++	// This crashes it
++	if(pPlayer) {
++
++		uintptr_t playerObjectAddress = reinterpret_cast<uintptr_t>(&(pPlayer));
++		uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
++		uintptr_t baseAddress = miscUtil.GetModuleBaseAddress("reLCS.exe"); // Base address
++		// size_t healthOffset = healthAddress - baseAddress;
++		size_t healthOffset = healthAddress - playerObjectAddress;
++
++		// std::string memAddressStringNew = "Offset: " + offsetof(CPlayerPed, m_fHealth);
++		// std::string memAddressStringNew = "Offset: " + healthOffset;
++
++		// Use stringstream for safe conversion
++		std::stringstream ss;
++		ss << "Offset: " << std::hex << healthOffset;
++		std::string memAddressStringNew = ss.str();
++
++		// LogFunctions::LogInfo(defines.logFile, memAddressString);
++		//  Log to console
++		// std::cout << Defines::KcLogString << memAddressString << std::endl;
++		std::cout << Defines::KcLogString << memAddressStringNew << std::endl;
++
++		// Set the hud text, disabled
++		// Display on hud
++		// char str[200];
++		// wchar ustr[200];
++
++		// This is where to set the text
++		// sprintf(str, memAddressStringNew.c_str());
++
++		//// This converts the text to show up in game
++		// AsciiToUnicode(str, ustr);
++
++		//// This shows the message in the top left
++		// MessageUtil::SetMessage(ustr);
++	} else {
++		std::cout << Defines::KcLogString << "Could not find player." << std::endl;
++	}
++}
++#endif
++
++#ifdef _WIN32
++
++/// <summary>
++/// Get the base address, and display it in the console.
++/// </summary>
++void
++MiscUtil::DisplayBaseAddress()
++{
++	//HMODULE hModule = GetModuleHandleA("reLCS.exe");
++	HMODULE hModule = GetModuleHandleA("reVC.exe");
++	if(hModule) {
++		MODULEINFO moduleInfo;
++		if(GetModuleInformation(GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo))) {
++			uintptr_t baseAddress = reinterpret_cast<uintptr_t>(moduleInfo.lpBaseOfDll);
++			std::cout << Defines::KcLogString << "Base address of YourGame.exe: " << std::hex << baseAddress << std::endl;
++		} else {
++			std::cerr << Defines::KcLogString << "Failed to get Module information" << std::endl;
++		}
++
++	} else {
++		std::cerr << Defines::KcLogString << "Failed to get base address." << std::endl;
++	}
++}
++
++/// <summary>
++/// Get the base address by itself without logging it.
++/// This should always get the base module address, for use in a possible plugin-sdk
++/// </summary>
++/// <param name="moduleName">The exe name to get the base address from</param>
++/// <returns>The exe module base address</returns>
++uintptr_t
++MiscUtil::GetModuleBaseAddress(const char *moduleName)
++{
++	HMODULE hModule = GetModuleHandleA(moduleName);
++	if(hModule) {
++		MODULEINFO moduleInfo;
++		if(GetModuleInformation(GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo))) {
++			return reinterpret_cast<uintptr_t>(moduleInfo.lpBaseOfDll);
++		}
++	}
++	return 0; // Return 0 on failure
++}
++
++#endif //_WIN32
++
++//-------------- End Memory address util ------------/
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index deaaf895..96e23526 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -29,4 +29,17 @@ public:
+ 	// Well this didn't seem to work right.
+ 	wchar *ConvertToUnicode(std::string text);
+ 
++	// Memory address testing
++	// Going to attempt to recreate parts of the plugin-sdk with this
++
++	// Get the player health memory address
++	void DisplayPlayerHealthMemAddress();
++
++	// Get the program base address and log it
++	void DisplayBaseAddress();
++
++	// Get the base address by itself
++	uintptr_t GetModuleBaseAddress(const char *moduleName);
++	//
++
+ };
+-- 
+2.49.0.windows.1
+

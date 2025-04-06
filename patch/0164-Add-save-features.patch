@@ -1,0 +1,213 @@
+From fd3252ee5b3da3c62747594f1085e52f2fb000f8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Apr 2025 03:15:40 -0400
+Subject: [PATCH 164/165] Add save features
+
+* Add save game to misc_util and misc_menu
+* Update imgui_defines.h
+---
+ src/extras/menus/misc_menu.cpp   | 35 ++++++++++-----
+ src/extras/utils/imgui_defines.h |  8 +++-
+ src/extras/utils/misc_util.cpp   | 75 ++++++++++++++++++++++++++++++++
+ src/extras/utils/misc_util.h     |  6 ++-
+ 4 files changed, 111 insertions(+), 13 deletions(-)
+
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 8d68e6a7..6df9a7f3 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -2,6 +2,7 @@
+ 
+ #include "misc_menu.h"
+ #include "imgui.h"
++#include "imgui_defines.h"
+ 
+ // TODO Move some of these into the pch later!
+ // Mostly my custom functions and extras needed for ReVC, so I don't have to find them everytime.
+@@ -504,6 +505,14 @@ void MiscMenu::MiscTab()
+ 			// MiscFunctions::GetInstance().setChaosTimerBarToggle(timerBarTest);
+ 			miscFunctions.TimerBarTest();
+ 		}
++
++		// Display the memory address to the player health as a test:
++		if(ImGui::Button("Display player health addr")) {
++			// miscUtil.DisplayPlayerHealthMemAddress();
++			miscUtil.TestHealthOffset();
++		}
++
++		//
+ 	}
+ 	//
+ 
+@@ -521,17 +530,7 @@ void MiscMenu::MiscTab()
+ 		miscFunctions.ShowRadarToggle();
+ 		ImGui::Separator();
+ 	}
+-#endif
+-
+-	// Display the memory address to the player health as a test:
+-	if (ImGui::Button("Display player health addr"))
+-	{ 
+-		//miscUtil.DisplayPlayerHealthMemAddress();
+-		miscUtil.TestHealthOffset();
+-	}
+-	
+-	//
+-	
++#endif	
+ 
+ 	// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
+ 	miscFunctions.DisplayCounterImGui();
+@@ -562,6 +561,20 @@ void MiscMenu::MiscTab()
+ 	//}
+ #endif
+ 
++	IMGUITEXT("For now, I have disabled this.");
++	IMGUITEXT("I need to fine tune it a bit.");
++	IMGUI_BEGIN_DISABLED();
++
++	IMGUITEXT("Test for saving the game");
++	IMGUITEXT("For now saves to slot 3.");
++
++	if (IMGUIBUTTON("Save Game")) 
++	{ 
++		miscUtil.SaveGame(3);
++	}
++
++	IMGUI_END_DISABLED();
++
+ 
+ 	//---------------
+ 	// Ped stuff
+diff --git a/src/extras/utils/imgui_defines.h b/src/extras/utils/imgui_defines.h
+index 03291046..94da14e0 100644
+--- a/src/extras/utils/imgui_defines.h
++++ b/src/extras/utils/imgui_defines.h
+@@ -67,4 +67,10 @@
+ #define IMGUI_INPUT_INT_FLAGS(LABEL, VALUE, FLAGS) ImGui::InputInt(LABEL, VALUE, FLAGS)
+ 
+ // Make an ImGui separator
+-#define IMGUI_SEPERATOR ImGui::Separator
+\ No newline at end of file
++#define IMGUI_SEPERATOR ImGui::Separator
++
++// ImGui begin and end disabled
++//#define IMGUI_BEGIN_DISABLED(VALUE) ImGui::BeginDisabled(VALUE)
++#define IMGUI_BEGIN_DISABLED ImGui::BeginDisabled
++
++#define IMGUI_END_DISABLED ImGui::EndDisabled
+\ No newline at end of file
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 41260018..20350f09 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -50,8 +50,14 @@
+ #include "Heli.h"
+ #include "Bike.h"
+ 
++// C_PcSave::SaveSlot
++#include "PCSave.h"
++
++// For eSaveSlot enum
++#include "Frontend.h"
+ 
+ #ifdef _WIN32
++#define NOMINMAX
+ #include <Windows.h>
+ #include <Psapi.h>
+ #endif
+@@ -68,6 +74,75 @@
+ 
+ #include <stdlib.h>
+ 
++/// <summary>
++/// Save the game to a specific slot, also pass the time.
++/// I have disabled this for now in the ImGui menu.
++/// TODO Add a check to confirm overwriting if the save exists.
++/// </summary>
++/// <param name="slot"></param>
++void
++MiscUtil::SaveGame(int32 slot)
++{
++	// First, Check if slot is in use by my game
++	if(slot == SAVESLOT_0 || slot == SAVESLOT_1) { 
++		return;
++	}
++
++	// Then Remove one from the slot, setting to 3 used save slot 4.
++	// I'm doing this after the check because it offsets for the proper save file.
++	slot = slot - 1;
++
++	/*
++				if (Slots[m_nCurrSaveSlot] == SLOT_OK)
++				// FESZ_QO = Proceed with overwriting this save game?
++				str = TheText.Get("FESZ_QO");
++			else if (Slots[m_nCurrSaveSlot] == SLOT_CORRUPTED)
++				// FESZ_QZ = Are you sure you want to save this game?
++				str = TheText.Get("FESZ_QZ");
++			else
++				str = TheText.Get(aScreens[m_nCurrScreen].m_aEntries[0].m_EntryName);
++			break;
++
++	*/
++
++	// Oops, this crashes it.
++	//FrontEndMenuManager.SwitchToNewScreen(MENUPAGE_SAVE_OVERWRITE_CONFIRM);
++
++	// Save the game to a specific slot
++	// TODO Add overwrite check
++	// TODO Add error handling
++	//if (slot == SLOT_OK)
++	//{ 
++		PcSaveHelper.SaveSlot(slot);
++	//}
++
++	
++}
++
++/// <summary>
++/// This should get the game tick every second
++/// Idea from here: https://github.com/gta-chaos-mod/Trilogy-ASI-Script/blob/3.0/src/shared/util/GenericUtil.cpp#L32-L44
++/// TODO Test this later
++/// TODO Move this into GenericUtil.cpp and GenericUtil.h
++/// </summary>
++/// <param name="multiplier">TODO Figure out what this param is for.</param>
++/// <returns></returns>
++double
++MiscUtil::CalculateTick(double multiplier)
++{
++	//unsigned diff = CTimer::m_snTimeInMilliseconds - CTimer::m_snPreviousTimeInMilliseconds;
++	unsigned diff = CTimer::GetTimeInMilliseconds() - CTimer::GetPreviousTimeInMilliseconds();
++
++	// If the jump is too big, e.g. replays or loading saves
++	if(diff <= 0 || diff >= 1000) return 0;
++
++	//float timeScale = std::max(0.000001f, CTimer::ms_fTimeScale);
++	float timeScale = std::max(0.000001f, CTimer::GetTimeScale());
++
++	return diff / timeScale * multiplier;
++}
++
++
+ // TODO Move these into another file
+ void makePedFlee(CPed *ped)
+ {
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 1adeb6d8..e102521f 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -45,6 +45,10 @@ public:
+ 	uintptr_t GetModuleBaseAddress(const char *moduleName);
+ 
+ 
+-	//
++	// This should get the game tick every second
++	double CalculateTick(double multiplier);
++
++	// Test saving the game to a specific slot
++	void SaveGame(int32 slot);
+ 
+ };
+-- 
+2.49.0.windows.1
+

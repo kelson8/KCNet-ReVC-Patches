@@ -1,0 +1,1277 @@
+From a88f3253452179b3aaf457077d79987deef696b8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Apr 2025 20:54:00 -0400
+Subject: [PATCH 163/165] Fix some things, document some code
+
+* Fix vehicle turn mass toggle, now it can be turned off.
+* Add toggle for high mass into function.
+* Add toggle fast vehicle, which toggles the acceleration to be very fast.
+
+Fix some spacing in some code files.
+
+Add doxygen batch file, this requires doxygen to be installed.
+
+More code files documented a bit:
+* Antennas.cpp
+* Transmission.h
+* HandingMgr.h
+* Garages.cpp
+* Garages.h
+* Frontend.cpp
+* PlayerInfo.cpp
+* Vehicle.cpp
+
+Make DisplayHelperText use an enum, add enum  to Frontend.h
+
+Add some code to mess with in Vehicle.cpp.
+
+Update patch/commit number to 163.
+---
+ guides/create-patches.md          |  2 +-
+ run-doxygen.bat                   | 14 +++++
+ src/control/AutoPilot.cpp         |  5 ++
+ src/control/AutoPilot.h           |  8 +++
+ src/control/Garages.cpp           | 24 ++++++++
+ src/control/Garages.h             | 33 +++++++++++
+ src/core/Frontend.cpp             | 76 ++++++++++++++++++++++++
+ src/core/Frontend.h               | 14 +++++
+ src/core/PlayerInfo.cpp           | 11 ++++
+ src/extras/menus/vehicle_menu.cpp | 85 ++++++++++++++++++++++++---
+ src/renderer/Antennas.cpp         |  6 ++
+ src/vehicles/HandlingMgr.h        | 44 ++++++++++++++
+ src/vehicles/Transmission.h       | 36 ++++++++++++
+ src/vehicles/Vehicle.cpp          | 96 ++++++++++++++++++++++++++-----
+ 14 files changed, 430 insertions(+), 24 deletions(-)
+ create mode 100644 run-doxygen.bat
+
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index fb122d38..51bdf1f5 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 156, patch number: 156)
++(Currently on commit 163, patch number: 163)
+ 
+ 1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/run-doxygen.bat b/run-doxygen.bat
+new file mode 100644
+index 00000000..964209f0
+--- /dev/null
++++ b/run-doxygen.bat
+@@ -0,0 +1,14 @@
++:: https://superuser.com/questions/175466/determine-if-command-is-recognized-in-a-batch-file
++
++@echo off
++
++:: This checks if doxygen is installed, if so
++:: it'll generate documentation for the items I have documented.
++:: I haven't documented everything but I have done a lot.
++
++doxygen -version >nul 2>&1 && (
++    echo "Running doxygen generator"
++	doxygen
++) || (
++    echo "Could not find doxygen install"
++)
+\ No newline at end of file
+diff --git a/src/control/AutoPilot.cpp b/src/control/AutoPilot.cpp
+index d7c17a68..aecb21bc 100644
+--- a/src/control/AutoPilot.cpp
++++ b/src/control/AutoPilot.cpp
+@@ -73,20 +73,25 @@ void CAutoPilot::Save(uint8*& buf)
+ 	WriteSaveBuf(buf, m_nCruiseSpeed);
+ 	WriteSaveBuf(buf, m_nCruiseSpeedMultiplierType);
+ 	ZeroSaveBuf(buf, 2);
++
+ 	WriteSaveBuf(buf, m_fCruiseSpeedMultiplier);
++
+ 	uint8 flags = 0;
+ 	if (m_bSlowedDownBecauseOfCars) flags |= BIT(0);
+ 	if (m_bSlowedDownBecauseOfPeds) flags |= BIT(1);
+ 	if (m_bStayInCurrentLevel) flags |= BIT(2);
+ 	if (m_bStayInFastLane) flags |= BIT(3);
+ 	if (m_bIgnorePathfinding) flags |= BIT(4);
++
+ 	WriteSaveBuf(buf, flags);
+ 	WriteSaveBuf(buf, m_nSwitchDistance);
+ 	ZeroSaveBuf(buf, 2);
++
+ 	WriteSaveBuf(buf, m_vecDestinationCoors.x);
+ 	WriteSaveBuf(buf, m_vecDestinationCoors.y);
+ 	WriteSaveBuf(buf, m_vecDestinationCoors.z);
+ 	ZeroSaveBuf(buf, 32);
++
+ 	WriteSaveBuf(buf, m_nPathFindNodesCount);
+ 	ZeroSaveBuf(buf, 6);
+ }
+diff --git a/src/control/AutoPilot.h b/src/control/AutoPilot.h
+index ec3bb8d8..ae4af933 100644
+--- a/src/control/AutoPilot.h
++++ b/src/control/AutoPilot.h
+@@ -66,30 +66,38 @@ public:
+ 	int32 m_nPrevRouteNode;
+ 	int32 m_nTimeEnteredCurve;
+ 	int32 m_nTimeToSpendOnCurrentCurve;
++
+ 	uint32 m_nCurrentPathNodeInfo;
+ 	uint32 m_nNextPathNodeInfo;
+ 	uint32 m_nPreviousPathNodeInfo;
+ 	uint32 m_nAntiReverseTimer;
+ 	uint32 m_nTimeToStartMission;
++
+ 	int8 m_nPreviousDirection;
+ 	int8 m_nCurrentDirection;
+ 	int8 m_nNextDirection;
+ 	int8 m_nCurrentLane;
+ 	int8 m_nNextLane;
++
+ 	uint8 m_nDrivingStyle;
+ 	uint8 m_nCarMission;
+ 	uint8 m_nTempAction;
++
+ 	uint32 m_nTimeTempAction;
+ 	float m_fMaxTrafficSpeed;
++
+ 	uint8 m_nCruiseSpeed;
+ 	uint8 m_nCruiseSpeedMultiplierType;
++
+ 	float m_fCruiseSpeedMultiplier;
++
+ 	uint8 m_bSlowedDownBecauseOfCars : 1;
+ 	uint8 m_bSlowedDownBecauseOfPeds : 1;
+ 	uint8 m_bStayInCurrentLevel : 1;
+ 	uint8 m_bStayInFastLane : 1;
+ 	uint8 m_bIgnorePathfinding : 1;
+ 	uint8 m_nSwitchDistance;
++
+ 	CVector m_vecDestinationCoors;
+ 	CPathNode *m_aPathFindNodesInfo[NUM_PATH_NODES_IN_AUTOPILOT];
+ 	int16 m_nPathFindNodesCount;
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index 88b0ba98..19026e7a 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -1171,10 +1171,13 @@ void CGarage::Update()
+ 			float distance = CalcDistToGarageRectangleSquared(FindPlayerCoors().x, FindPlayerCoors().y);
+ 			if (distance < SQR(DISTANCE_TO_OPEN_HIDEOUT_GARAGE_ON_FOOT) ||
+ 				distance < SQR(DISTANCE_TO_OPEN_HIDEOUT_GARAGE_IN_CAR) && FindPlayerVehicle()) {
++				// Check if the player is in a vehicle and the garage count for the hideout is greater then the value stored.
++				// Gets value from m_nMaxStoredCars
+ 				if (FindPlayerVehicle() && CGarages::CountCarsInHideoutGarage(m_eGarageType) >= FindMaxNumStoredCarsForGarage()) {
+ 					if (m_pDoor1) {
+ 						if (((CVector2D)FindPlayerVehicle()->GetPosition() - (CVector2D)m_pDoor1->GetPosition()).MagnitudeSqr() < SQR(DISTANCE_TO_SHOW_HIDEOUT_MESSAGE) &&
+ 							CTimer::GetTimeInMilliseconds() - CGarages::LastTimeHelpMessage > TIME_BETWEEN_HIDEOUT_MESSAGES) {
++							// Check if the vehicle is a helicopter or plane, if so print the message
+ 							if (FindPlayerVehicle()->GetVehicleAppearance() != VEHICLE_APPEARANCE_HELI && FindPlayerVehicle()->GetVehicleAppearance() != VEHICLE_APPEARANCE_PLANE) {
+ 								CHud::SetHelpMessage(TheText.Get("GA_21"), false); // You cannot store any more cars in this garage.
+ 								CGarages::LastTimeHelpMessage = CTimer::GetTimeInMilliseconds();
+@@ -3043,11 +3046,14 @@ void CGarages::Save(uint8 * buf, uint32 * size)
+ #endif
+ 	CloseHideOutGaragesBeforeSave();
+ 	WriteSaveBuf(buf, NumGarages);
++
+ 	WriteSaveBuf(buf, (uint32)BombsAreFree);
+ 	WriteSaveBuf(buf, (uint32)RespraysAreFree);
++
+ 	WriteSaveBuf(buf, CarsCollected);
+ 	WriteSaveBuf(buf, BankVansCollected);
+ 	WriteSaveBuf(buf, PoliceCarsCollected);
++
+ 	for (int i = 0; i < TOTAL_COLLECTCARS_GARAGES; i++)
+ 		WriteSaveBuf(buf, CarTypesCollected[i]);
+ 	WriteSaveBuf(buf, LastTimeHelpMessage);
+@@ -3060,41 +3066,59 @@ void CGarages::Save(uint8 * buf, uint32 * size)
+ #ifdef COMPATIBLE_SAVES
+ 		WriteSaveBuf(buf, aGarages[i].m_eGarageType);
+ 		WriteSaveBuf(buf, aGarages[i].m_eGarageState);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_nMaxStoredCars);
+ 		WriteSaveBuf(buf, aGarages[i].field_2);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_bClosingWithoutTargetCar);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_bDeactivated);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_bResprayHappened);
++
+ 		ZeroSaveBuf(buf, 1);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_nTargetModelIndex);
+ 		ZeroSaveBuf(buf, 4 + 4);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_bDoor1PoolIndex);
+ 		WriteSaveBuf(buf, aGarages[i].m_bDoor2PoolIndex);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_bDoor1IsDummy);
+ 		WriteSaveBuf(buf, aGarages[i].m_bDoor2IsDummy);
+ 		WriteSaveBuf(buf, aGarages[i].m_bRecreateDoorOnNextRefresh);
+ 		WriteSaveBuf(buf, aGarages[i].m_bRotatedDoor);
+ 		WriteSaveBuf(buf, aGarages[i].m_bCameraFollowsPlayer);
+ 		ZeroSaveBuf(buf, 1);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_vecCorner1);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fInfZ);
+ 		WriteSaveBuf(buf, aGarages[i].m_vDir1);
+ 		WriteSaveBuf(buf, aGarages[i].m_vDir2);
+ 		WriteSaveBuf(buf, aGarages[i].m_fSupZ);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fDir1Len);
+ 		WriteSaveBuf(buf, aGarages[i].m_fDir2Len);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fInfX);
+ 		WriteSaveBuf(buf, aGarages[i].m_fSupX);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fInfY);
+ 		WriteSaveBuf(buf, aGarages[i].m_fSupY);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoorPos);
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoorHeight);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoor1X);
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoor1Y);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoor2X);
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoor2Y);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoor1Z);
+ 		WriteSaveBuf(buf, aGarages[i].m_fDoor2Z);
++
+ 		WriteSaveBuf(buf, aGarages[i].m_nTimeToStartAction);
+ 		WriteSaveBuf(buf, aGarages[i].m_bCollectedCarsState);
+ 		ZeroSaveBuf(buf, 3 + 4);
+diff --git a/src/control/Garages.h b/src/control/Garages.h
+index 00a49d8a..49f011f6 100644
+--- a/src/control/Garages.h
++++ b/src/control/Garages.h
+@@ -85,7 +85,9 @@ class CStoredCar
+ 	int32 m_nModelIndex;
+ 	CVector m_vecPos;
+ 	CVector m_vecAngle;
++
+ 	int32 m_nFlags;
++
+ 	int8 m_nPrimaryColor;
+ 	int8 m_nSecondaryColor;
+ 
+@@ -267,43 +269,74 @@ public:
+ 
+ 	static void Init(void);
+ #ifndef PS2
++	// Shutdown the garages
+ 	static void Shutdown(void);
+ #endif
++	// Update the garages, doesn't seem to be in use
+ 	static void Update(void);
+ 
++	// Add a garage, doesn't seem to be in use
+ 	static int16 AddOne(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId);
++	// Change garage type
+ 	static void ChangeGarageType(int16, uint8, int32);
++	
++	// Print garage messages
+ 	static void PrintMessages(void);
++	
+ 	static void TriggerMessage(const char* text, int16, uint16 time, int16);
+ 	static void SetTargetCarForMissonGarage(int16, CVehicle*);
+ 	static bool HasCarBeenDroppedOffYet(int16);
++	
++	// Deactivate and activate garages
+ 	static void DeActivateGarage(int16);
+ 	static void ActivateGarage(int16);
++
+ 	static int32 QueryCarsCollected(int16);
+ 	static bool HasImportExportGarageCollectedThisCar(int16, int8);
++	
++	// Check if garage is open or closed
+ 	static bool IsGarageOpen(int16);
+ 	static bool IsGarageClosed(int16);
++	
+ 	static bool HasThisCarBeenCollected(int16, uint8);
++	
++	// Open/Close garages
+ 	static void OpenGarage(int16 garage) { aGarages[garage].OpenThisGarage(); }
+ 	static void CloseGarage(int16 garage) { aGarages[garage].CloseThisGarage(); }
++	
+ 	static bool HasResprayHappened(int16);
+ 	static void SetGarageDoorToRotate(int16);
+ 	static void SetLeaveCameraForThisGarage(int16);
++	
+ 	static bool IsThisCarWithinGarageArea(int16, CEntity*);
++	// Check if the car handle has been crushed
+ 	static bool HasCarBeenCrushed(int32);
++	// Unused
+ 	static bool IsPointInAGarageCameraZone(CVector);
++	
+ 	static bool CameraShouldBeOutside(void);
+ 	static void GivePlayerDetonator(void);
++	
++	// Unused
+ 	static void PlayerArrestedOrDied(void);
+ 	static bool IsPointWithinHideOutGarage(Const CVector&);
+ 	static bool IsPointWithinAnyGarage(Const CVector&);
+ 	static void SetAllDoorsBackToOriginalHeight(void);
++	
++	// Save/Load the garages
+ 	static void Save(uint8* buf, uint32* size);
+ 	static void Load(uint8* buf, uint32 size);
++
+ 	static bool IsModelIndexADoor(uint32 id);
++
++	// Set free bombs and resprays
+ 	static void SetFreeBombs(bool bValue) { BombsAreFree = bValue; }
+ 	static void SetFreeResprays(bool bValue) { RespraysAreFree = bValue; }
++	
++	// Stop the car from blowing up in the garage, this doesn't seem to be in use
+ 	static void StopCarFromBlowingUp(CAutomobile*);
++	// This might be useful
++	// TODO Look into this
+ 	static void SetMaxNumStoredCarsForGarage(int16 garage, uint8 num) { aGarages[garage].m_nMaxStoredCars = num; }
+ 
+ 	static bool IsCarSprayable(CVehicle*);
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 7e4e9680..cc9e9d08 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -57,6 +57,24 @@
+ #endif
+ 
+ 
++#ifdef CUSTOM_CODE
++
++/// <summary>
++/// For use in the switch statements as a test.
++/// This should allow me to use the enums with a int32 conversion.
++/// TODO Fix this to work.
++/// </summary>
++/// <typeparam name="EnumType">The enumType to use</typeparam>
++/// <param name="value">The value of the enum</param>
++/// <returns>An int32 from the enum</returns>
++template <typename EnumType>
++inline int32
++enumToInt32(EnumType value)
++{
++	return static_cast<int32>(value);
++}
++#endif
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -1014,6 +1032,31 @@ CMenuManager::DisplayHelperText(char *text)
+ 	CFont::SetColor(CRGBA(255, 255, 255, alpha));
+ 	// TODO: name this cases?
+ 	switch (m_nHelperTextMsgId) {
++#ifdef CUSTOM_CODE
++		// TODO Fix these switch statements, make them look nicer
++		// This new switch with enums seems to work.
++		case static_cast<int32>(HelperTextList::APPLY):
++		//case enumToInt32(HelperTextList::APPLY):
++			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_APP"));
++			break;
++	   case static_cast<int32>(HelperTextList::DEFAULT_SETTINGS_RESTORED):
++			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_HRD"));
++			break;
++	   case static_cast<int32>(HelperTextList::ORIGINAL_SETTING_RESTORED):
++			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_RSO"));
++			break;
++	   case static_cast<int32>(HelperTextList::STATS_SAVED):
++			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_STS"));
++			break;
++	   case static_cast<int32>(HelperTextList::HARDWARE_NOT_AVAILABLE):
++			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_RSC"));
++		break;
++#else
+ 		case 1:
+ 			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_APP"));
+ 			break;
+@@ -1029,6 +1072,7 @@ CMenuManager::DisplayHelperText(char *text)
+ 		case 5:
+ 			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_RSC"));
+ 			break;
++#endif
+ 		default:
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_NO)
+ 				return;
+@@ -1036,6 +1080,8 @@ CMenuManager::DisplayHelperText(char *text)
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_MUSICVOLUME ||
+ 				aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_SFXVOLUME) {
+ 
++				// FET_NA = OPTION NOT AVAILABLE
++				// FET_MIG = LEFT, RIGHT, MOUSEWHEEL TO ADJUST
+ 				CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
+ 					m_nPrefsAudio3DProviderIndex == NO_AUDIO_PROVIDER ? TheText.Get("FEH_NA") : TheText.Get("FET_MIG"));
+ 				return;
+@@ -1051,6 +1097,8 @@ CMenuManager::DisplayHelperText(char *text)
+ 
+ 				return;
+ 
++			// FET_MIG = LEFT, RIGHT, MOUSEWHEEL TO ADJUST
++			// FET_NA = OPTION NOT AVAILABLE
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_SCREENRES) {
+ 				CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
+ 					m_bGameNotLoaded ? TheText.Get("FET_MIG") : TheText.Get("FEH_NA"));
+@@ -1060,6 +1108,8 @@ CMenuManager::DisplayHelperText(char *text)
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_AUDIOHW ||
+ 				aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_SPEAKERCONF) {
+ 
++				// FET_NA = OPTION NOT AVAILABLE
++			    // FET_MIG = LEFT, RIGHT, MOUSEWHEEL TO ADJUST
+ 				CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
+ 					m_nPrefsAudio3DProviderIndex == NO_AUDIO_PROVIDER ? TheText.Get("FEH_NA") : TheText.Get("FET_MIG"));
+ 				return;
+@@ -1069,11 +1119,16 @@ CMenuManager::DisplayHelperText(char *text)
+ 				return;
+ 
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_MP3VOLUMEBOOST) {
++				// FET_NA = OPTION NOT AVAILABLE
++			    // FET_MIG = LEFT, RIGHT, MOUSEWHEEL TO ADJUST
+ 				CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
+ 					m_nPrefsAudio3DProviderIndex == NO_AUDIO_PROVIDER ? TheText.Get("FEH_NA") : TheText.Get("FET_MIG"));
+ 				return;
+ 			}
+ 
++			
++		    // FET_MIG = LEFT, RIGHT, MOUSEWHEEL TO ADJUST
++			// FEH_SSA = CURSORS TO MOVE - S TO SAVE TO FILE
+ 			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
+ 				m_nCurrScreen != MENUPAGE_STATS ? TheText.Get("FET_MIG") : TheText.Get("FEH_SSA"));
+ 
+@@ -1203,6 +1258,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 		switch (m_nCurrScreen) {
+ 		case MENUPAGE_LOAD_SLOT_CONFIRM:
+ 			if (m_bGameNotLoaded)
++				// FES_LCG = Load the game and continue playing?
+ 				str = TheText.Get("FES_LCG");
+ 			else
+ 				str = TheText.Get(aScreens[m_nCurrScreen].m_aEntries[0].m_EntryName);
+@@ -1212,14 +1268,17 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 			break;
+ 		case MENUPAGE_SAVE_OVERWRITE_CONFIRM:
+ 			if (Slots[m_nCurrSaveSlot] == SLOT_OK)
++				// FESZ_QO = Proceed with overwriting this save game?
+ 				str = TheText.Get("FESZ_QO");
+ 			else if (Slots[m_nCurrSaveSlot] == SLOT_CORRUPTED)
++				// FESZ_QZ = Are you sure you want to save this game?
+ 				str = TheText.Get("FESZ_QZ");
+ 			else
+ 				str = TheText.Get(aScreens[m_nCurrScreen].m_aEntries[0].m_EntryName);
+ 			break;
+ 		case MENUPAGE_EXIT:
+ 			if (m_bGameNotLoaded)
++				// FEQ_SRW = Are you sure you want to quit the game?
+ 				str = TheText.Get("FEQ_SRW");
+ 			else
+ 				str = TheText.Get(aScreens[m_nCurrScreen].m_aEntries[0].m_EntryName);
+@@ -1831,24 +1890,30 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					}
+ 
+ 					if (m_nPrefsAudio3DProviderIndex == DMAudio.GetCurrent3DProviderIndex()) {
++						// FEA_3DH = AUDIO HARDWARE
+ 						if (!strcmp(aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_EntryName, "FEA_3DH") && m_nHelperTextMsgId == 1)
+ 							ResetHelperText();
+ 					}
+ 					if (m_nDisplayVideoMode == m_nPrefsVideoMode) {
++						// FED_RES = SCREEN RESOLUTION
+ 						if (!strcmp(aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_EntryName, "FED_RES") && m_nHelperTextMsgId == 1)
+ 							ResetHelperText();
+ 					}
+ 					if (m_nPrefsAudio3DProviderIndex != DMAudio.GetCurrent3DProviderIndex()) {
++						// FEA_3DH = AUDIO HARDWARE
+ 						if (!strcmp(aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_EntryName, "FEA_3DH"))
+ 							SetHelperText(1);
+ 					}
+ 					if (m_nDisplayVideoMode != m_nPrefsVideoMode) {
++						// FED_RES = SCREEN RESOLUTION
+ 						if (!strcmp(aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_EntryName, "FED_RES"))
+ 							SetHelperText(1);
+ 					}
+ 					if (m_nPrefsAudio3DProviderIndex != DMAudio.GetCurrent3DProviderIndex()) {
++						// FEA_3DH = AUDIO HARDWARE
+ 						if (strcmp(aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_EntryName, "FEA_3DH") != 0
+ #ifdef CUSTOM_FRONTEND_OPTIONS
++						   // FEA_3DH = AUDIO HARDWARE
+ 							&& ScreenHasOption(m_nCurrScreen, "FEA_3DH")
+ #else
+ 							&& m_nCurrScreen == MENUPAGE_SOUND_SETTINGS
+@@ -1860,6 +1925,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						}
+ 					}
+ 					if (m_nDisplayVideoMode != m_nPrefsVideoMode) {
++						// FED_RES = SCREEN RESOLUTION
+ 						if (strcmp(aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_EntryName, "FED_RES") != 0
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 							&& ScreenHasOption(m_nCurrScreen, "FED_RES")) {
+@@ -2009,6 +2075,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 		case MENUPAGE_MOUSE_CONTROLS:
+ 			DisplayHelperText(nil);
+ 			break;
++		// FEA_NAH = NO AUDIO HARDWARE
+ 		case MENUPAGE_OPTIONS:
+ 			if (m_nPrefsAudio3DProviderIndex == NO_AUDIO_PROVIDER && aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_LOADRADIO)
+ 				DisplayHelperText("FEA_NAH");
+@@ -2024,10 +2091,12 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ #endif
+ 	}
+ 
++	// FEDL_WR = Deleting saved game. Please wait...
+ 	if (m_nCurrScreen == MENUPAGE_DELETING_IN_PROGRESS) {
+ 		SmallMessageScreen("FEDL_WR");
+ 	}
+ #ifndef XBOX_MESSAGE_SCREEN
++	// FESZ_WR = Saving current game. Please wait...
+ 	else if (m_nCurrScreen == MENUPAGE_SAVING_IN_PROGRESS) {
+ 		SmallMessageScreen("FESZ_WR");
+ 	}
+@@ -2526,14 +2595,17 @@ CMenuManager::DrawControllerBound(int32 yStart, int32 xStart, int32 unused, int8
+ 						CFont::PrintString(nextX, nextY, TheText.Get("FEC_QUE")); // "???"
+ 					}
+ 					if (m_bKeyChangeNotProcessed)
++						// FET_CIG = BACKSPACE TO CLEAR - LMB, RETURN TO CHANGE
+ 						DisplayHelperText("FET_CIG");
+ 					else
++						// FET_RIG = SELECT A NEW CONTROL FOR THIS ACTION
+ 						DisplayHelperText("FET_RIG");
+ 
+ 					SET_FONT_FOR_LIST_ITEM
+ 
+ 					m_bKeyIsOK = true;
+ 				} else {
++					// FET_CIG = BACKSPACE TO CLEAR - LMB, RETURN TO CHANGE
+ 					DisplayHelperText("FET_CIG");
+ 					SET_FONT_FOR_LIST_ITEM
+ 
+@@ -2541,6 +2613,7 @@ CMenuManager::DrawControllerBound(int32 yStart, int32 xStart, int32 unused, int8
+ 					m_bKeyChangeNotProcessed = false;
+ 				}
+ 			} else if (optionIdx == m_nSelectedListRow) {
++				// FET_EIG = CANNOT SET A CONTROL FOR THIS ACTION
+ 				DisplayHelperText("FET_EIG");
+ 				SET_FONT_FOR_LIST_ITEM
+ 			}
+@@ -2565,6 +2638,7 @@ CMenuManager::DrawControllerScreenExtraText(int yStart, int xStart, int lineHeig
+ 			if (text) {
+ 				// Seperator
+ 				if (numTextsPrinted > 1) {
++					// FEC_IBT = "-"
+ 					CFont::PrintString(nextX, MENU_Y(yStart), TheText.Get("FEC_IBT"));
+ 					nextX = CFont::GetStringWidth(TheText.Get("FEC_IBT"), true) + spacing + nextX;
+ 				}
+@@ -2588,6 +2662,7 @@ CMenuManager::DrawControllerScreenExtraText(int yStart, int xStart, int lineHeig
+ 			}
+ 			if (waitingTextVisible) {
+ 				CFont::SetColor(CRGBA(255, 255, 0, FadeIn(255)));
++				// FEC_QUE = "???"
+ 				CFont::PrintString(nextX, MENU_Y(yStart), TheText.Get("FEC_QUE"));
+ 				CFont::SetColor(CRGBA(LABEL_COLOR.r, LABEL_COLOR.g, LABEL_COLOR.b, FadeIn(255)));
+ 			}
+@@ -2807,6 +2882,7 @@ CMenuManager::DrawControllerSetupScreen()
+ 	else if (m_ControlMethod == CONTROL_CLASSIC)
+ 		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(MENUHEADER_POS_X), SCREEN_SCALE_Y(MENUHEADER_POS_Y), TheText.Get("FET_CTI"));
+ 
++	// TODO Label these
+ 	wchar *actionTexts[33];
+ 	actionTexts[0] = TheText.Get("FEC_FIR");
+ 	actionTexts[1] = TheText.Get("FEC_NWE");
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index d39a827a..6e38a8e2 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -506,6 +506,20 @@ enum ControllerSetupColumn
+ 	CONTSETUP_VEHICLE_COLUMN = 16,
+ };
+ 
++
++#ifdef CUSTOM_CODE // Enum for DisplayHelperText
++// TODO Remove class from this, rename enum values to have HELPER_TEXT_
++// Make it more in line with the other enums above.
++// So I don't have to deal with the static casting to int32
++enum class HelperTextList { 
++	APPLY = 1, 
++	DEFAULT_SETTINGS_RESTORED = 2, 
++	ORIGINAL_SETTING_RESTORED = 3, 
++	STATS_SAVED = 4, 
++	HARDWARE_NOT_AVAILABLE = 5 
++};
++#endif
++
+ // Something to do with rendering the player skin screen on the menu.
+ struct tSkinInfo
+ {
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index 9646e1ab..b549305f 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -644,23 +644,34 @@ void
+ CPlayerInfo::LoadPlayerInfo(uint8 *buf, uint32 size)
+ {
+ #define CopyFromBuf(buf, data) memcpy(&data, buf, sizeof(data)); buf += sizeof(data);
++	// I found this in the hex editor of the save, the money value
++	// TODO Play around with this and try to read these values in C++
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nMoney);
++
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_WBState);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nWBTime);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nTrafficMultiplier);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_fRoadDensity);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nVisibleMoney);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nCollectedPackages);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nTotalPackages);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bInfiniteSprint);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bFastReload);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bFireproof);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nMaxArmour);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfJailFree);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfHospitalFree);
++	
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bDriveByAllowed);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_aPlayerName);
++
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nBustedAudioStatus);
+ 	CopyFromBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nCurrentBustedAudio)
+ #undef CopyFromBuf
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 263e655a..df398511 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -34,7 +34,8 @@
+ #include "Automobile.h"
+ 
+ // Vehicle
+-bool highVehicleMass = false;
++// Moved into function
++//bool highVehicleMass = false;
+ bool vehicleInvincible = false;
+ 
+ // Set if the tank can blow up vehicles when hitting them, defaults to true.
+@@ -57,14 +58,18 @@ toggleVehicleInvincible()
+ 	}
+ }
+ 
++// This gets set in the function to the original value
++float vehicleMassOld = 0.0f;
++float vehicleTurnMassOld = 0.0f;
++
+ /// <summary>
+ /// Well, I created a bug with the high mass lol. I made a fun effect
+ /// TODO Figure out how to reset this back to default
+ /// TODO Figure out how to get these values from lua... Use my lua_test.cpp
+-/// This is fun, although it does crash after a minute since I can't turn it off.
++/// This is fun, I fixed the toggle to work on this function.
+ /// </summary>
+ void
+-toggleHighVehicleMass()
++toggleHighVehicleMass(bool toggle)
+ {
+ 	//LuaTest luaTest = LuaTest();
+ 
+@@ -113,20 +118,70 @@ toggleHighVehicleMass()
+ 	if(vehicleFunctions.IsPlayerInVehicle()) {
+ 		CVehicle *currentVeh = pPed->m_pMyVehicle;
+ 
+-		if(highVehicleMass) {
++		//if(highVehicleMass) {
++		if(toggle) {
++			// Set the old values, to be re-used
++			vehicleMassOld = currentVeh->m_fMass;
++			vehicleTurnMassOld = currentVeh->m_fTurnMass;
+ 			// currentVeh->m_fMass = 10000000.0f;
+ 
+ 			// currentVeh->m_fMass = 10000.0f;
+ 
++			// Set the new values
+ 			// This makes the vehicle super strong
+ 			currentVeh->m_fMass = vehicleMass;
+ 
+ 			// Spinny effect
+ 			currentVeh->m_fTurnMass = vehicleTurnMass;
++			log_output("Crazy handling enabled for vehicle.");
++		} 
++		else 
++		{
++			// First check if the values are valid
++			if(vehicleMassOld != 0.0f && vehicleTurnMassOld != 0.0f) 
++			{
++				// Set the turn mass and mass back to normal
++				currentVeh->m_fMass = vehicleMassOld;
++				currentVeh->m_fTurnMass = vehicleTurnMassOld;
++
++				log_output("Crazy handling disabled for vehicle.");
++			}
+ 		}
+ 	}
+ }
+ 
++// This gets set in the function to the original value
++float engineAccelerationOld = 0.0f;
++void
++toggleFastVehicle(bool toggle)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) { 
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++		if (toggle) {
++			// Set the old engine acceleration value
++			engineAccelerationOld = currentVeh->pHandling->Transmission.fEngineAcceleration;
++			// Update the current value
++
++			currentVeh->pHandling->Transmission.fEngineAcceleration = 1000.0f;
++			log_output("New handling: 1000.0f");
++
++		} else {
++			// Fix back to original value stored
++			if (engineAccelerationOld != 0.0f)
++			{ 
++				currentVeh->pHandling->Transmission.fEngineAcceleration = engineAccelerationOld;
++				std::cout << Defines::KcLogString << "Engine acceleration set back to " << engineAccelerationOld << std::endl;
++			}
++		}
++		
++	
++	}
++}
++
+ 
+ 
+ /// <summary>
+@@ -181,17 +236,31 @@ VehicleMenu::VehicleTab()
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 	VehicleSpawnMenu vehicleSpawnMenu = VehicleSpawnMenu();
+ 
++	static bool toggleFastCar = false;
++	static bool highMassEnabled = false;
++
+ 	// Spawn vehicle tab
+ 	vehicleSpawnMenu.VehicleSpawnTab();
+ 
+-	PUSH_TEXT_COLOR(IMGUI_RGBA_RED);
+-	ImGui::Text("Be warned, this cannot be disabled and you will crash, but it has a fun effect.");
++	PUSH_TEXT_COLOR(IMGUI_RGBA_CYAN);
++	ImGui::Text("This has a fun effect.");
++	ImGui::Text("Makes the vehicle spin in the air a bit.");
+ 	POP_TEXT_COLOR();
+-	if(ImGui::Checkbox("Toggle high mass", &highVehicleMass)) 
++	if(ImGui::Checkbox("Toggle high mass", &highMassEnabled)) 
+ 	{ 
+-		toggleHighVehicleMass(); 
++		toggleHighVehicleMass(highMassEnabled); 
+ 	}
+ 
++	// This works
++	PUSH_TEXT_COLOR(IMGUI_RGBA_CYAN);
++	ImGui::Text("Toggle high acceleration on/off.");
++	POP_TEXT_COLOR();
++	if(ImGui::Checkbox("Toggle Fast Car", &toggleFastCar)) 
++	{ 
++		toggleFastVehicle(toggleFastCar); 
++	}
++	
++
+ 	if(ImGui::Checkbox("Toggle invincibility", &vehicleInvincible)) 
+ 	{
+ 		toggleVehicleInvincible(); 
+diff --git a/src/renderer/Antennas.cpp b/src/renderer/Antennas.cpp
+index 5e3df26a..95400ee8 100644
+--- a/src/renderer/Antennas.cpp
++++ b/src/renderer/Antennas.cpp
+@@ -120,9 +120,15 @@ CAntenna::Update(CVector dir, CVector basepos)
+ 
+ 	int i;
+ 
++	// This represents the base position of the antenna
+ 	pos[0] = basepos;
++	// Dir is a direction vector, segmentLength is the length of each segment of the antenna
++	// Pos is an array of CVectors, storing the positions of the antenna's segments
++	// This code initializes the first two segments of the antenna. 
++	// The first segment is fixed at the base position, and the second segment extends in the given direction.
+ 	pos[1] = basepos + dir*segmentLength;
+ 
++	// Animation loop
+ 	for(i = 2; i < 6; i++){
+ 		CVector basedir = pos[i-1] - pos[i-2];
+ 		CVector newdir = pos[i] - pos[i-1] +	// drag along
+diff --git a/src/vehicles/HandlingMgr.h b/src/vehicles/HandlingMgr.h
+index 8d290f7d..a2bc61ca 100644
+--- a/src/vehicles/HandlingMgr.h
++++ b/src/vehicles/HandlingMgr.h
+@@ -157,35 +157,79 @@ enum
+ 	HANDLING_UNKNOWN = 0x8000000,	// something for helis and planes
+ };
+ 
++/// <summary>
++/// Vehicle handling data
++/// </summary>
+ struct tHandlingData
+ {
+ 	tVehicleType nIdentifier;
++	
++	// 1.0 to 50000.0 in handling.cfg
+ 	float fMass;
++
++	// TODO Figure out what these are 
+ 	float fInvMass;
+ 	float fTurnMass;
++	
+ 	CVector Dimension;
+ 	CVector CentreOfMass;
++	//
++
++	// 10 to 120 in handling.cfg
+ 	int8 nPercentSubmerged;
++	
++	// Unknown value
+ 	float fBuoyancy;
++
++	// 0.5 to 2.0 in handling.cfg
+ 	float fTractionMultiplier;
++	
+ 	cTransmission Transmission;
++	
++	// 0.1 to 10.0 in handling.cfg
+ 	float fBrakeDeceleration;
++	//0.0 to 1.0 in handling.cfg
+ 	float fBrakeBias;
++	
++	// TODO Test toggling this, Anti Lock Brakes?
++	// Seems to always be 0 in the handling.cfg
+ 	int8 bABS;
++	
++	// 10.0 to 40.0 in handling.cfg
+ 	float fSteeringLock;
++	// 0.0 to 1.0 in handling.cfg
+ 	float fTractionLoss;
++	// 0.0 to 1.0 in handling.cfg
+ 	float fTractionBias;
+ 	float fUnused;
++	
++	// Suspension
++	// Unknown values in handling.cfg
++	/*
++	 (V) fSuspensionForceLevel 			not [L/M/H]
++	 (W) fSuspensionDampingLevel 			not [L/M/H]
++	*/
+ 	float fSuspensionForceLevel;
+ 	float fSuspensionDampingLevel;
++
++	// Not in use in handling.cfg
+ 	float fSuspensionUpperLimit;
+ 	float fSuspensionLowerLimit;
+ 	float fSuspensionBias;
+ 	float fSuspensionAntidiveMultiplier;
++	
+ 	float fCollisionDamageMultiplier;
++
+ 	uint32 Flags;
+ 	float fSeatOffsetDistance;
++	// 1 to 100000 in handling.cfg
+ 	int32 nMonetaryValue;
++
++	// Values for below in handling.cfg:
++	/*
++	  (af) front lights (0 = long, 1 = small, 2 = big, 3 = tall)
++	  (ag) rear lights (0 = long, 1 = small, 2 = big, 3 = tall)
++	*/
+ 	int8 FrontLights;
+ 	int8 RearLights;
+ };
+diff --git a/src/vehicles/Transmission.h b/src/vehicles/Transmission.h
+index 01015c4d..76a45a92 100644
+--- a/src/vehicles/Transmission.h
++++ b/src/vehicles/Transmission.h
+@@ -7,20 +7,56 @@ struct tGear
+ 	float fShiftDownVelocity;
+ };
+ 
++// Well I found the engine acceleration and other Transmission values
+ class cTransmission
+ {
+ public:
+ 	// Gear 0 is reverse, 1-5 are forward
+ 	tGear Gears[6];
++
++	// Seems to be set to these values in the handling.cfg:
++	/*
++	engine drive :- (F)ront, (R)ear, (4)-wheel drive
++	*/
+ 	char nDriveType;
++
++	// Seems to be set to these values in the handling.cfg:
++	/*
++	engine type :- (P)etrol, (D)iesel, (E)lectric
++	*/
+ 	char nEngineType;
++
++	// 1-4 in handling.cfg
+ 	int8 nNumberOfGears;
++	
++
++	// Flags in handling.cfg:
++	/*
++	; (ae) flags!!!  WARNING - Now written HEX for easier reading of flags
++		1st digit =		1: 1G_BOOST         2: 2G_BOOST       4: REV_BONNET    8: HANGING_BOOT
++		2nd digit =		1: NO_DOORS	        2: IS_VAN	      4: IS_BUS        8: IS_LOW
++		3rd digit =	 	1: DBL_EXHAUST	    2: TAILGATE_BOOT  4: NOSWING_BOOT  8: NONPLAYER_STABILISER  
++		4th digit =		1: NEUTRALHANDLING  2: HAS_NO_ROOF    4: IS_BIG        8: HALOGEN_LIGHTS
++		5th digit =		1: IS_BIKE			2: IS_HELI        4: IS_PLANE      8: IS_BOAT
++		6th digit =		1: NO_EXHAUST		2: REARWHEEL_1ST  4: HANDBRAKE_TYRE8: SIT_IN_BOAT
++		7th digit =		1: FAT_REARW		2: NARROW_FRONTW  4: GOOD_INSAND
++	*/
+ 	uint8 Flags;
++
++	// Set to 0.1 to 10.0 in handling.cfg 
+ 	float fEngineAcceleration;
++
++	// Set to 5.0 to 150.0 in handling.cfg
+ 	float fMaxVelocity;
++	
++	// These don't seem to be in use in the handling.cfg
++	// TODO Figure out what these values are
++	// I think these are set in here somewhere:
++	// cHandlingDataMgr::ConvertDataToGameUnits
+ 	float fMaxCruiseVelocity;
+ 	float fMaxReverseVelocity;
+ 	float fCurVelocity;
++	//
+ 
+ 	void InitGearRatios(void);
+ 	void CalculateGearForSimpleCar(float speed, uint8 &gear);
+diff --git a/src/vehicles/Vehicle.cpp b/src/vehicles/Vehicle.cpp
+index dca14dce..a8c25107 100644
+--- a/src/vehicles/Vehicle.cpp
++++ b/src/vehicles/Vehicle.cpp
+@@ -34,6 +34,10 @@
+ #include "Coronas.h"
+ #include "SaveBuf.h"
+ 
++#ifdef CUSTOM_CODE
++#include "custom_cheats.h"
++#endif
++
+ bool CVehicle::bWheelsOnlyCheat;
+ bool CVehicle::bAllDodosCheat;
+ bool CVehicle::bCheat3;
+@@ -1262,9 +1266,25 @@ CVehicle::InflictDamage(CEntity *damagedBy, eWeaponType weaponType, float damage
+ 	case WEAPONTYPE_MACHETE:
+ 	case WEAPONTYPE_KATANA:
+ 	case WEAPONTYPE_CHAINSAW:
++
++
++#ifdef CUSTOM_CODE
++		// Hmm some fun, well this didn't work the way I wanted it to,
++		// I thought it would set off an explosion if the player hits a car with melee weapons.
++		// It works when shooting a car but not for the melee weapons.
++
++		// Explode the players head
++		 //CustomCheats::ExplosionCheat();
++#endif
+ 		if (bMeleeProof)
+ 			return;
++
++
++
+ 		break;
++
++
++
+ 	case WEAPONTYPE_COLT45:
+ 	case WEAPONTYPE_PYTHON:
+ 	case WEAPONTYPE_SHOTGUN:
+@@ -1282,6 +1302,13 @@ CVehicle::InflictDamage(CEntity *damagedBy, eWeaponType weaponType, float damage
+ 	case WEAPONTYPE_MINIGUN:
+ 	case WEAPONTYPE_HELICANNON:
+ 	case WEAPONTYPE_UZI_DRIVEBY:
++
++#ifdef CUSTOM_CODE
++		// Explode the players head
++		// Well this works here lol, TODO possible chaos mode spot.
++		 //CustomCheats::ExplosionCheat();
++#endif
++
+ 		if (bBulletProof)
+ 			return;
+ 		bFrightensDriver = true;
+@@ -1921,8 +1948,8 @@ CVehicle::CanPedEnterCar(void)
+ 
+ /// <summary>
+ /// Check if the ped is going too fast, and a few other things.
+-/// TODO Mess with this, I wonder what happens if I exit the vehicle too fast.
+-/// Will it crash?
++/// Well this has a fun effect if turned off, the player will exit the car while its moving 
++/// sometimes and it'll go Further then normal.
+ /// </summary>
+ /// <param name="jumpExit"></param>
+ /// <returns></returns>
+@@ -2208,7 +2235,7 @@ CVehicle::RemoveDriver(void)
+ /// <summary>
+ /// Remove a passenger from the vehicle.
+ /// </summary>
+-/// <param name="p"></param>
++/// <param name="p">The ped to remove</param>
+ void
+ CVehicle::RemovePassenger(CPed *p)
+ {
+@@ -2234,8 +2261,8 @@ CVehicle::RemovePassenger(CPed *p)
+ /// <summary>
+ /// Check if the ped is the driver.
+ /// </summary>
+-/// <param name="ped"></param>
+-/// <returns></returns>
++/// <param name="ped">The ped to check for</param>
++/// <returns>If the ped is the driver</returns>
+ bool
+ CVehicle::IsDriver(CPed *ped)
+ {
+@@ -2245,8 +2272,8 @@ CVehicle::IsDriver(CPed *ped)
+ /// <summary>
+ /// Check if the ped model is the driver.
+ /// </summary>
+-/// <param name="model"></param>
+-/// <returns></returns>
++/// <param name="model">The ped model to check for</param>
++/// <returns>If the ped model is the driver</returns>
+ bool
+ CVehicle::IsDriver(int32 model)
+ {
+@@ -2256,8 +2283,8 @@ CVehicle::IsDriver(int32 model)
+ /// <summary>
+ /// Check if the ped is the passenger
+ /// </summary>
+-/// <param name="ped"></param>
+-/// <returns></returns>
++/// <param name="ped">The ped to check for</param>
++/// <returns>If the ped is the passenger</returns>
+ bool
+ CVehicle::IsPassenger(CPed *ped)
+ {
+@@ -2273,8 +2300,8 @@ CVehicle::IsPassenger(CPed *ped)
+ /// <summary>
+ /// Check if the ped model is the passenger
+ /// </summary>
+-/// <param name="ped"></param>
+-/// <returns></returns>
++/// <param name="model">The ped model to check for</param>
++/// <returns>If the ped model is the passenger</returns>
+ bool
+ CVehicle::IsPassenger(int32 model)
+ {
+@@ -2326,12 +2353,13 @@ CVehicle::ProcessCarAlarm(void)
+ 
+ /// <summary>
+ /// Check if a sphere is touching a vehicle, could possibly be used for custom garages or something.
++/// TODO Figure out how this function is used
+ /// </summary>
+ /// <param name="sx"></param>
+ /// <param name="sy"></param>
+ /// <param name="sz"></param>
+ /// <param name="radius"></param>
+-/// <returns></returns>
++/// <returns>If the sphere is touching the vehicle</returns>
+ bool
+ CVehicle::IsSphereTouchingVehicle(float sx, float sy, float sz, float radius)
+ {
+@@ -2407,8 +2435,8 @@ CVehicle::UpdateClumpAlpha(void)
+ /// <summary>
+ /// Generate the dust from the helicopter when it is close to the player.
+ /// </summary>
+-/// <param name="heli"></param>
+-/// <param name="radius"></param>
++/// <param name="heli">The helicopter to run this on</param>
++/// <param name="radius">Possibly the radius for the dust</param>
+ /// <param name="ground"></param>
+ /// <param name="rnd"></param>
+ void
+@@ -2684,7 +2712,7 @@ bool CVehicle::IsOpenTopVehicle(void)
+ /// <summary>
+ /// Destroy the vehicle and kill the peds in it also.
+ /// </summary>
+-/// <param name="pVehicle"></param>
++/// <param name="pVehicle">The vehicle to destroy</param>
+ void
+ DestroyVehicleAndDriverAndPassengers(CVehicle* pVehicle)
+ {
+@@ -2705,6 +2733,7 @@ DestroyVehicleAndDriverAndPassengers(CVehicle* pVehicle)
+ #ifdef COMPATIBLE_SAVES
+ /// <summary>
+ /// Save for the vehicles data
++/// TODO Figure out how exactly these work.
+ /// </summary>
+ /// <param name="buf"></param>
+ void
+@@ -2714,56 +2743,75 @@ CVehicle::Save(uint8*& buf)
+ 	WriteSaveBuf(buf, GetRight().x);
+ 	WriteSaveBuf(buf, GetRight().y);
+ 	WriteSaveBuf(buf, GetRight().z);
++	
+ 	ZeroSaveBuf(buf, 4);
++	
+ 	WriteSaveBuf(buf, GetForward().x);
+ 	WriteSaveBuf(buf, GetForward().y);
+ 	WriteSaveBuf(buf, GetForward().z);
+ 	ZeroSaveBuf(buf, 4);
++	
+ 	WriteSaveBuf(buf, GetUp().x);
+ 	WriteSaveBuf(buf, GetUp().y);
+ 	WriteSaveBuf(buf, GetUp().z);
+ 	ZeroSaveBuf(buf, 4);
++	
+ 	WriteSaveBuf(buf, GetPosition().x);
+ 	WriteSaveBuf(buf, GetPosition().y);
+ 	WriteSaveBuf(buf, GetPosition().z);
+ 	ZeroSaveBuf(buf, 16);
++	
+ 	SaveEntityFlags(buf);
+ 	ZeroSaveBuf(buf, 208);
++	
+ 	AutoPilot.Save(buf);
+ 	WriteSaveBuf(buf, m_currentColour1);
+ 	WriteSaveBuf(buf, m_currentColour2);
+ 	ZeroSaveBuf(buf, 2);
++	
+ 	WriteSaveBuf(buf, m_nAlarmState);
+ 	ZeroSaveBuf(buf, 42);
++	
+ 	WriteSaveBuf(buf, m_nNumMaxPassengers);
+ 	ZeroSaveBuf(buf, 3);
++	
+ 	WriteSaveBuf(buf, field_1D0[0]);
+ 	WriteSaveBuf(buf, field_1D0[1]);
+ 	WriteSaveBuf(buf, field_1D0[2]);
+ 	WriteSaveBuf(buf, field_1D0[3]);
+ 	ZeroSaveBuf(buf, 8);
++	
+ 	WriteSaveBuf(buf, m_fSteerAngle);
+ 	WriteSaveBuf(buf, m_fGasPedal);
++	
+ 	WriteSaveBuf(buf, m_fBrakePedal);
+ 	WriteSaveBuf(buf, VehicleCreatedBy);
+ 	uint8 flags = 0;
++
+ 	if (bIsLawEnforcer) flags |= BIT(0);
+ 	if (bIsLocked) flags |= BIT(3);
+ 	if (bEngineOn) flags |= BIT(4);
+ 	if (bIsHandbrakeOn) flags |= BIT(5);
+ 	if (bLightsOn) flags |= BIT(6);
+ 	if (bFreebies) flags |= BIT(7);
++
+ 	WriteSaveBuf(buf, flags);
+ 	ZeroSaveBuf(buf, 10);
++
++	// Write the health, and current gear
+ 	WriteSaveBuf(buf, m_fHealth);
+ 	WriteSaveBuf(buf, m_nCurrentGear);
+ 	ZeroSaveBuf(buf, 3);
++
+ 	WriteSaveBuf(buf, m_fChangeGearTime);
+ 	ZeroSaveBuf(buf, 12);
++	
+ 	WriteSaveBuf(buf, m_nTimeOfDeath);
+ 	ZeroSaveBuf(buf, 2);
++	
+ 	WriteSaveBuf(buf, m_nBombTimer);
+ 	ZeroSaveBuf(buf, 12);
++	
+ 	WriteSaveBuf(buf, m_nDoorLock);
+ 	ZeroSaveBuf(buf, 108);
+ }
+@@ -2777,44 +2825,57 @@ CVehicle::Load(uint8*& buf)
+ {
+ 	CMatrix tmp;
+ 	SkipSaveBuf(buf, 4);
++
+ 	ReadSaveBuf(&tmp.GetRight().x, buf);
+ 	ReadSaveBuf(&tmp.GetRight().y, buf);
+ 	ReadSaveBuf(&tmp.GetRight().z, buf);
+ 	SkipSaveBuf(buf, 4);
++
+ 	ReadSaveBuf(&tmp.GetForward().x, buf);
+ 	ReadSaveBuf(&tmp.GetForward().y, buf);
+ 	ReadSaveBuf(&tmp.GetForward().z, buf);
+ 	SkipSaveBuf(buf, 4);
++
+ 	ReadSaveBuf(&tmp.GetUp().x, buf);
+ 	ReadSaveBuf(&tmp.GetUp().y, buf);
+ 	ReadSaveBuf(&tmp.GetUp().z, buf);
+ 	SkipSaveBuf(buf, 4);
++
+ 	ReadSaveBuf(&tmp.GetPosition().x, buf);
+ 	ReadSaveBuf(&tmp.GetPosition().y, buf);
+ 	ReadSaveBuf(&tmp.GetPosition().z, buf);
++
+ 	m_matrix = tmp;
++
+ 	SkipSaveBuf(buf, 16);
+ 	LoadEntityFlags(buf);
+ 	SkipSaveBuf(buf, 208);
+ 	AutoPilot.Load(buf);
++
+ 	ReadSaveBuf(&m_currentColour1, buf);
+ 	ReadSaveBuf(&m_currentColour2, buf);
+ 	SkipSaveBuf(buf, 2);
++
+ 	ReadSaveBuf(&m_nAlarmState, buf);
+ 	SkipSaveBuf(buf, 42);
++
+ 	ReadSaveBuf(&m_nNumMaxPassengers, buf);
+ 	SkipSaveBuf(buf, 3);
++
+ 	ReadSaveBuf(&field_1D0[0], buf);
+ 	ReadSaveBuf(&field_1D0[1], buf);
+ 	ReadSaveBuf(&field_1D0[2], buf);
+ 	ReadSaveBuf(&field_1D0[3], buf);
+ 	SkipSaveBuf(buf, 8);
++
+ 	ReadSaveBuf(&m_fSteerAngle, buf);
+ 	ReadSaveBuf(&m_fGasPedal, buf);
+ 	ReadSaveBuf(&m_fBrakePedal, buf);
+ 	ReadSaveBuf(&VehicleCreatedBy, buf);
++
+ 	uint8 flags;
+ 	ReadSaveBuf(&flags, buf);
++
+ 	bIsLawEnforcer = !!(flags & BIT(0));
+ 	bIsLocked = !!(flags & BIT(3));
+ 	bEngineOn = !!(flags & BIT(4));
+@@ -2822,15 +2883,20 @@ CVehicle::Load(uint8*& buf)
+ 	bLightsOn = !!(flags & BIT(6));
+ 	bFreebies = !!(flags & BIT(7));
+ 	SkipSaveBuf(buf, 10);
++
+ 	ReadSaveBuf(&m_fHealth, buf);
+ 	ReadSaveBuf(&m_nCurrentGear, buf);
+ 	SkipSaveBuf(buf, 3);
++
+ 	ReadSaveBuf(&m_fChangeGearTime, buf);
+ 	SkipSaveBuf(buf, 12);
++
+ 	ReadSaveBuf(&m_nTimeOfDeath, buf);
+ 	SkipSaveBuf(buf, 2);
++
+ 	ReadSaveBuf(&m_nBombTimer, buf);
+ 	SkipSaveBuf(buf, 12);
++
+ 	ReadSaveBuf(&m_nDoorLock, buf);
+ 	SkipSaveBuf(buf, 108);
+ }
+-- 
+2.49.0.windows.1
+

@@ -1,0 +1,272 @@
+From 5b9fa0a49d2c92be69844b1bf6c00c12eef1631f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Apr 2025 16:06:42 -0400
+Subject: [PATCH 160/165] Updates to memory address testing
+
+* Fix my base address to work correctly
+* Add a test for getting the player object base address, suspected health address, and current health.
+
+* Cleanup code in misc_menu a bit, add new display player health address button
+---
+ src/extras/menus/misc_menu.cpp |  25 +++---
+ src/extras/utils/misc_util.cpp | 134 +++++++++++++++++++++++++++------
+ src/extras/utils/misc_util.h   |   5 ++
+ 3 files changed, 126 insertions(+), 38 deletions(-)
+
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 252e48b3..8d68e6a7 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -374,22 +374,6 @@ loadAndLaunchMissionInternal()
+ 
+ }
+ 
+-#if defined(GTAVC)
+-void 
+-displayPlayerHealthMemAddress()
+-{
+-	CPlayerPed *pPlayer = FindPlayerPed();
+-	Defines defines = Defines();
+-	MiscUtil miscUtil = MiscUtil();
+-
+-	float playerHealth = pPlayer->m_fHealth;
+-
+-	std::string memAddressString = "The memory address to player health is: " + miscUtil.AddressToString(&playerHealth);
+-
+-	LogFunctions::LogInfo(defines.logFile, memAddressString);
+-
+-}
+-#endif
+ 
+ 
+ /// <summary>
+@@ -538,6 +522,15 @@ void MiscMenu::MiscTab()
+ 		ImGui::Separator();
+ 	}
+ #endif
++
++	// Display the memory address to the player health as a test:
++	if (ImGui::Button("Display player health addr"))
++	{ 
++		//miscUtil.DisplayPlayerHealthMemAddress();
++		miscUtil.TestHealthOffset();
++	}
++	
++	//
+ 	
+ 
+ 	// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 264e9428..390571df 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -379,6 +379,58 @@ MiscUtil::TestPedFeatures()
+ 
+ //-------------- Memory address util ------------/
+ // This should work between all 3 games
++// TODO Look into this
++// https://stackoverflow.com/questions/29957789/c-read-memory-address-pointer-offset
++
++// Test for getting the offset of the health address
++
++/// <summary>
++/// Print the health and offset from the address
++/// TODO Possibly use something like this and make a basic plugin-sdk
++
++/// Example output:
++/*
++||||&&&&KCNET&&&&|||| Player Object Base Address: 0x1c4676f95d0
++||||&&&&KCNET&&&&|||| Suspected Health Address: 0x1c4676f9a24
++||||&&&&KCNET&&&&|||| Current Health (read from memory): 100
++
++||||&&&&KCNET&&&&|||| Player Object Base Address: 0x1c4676f95d0
++||||&&&&KCNET&&&&|||| Suspected Health Address: 0x1c4676f9a24
++||||&&&&KCNET&&&&|||| Current Health (read from memory): 17.5
++*/
++/// </summary>
++void
++MiscUtil::TestHealthOffset()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	Defines defines = Defines();
++	MiscUtil miscUtil = MiscUtil();
++
++	float playerHealth = pPlayer->m_fHealth;
++
++	if(pPlayer) {
++		uintptr_t playerObjectBaseAddress = reinterpret_cast<uintptr_t>(pPlayer);
++		size_t healthOffset = 0x454; // Your calculated offset
++		uintptr_t suspectedHealthAddress = playerObjectBaseAddress + healthOffset;
++
++		// Read the float value from the suspected health address
++		float *pHealthValue = reinterpret_cast<float *>(suspectedHealthAddress);
++		float currentHealth = *pHealthValue;
++
++		std::cout << Defines::KcLogString << "Player Object Base Address: 0x" << std::hex << playerObjectBaseAddress << std::endl;
++		std::cout << Defines::KcLogString << "Suspected Health Address: 0x" << std::hex << suspectedHealthAddress << std::endl;
++		std::cout << Defines::KcLogString << "Current Health (read from memory): " << std::dec << currentHealth << std::endl;
++
++		// You would now compare 'currentHealth' with the actual in-game health.
++		// You can also try modifying the health in-game and running this test again
++		// to see if the value changes.
++
++	} else {
++		std::cout << Defines::KcLogString << "Could not find player to test health offset." << std::endl;
++	}
++}
++//
++
+ #if defined(GTAVC) || defined(GTALCS) || defined(GTA3)
+ void
+ MiscUtil::DisplayPlayerHealthMemAddress()
+@@ -391,7 +443,31 @@ MiscUtil::DisplayPlayerHealthMemAddress()
+ 
+ 	// uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
+ 
++
++
+ 	std::string memAddressString = "The memory address to player health is: " + miscUtil.AddressToString(&playerHealth);
++
++	// Convert the uintptr_t to a string
++	// This will crash if I attempt to directly add this to a string.
++	// TODO Copy these changes into my ReLCS.
++	std::stringstream ss;
++	ss << "The base address of ReVC is: " << std::hex << miscUtil.GetModuleBaseAddress("reVC.exe");
++	std::string memBaseAddressString = ss.str();
++
++	//std::cout << Defines::KcLogString << memAddressString << std::endl;
++
++	//log_output(Defines::KcLogString + memAddressString);
++	
++	// This works!
++	//miscUtil.DisplayBaseAddress();
++	//log_output(Defines::KcLogString + memBaseAddressString);
++
++
++	// TODO Print this
++	// miscUtil.GetModuleBaseAddress("reLCS.exe"); // Base address
++
++	//
++	// 
+ 	// std::string memAddresStringNew = "Addr: " + miscUtil.AddressToString(&playerHealth);
+ 	// std::string memAddresStringNew = "Offset: " + offsetof(CPlayerPed, playerHealth);
+ 	//  Get the offset
+@@ -408,38 +484,44 @@ MiscUtil::DisplayPlayerHealthMemAddress()
+ 	// This crashes it
+ 	if(pPlayer) {
+ 
+-		uintptr_t playerObjectAddress = reinterpret_cast<uintptr_t>(&(pPlayer));
+-		uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
+-		uintptr_t baseAddress = miscUtil.GetModuleBaseAddress("reLCS.exe"); // Base address
++		// Old
++		//uintptr_t playerObjectAddress = reinterpret_cast<uintptr_t>(&(pPlayer));
++		//uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
++		//uintptr_t baseAddress = miscUtil.GetModuleBaseAddress("reVC.exe"); // Base address
+ 		// size_t healthOffset = healthAddress - baseAddress;
+-		size_t healthOffset = healthAddress - playerObjectAddress;
++		//size_t healthOffset = healthAddress - playerObjectAddress;
+ 
+-		// std::string memAddressStringNew = "Offset: " + offsetof(CPlayerPed, m_fHealth);
+-		// std::string memAddressStringNew = "Offset: " + healthOffset;
++		//
++
++		// New
++		// This seems to work for getting the offset for this
++		uintptr_t playerObjectBaseAddress = reinterpret_cast<uintptr_t>(pPlayer); // Get the address of the player object
++		uintptr_t healthAddress = reinterpret_cast<uintptr_t>(&(pPlayer->m_fHealth));
++		size_t healthOffset = healthAddress - playerObjectBaseAddress; // Calculate offset from the object's base
++
++		uintptr_t gameBaseAddress = miscUtil.GetModuleBaseAddress("reVC.exe"); // Base address of the module (if needed for other purposes)
+ 
+-		// Use stringstream for safe conversion
+ 		std::stringstream ss;
+-		ss << "Offset: " << std::hex << healthOffset;
++		ss << "Health Offset (relative to player object): 0x" << std::hex << healthOffset;
+ 		std::string memAddressStringNew = ss.str();
+ 
+-		// LogFunctions::LogInfo(defines.logFile, memAddressString);
+-		//  Log to console
+-		// std::cout << Defines::KcLogString << memAddressString << std::endl;
++		std::cout << Defines::KcLogString << memAddressString << std::endl; // Assuming memAddressString was defined elsewhere
+ 		std::cout << Defines::KcLogString << memAddressStringNew << std::endl;
++		//
+ 
+-		// Set the hud text, disabled
+-		// Display on hud
+-		// char str[200];
+-		// wchar ustr[200];
++	//	// Set the hud text, disabled
++	//	// Display on hud
++	//	// char str[200];
++	//	// wchar ustr[200];
+ 
+-		// This is where to set the text
+-		// sprintf(str, memAddressStringNew.c_str());
++	//	// This is where to set the text
++	//	// sprintf(str, memAddressStringNew.c_str());
+ 
+-		//// This converts the text to show up in game
+-		// AsciiToUnicode(str, ustr);
++	//	//// This converts the text to show up in game
++	//	// AsciiToUnicode(str, ustr);
+ 
+-		//// This shows the message in the top left
+-		// MessageUtil::SetMessage(ustr);
++	//	//// This shows the message in the top left
++	//	// MessageUtil::SetMessage(ustr);
+ 	} else {
+ 		std::cout << Defines::KcLogString << "Could not find player." << std::endl;
+ 	}
+@@ -455,12 +537,19 @@ void
+ MiscUtil::DisplayBaseAddress()
+ {
+ 	//HMODULE hModule = GetModuleHandleA("reLCS.exe");
++// TODO Test this later
++#if defined(GTAVC)
+ 	HMODULE hModule = GetModuleHandleA("reVC.exe");
++#elif defined(GTA3)
++	HMODULE hModule = GetModuleHandleA("re3.exe");
++#elif defined(GTALCS)
++	HMODULE hModule = GetModuleHandleA("reLCS.exe");
++#endif
+ 	if(hModule) {
+ 		MODULEINFO moduleInfo;
+ 		if(GetModuleInformation(GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo))) {
+ 			uintptr_t baseAddress = reinterpret_cast<uintptr_t>(moduleInfo.lpBaseOfDll);
+-			std::cout << Defines::KcLogString << "Base address of YourGame.exe: " << std::hex << baseAddress << std::endl;
++			std::cout << Defines::KcLogString << "Base address of reVC.exe: " << std::hex << baseAddress << std::endl;
+ 		} else {
+ 			std::cerr << Defines::KcLogString << "Failed to get Module information" << std::endl;
+ 		}
+@@ -484,6 +573,7 @@ MiscUtil::GetModuleBaseAddress(const char *moduleName)
+ 		MODULEINFO moduleInfo;
+ 		if(GetModuleInformation(GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo))) {
+ 			return reinterpret_cast<uintptr_t>(moduleInfo.lpBaseOfDll);
++
+ 		}
+ 	}
+ 	return 0; // Return 0 on failure
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 96e23526..1adeb6d8 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -35,11 +35,16 @@ public:
+ 	// Get the player health memory address
+ 	void DisplayPlayerHealthMemAddress();
+ 
++	// Display the offset and the possible health address value
++	void TestHealthOffset();
++
+ 	// Get the program base address and log it
+ 	void DisplayBaseAddress();
+ 
+ 	// Get the base address by itself
+ 	uintptr_t GetModuleBaseAddress(const char *moduleName);
++
++
+ 	//
+ 
+ };
+-- 
+2.49.0.windows.1
+

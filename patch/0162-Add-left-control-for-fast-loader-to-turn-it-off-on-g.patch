@@ -1,0 +1,55 @@
+From 0cfa481dd45f8f51b8c9e7014e730ce0a42a9d3f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Apr 2025 14:06:03 -0400
+Subject: [PATCH 162/165] Add left control for fast loader to turn it off on
+ game start
+
+---
+ src/extras/utils/fast_loader.cpp | 24 ++++++++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index d357ff4d..48093bc4 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -13,6 +13,17 @@
+ 
+ #include "config.h"
+ 
++#include "ControllerConfig.h"
++#include "Pad.h"
++
++// Keybinds
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                      \
++	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++//
++
+ void
+ FastLoader::FastLoad()
+ {
+@@ -41,6 +52,19 @@ FastLoader::FastLoad()
+ 	// if(KEYDOWN(rsF3)) { gbFastLoader = true; }
+ 
+ 	// if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader)
++
++
++	// I am now able to cancel my fast loader with left control now.
++	// This works! When the game starts if you hold left control this disables the fast loader
++	// and puts the user on the main menu! This is perfect for testing.
++	// TODO Copy changes into Re3 and ReLCS.
++	if (KEYJUSTDOWN(rsLCTRL) && gbFastLoader) 
++	{
++		gbFastLoader = false;
++		return;
++	}
++	//
++
+ 	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader
+ 	   // TODO Test this, I should be able to cancel the fast load with a keybind.
+ 	   // Well it disables it until the key is unpressed..
+-- 
+2.49.0.windows.1
+

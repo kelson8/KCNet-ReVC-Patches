@@ -1,0 +1,1356 @@
+From 20d2ec2cb9da9ee6affc56f91dd747669411748c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Apr 2025 14:07:10 -0400
+Subject: [PATCH 165/165] Add lua helpers
+
+* Added lua helpers for getting the lua vm singleton.
+* Cleanup lua_setup a bit.
+
+Added/modified in lua_functions
+* Added log warning message, log error message.
+* Fix toggles for losing weapons on death.
+* Add check to see if extra logging is enabled in the menu for some items.
+
+* Modified lua_test, added some stubs for new events.
+* Add common.h to lua_test.h
+
+* Add extra logging toggle to GameLogic for lua functions.
+
+player_cheats additions:
+* Add set player interior
+* Add check for checking if the player is in an interior
+
+* Document PCSave.cpp a bit, add pragma once to crossplatform.h
+
+* Add dll test to more spots, it doesn't work so I disabled it.
+* Moved revc_api and revc_globals to another repo, deleted them from here.
+
+* Update gitignore
+
+* Update test.lua, update patch/commit number.
+---
+ .gitignore                             |   7 ++
+ guides/create-patches.md               |   2 +-
+ src/control/GameLogic.cpp              |  20 ++++-
+ src/core/config.h                      |   7 ++
+ src/extras/cheats/player_cheats.cpp    |  87 ++++++++++++++++++++
+ src/extras/cheats/player_cheats.h      |   6 ++
+ src/extras/functions/imgui_setup.cpp   |   4 +-
+ src/extras/functions/ini_functions.cpp |  61 ++++++++++++--
+ src/extras/functions/ini_functions.h   |   5 +-
+ src/extras/kcnet/api/revc_api.cpp      |  65 ---------------
+ src/extras/kcnet/api/revc_api.h        |  73 -----------------
+ src/extras/kcnet/api/revc_globals.h    |  18 -----
+ src/extras/kcnet/dll_log_headers.h     |   2 +
+ src/extras/lua/lua_functions.cpp       | 106 ++++++++++++++++++++++---
+ src/extras/lua/lua_functions.h         |   3 +
+ src/extras/lua/lua_helpers.cpp         |  35 ++++++++
+ src/extras/lua/lua_helpers.h           |  21 +++++
+ src/extras/lua/lua_setup.cpp           |   9 +--
+ src/extras/lua/lua_test.cpp            |  82 ++++++++++++++++++-
+ src/extras/lua/lua_test.h              |  10 +++
+ src/extras/menus/misc_menu.cpp         |  38 +++++++++
+ src/save/PCSave.cpp                    |  10 +++
+ src/skel/crossplatform.h               |   4 +
+ utils/lua/test.lua                     |  47 ++++++++---
+ 24 files changed, 515 insertions(+), 207 deletions(-)
+ delete mode 100644 src/extras/kcnet/api/revc_api.cpp
+ delete mode 100644 src/extras/kcnet/api/revc_api.h
+ delete mode 100644 src/extras/kcnet/api/revc_globals.h
+ create mode 100644 src/extras/lua/lua_helpers.cpp
+ create mode 100644 src/extras/lua/lua_helpers.h
+
+diff --git a/.gitignore b/.gitignore
+index 98e944c7..1823e32d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,6 +3,13 @@
+ ##
+ ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
+ 
++# These are in a separate repo
++KCNet-ReVC-Api/
++ReVCShared/
++
++# Remove files with "- Copy" in the name
++*- Copy*
++
+ # Patch files
+ patches/
+ 
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+index 51bdf1f5..1a77f5fa 100644
+--- a/guides/create-patches.md
++++ b/guides/create-patches.md
+@@ -1,7 +1,7 @@
+ # To create patches
+ * Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
+ 
+-(Currently on commit 163, patch number: 163)
++(Currently on commit 165, patch number: 165)
+ 
+ 1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
+ 2. Update the patch number in this file, and update the patch number in patches/~patch-number.txt
+\ No newline at end of file
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 5c5e7d4e..2fc831b0 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -39,6 +39,9 @@
+ #ifdef CUSTOM_CODE //Logging functions
+ #include "log_functions.h"
+ #include "defines.h"
++
++// For extra logging toggle
++#include "main.h"
+ #endif
+ 
+ uint8 CGameLogic::ActivePlayers;
+@@ -241,8 +244,12 @@ CGameLogic::Update()
+ #ifdef LUA_TEST
+ 
+ 			// Run lua file after being wasted
+-			std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
+-			LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++#ifdef EXTRA_LOGGING
++			if(gbExtraLogging) {
++				std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
++				LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++			}
++#endif
+ 
+ 			// I had to init lua before this.
+ 			PassTime(luaTest.timeToPass);
+@@ -392,8 +399,13 @@ CGameLogic::Update()
+ 			// Get time to pass value from lua, TODO Add config option for this in lua
+ #ifdef LUA_TEST
+ 			
+-			std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
+-			LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++
++#ifdef EXTRA_LOGGING
++			if(gbExtraLogging) {
++				std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
++				LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++			}
++#endif
+ 
+ 			// I had to init lua before this.
+ 			PassTime(luaTest.timeToPass);
+diff --git a/src/core/config.h b/src/core/config.h
+index 72f980c4..dab2cbf1 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -15,6 +15,11 @@
+ #define CUSTOM_CODE
+ 
+ #ifdef CUSTOM_CODE
++// Enable my log dll test
++// For some reason this doesn't work right anymore so I disabled it.
++//#define LOG_DLL_TEST
++//#define LOG_CLASS_TEST
++
+ // Toggle the lua test, so far this just has a F8 keybind that sets the players position.
+ #define LUA_TEST
+ 
+@@ -934,6 +939,8 @@ static_assert(false, "SUPPORT_XBOX_SCRIPT and SUPPORT_MOBILE_SCRIPT are mutually
+ #define AUDIO_OAL_USE_MPG123 // use mpg123 to support mp3 files
+ #define PAUSE_RADIO_IN_FRONTEND // pause radio when game is paused
+ #define ATTACH_RELEASING_SOUNDS_TO_ENTITIES // sounds would follow ped and vehicles coordinates if not being queued otherwise
++
++// TODO Disable this and see if it's causing problems with my explosion sounds and other sounds sometimes glitching out.
+ #define USE_TIME_SCALE_FOR_AUDIO // slow down/speed up sounds according to the speed of the game
+ #define MULTITHREADED_AUDIO // for streams. requires C++11 or later
+ 
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index f59c4ca3..1ae98e56 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -46,6 +46,8 @@
+ 
+ #include "CopPed.h"
+ 
++#include "Timecycle.h"
++
+ // New
+ #include "main.h"
+ #include "log_functions.h"
+@@ -54,6 +56,7 @@
+ 
+ /// <summary>
+ /// Set the player position to the x, y, z
++/// /// TODO Detect if the player is in an interior, if so teleport them to interior 0 (Main Map)
+ /// </summary>
+ /// <param name="x">X coord</param>
+ /// <param name="y">Y coord</param>
+@@ -62,12 +65,35 @@ void
+ PlayerCheats::SetPlayerPosition(float x, float y, float z)
+ {
+ 	// Mostly copied from TeleportToWaypoint in debug_functions.cpp.
++
++	// Get the player entity to teleport
+ 	CEntity *pEntityToTeleport = FindPlayerEntity();
++	// Set the new position to the value in the function
+ 	CVector vNewPos = CVector(x, y, z);
++
++	// Check if the player is in an interior, if so set them outside
++	// This almost works now, is a bit glitchy though
++	//if(PlayerCheats::IsPlayerInInterior()) {
++	//	// New
++	//	CStreaming::StreamZoneModels(vNewPos);
++	//	CTimeCycle::StopExtraColour(false);
++	//	CStreaming::LoadAllRequestedModels(false);
++	//	PlayerCheats::SetPlayerInterior(AREA_MAIN_MAP);
++	//}
++
++
++
++	// Load the scene
+ 	CStreaming::LoadScene(vNewPos);
+ 	CStreaming::LoadSceneCollision(vNewPos);
++
++	// Get the Ground Z for the specified coords
+ 	vNewPos.z = CWorld::FindGroundZForCoord(vNewPos.x, vNewPos.y) + pEntityToTeleport->GetDistanceFromCentreOfMassToBaseOfModel();
++	// Teleport the player
+ 	pEntityToTeleport->Teleport(vNewPos);
++
++
++
+ }
+ 
+ /// <summary>
+@@ -81,6 +107,67 @@ PlayerCheats::SetPlayerHeading(float heading)
+ 	pPlayerPed->SetHeading(heading);
+ }
+ 
++/// <summary>
++/// Set the players interior
++/// List of interior IDs: https://wiki.gtaconnected.com/Resources/GTAVC/Interiors
++/// TODO Test this
++/// TODO Add this into my ImGui warp menu in ini_functions, IniFunctions::DisplayLocations()
++/// TODO Make interiorId int32?
++/// </summary>
++/// <param name="interiorId">The interior ID to set to</param>
++void
++
++PlayerCheats::SetPlayerInterior(int interiorId)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		return;
++		
++	} else {
++		// TODO Test these, this might work
++		// Idea from here:
++		// This seems to enable the interior for outside but if i go back in the police station,
++		// the game thinks I was already in there and puts me back outside
++		// https://github.com/gta-chaos-mod/Trilogy-ASI-Script/blob/3.0/src/gtasa/util/Teleportation.cpp#L54C1-L55C40
++		CGame::currArea = interiorId;
++		CStreaming::RemoveBuildingsNotInArea(interiorId);
++		//
++		pPed->m_area = interiorId;
++
++		// TODO Are these needed? I think my teleport handles some of this
++		//CStreaming::StreamZoneModels();
++		//CTimeCycle::StopExtraColour(false);
++		//CStreaming::LoadScene();
++		//CStreaming::LoadAllRequestedModels(false);
++		
++	}
++}
++
++/// <summary>
++/// This checks if a player is in an interior
++/// </summary>
++/// <returns></returns>
++bool
++PlayerCheats::IsPlayerInInterior()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	// Check if the main map area isn't visible
++	if (!IsAreaVisible(AREA_MAIN_MAP))
++	{ 
++		return true;
++	}
++
++	if(pPed->m_area != AREA_MAIN_MAP) 
++	{ 
++		return true;
++	}
++
++	return false;
++}
++
+ /// <summary>
+ /// Heal the player, give the player max health and armor.
+ /// Set the help message as cheat activated, to let the player know it was set.
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index 006fe65d..5f7a1cc8 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -8,7 +8,13 @@ public:
+ 	static void HealPlayer();
+ 	// Teleport player to position, this works.
+ 	static void SetPlayerPosition(float x, float y, float z);
++	// Set player heading
+ 	void SetPlayerHeading(float heading);
++	
++	// Set player interior
++	static void SetPlayerInterior(int interiorId);
++	// Check if a player is in an interior
++	static bool IsPlayerInInterior();
+ 
+ 	static void InfiniteHealthCheat();
+ 	static void SuicideCheat();
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index 4898e43b..1ae52fef 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -28,8 +28,8 @@
+ // Required for opening menu with Xbox controller.
+ #include <Xinput.h>
+ 
+-#define _WIN32_WINDOWS 0x0500
+-#define WINVER 0x0500
++//#define _WIN32_WINDOWS 0x0500
++//#define WINVER 0x0500
+ 
+ #include <mmsystem.h>
+ #include <shellapi.h>
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 9f71a9d6..e6976c7d 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -84,10 +84,18 @@
+ #include <map>
+ #include <optional>
+ 
++#ifdef LOG_DLL_TEST
++// TODO Test this in here
++// New log functions, in dll
++// I had to reconfigure the dll_log_headers and add some init for it to win.cpp.
++#include "dll_log_headers.h"
++
+ // New logging functions
+ //#include "dll_log_headers.h"
+ //
+-//#include "logging.h"
++#include "logging.h"
++
++#endif // LOG_DLL_TEST
+ #endif
+ //#endif //_TEST1
+ 
+@@ -353,6 +361,8 @@ IniFunctions::AppendLocationToIni(const std::string &filename, const std::string
+ 	mINI::INIFile file(filename);
+ 	mINI::INIStructure ini;
+ 
++	//Logger logger = Logger();
++
+ 	if(!file.read(ini)) {
+ 		std::cerr << "Error reading INI file: " << filename << std::endl;
+ 		return false;
+@@ -371,6 +381,12 @@ IniFunctions::AppendLocationToIni(const std::string &filename, const std::string
+ 	// Adds the key, as it was proven to not exist.
+ 	ini[categoryName][locationName] = locationDataStr;
+ 
++	// Log the value as a test using my logging dll
++	// TODO Test this
++//#ifdef LOG_DLL_TEST
++//	logInfo(Defines::logFile.c_str(), locationDataStr.c_str());
++//#endif
++
+ 	if(!file.write(ini)) {
+ 		std::cerr << "Error writing to INI file: " << filename << std::endl;
+ 		return false;
+@@ -408,19 +424,25 @@ IniFunctions::AppendWarpWithInput(const std::string &filename, std::string &cate
+ 
+ // This works without a button for categories
+ 
++//clang-format off
+ 
+ /// <summary>
+ /// Display the warp locations and teleport buttons with categories
+ /// This is the ImGui part for the warp locations, runs menu handling for it.
+ /// TODO Make a delete button for these
++/// TODO Fix this to work the the interior ids for ReVC and ReLCS.
++/// TODO Detect if the player is in an interior, if so teleport them to interior 0 (Main Map)
+ /// </summary>
+ /// <param name="categories"></param>
++
+ void
+ IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &categories)
+ {
+ 	ImGui::Separator();
+ 	ImGui::Text("Warp locations");
+ 
++	//Logger logger = Logger();
++
+ 	for(const auto &category : categories) {
+ 		if(ImGui::CollapsingHeader(category.name.c_str())) {
+ 			if(ImGui::BeginListBox(("##" + category.name).c_str(),
+@@ -429,18 +451,39 @@ IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &catego
+ 				for(const auto &location : category.locations) {
+ 					ImGui::Text("%s", location.first.c_str()); // Display the location name
+ 
++					// TODO Test this output
++					std::string locationDataStr = "Teleporting to " + category.name + " - " + location.first + "\n" 
++						+ "Interior: " + std::to_string(location.second.interiorId) 
++						+ ", Pos: " + std::to_string(location.second.posX) + ", " 
++						+ std::to_string(location.second.posY) 
++						+ ", " + std::to_string(location.second.posZ);
++
++
+ 					// Oh this one removes the 
+ 					// if(ImGui::Selectable(location.first.c_str())) {}
+ 					ImGui::SameLine(); // Place the button on the same line
+ 
+ 					// Teleport button
+ 					if(ImGui::Button(("Teleport##" + location.first).c_str())) { // Add a teleport button
+-						// Teleport to location when the button is clicked
+-						//std::cout << "Teleporting to: " << category.name << " - " << location.first << std::endl;
+-						//std::cout << "Interior: " << location.second.interiorId << ", Pos: " << location.second.posX << ", "
+-						//          << location.second.posY << ", " << location.second.posZ << std::endl;
++#ifdef EXTRA_LOGGING
++						if(gbExtraLogging) {
++
++							// Teleport to location when the button is clicked
++							// std::cout << "Teleporting to: " << category.name << " - " << location.first << std::endl;
++							// std::cout << "Interior: " << location.second.interiorId << ", Pos: " << location.second.posX << ", "
++							//          << location.second.posY << ", " << location.second.posZ << std::endl;
++						}
++#endif
++
++						// TODO Why doesn't this work?
++//#ifdef LOG_DLL_TEST
++//						//logInfo(Defines::logFile.c_str(), locationDataStr.c_str());
++//						logger.info(Defines::logFile, locationDataStr);
++//						
++//#endif
+ 
+ 						PlayerCheats::SetPlayerPosition(location.second.posX, location.second.posY, location.second.posZ);
++
+ 					}
+ 				}
+ 				ImGui::EndListBox();
+@@ -449,6 +492,8 @@ IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &catego
+ 	}
+ }
+ 
++//clang-format on
++
+ // Setup loading for Game init
+ std::vector<IniFunctions::Category> loadedLocations;
+ 
+@@ -517,19 +562,23 @@ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIS
+ {
+ 	IniFunctions iniFunctions = IniFunctions();
+ 
+-	IniFunctions::WarpData result = {"", 0.0f, 0.0f, 0.0f}; // Default value
++	// Set the default values
++	IniFunctions::WarpData result = {"", 0.0f, 0.0f, 0.0f};
+ 
+ 	mINI::INIMap<std::string> section = warpsCfg.get(sectionName);
+ 	if(section.has(key)) {
+ 		std::string dataString = section.get(key);
+ 		std::vector<std::string> components = iniFunctions.SplitString(dataString, ',');
+ 
++		// Get each of the values from the ini file
+ 		if(components.size() == 4) { // Expecting 4 components now
+ 			try {
+ 				result.interiorId = std::stoi(components[0]);
+ 				result.x = std::stof(components[1]);
+ 				result.y = std::stof(components[2]);
+ 				result.z = std::stof(components[3]);
++			
++			// Error handling
+ 			} catch(const std::invalid_argument &e) {
+ 				std::cerr << "Invalid WarpData component in INI file: " << e.what() << std::endl;
+ 			} catch(const std::out_of_range &e) {
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index 34363adc..00860f4f 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -11,13 +11,10 @@
+ #include <vector>
+ #include <map>
+ 
+-
+-
+ class IniFunctions
+ {
+ private:
+-	Defines defines;
+-	
++	Defines defines;	
+ 
+ public:
+ 	struct WarpData {
+diff --git a/src/extras/kcnet/api/revc_api.cpp b/src/extras/kcnet/api/revc_api.cpp
+deleted file mode 100644
+index 6a42d3e4..00000000
+--- a/src/extras/kcnet/api/revc_api.cpp
++++ /dev/null
+@@ -1,65 +0,0 @@
+-#include "pch.h"
+-#include "revc_api.h"
+-
+-#ifdef NEW_PLUGIN_SDK
+-#include "revc_globals.h"
+-
+-#include "Entity.h"
+-#include "Placeable.h"
+-#include "PlayerInfo.h"
+-
+-#include "PlayerPed.h"
+-
+-// TODO Move this header and function into a dll if possible.
+-#include "log_functions.h"
+-
+-#include "Hud.h"
+-#include "Text.h"
+-#include "World.h"
+-
+-
+-// TODO Test this for usage in a dll.
+-
+-// Well I think the below breaks it.
+-
+-
+-
+-
+-//Create a global pointer to the player object
+-// I had to add this into the header as extern.
+-// Moved into revc_globals.h
+-// Well this wasn't needed, i just used the FindPlayerPed option.
+-//CPlayerPed *g_pPlayer = nullptr;
+-
+-namespace reVC
+-{
+-
+-REVC_API float
+-GetPlayerHealth() {
+-	CPlayerPed *pPlayer = FindPlayerPed();
+-
+-	if(pPlayer) { 
+-		return pPlayer->m_fHealth;
+-	} else {
+-	// Handle error
+-		return 0.0f;
+-	}
+-
+-}
+-
+-
+-REVC_API void
+-SetPlayerHealth(int health)
+-{
+-	CPlayerPed *pPlayer = FindPlayerPed();
+-	if(pPlayer) { 
+-		pPlayer->m_fHealth = health;
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-
+-	}
+-}
+-
+-
+-}
+-
+-#endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/api/revc_api.h b/src/extras/kcnet/api/revc_api.h
+deleted file mode 100644
+index 0d96c26a..00000000
+--- a/src/extras/kcnet/api/revc_api.h
++++ /dev/null
+@@ -1,73 +0,0 @@
+-#pragma once
+-//#define NEW_PLUGIN_SDK
+-#ifdef NEW_PLUGIN_SDK
+-
+-/*
+-Define REVC_API_EXPORT:
+-
+-    Define the REVC_API_EXPORT macro when compiling the ReVC project.
+-    Don't define it when compiling the plugin DLLs.
+-*/
+-
+-// TODO Try to create a dll api for ReVC using something like this as a base.
+-
+-// Disabled, I will need to work on this.
+-
+-
+-#include <string>
+-#include <functional>
+-#include <vector>
+-
+-#include "Entity.h"
+-#include "Placeable.h"
+-#include "PlayerInfo.h"
+-
+-#include "PlayerPed.h"
+-
+-
+-#define REVC_API_EXPORT
+-
+-#ifdef REVC_API_EXPORT
+-#define REVC_API __declspec(dllexport)
+-#else
+-#define REVC_API __declspec(dllimport)
+-#endif
+-
+-// Moved into revc_globals.h
+-//extern REVC_API CPlayerPed *g_pPlayer;
+-
+-namespace reVC
+-{
+-
+-void
+-CreatePlayerPed();
+-
+-// Plugin dll stuff below
+-
+-
+-struct REVC_API Vector3 {
+-    float x, y, z;
+-};
+-
+-// Moved to above
+-//REVC_API void
+-//CreatePlayerPed();
+-
+-REVC_API float
+-GetPlayerHealth();
+-
+-REVC_API void
+-SetPlayerHealth(int health);
+-
+-REVC_API Vector3
+-GetPlayerPosition();
+-
+-REVC_API void
+-SetPlayerPosition(Vector3 position);
+-
+-REVC_API void
+-RegisterScriptCommand(const std::string &commandName, std::function<void(std::vector<std::string>)> commandFunction);
+-
+-}
+-
+-#endif
+\ No newline at end of file
+diff --git a/src/extras/kcnet/api/revc_globals.h b/src/extras/kcnet/api/revc_globals.h
+deleted file mode 100644
+index 860f3d12..00000000
+--- a/src/extras/kcnet/api/revc_globals.h
++++ /dev/null
+@@ -1,18 +0,0 @@
+-#pragma once
+-
+-//#include "Entity.h"
+-//#include "Placeable.h"
+-//#include "PlayerInfo.h"
+-//
+-//#include "PlayerPed.h"
+-
+-
+-
+-//#ifdef REVC_API_EXPORT
+-//#define REVC_API __declspec(dllexport)
+-//#else
+-//#define REVC_API __declspec(dllimport)
+-//#endif
+-
+-// This is no longer needed with the new setup, I should've just used FindPlayerPed anyways.
+-//extern REVC_API CPlayerPed *g_pPlayer;
+\ No newline at end of file
+diff --git a/src/extras/kcnet/dll_log_headers.h b/src/extras/kcnet/dll_log_headers.h
+index 0a8f63d2..2ffc59a0 100644
+--- a/src/extras/kcnet/dll_log_headers.h
++++ b/src/extras/kcnet/dll_log_headers.h
+@@ -3,6 +3,8 @@
+ #include <Windows.h>
+ #include "defines.h"
+ 
++#include "config.h"
++
+ // I got this working now as a dll, TODO Move log functions to this.
+ // I had to make a new path but I can reuse it on my other items.
+ 
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index be509514..8851521b 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -1,8 +1,13 @@
+ #include "pch.h"
+ 
++// Lua functions
+ #include "lua_functions.h"
+ 
+ #include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++
+ #include <iostream>
+ 
+ #include <vector>
+@@ -139,12 +144,14 @@ extern "C"
+ 	    return 1;
+ 	}
+ 
++	// Log info/warning/error messages
++
+ 	/// <summary>
+     /// This works, log an info message using lua.
+     /// </summary>
+     /// <param name="L"></param>
+     /// <returns></returns>
+-    extern "C" int
++    int
+     logMessageLua(lua_State *L)
+     {
+ 		Defines defines = Defines();
+@@ -162,6 +169,50 @@ extern "C"
+ 	    return 1;
+ 	}
+ 
++	/// <summary>
++	/// Log a warning message in lua
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++    logWarningMessageLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    const char *logString = lua_tostring(L, 1);
++
++	    if(logString == nullptr) {
++			// Oops, forgot this.
++		    lua_pushstring(L, "Error: missing string argument");
++		    return 1;
++		}
++
++	    LogFunctions::LogWarning(defines.luaLogFile, logString);
++
++	    return 1;
++	}
++
++	/// <summary>
++	/// Log an error message in lua
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++    logErrorMessageLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    const char *logString = lua_tostring(L, 1);
++
++	    if(logString == nullptr) {
++			// Oops, forgot this.
++		    lua_pushstring(L, "Error: missing string argument");
++		    return 1;
++		}
++
++	    LogFunctions::LogError(defines.luaLogFile, logString);
++
++	    return 1;
++	}
++	//
+ 
+ 	// Display a help message to the hud using lua, this works
+ 	// To use this in lua: print_msg(message)
+@@ -386,35 +437,62 @@ extern "C"
+ 
+ 	//------- Toggle lose weapons on death --------//
+ 
++	// Oops, I had these functions reversed, no wonder it wasn't working.. lol
+ 	int
+ 	enableLoseWeaponsOnDeathLua(lua_State *L)
+ 	{
+ 		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+ 	
+-		LuaTest luaTest = LuaTest();
++		// TODO Test with this
++		//LuaTest& luaTestInstance = LuaTest::GetInstance();
++
++#ifdef LUA_HELPERS_TEST
++		lua_State* luaVM = GetLuaVMFromSingleton();
++		if(luaVM) return 0;
++#endif
++
++		//LuaTest luaTest = LuaTest();
+ 		Defines defines = Defines();
+-		pPlayerInfo.m_bGetOutOfHospitalFree = true;
+-		pPlayerInfo.m_bGetOutOfJailFree = true;
++		pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		pPlayerInfo.m_bGetOutOfJailFree = false;
+ 
+-		std::string toggleWeaponsDeathString = "You will now lose weapons on death";
++#ifdef EXTRA_LOGGING
++		if (gbExtraLogging)
++		{
++			std::string toggleWeaponsDeathString = "You will now lose weapons on death";
++			LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		}
++#endif
+ 
+-		LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		
+ 		return 1;
+ 	}
+ 
++	// Oops, I had these functions reversed, no wonder it wasn't working.. lol
+ 	int
+ 	disableLoseWeaponsOnDeathLua(lua_State *L)
+ 	{
+ 		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+ 
+-		LuaTest luaTest = LuaTest();
++		// TODO Test with this
++//#ifdef LUA_HELPERS_TEST
++//		lua_State* luaVM = GetLuaVMFromSingleton();
++//		if(luaVM) return 0;
++//#endif
++
+ 		Defines defines = Defines();
+-		pPlayerInfo.m_bGetOutOfHospitalFree = false;
+-		pPlayerInfo.m_bGetOutOfJailFree = false;
++		pPlayerInfo.m_bGetOutOfHospitalFree = true;
++		pPlayerInfo.m_bGetOutOfJailFree = true;
+ 
+ 		// This is annoying, it runs everytime the game starts or lua inits
+-		//std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
+-		//LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++#ifdef EXTRA_LOGGING
++		if (gbExtraLogging)
++		{
++			std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
++			LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		}
++
++#endif
+ 		return 1;
+ 	}
+ 
+@@ -425,12 +503,15 @@ extern "C"
+ 		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+ 
+ 		LuaTest luaTest = LuaTest();
++		// TODO Test this
++		//LuaTest& luaTestInstance = LuaTest::GetInstance();
+ 		Defines defines = Defines();
+ 
+ 		// TODO Test this
+ 		// pPlayerInfo.m_bGetOutOfHospitalFree = luaTest.toggleLoseWeaponsOnDeath;
+ 
+ 		if(luaTest.toggleLoseWeaponsOnDeath) 
++		//if(luaTestInstance.toggleLoseWeaponsOnDeath) 
+ 		{
+ 			pPlayerInfo.m_bGetOutOfHospitalFree = true;
+ 		} else {
+@@ -440,7 +521,8 @@ extern "C"
+ 
+ 		std::string toggleWeaponsDeathString =
+ 			luaTest.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
+-		// LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++			//luaTestInstance.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
++		 LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+ 
+ 		// if (luaTest.toggleLoseWeaponsOnDeath)
+ 		//{
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 9d41d4a1..426f14dd 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -56,6 +56,9 @@ extern "C" {
+ 
+ 	//------------- Messages ------------//
+ 	extern int logMessageLua(lua_State *L);
++	extern int logWarningMessageLua(lua_State *L);
++	extern int logErrorMessageLua(lua_State *L);
++
+     extern int customHelpMessageLua(lua_State *L);
+ 
+ 	
+diff --git a/src/extras/lua/lua_helpers.cpp b/src/extras/lua/lua_helpers.cpp
+new file mode 100644
+index 00000000..4c9efd96
+--- /dev/null
++++ b/src/extras/lua/lua_helpers.cpp
+@@ -0,0 +1,35 @@
++#include "lua_helpers.h"
++#include "defines.h"
++#include "log_functions.h"
++
++#ifdef LUA_HELPERS_TEST
++
++/// <summary>
++/// TODO Test this
++/// This should get the lua instance for use in my functions.
++/// It should be a shortcut to using this in my lua_test.cpp and lua_functions.cpp.
++/// To use in a function:
++/// First, include this header lua_helpers.h
++/// Then, in the function add this:
++/*
++        lua_State* luaVM = GetLuaVMFromSingleton();
++        if (!luaVM) return 0; // Or handle the error
++*/
++/// </summary>
++/// <returns></returns>
++lua_State *
++GetLuaVMFromSingleton()
++{
++	LuaTest &luaTestInstance = LuaTest::GetInstance();
++	lua_State *luaVM = luaTestInstance.GetLuaState();
++
++	if(!luaVM) {
++		Defines defines;
++		LogFunctions::LogError(defines.luaLogFile, "Lua state not initialized in LuaTest Singleton!");
++		return nullptr; // Return nullptr to indicate failure
++	}
++
++	return luaVM;
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_helpers.h b/src/extras/lua/lua_helpers.h
+new file mode 100644
+index 00000000..2465ae4f
+--- /dev/null
++++ b/src/extras/lua/lua_helpers.h
+@@ -0,0 +1,21 @@
++#pragma once
++
++#define LUA_HELPERS_TEST
++#ifdef LUA_HELPERS_TEST
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++#include "lua_test.h"
++
++lua_State *
++GetLuaVMFromSingleton();
++
++
++
++#endif // LUA_HELPERS_TEST
++
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 4fafa2d5..289ba9c5 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -100,6 +100,7 @@
+ //---------------
+ 
+ #define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++
+ #define CTRLJUSTDOWN(key)                                                                                                                                      \
+ 	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ #define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+@@ -127,20 +128,16 @@ LuaSetup::LuaPlayingGameLoop()
+ 	static int newTime = 0;
+ 	// Check if lua is enabled in the config before running
+ 	// Reload the lua function, I have it named InitLua for now.
++	// TODO Make this run luaTest.LuaKeybindEvents() when I set it up
+ 	if(gbLuaTest) {
+ 		if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 			newTime = CTimer::GetTimeInMilliseconds();
+ 			// Reinit lua.
+ 			luaTest.InitLua();
++			
+ 		}
+ 	}
+ 
+-	// TODO Figure out how to make this use Control + M
+-	//#define CTRLJUSTDOWN(key)                                                                                                                                      \
+-//	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-	// #define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-
+-	// static int newTime = 0;
+ 	// Some of the idea for this test came from here:
+ 	// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index b6ab513c..52f8eaa3 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -106,6 +106,9 @@ LuaTest::LuaTest() {
+ 	luaopen_utf8(m_luaVM);
+ 	luaopen_os(m_luaVM);
+ 
++	// This works here, just need to fix it properly in the lua_functions file.
++	//this->RegisterLuaFunctions(m_luaVM);
++
+ }
+ 
+ //------- Begin cheat functions --------//
+@@ -469,7 +472,12 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	// Log messages in lua
+ 	// This works, log an info message in lua
++	// TODO Rename this function to logInfoMessageLua
+ 	lua_register(L, "log_info", logMessageLua);
++	
++	// Log warning and error messages in lua
++	lua_register(L, "log_warning", logWarningMessageLua);
++	lua_register(L, "log_error", logErrorMessageLua);
+ 
+ 	
+ }
+@@ -485,17 +493,79 @@ LuaTest::LuaEvents()
+ 	Defines defines = Defines();
+ 	LuaTest luaTest = LuaTest();
+ 
++	// TODO Move into the constructor
++	// TODO Fix other functions and remove this from them:
++	// LuaTest luaTest = LuaTest();
++	// Make them use this instead:
++	/*
++	#ifdef LUA_HELPERS_TEST
++		lua_State* luaVM = GetLuaVMFromSingleton();
++		if(luaVM) return 0;
++	#endif
++	*/
+ 	luaTest.RegisterLuaFunctions(m_luaVM);
+ 
+-	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaEventsScript.c_str()))) 
+-	{
+-
+-	} else {
++	// Switch to this shorter method.
++	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaEventsScript.c_str()))) {
+ 		LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaEventsScript + "Couldn't be loaded!");
+ 	}
+ 
+ }
+ 
++// TODO Fix these to work
++// Seperate out the game init stuff for CGame::Init into kcnet-init.lua or something
++// Make wasted and busted events use their own file: "kcnet-wasted-events.lua" and "kcnet-busted-events.lua
++// Make the keybind events only run when F9 is pressed or the specified keybind
++
++// Usages of the InitLua function below:
++/*
++For wasted/busted:
++	Wasted: Under WBSTATE_WASTED in CGameLogic::Update()
++	Busted: Under WBSTATE_BUSTED in CGameLogic::Update()
++
++For game init:
++	Under GS_PLAYING_GAME in win.cpp (Inside of WinMain)
++
++For keybinds:
++	Under LuaSetup::LuaPlayingGameLoop() in my custom functions, this runs in the main loop.
++*/
++
++/// <summary>
++/// Run the events when the player is busted
++/// </summary>
++void
++LuaTest::BustedLuaEvents()
++{
++
++}
++
++/// <summary>
++/// Run the events when the player is wasted
++/// </summary>
++void
++LuaTest::WastedLuaEvents()
++{
++
++}
++
++/// <summary>
++/// Run the events when the keybind is pressed
++/// </summary>
++void
++LuaTest::LuaKeybindEvents()
++{
++
++}
++
++/// <summary>
++/// Run the events on game init
++/// </summary>
++void
++LuaTest::SetupLua()
++{
++
++}
++
+ /// <summary>
+ /// Taken idea from this in CLuaMain.cpp within MTA SA.
+ /// https://github.com/multitheftauto/mtasa-blue/blob/master/Client/mods/deathmatch/logic/lua/CLuaMain.cpp
+@@ -542,6 +612,10 @@ LuaTest::InitLua()
+ 
+ 
+ 	// I finally got this working, I had to pass the lua state to it!
++
++	// Moved into the constructor
++	// TODO Migrate other functions to using this in the constructor.
++	// Reverted
+ 	luaTest.RegisterLuaFunctions(m_luaVM);
+ 
+ 	// TODO Hook this up to the ImGui command test.
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index c621ddf6..83ea0c34 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -12,6 +12,9 @@ extern "C"
+ #include <iostream>
+ #include <string>
+ #include <fstream>
++
++// Needed for CVector
++#include "common.h"
+ //
+ 
+ // TODO Test this out here
+@@ -72,6 +75,13 @@ public:
+ 	// Run the custom event system I am working on in Lua
+ 	void LuaEvents();
+ 
++	// New events, going to move init, keybind events, wasted and busted events into their own file
++	void BustedLuaEvents();
++	void WastedLuaEvents();
++	void LuaKeybindEvents();
++	void SetupLua();
++
++
+ 	// These might work for getting the m_luaVM variable in the private class above.
+ 	static LuaTest& GetInstance()
+ 	{ 
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 6df9a7f3..74fed565 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -102,6 +102,19 @@
+ 
+ #include "Automobile.h"
+ 
++#ifdef LOG_DLL_TEST
++// TODO Test this in here
++// New log functions, in dll
++// I had to reconfigure the dll_log_headers and add some init for it to win.cpp.
++#include "dll_log_headers.h"
++
++// New logging functions
++// #include "dll_log_headers.h"
++//
++#include "logging.h"
++
++#endif // LOG_DLL_TEST
++
+ 
+ // This will toggle the controller button that is shown in ImGui
+ bool toggleControllerText = false;
+@@ -405,6 +418,10 @@ void MiscMenu::MiscTab()
+ 	TomlImGui tomlImgui = TomlImGui();
+ #endif //TOML_TEST
+ 
++#ifdef LOG_CLASS_TEST
++	Logger logger = Logger();
++#endif
++
+ 	ImGuiCommands imGuiCommands = ImGuiCommands();
+ 	MiscMenu miscMenu = MiscMenu();
+ 	//IniFunctions iniFunctions = IniFunctions();
+@@ -512,6 +529,27 @@ void MiscMenu::MiscTab()
+ 			miscUtil.TestHealthOffset();
+ 		}
+ 
++		IMGUITEXT("Check if in interior in cout");
++		if (IMGUIBUTTON("Interior check"))
++		{ 
++			if (PlayerCheats::IsPlayerInInterior())
++			{ 
++				std::cout << Defines::KcLogString << "You are in an interior." << std::endl;
++			} else {
++				std::cout << Defines::KcLogString << "You are not in an interior." << std::endl;
++			}
++			
++		}
++
++		// TODO Fix this to work, it doens't for some reason.
++#ifdef LOG_CLASS_TEST
++		IMGUITEXT("Log with dll test");
++		if (IMGUIBUTTON("Log dll value"))
++		{ 
++			logger.info(Defines::logFile, "Test");
++		}
++#endif
++
+ 		//
+ 	}
+ 	//
+diff --git a/src/save/PCSave.cpp b/src/save/PCSave.cpp
+index a33e9d90..935623d9 100644
+--- a/src/save/PCSave.cpp
++++ b/src/save/PCSave.cpp
+@@ -22,6 +22,11 @@ C_PcSave::SetSaveDirectory(const char *path)
+ 	sprintf(DefaultPCSaveFileName, "%s\\%s", path, "GTAVCsf");
+ }
+ 
++/// <summary>
++/// Delete a save slot
++/// </summary>
++/// <param name="slot">The slot to delete</param>
++/// <returns></returns>
+ bool
+ C_PcSave::DeleteSlot(int32 slot)
+ {
+@@ -38,6 +43,11 @@ C_PcSave::DeleteSlot(int32 slot)
+ 	return true;
+ }
+ 
++/// <summary>
++/// This saves the game to a specific slot.
++/// </summary>
++/// <param name="slot">The slot to save to.</param>
++/// <returns></returns>
+ int8
+ C_PcSave::SaveSlot(int32 slot)
+ {
+diff --git a/src/skel/crossplatform.h b/src/skel/crossplatform.h
+index 4ab7d156..cfc85fd9 100644
+--- a/src/skel/crossplatform.h
++++ b/src/skel/crossplatform.h
+@@ -1,3 +1,7 @@
++#pragma once
++// I added pragma once to this so it doesn't get included multiple times.
++
++
+ #include <time.h>
+ #include <limits.h>
+ 
+diff --git a/utils/lua/test.lua b/utils/lua/test.lua
+index 3c957768..4c1af61a 100644
+--- a/utils/lua/test.lua
++++ b/utils/lua/test.lua
+@@ -33,6 +33,12 @@
+ -- Turn on infinite health
+ -- enable_infinite_health()
+ 
++-- Set ped density to 0, disable peds
++-- disable_peds()
++
++-- Set vehicle density to 0, disable vehicles
++-- disable_vehicles()
++
+ ------
+ -- Player functions
+ ------
+@@ -72,6 +78,9 @@
+ -- Kill the player
+ -- kill_player()
+ 
++-- Check if the player is alive
++-- is_player_alive()
++
+ -- Change the players clothes, due to a crash with invalid models I have disabled this in the C++ code.
+ -- TODO Fix this and stop it from crashing on invalid models
+ -- change_clothes("clothesName")
+@@ -79,10 +88,6 @@
+ -- Get the current wanted level if above 0
+ -- get_wanted_level()
+ 
+--- Booleans:
+--- Check if the player is alive
+--- is_player_alive()
+-
+ ------
+ -- Message functions
+ ------
+@@ -91,21 +96,22 @@
+ -- print_msg(message)
+ 
+ -- Log messages in lua
++
+ -- Log an info message
+ -- log_info(message)
+ 
++-- Log a warning message
++-- log_warning(message)
++
++-- Log a error message
++-- log_error(message)
++
+ ------
+ -- World functions
+ ------
+ -- Clear the area of any peds and vehicles
+ -- clear_area(radius)
+ 
+--- Set ped density to 0, disable peds
+--- disable_peds()
+-
+--- Set vehicle density to 0, disable vehicles
+--- disable_vehicles()
+-
+ 
+ -----------
+ -- Toggles
+@@ -140,6 +146,11 @@ local disableVehicles = false
+ -- Display a log message using my C++ functions, logs to 'ViceExtended/logs/KCNet-ReVC-lua.log'
+ local log_test = false
+ 
++-- Log warnings and errors to the lua log file as a test
++-- These work
++local log_warning_test = false
++local log_error_test = false
++
+ -- This should change the players clothes
+ -- This works
+ -- TODO Fix this 
+@@ -155,7 +166,7 @@ local display_help_text = false
+ -- Uses CustomCheats::BlowUpAllCars()
+ local blow_up_cars_toggle = false
+ 
+-local clear_area_toggle = true
++local clear_area_toggle = false
+ 
+ -----------
+ -- Locations
+@@ -189,6 +200,15 @@ if log_test then
+ 	-- log_info("KCNet - Test msg from lua")
+ end
+ 
++-- These work, disabled above
++if log_warning_test then
++	log_warning("Test message")
++end
++
++if log_error_test then
++	log_error("Test message")
++end
++
+ -- Toggle the respawn point or if the player respawns normally
+ -- This is mostly working, it only takes effect after the player dies once.
+ -- TODO Add this to my ImGui menu later.
+@@ -230,8 +250,11 @@ end
+ 
+ -- If the player will lose their weapons when dying, set to true by default
+ -- If set to false, the player will not lose weapons when dying.
+-local lose_weapons = false
+ 
++-- local lose_weapons = false
++local lose_weapons = true
++
++-- if not lose_weapons then
+ if not lose_weapons then
+ 	disable_lose_weapons_on_death()
+ else
+-- 
+2.49.0.windows.1
+
