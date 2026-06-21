@@ -1,0 +1,229 @@
+From 66b019bf626b13bc598aa5db9c5c9f61b1bba6de Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 25 Feb 2026 11:32:36 -0500
+Subject: [PATCH 20/58] WIP: feat: Partially fix Linux build * Update readme
+
+---
+ README.md                                |  6 ++++++
+ premake5.lua                             |  2 ++
+ src/extras/functions/imgui_functions.cpp | 23 ++++++++++++++++++++++-
+ src/extras/functions/imgui_setup.cpp     |  4 ++++
+ src/extras/functions/ini_functions.cpp   |  4 ----
+ src/extras/functions/misc_functions.cpp  |  4 +++-
+ src/extras/menus/game_menu.cpp           |  6 ++++--
+ src/extras/menus/misc_menu.cpp           |  8 +++++---
+ 8 files changed, 46 insertions(+), 11 deletions(-)
+
+diff --git a/README.md b/README.md
+index 625acc1b..36f7ac33 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,12 @@ Added glfw-3.4.bin.WIN64 to the vendor folder for OpenGL building to work.
+ I may rework my code and bring some of the more used parts into this branch, the audio glitches out quite a bit
+ on the main build that I have for ReVC.
+ 
++## ImGui info
++The miami-dev-imgui branch has ImGui testing copied in from my miami branch, I almost got this building on Linux but I get some linker erorrs.
++
++I got this building on Windows, but ImGui is very buggy, I cannot move the mouse and the menu doesn't show up properly.
++Although, I did place ImGui into reVC this time instead of librw, maybe I should try moving it to librw. 
++
+ ## Docker support
+ This branch now has support for building with Docker on Linux, tested on WSL with Ubuntu 24.04 and a Debian 13 server.
+ 
+diff --git a/premake5.lua b/premake5.lua
+index 3231cba4..e0733182 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -491,6 +491,8 @@ project "reVC"
+ 		libdirs { "vendor/openal-soft/libs/Win64" }
+ 
+ 	filter "platforms:linux*oal"
++		-- Disable Wno-narrowing errors in Linux.
++		buildoptions { "-Wno-narrowing" }
+ 		links { "openal", "mpg123", "sndfile", "pthread" }
+ 		
+ 	filter "platforms:bsd*oal"
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 2c188ff7..84982d80 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -36,7 +36,11 @@
+ 
+ #include "log_functions.h"
+ 
++#ifdef _WIN32
+ #include <direct.h>
++#endif // _WIN32
++
++#include <limits.h>
+ 
+ // Well adding this I can move my functions out of ini functions into the warp menu and vehicle menu.
+ //#include "ini.h"
+@@ -104,7 +108,11 @@ ImGuiFunctions::InputIntClamp(const char *label, int *v, int step, int step_fast
+ void
+ ImGuiFunctions::PrintToOutput(const char* text)
+ {
++#ifdef _WIN32
+ 	OutputDebugString(text);
++#else
++	// TODO Fix other platform support
++#endif // _WIN32
+ }
+ 
+ // Disabled, broken on my OpenGL build
+@@ -544,24 +552,34 @@ ImGuiFunctions::GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
+ std::string
+ ImGuiFunctions::GetCurrentWorkingDirectory()
+ {
++#ifdef _WIN32
+ 	char buffer[MAX_PATH];
+ 	if(_getcwd(buffer, sizeof(buffer)) != nullptr) {
+ 		return std::string(buffer);
+ 	} else {
+ 		return ""; // Or handle the error appropriately
+ 	}
++#else
++	// TODO Fix for Linux support
++#endif // _WIN32
+ }
+ 
+ void
+ ImGuiFunctions::OpenCurrentDirectoryButton(const char *buttonLabel)
+ {
++#ifdef _WIN32
+ 	std::string currentDir = GetCurrentWorkingDirectory();
+ 	if(!currentDir.empty() && ImGui::Button(buttonLabel)) { ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
++#else
++	// TODO Fix for Linux support
++#endif // _WIN32
++
+ }
+ 
+ void
+ ImGuiFunctions::OpenDirectoryButton(std::string folder, const char *buttonLabel)
+ {
++#ifdef _WIN32
+ 	Defines defines = Defines();
+ 	// std::string currentDir = GetCurrentWorkingDirectory() + folder;
+ 	if(!folder.empty() && ImGui::Button(buttonLabel)) {
+@@ -569,8 +587,11 @@ ImGuiFunctions::OpenDirectoryButton(std::string folder, const char *buttonLabel)
+ 		// ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+ 		ShellExecuteA(nullptr, "explore", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+ 	}
++#else
++	// TODO Fix for Linux support
++#endif // _WIN32
+ }
+ 
+ //---------- End folder stuff ----------//
+ 
+-#endif // _IMGUI_TEST
+\ No newline at end of file
++#endif // _IMGUI_TEST
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index d440298c..e8b3c2eb 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -72,7 +72,9 @@
+ #if (defined(_MSC_VER))
+ #include <tchar.h>
+ #endif /* (defined(_MSC_VER)) */
++#ifdef _WIN32
+ #include "resource.h"
++#endif // _WIN32
+ #include "rwcore.h"
+ #include "skeleton.h"
+ #include <stdio.h>
+@@ -259,10 +261,12 @@ ImGuiSetup::InitImGui(std::string window)
+ 	// https://github.com/user-grinch/Cheat-Menu
+ 	ImGuiFunctions::ApplyStyle();
+ 
++#ifdef _WIN32
+ 	// Fix for the mouse cursor showing on game start
+ 	ShowCursor(FALSE);
+ 	SetCursor(nil);
+ 	//
++#endif // _WIN32
+ 
+ 	// Setup Platform/Renderer backends
+ #if defined(_WIN32) && defined(RW_D3D9)
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index e4938075..0e9d1d31 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -611,10 +611,6 @@ IniFunctions::LoadWarpIni()
+ 		// 
+ 		// Success! Now process the data and populate the warps vector
+ 		for(const auto &sectionPair : warpsCfg) {
+-
+-
+-
+-			
+ 			const std::string &sectionName = sectionPair.first;
+ 			const mINI::INIMap<std::string> &section = sectionPair.second;
+ 
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 05caf06f..4271513b 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -100,11 +100,13 @@
+ 
+ #include "misc_util.h"
+ 
+-// TODO Move into a utilites file
+ #ifdef _WIN32
+ #include <direct.h>
+ #endif // _WIN32
+ 
++// strncpy and other functions
++#include <cstring>
++
+ 
+ //---------- Booleans for misc functions ----------//
+ // Show the current directory in ImGui
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+index e6c92244..f2d3b887 100644
+--- a/src/extras/menus/game_menu.cpp
++++ b/src/extras/menus/game_menu.cpp
+@@ -48,7 +48,9 @@
+ #include "Text.h"
+ 
+ #include "Weather.h"
+-#include "Time.h"
++// TODO What was this for? It was building on Windows..
++//#include "Time.h"
++#include <time.h>
+ #include "Clock.h"
+ 
+ #include "Garages.h"
+@@ -248,4 +250,4 @@ GameMenu::GameTab()
+ 
+ // clang-format on
+ 
+-#endif // _IMGUI_TEST
+\ No newline at end of file
++#endif // _IMGUI_TEST
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index bf6cc65f..8bada887 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -84,10 +84,12 @@
+ #include <locale>
+ #include <codecvt>
+ 
+-
+-
+-// TODO Move into a utilites file
++#ifdef _WIN32
+ #include <direct.h>
++#endif // _WIN32
++
++// strncpy and other functions
++#include <cstring>
+ 
+ // Added ICU library from here for these:
+ // https://github.com/unicode-org/icu/releases/tag/release-77-1
+-- 
+2.49.0.windows.1
+

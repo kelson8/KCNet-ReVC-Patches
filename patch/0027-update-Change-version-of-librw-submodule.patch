@@ -1,0 +1,19 @@
+From 2dda3dc83d7b4a63fe5d8ca28a474b58ff02914e Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 12:36:35 -0500
+Subject: [PATCH 27/58] update: Change version of librw submodule
+
+---
+ vendor/librw | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/vendor/librw b/vendor/librw
+index d5771158..555eaa08 160000
+--- a/vendor/librw
++++ b/vendor/librw
+@@ -1 +1 @@
+-Subproject commit d577115848e5b43f11d65ac799134c2d7ef89cfd
++Subproject commit 555eaa08fae9321d4d6019a668e9758a1bc2584f
+-- 
+2.49.0.windows.1
+

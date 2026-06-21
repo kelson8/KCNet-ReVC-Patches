@@ -1,0 +1,520 @@
+From 4c0d93cbce93b19dcc7553648ffe7a06d28e28f3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 1 Mar 2026 20:03:44 -0500
+Subject: [PATCH 57/58] feat: Cleanup some code in glfw.cpp * I moved the
+ functions that were running in the main switch statement into multiple single
+ functions.
+
+---
+ src/skel/glfw/glfw.cpp | 422 +++++++++++++++++++++++------------------
+ 1 file changed, 242 insertions(+), 180 deletions(-)
+
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 12fc9cea..f8605c75 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -144,6 +144,10 @@ bool isGameFocused = true; // Initially focused
+ 
+ #endif // DISABLE_PAUSE_FOCUS_LOSS
+ 
++#ifdef LUA_TEST
++// Lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
++bool	luaInit = false;
++#endif // LUA_TEST
+ 
+ rw::EngineOpenParams openParams;
+ 
+@@ -1962,7 +1966,235 @@ windowIconifyCB(GLFWwindow* window, int iconified) {
+ 	WindowIconified = !!iconified;
+ }
+ 
++//**************
++// Begin game states
++//**************
++
++// New, attempt to move the functions out of the switches in the main function
++// TODO Try to move these out of glfw, and into another file.
++// I may revert this later
++
++// GS_START_UP
++void
++#ifdef _IMGUI_TEST
++GameStateStartup(ImGuiSetup imGuiSetup)
++#else
++GameStateStartup()
++#endif // _IMGUI_TEST
++{
++#ifdef NO_MOVIES
++	gGameState = GS_INIT_ONCE;
++#else
++	gGameState = GS_INIT_LOGO_MPEG;
++#endif
++	TRACE("gGameState = GS_INIT_ONCE");
++
++#ifdef _IMGUI_TEST
++
++	// Check if ImGui bool above is enabled in the ini.
++	// This fixes the mouse showing up on game start when I have this toggled off
++	if(RwInitialised) {
++	// Init ImGui
++		imGuiSetup.InitImGui();
++	}
++
++#endif
++
++#ifdef CUSTOM_CODE
++	// Create the log folder if it doesn't exist.
++	LogFunctions::CreateLogFolder();
++
++	// Test for logger
++	LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
++#endif // CUSTOM_CODE
++}
++
++// GS_INIT_ONCE
++void GameStateInitOnce()
++{
++	//CoUninitialize();
++						
++#ifdef PS2_MENU
++	extern char version_name[64];
++	if ( CGame::frenchGame || CGame::germanGame )
++		LoadingScreen(NULL, version_name, "loadsc24");
++	else
++		LoadingScreen(NULL, version_name, "loadsc0");
++						
++	printf("Into TheGame!!!\n");
++#else				
++	LoadingScreen(nil, nil, "loadsc0");
++	// LoadingScreen(nil, nil, "loadsc0"); // duplicate
++#endif
++	if ( !CGame::InitialiseOnceAfterRW() )
++		RsGlobal.quit = TRUE;
++						
++#ifdef PS2_MENU
++	gGameState = GS_INIT_PLAYING_GAME;
++#else
++	gGameState = GS_INIT_FRONTEND;
++	TRACE("gGameState = GS_INIT_FRONTEND;");
++#endif
++}
++
++// GS_INIT_FRONTEND
++void GameStateInitFrontend()
++{
++	LoadingScreen(nil, nil, "loadsc0");
++	// LoadingScreen(nil, nil, "loadsc0"); // duplicate
++						
++	FrontEndMenuManager.m_bGameNotLoaded = true;
++						
++	FrontEndMenuManager.m_bStartUpFrontEndRequested = true;
++						
++	if ( defaultFullscreenRes )
++	{
++		defaultFullscreenRes = FALSE;
++		FrontEndMenuManager.m_nPrefsVideoMode = GcurSelVM;
++		FrontEndMenuManager.m_nDisplayVideoMode = GcurSelVM;
++	}
++						
++	gGameState = GS_FRONTEND;
++	TRACE("gGameState = GS_FRONTEND;");
++}
++
++// GS_FRONTEND
++void GameStateFrontend()
++{
++	if(!WindowIconified)
++		RsEventHandler(rsFRONTENDIDLE, nil);
++
++#if defined(_FAST_LOADER) && defined(EX_LOADING_GAME_SAVE_ON_STARTUP)
++	FastLoader fastLoader = FastLoader();
++#endif
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++	fastLoader.FastLoad();
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++#ifdef PS2_MENU
++	if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
++#else
++	if ( !FrontEndMenuManager.m_bMenuActive || FrontEndMenuManager.m_bWantToLoad )
++#endif
++	{
++	gGameState = GS_INIT_PLAYING_GAME;
++	TRACE("gGameState = GS_INIT_PLAYING_GAME;");
++	}
++
++#ifdef PS2_MENU
++	if (TheMemoryCard.m_bWantToLoad )
++#else
++	if ( FrontEndMenuManager.m_bWantToLoad )
++#endif
++	{
++		InitialiseGame();
++		FrontEndMenuManager.m_bGameNotLoaded = false;
++		gGameState = GS_PLAYING_GAME;
++		TRACE("gGameState = GS_PLAYING_GAME;");
++	}
++}
++
++// GS_INIT_PLAYING_GAME
++void GameStateInitPlayingGame()
++{
++#ifdef PS2_MENU
++	CGame::Initialise("DATA\\GTA3.DAT");
++						
++	//LoadingScreen("Starting Game", NULL, GetRandomSplashScreen());
++					
++	if ( TheMemoryCard.CheckCardInserted(CARD_ONE) == CMemoryCard::NO_ERR_SUCCESS
++	&& TheMemoryCard.ChangeDirectory(CARD_ONE, TheMemoryCard.Cards[CARD_ONE].dir)
++	&& TheMemoryCard.FindMostRecentFileName(CARD_ONE, TheMemoryCard.MostRecentFile) == true
++	&& TheMemoryCard.CheckDataNotCorrupt(TheMemoryCard.MostRecentFile))
++	{
++		strcpy(TheMemoryCard.LoadFileName, TheMemoryCard.MostRecentFile);
++		TheMemoryCard.b_FoundRecentSavedGameWantToLoad = true;
++					
++	if (CMenuManager::m_PrefsLanguage != TheMemoryCard.GetLanguageToLoad())
++	{
++		CMenuManager::m_PrefsLanguage = TheMemoryCard.GetLanguageToLoad();
++		TheText.Unload();
++		TheText.Load();
++	}
++					
++	CGame::currLevel = (eLevelName)TheMemoryCard.GetLevelToLoad();
++	}
++#else
++	InitialiseGame();
++
++	FrontEndMenuManager.m_bGameNotLoaded = false;
++#endif
++	gGameState = GS_PLAYING_GAME;
++	TRACE("gGameState = GS_PLAYING_GAME;");
++}
++
++// GS_PLAYING_GAME
++void GameStatePlayingGame()
++{
++	// TODO Move these init variables outside of this loop somewhere.
++
++#ifdef LUA_TEST
++	LuaSetup luaSetup = LuaSetup();
++#endif // LUA_TEST
++
++	// ImGui setup and functions
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
++
++	ImGuiSetup imGuiSetup = ImGuiSetup();
++
++#endif //_IMGUI_TEST
++
++	float ms = (float)CTimer::GetCurrentTimeInCycles() / (float)CTimer::GetCyclesPerMillisecond();
++	if ( RwInitialised )
++	{
++		if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
++			RsEventHandler(rsIDLE, (void *)TRUE);
++	}
++
++#ifdef LUA_TEST
++	//! TODO: Fix this
++	// TODO Make a separate lua file for auto load variables like these.
++	// First, check if lua is enabled in the ini, if not run the lua init.
++	// TODO Move this into an init instead of in the playing game loop.
++	LuaTest luaTest = LuaTest();
++	if(gbLuaTest) {
++		if(!luaInit) {
++		luaTest.InitLua();
++			luaInit = true;
++		}
++	}
++#endif
++
++#ifdef _IMGUI_TEST
++	// Run the ImGui loop that checks for controller input, and mouse/keyboard input if enabled in the ini
++	if(gbImGuiToggle) { 
++		imGuiSetup.ImGuiPlayingGameLoop(); 
++	}
++
++#endif
++
++#ifdef LUA_TEST
++	// Run the Lua loop that checks for mouse/keyboard input if enabled in the ini
++	if(gbLuaTest) 
++	{
++		luaSetup.LuaPlayingGameLoop();
++	}
++#endif
++}
++
++//**************
++// End game states
++//**************
++
++//
++
++
+ /*
++ *** Main loop for glfw***
+  *****************************************************************************
+  */
+ #ifdef _WIN32
+@@ -1977,11 +2209,6 @@ WinMain(HINSTANCE instance,
+ 	RwChar** argv;
+ 	SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, nil, SPIF_SENDCHANGE);
+ 
+-#ifdef LUA_TEST
+-// Test for making a lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
+-bool	luaInit = false;
+-#endif
+-
+ #ifndef MASTER
+ 	if (strstr(cmdLine, "-console"))
+ 	{
+@@ -1996,11 +2223,6 @@ bool	luaInit = false;
+ int
+ main(int argc, char *argv[])
+ {
+-#ifdef LUA_TEST
+-	// Test for making a lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
+-	bool luaInit = false;
+-#endif
+-
+ #endif
+ 	RwV2d pos;
+ 	RwInt32 i;
+@@ -2166,14 +2388,6 @@ main(int argc, char *argv[])
+ 	SetErrorMode(SEM_FAILCRITICALERRORS);
+ #endif
+ 
+-#ifdef _FAST_LOADER
+-	FastLoader fastLoader = FastLoader();
+-#endif
+-
+-#ifdef LUA_TEST
+-	LuaSetup luaSetup = LuaSetup();
+-#endif
+-
+ #ifdef PS2_MENU
+ 	int32 r = TheMemoryCard.CheckCardStateAtGameStartUp(CARD_ONE);
+ 	if (   r == CMemoryCard::ERR_DIRNOENTRY  || r == CMemoryCard::ERR_NOFORMAT
+@@ -2193,13 +2407,7 @@ main(int argc, char *argv[])
+ 	
+ 	// ImGui setup and functions
+ #ifdef _IMGUI_TEST
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	CPad cpad = CPad();
+-
+-	CPad *pad = CPad::GetPad(0);
+-
+-	ImGuiSetup imGuiSetup = ImGuiSetup();
+-
++ 	ImGuiSetup imGuiSetup = ImGuiSetup();
+ #endif //_IMGUI_TEST
+ 	
+ 	initkeymap();
+@@ -2261,31 +2469,12 @@ main(int argc, char *argv[])
+ 				{
+ 					case GS_START_UP:
+ 					{
+-#ifdef NO_MOVIES
+-						gGameState = GS_INIT_ONCE;
+-#else
+-						gGameState = GS_INIT_LOGO_MPEG;
+-#endif
+-						TRACE("gGameState = GS_INIT_ONCE");
+ 
+ #ifdef _IMGUI_TEST
+-
+-					        // Check if ImGui bool above is enabled in the ini.
+-					        // This fixes the mouse showing up on game start when I have this toggled off
+-						        if(RwInitialised) {
+-									// Init ImGui
+-							        imGuiSetup.InitImGui();
+-						        }
+-
+-#endif
+-
+-#ifdef CUSTOM_CODE
+-								// Create the log folder if it doesn't exist.
+-								LogFunctions::CreateLogFolder();
+-
+-								// Test for logger
+-								LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
+-#endif // CUSTOM_CODE
++						GameStateStartup(imGuiSetup);
++#else
++						GameStateStartup();
++#endif // _IMGUI_TEST
+ 
+ 						break;
+ 					}
+@@ -2358,159 +2547,32 @@ main(int argc, char *argv[])
+ 
+ 					case GS_INIT_ONCE:
+ 					{
+-						//CoUninitialize();
+-						
+-#ifdef PS2_MENU
+-						extern char version_name[64];
+-						if ( CGame::frenchGame || CGame::germanGame )
+-							LoadingScreen(NULL, version_name, "loadsc24");
+-						else
+-							LoadingScreen(NULL, version_name, "loadsc0");
+-						
+-						printf("Into TheGame!!!\n");
+-#else				
+-						LoadingScreen(nil, nil, "loadsc0");
+-						// LoadingScreen(nil, nil, "loadsc0"); // duplicate
+-#endif
+-						if ( !CGame::InitialiseOnceAfterRW() )
+-							RsGlobal.quit = TRUE;
+-						
+-#ifdef PS2_MENU
+-						gGameState = GS_INIT_PLAYING_GAME;
+-#else
+-						gGameState = GS_INIT_FRONTEND;
+-						TRACE("gGameState = GS_INIT_FRONTEND;");
+-#endif
++						GameStateInitOnce();
+ 						break;
+ 					}
+ #ifndef PS2_MENU
+ 					case GS_INIT_FRONTEND:
+ 					{
+-						LoadingScreen(nil, nil, "loadsc0");
+-						// LoadingScreen(nil, nil, "loadsc0"); // duplicate
+-						
+-						FrontEndMenuManager.m_bGameNotLoaded = true;
+-						
+-						FrontEndMenuManager.m_bStartUpFrontEndRequested = true;
+-						
+-						if ( defaultFullscreenRes )
+-						{
+-							defaultFullscreenRes = FALSE;
+-							FrontEndMenuManager.m_nPrefsVideoMode = GcurSelVM;
+-							FrontEndMenuManager.m_nDisplayVideoMode = GcurSelVM;
+-						}
+-						
+-						gGameState = GS_FRONTEND;
+-						TRACE("gGameState = GS_FRONTEND;");
++						GameStateInitFrontend();
+ 						break;
+ 					}
+ 					
+ 					case GS_FRONTEND:
+ 					{
+-						if(!WindowIconified)
+-							RsEventHandler(rsFRONTENDIDLE, nil);
+-
+-#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+-						fastLoader.FastLoad();
+-#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+-#ifdef PS2_MENU
+-						if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+-#else
+-						if ( !FrontEndMenuManager.m_bMenuActive || FrontEndMenuManager.m_bWantToLoad )
+-#endif
+-						{
+-							gGameState = GS_INIT_PLAYING_GAME;
+-							TRACE("gGameState = GS_INIT_PLAYING_GAME;");
+-						}
+-
+-#ifdef PS2_MENU
+-						if (TheMemoryCard.m_bWantToLoad )
+-#else
+-						if ( FrontEndMenuManager.m_bWantToLoad )
+-#endif
+-						{
+-							InitialiseGame();
+-							FrontEndMenuManager.m_bGameNotLoaded = false;
+-							gGameState = GS_PLAYING_GAME;
+-							TRACE("gGameState = GS_PLAYING_GAME;");
+-						}
++						GameStateFrontend();
+ 						break;
+ 					}
+ #endif
+ 					
+ 					case GS_INIT_PLAYING_GAME:
+ 					{
+-#ifdef PS2_MENU
+-						CGame::Initialise("DATA\\GTA3.DAT");
+-						
+-						//LoadingScreen("Starting Game", NULL, GetRandomSplashScreen());
+-					
+-						if (   TheMemoryCard.CheckCardInserted(CARD_ONE) == CMemoryCard::NO_ERR_SUCCESS
+-							&& TheMemoryCard.ChangeDirectory(CARD_ONE, TheMemoryCard.Cards[CARD_ONE].dir)
+-							&& TheMemoryCard.FindMostRecentFileName(CARD_ONE, TheMemoryCard.MostRecentFile) == true
+-							&& TheMemoryCard.CheckDataNotCorrupt(TheMemoryCard.MostRecentFile))
+-						{
+-							strcpy(TheMemoryCard.LoadFileName, TheMemoryCard.MostRecentFile);
+-							TheMemoryCard.b_FoundRecentSavedGameWantToLoad = true;
+-					
+-							if (CMenuManager::m_PrefsLanguage != TheMemoryCard.GetLanguageToLoad())
+-							{
+-								CMenuManager::m_PrefsLanguage = TheMemoryCard.GetLanguageToLoad();
+-								TheText.Unload();
+-								TheText.Load();
+-							}
+-					
+-							CGame::currLevel = (eLevelName)TheMemoryCard.GetLevelToLoad();
+-						}
+-#else
+-						InitialiseGame();
+-
+-						FrontEndMenuManager.m_bGameNotLoaded = false;
+-#endif
+-						gGameState = GS_PLAYING_GAME;
+-						TRACE("gGameState = GS_PLAYING_GAME;");
++						GameStateInitPlayingGame();
+ 						break;
+ 					}
+ 					
+ 					case GS_PLAYING_GAME:
+ 					{
+-						float ms = (float)CTimer::GetCurrentTimeInCycles() / (float)CTimer::GetCyclesPerMillisecond();
+-						if ( RwInitialised )
+-						{
+-							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+-								RsEventHandler(rsIDLE, (void *)TRUE);
+-						}
+-
+-#ifdef LUA_TEST
+-							//! TODO: Fix this
+-						    // TODO Make a separate lua file for auto load variables like these.
+-						    // First, check if lua is enabled in the ini, if not run the lua init.
+-						    LuaTest luaTest = LuaTest();
+-							if(gbLuaTest) {
+-								if(!luaInit) {
+-									luaTest.InitLua();
+-									luaInit = true;
+-								}
+-						    }
+-#endif
+-
+-						// TODO Fix this to work with OpenGL, should be the same concept for the loop.
+-#ifdef _IMGUI_TEST
+-					        // Run the ImGui loop that checks for controller input, and mouse/keyboard input if enabled in the ini
+-							if(gbImGuiToggle) { 
+-								imGuiSetup.ImGuiPlayingGameLoop(); 
+-							}
+-
+-#endif
+-
+-#ifdef LUA_TEST
+-							// Run the Lua loop that checks for mouse/keyboard input if enabled in the ini
+-							if(gbLuaTest) 
+-							{
+-							    luaSetup.LuaPlayingGameLoop();
+-							}
+-#endif
+-
++						GameStatePlayingGame();
+ 						break;
+ 					}
+ 				}
+-- 
+2.49.0.windows.1
+

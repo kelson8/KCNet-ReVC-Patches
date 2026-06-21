@@ -1,0 +1,107 @@
+From d9399cb8e5d05842a468f6074024350e74868519 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 06:44:36 -0500
+Subject: [PATCH 25/58] feat: Fix Linux build * Now my ImGui menu seems to work
+ fine on Linux.
+
+---
+ README.md                      |  1 +
+ src/extras/menus/misc_menu.cpp |  7 +++++++
+ src/extras/menus/warp_menu.cpp |  2 +-
+ src/skel/glfw/glfw.cpp         | 15 +--------------
+ 4 files changed, 10 insertions(+), 15 deletions(-)
+
+diff --git a/README.md b/README.md
+index c709d6bb..c4fe71fd 100644
+--- a/README.md
++++ b/README.md
+@@ -35,6 +35,7 @@ on the main build that I have for ReVC.
+ The miami-dev-imgui branch has ImGui testing copied in from my miami branch, I almost got this building on Linux but I get some linker erorrs.
+ 
+ I got this building and running on Windows, this has not yet been tested on Linux but it should work since I'm using OpenGL.
++Well, I tested ImGui on my Steam deck and now it seems to work, I accidentally disabled the ImGui init for other platforms in glfw.cpp.
+ 
+ Librw is now added in as a submodule within the opengl-imgui branch
+ * https://git.internal.kelsoncraft.net/kelson8/librw/src/branch/opengl-imgui/
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 8bada887..75d1fce6 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -82,7 +82,11 @@
+ 
+ #include <string>
+ #include <locale>
++
++// TODO Fix this on Linux, it seems to fail with this enabled.
++#ifndef __linux__
+ #include <codecvt>
++#endif // !__linux__
+ 
+ #ifdef _WIN32
+ #include <direct.h>
+@@ -697,6 +701,8 @@ void MiscMenu::MiscTab()
+ 		if(ImGui::Button("Drop bomb")) { CustomCheats::ExplosionCheat(); }
+ 
+ 		// Display some text from the american.gxt file in game.
++		// This only works on Windows.
++#ifndef __linux__
+ 		if(ImGui::Button("Text test")) {
+ 			std::string message = "test";
+ 			std::wstring_convert<std::codecvt_utf8<wchar>> converter;
+@@ -724,6 +730,7 @@ void MiscMenu::MiscTab()
+ 			// CHud::SetHelpMessage(wc, false, false);
+ 			// CHud::SetHelpMessage(converter.from_bytes(message), false, false);
+ 		}
++#endif // !__linux__
+ 
+ 
+ 		ImGui::Text("This creates a minigun pickup near the player");
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 3f35aea8..417a6ec1 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -34,7 +34,7 @@
+ #include "imgui_defines.h"
+ 
+ // To add a warp, first add its name to this list.
+-const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
++// const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
+ int currentWarp = 0;
+ bool showWarps = false;
+ bool showCurrentWarp = false;
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 86e3ca5a..df3d3280 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -2239,27 +2239,14 @@ main(int argc, char *argv[])
+ #endif
+ 						TRACE("gGameState = GS_INIT_ONCE");
+ 
+-						// TODO Implement ImGui OpenGL3 here, currently doesn't work.
+ #ifdef _IMGUI_TEST
+ 
+ 					        // Check if ImGui bool above is enabled in the ini.
+ 					        // This fixes the mouse showing up on game start when I have this toggled off
+-					        // TODO Make the ImGui test not always show a mouse until it's hidden.
+-					        //if(gbImGuiToggle) {
+-
+-						        // Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
+-						        // This shows up!!
+-						        // if(RwInitialised && gGameState == GS_PLAYING_GAME) {
+ 						        if(RwInitialised) {
+-							        // Init ImGui
+-
+-									// TODO Fix this
+-#ifdef _WIN32
++									// Init ImGui
+ 							        imGuiSetup.InitImGui();
+-#else
+-#endif // _WINew
+ 						        }
+-					        //}
+ 
+ #endif
+ 
+-- 
+2.49.0.windows.1
+

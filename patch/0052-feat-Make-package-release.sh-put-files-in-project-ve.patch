@@ -1,0 +1,96 @@
+From 21f6292f6c4ed0e4b6bc94ec24d9a716be3d34b7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 22:57:26 -0500
+Subject: [PATCH 52/58] feat: Make package-release.sh put files in project
+ version subfolder
+
+* Update build number to 1.2.1 for release.
+* Update settings.json for vscode.
+---
+ .vscode/settings.json        |  2 ++
+ package-release.sh           | 21 +++++++++++++++------
+ src/extras/utils/defines.cpp |  2 +-
+ 3 files changed, 18 insertions(+), 7 deletions(-)
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index dc90d2c3..bd710602 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -42,6 +42,8 @@
+     "src/vehicles",
+     "src/weapons",
+     "vendor/librw",
++    "vendor/librw/src",
++    "vendor/librw/gl",
+     "vendor/glfw-3.4.bin.WIN64/include",
+     "vendor/glfw-3.4.bin.WIN64/include/GLFW",
+   ],
+diff --git a/package-release.sh b/package-release.sh
+index 517c8f01..6291ac6e 100755
+--- a/package-release.sh
++++ b/package-release.sh
+@@ -6,32 +6,41 @@ DEBUG_64=bin/linux-amd64-librw_gl3_glfw-oal/Debug
+ RELEASES_FOLDER=Releases
+ GAMEFILES_FOLDER=gamefiles
+ # Set the version to output here.
+-PROJECT_VERSION=1.2
++PROJECT_VERSION=1.2.1
+ 
+ # Compressed zip files
+-RELEASE_ZIP=$RELEASES_FOLDER/Release-Linux-reVC-$PROJECT_VERSION.zip
+-DEBUG_ZIP=$RELEASES_FOLDER/Debug-Linux-reVC-$PROJECT_VERSION.zip
+-GAMEFILES_ZIP=$RELEASES_FOLDER/gamefiles-reVC-$PROJECT_VERSION.zip
++RELEASE_ZIP=$RELEASES_FOLDER/$PROJECT_VERSION/Release-Linux-reVC-$PROJECT_VERSION.zip
++DEBUG_ZIP=$RELEASES_FOLDER/$PROJECT_VERSION/Debug-Linux-reVC-$PROJECT_VERSION.zip
++GAMEFILES_ZIP=$RELEASES_FOLDER/$PROJECT_VERSION/gamefiles-reVC-$PROJECT_VERSION.zip
+ 
++# Create releases folder
+ if [ ! -d $RELEASES_FOLDER ]; then
+     echo "Releases folder not found, creating it now."
+     mkdir $RELEASES_FOLDER
+ fi
+ 
++# Create project version sub folder
++if [ ! -d $RELEASES_FOLDER/$PROJECT_VERSION ]; then
++    mkdir $RELEASES_FOLDER/$PROJECT_VERSION
++fi
++
+ # Basic script to package the built release and debug files
++
++# Zip the release build
+ if [ -f $RELEASE_64/reVC ]; then
+     echo "reVC release build found, zipping."
+     zip $RELEASE_ZIP $RELEASE_64/reVC
+ fi
+ 
++# Zip the Debug build
+ if [ -f $DEBUG_64/reVC ]; then
+     echo "reVC debug build found, zipping."
+     zip $DEBUG_ZIP $DEBUG_64/reVC
+ fi
+ 
+ 
+-# Game files
++# Zip the Game files
+ if [ -d $GAMEFILES_FOLDER ]; then
+     echo "Gamefiles folder found, zipping."
+     zip -r $GAMEFILES_ZIP $GAMEFILES_FOLDER
+-fi
+\ No newline at end of file
++fi
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index f53f3e70..00f886cf 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2a - Pre Release";
++std::string Defines::programVersion = "1.2.1";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.49.0.windows.1
+

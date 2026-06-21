@@ -1,0 +1,35 @@
+From 08f074718d46387a3cd75f2552db6de0f1c24ac6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 00:30:29 -0500
+Subject: [PATCH 43/58] refactor: Update vscode settings.json
+
+---
+ .vscode/settings.json | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index 0762c1c8..dc90d2c3 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -18,6 +18,7 @@
+     "src/extras",
+     "src/extras/cheats",
+     "src/extras/debug",
++    "src/extras/enums",
+     "src/extras/functions",
+     "src/extras/kcnet",
+     "src/extras/lua",
+@@ -33,7 +34,9 @@
+     "src/renderer",
+     "src/rw",
+     "src/save",
+-    "src/save/glfw",
++    "src/skel/glfw",
++    // Uncomment if using D3D9, I have it disabled in this repo.
++    // "src/skel/win",
+     "src/skel",
+     "src/text",
+     "src/vehicles",
+-- 
+2.49.0.windows.1
+

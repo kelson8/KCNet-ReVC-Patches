@@ -1,0 +1,283 @@
+From 0d0a46011e4d937d3ec355dfb5954f121a8f9365 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 23:39:03 -0500
+Subject: [PATCH 18/58] WIP: feat: Remove new imgui tests preprocessor
+
+* Attempt to disable the mouse in game when ImGui is open.
+---
+ src/extras/debug/debug_functions.cpp   |   4 -
+ src/extras/functions/imgui_functions.h |   6 --
+ src/extras/functions/imgui_setup.cpp   | 119 +++++++++++--------------
+ src/skel/glfw/glfw.cpp                 |  10 +++
+ 4 files changed, 64 insertions(+), 75 deletions(-)
+
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 82d23e42..580a6343 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -189,11 +189,7 @@ void
+ toggleImGui()
+ {
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-#ifdef NEW_IMGUI_TESTS
+ 	imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
+-#else
+-	imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+-#endif
+ 	
+ }
+ #endif
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+index c98bfd77..cd7b6cd2 100644
+--- a/src/extras/functions/imgui_functions.h
++++ b/src/extras/functions/imgui_functions.h
+@@ -2,8 +2,6 @@
+ 
+ #ifdef _IMGUI_TEST
+ 
+-#define NEW_IMGUI_TESTS
+-
+ #ifdef _WIN32
+ #include <Windows.h>
+ #endif
+@@ -125,11 +123,7 @@ public:
+ 
+ 	static bool ShowSecondWindow;
+ 	//
+-#ifdef NEW_IMGUI_TESTS
+ 	static bool ImGuiActive;
+-#else
+-	static bool ImGuiDone;
+-#endif
+ 
+ 	// This prints to a VS 2022 debug output window.
+ 	// TODO Move this somewhere else
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index a5f48164..bcd5b18c 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -15,11 +15,10 @@
+ #if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_dx9.h"
+ #else
+-#include "imgui_impl_opengl3.h"
+ #include "imgui_impl_glfw.h"
++#include "imgui_impl_opengl3.h"
+ #endif // _WIN32 && RW_D3D9
+ 
+-
+ #if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_win32.h"
+ #endif // _WIN32 && RW_D3D9
+@@ -37,8 +36,8 @@
+ // Required for opening menu with Xbox controller.
+ #include <Xinput.h>
+ 
+-//#define _WIN32_WINDOWS 0x0500
+-//#define WINVER 0x0500
++// #define _WIN32_WINDOWS 0x0500
++// #define WINVER 0x0500
+ 
+ #include <mmsystem.h>
+ #include <shellapi.h>
+@@ -122,14 +121,9 @@
+ 
+ bool imGuiInitalized = false;
+ 
+-#ifdef NEW_IMGUI_TESTS
+ // I have fixed the inverted boolean and renamed this to make it more clear
+ // Now if its set to false the menu won't show up, instead of it being reversed
+ bool ImGuiFunctions::ImGuiActive = false;
+-#else
+-// Set the boolean, this being set to true makes the menu hide, setting it to false will show the menu.
+-bool ImGuiFunctions::ImGuiDone = true;
+-#endif
+ 
+ // TODO Move this in here, need to figure out how to get d3ddevice in here, works in win.cpp
+ // rw::d3d::d3ddevice
+@@ -211,13 +205,12 @@ ImGuiSetup::DisableImGuiOnGamePause()
+ /// Run my imgui DirectX9 init with Win32
+ /// </summary>
+ /// <param name="window">The HWND for the program.</param>
+-/// 
++///
+ // TODO Test
+ const char *glsl_version = nullptr;
+ 
+ void
+ #ifdef _WIN32
+-//ImGuiSetup::InitImGui(HWND window)
+ ImGuiSetup::InitImGui()
+ #else
+ ImGuiSetup::InitImGui(std::string window)
+@@ -232,7 +225,7 @@ ImGuiSetup::InitImGui(std::string window)
+ 
+ 	// Check if the DirectX9 device is valid
+ 
+-	    if(glsl_version == nullptr) {
++	if(glsl_version == nullptr) {
+ #if defined(IMGUI_IMPL_OPENGL_ES2)
+ 		glsl_version = "#version 100";
+ #elif defined(IMGUI_IMPL_OPENGL_ES3)
+@@ -331,11 +324,8 @@ ImGuiSetup::HandleControllerInput()
+ 			newTime = CTimer::GetTimeInMilliseconds();
+ 
+ 			// Toggle ImGui window visibility
+-#ifdef NEW_IMGUI_TESTS
+ 			imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
+-#else
+-			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+-#endif }
++		}
+ 		} else {
+ 			// Handle controller not connected or error
+ 			// You might want to display a message or log an error
+@@ -371,51 +361,59 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+     }
+ 		
+ 	if(imGuiFunctions.ImGuiActive) {
+-	// Frames
+-	ImGui_ImplOpenGL3_NewFrame();
+-    ImGui_ImplGlfw_NewFrame();
+-    ImGui::NewFrame();
+-
+-	ImGuiIO &io = ImGui::GetIO();
+-	// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
+-	// Update mouse position
+-	POINT p;
+-	GetCursorPos(&p);
+-	// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
+-	// Idk what I did to break this...
+-	//ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
+-	io.MousePos = ImVec2(p.x, p.y);
++
++#ifdef _WIN32
++		ClipCursor(NULL);
++#endif // _WIN32
++
++		// Frames
++		ImGui_ImplOpenGL3_NewFrame();
++		ImGui_ImplGlfw_NewFrame();
++		ImGui::NewFrame();
++
++		ImGuiIO &io = ImGui::GetIO();
++		// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
++		// Update mouse position
++#ifdef _WIN32
++		POINT p;
++		GetCursorPos(&p);
++#else
++		// TODO Figure this out for Linux if it's needed.
++#endif // _WIN32
++
++		// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
++		// Idk what I did to break this...
++		//ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
++		io.MousePos = ImVec2(p.x, p.y);
+ 	
+-	// Update mouse button state
+-	//io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+-	//io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+-	// Draw the cursor to the screen
+-	io.MouseDrawCursor = true;
+-	//
+-	// This toggles ImGui!!
+-	// Moved this into its own method
+-	//ImGuiMenus::Menu::MainMenu(false, ImGuiFunctions::ShowSecondWindow, clear_color);
+-	//ImGuiMenus::Menu::MainMenu(clear_color);
+-	imGuiMenus.MainMenu(clear_color);
++		// Update mouse button state
++		//io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++		//io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++		// Draw the cursor to the screen
++		io.MouseDrawCursor = true;
+ 
+-	// ImGui Rendering, end frames.
+-	ImGui::EndFrame();
++		// This toggles ImGui!!
++		// Moved this into its own method
++		imGuiMenus.MainMenu(clear_color);
+ 
+-	//
++		// ImGui Rendering, end frames.
++		ImGui::EndFrame();
++
++		//
+ 
+-	// Rendering
+-    ImGui::Render();
+-
+-	int display_w, display_h;
+-    glfwGetFramebufferSize(PSGLOBAL(window), &display_w, &display_h);
+-    glViewport(0, 0, display_w, display_h);
+-	// This will probably break the game.
+-    //glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
+-    //glClear(GL_COLOR_BUFFER_BIT);
+-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+-	glfwSwapBuffers(PSGLOBAL(window));
++		// Rendering
++		ImGui::Render();
++
++		int display_w, display_h;
++		glfwGetFramebufferSize(PSGLOBAL(window), &display_w, &display_h);
++		glViewport(0, 0, display_w, display_h);
++		// This will probably break the game.
++		//glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
++		glClear(GL_COLOR_BUFFER_BIT);
++		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
++		glfwSwapBuffers(PSGLOBAL(window));
+ 	}
+-#endif //
++#endif // RW_GL3 && _IMGUI_TEST
+ 
+ 	// This works without lua
+ 	static int newTime = 0;
+@@ -431,11 +429,7 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 			// if(CTRLJUSTDOWN('N')) {
+ 			// newTime = CTimer::GetTimeInMilliseconds();
+ 			//  Toggle ImGui
+-#ifdef NEW_IMGUI_TESTS
+ 				imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
+-#else
+-				imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+-#endif
+ 			}
+ 
+ 		// Resize check
+@@ -458,12 +452,7 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 		// This works! It toggles with the Xbox controller.
+ 		// TODO Add config in ini to disable/enable controller input for the menu.
+ 		this->HandleControllerInput();
+-#ifdef NEW_IMGUI_TESTS
+ 		if(imGuiFunctions.ImGuiActive) {
+-#else
+-
+-		if(!imGuiFunctions.ImGuiDone) {
+-#endif
+ 
+ 			// Disable the players control and movement.
+ 			this->DisablePlayerControl();
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index ccb29b42..bcd883ed 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -349,6 +349,16 @@ psMouseSetPos(RwV2d *pos)
+ 		return;
+ 	}
+ #endif
++
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	// This should disable the mouse in game if ImGui is active.
++	if(imGuiFunctions.ImGuiActive) {
++		return;
++	}
++#endif // _IMGUI_TEST
++
+ 	glfwSetCursorPos(PSGLOBAL(window), pos->x, pos->y);
+ 	
+ 	PSGLOBAL(lastMousePos.x) = (RwInt32)pos->x;
+-- 
+2.49.0.windows.1
+

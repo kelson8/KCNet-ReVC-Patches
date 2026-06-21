@@ -1,0 +1,186 @@
+From bbb7ad0efbe3d0664c388c9d1a85eace264349a9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 06:04:46 -0500
+Subject: [PATCH 22/58] feat: Fix premake to build with ImGui * Make librw use
+ new submodule. * Update readme.
+
+---
+ README.md    |  6 +++--
+ premake5.lua | 72 ++++++++++++++++++++++++++++++++++------------------
+ vendor/librw |  2 +-
+ 3 files changed, 52 insertions(+), 28 deletions(-)
+
+diff --git a/README.md b/README.md
+index 36f7ac33..c709d6bb 100644
+--- a/README.md
++++ b/README.md
+@@ -34,8 +34,10 @@ on the main build that I have for ReVC.
+ ## ImGui info
+ The miami-dev-imgui branch has ImGui testing copied in from my miami branch, I almost got this building on Linux but I get some linker erorrs.
+ 
+-I got this building on Windows, but ImGui is very buggy, I cannot move the mouse and the menu doesn't show up properly.
+-Although, I did place ImGui into reVC this time instead of librw, maybe I should try moving it to librw. 
++I got this building and running on Windows, this has not yet been tested on Linux but it should work since I'm using OpenGL.
++
++Librw is now added in as a submodule within the opengl-imgui branch
++* https://git.internal.kelsoncraft.net/kelson8/librw/src/branch/opengl-imgui/
+ 
+ ## Docker support
+ This branch now has support for building with Docker on Linux, tested on WSL with Ubuntu 24.04 and a Debian 13 server.
+diff --git a/premake5.lua b/premake5.lua
+index e0733182..c89134a8 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -2,8 +2,6 @@ newoption {
+ 	trigger     = "glfwdir64",
+ 	value       = "PATH",
+ 	description = "Directory of glfw",
+-	-- default     = "vendor/glfw-3.3.2.bin.WIN64",
+-	-- TODO Test this
+ 	default     = "vendor/glfw-3.4.bin.WIN64",
+ 	
+ }
+@@ -12,8 +10,6 @@ newoption {
+ 	trigger     = "glfwdir32",
+ 	value       = "PATH",
+ 	description = "Directory of glfw",
+-	-- default     = "vendor/glfw-3.3.2.bin.WIN32",
+-	-- TODO Test this
+ 	default     = "vendor/glfw-3.4.bin.WIN32",
+ }
+ 
+@@ -214,6 +210,10 @@ workspace "reVC"
+        end
+     end
+ 
++local function addSrcFiles( prefix )
++	return prefix .. "/*cpp", prefix .. "/*.h", prefix .. "/*.c", prefix .. "/*.ico", prefix .. "/*.rc"
++end
++
+ if(_OPTIONS["with-librw"]) then
+ project "librw"
+ 	kind "StaticLib"
+@@ -229,6 +229,31 @@ project "librw"
+ 	filter { "platforms:*amd64*" }
+ 		architecture "amd64"
+ 
++		-- Lib folders - ImGui
++		includedirs { "lib/imgui" }
++		includedirs { "lib/imgui/backends" }
++		
++		includedirs { ("src/extras/functions") }
++		includedirs { ("src/extras/menus") }
++
++		includedirs { "src/core" }
++		includedirs { "src/extras/kcnet" }
++	
++		-- ImGui menus
++		includedirs { "src/extras/menus" }
++
++		-- Src folders - ImGui
++		files { addSrcFiles("lib/imgui") }
++	
++		-- I don't want all ImGui backend files in here
++	
++		files {
++		"lib/imgui/backends/imgui_impl_glfw.cpp",
++		"lib/imgui/backends/imgui_impl_glfw.h",
++		"lib/imgui/backends/imgui_impl_opengl3.cpp",
++		"lib/imgui/backends/imgui_impl_opengl3.h"
++		}
++
+ 	filter "platforms:win*"
+ 		defines { "_CRT_SECURE_NO_WARNINGS", "_CRT_NONSTDC_NO_DEPRECATE" }
+ 		staticruntime "on"
+@@ -259,10 +284,6 @@ project "librw"
+ 	filter  {}
+ end
+ 
+-local function addSrcFiles( prefix )
+-	return prefix .. "/*cpp", prefix .. "/*.h", prefix .. "/*.c", prefix .. "/*.ico", prefix .. "/*.rc"
+-end
+-
+ project "reVC"
+ 	kind "WindowedApp"
+ 	targetname "reVC"
+@@ -276,6 +297,14 @@ project "reVC"
+ 	-- New
+ 	files { addSrcFiles("vendor/TExtender/src/textender") }
+ 
++	-- New, ImGui
++	-- Src folders - ImGui
++	files { addSrcFiles("lib/imgui") }
++
++	files { "lib/imgui/backends/imgui_impl_glfw.cpp" }
++	files { "lib/imgui/backends/imgui_impl_opengl3.cpp" }
++
++
+ 	-- Extras from miami master branch on Local Gitea.
+ 	files { addSrcFiles("src/extras/cheats") }
+ 	files { addSrcFiles("src/extras/debug") }
+@@ -283,12 +312,15 @@ project "reVC"
+ 	files { addSrcFiles("src/extras/kcnet") }
+ 	files { addSrcFiles("src/extras/utils") }
+ 
+-	-- Imgui
+-	-- Adds imgui.cpp, and other required files.
+-	files { addSrcFiles("lib/imgui/") }
+-	-- Menus for ImGui
++	-- Lib folders - ImGui and Lua
++	-- includedirs { "lib/" }
++	includedirs { "lib/imgui" }
++	includedirs { "lib/imgui/backends" }
++	
++	-- ImGui menus
++	includedirs { "src/extras/menus" }
+ 	files { addSrcFiles("src/extras/menus") }
+-	--
++	-- includedirs { "lib/lua" }
+ 
+ 	files { addSrcFiles("src") }
+ 	files { addSrcFiles("src/animation") }
+@@ -356,15 +388,6 @@ project "reVC"
+ 	includedirs { "src/weapons" }
+ 	includedirs { "src/extras" }
+ 
+-	-- Lib folders - ImGui and Lua
+-	includedirs { "lib/" }
+-	includedirs { "lib/imgui" }
+-	includedirs { "lib/imgui/backends" }
+-	
+-	-- ImGui menus
+-	includedirs { "src/extras/menus" }
+-	-- includedirs { "lib/lua" }
+-
+ 	if(not _OPTIONS["no-git-hash"]) then
+ 		defines { "USE_OUR_VERSIONING" }
+ 	end
+@@ -377,9 +400,6 @@ project "reVC"
+ 
+ 	-- New, only enable d3dx9 lib on Windows..
+ 	filter "platforms:win*"
+-		libdirs { "vendor/d3d9/lib" }
+-		links { "d3dx9.lib" }
+-
+ 		-- Add imgui files for Windows
+ 
+ 		-- These are most likely required for all Windows operations
+@@ -397,6 +417,8 @@ project "reVC"
+ 		}
+ 		-- DirectX9
+ 		else
++			libdirs { "vendor/d3d9/lib" }
++			links { "d3dx9.lib" }
+ 			files {
+ 				"lib/imgui/backends/imgui_impl_dx9.cpp",
+ 			}
+diff --git a/vendor/librw b/vendor/librw
+index 169a45aa..d5771158 160000
+--- a/vendor/librw
++++ b/vendor/librw
+@@ -1 +1 @@
+-Subproject commit 169a45aa2f3d901f7b8266731d7eb91a001ef24b
++Subproject commit d577115848e5b43f11d65ac799134c2d7ef89cfd
+-- 
+2.49.0.windows.1
+

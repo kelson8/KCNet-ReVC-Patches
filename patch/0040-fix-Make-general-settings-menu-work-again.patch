@@ -1,0 +1,40 @@
+From 467b485c44b772a9f72bfd05876fe9026250060c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 18:36:23 -0500
+Subject: [PATCH 40/58] fix: Make general settings menu work again
+
+---
+ src/core/Frontend.h            | 3 +++
+ src/core/MenuScreensCustom.cpp | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 806aff97..5502f7e3 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -315,6 +315,9 @@ enum eMenuAction
+ #ifdef _FAST_LOADER
+ 	// Fast loader menu option in Frontend.cpp
+ 	MENUACTION_FASTLOADER,
++#ifdef _TEST1
++	MENUACTION_FASTLOADER_SLOT,
++#endif //_TEST1
+ #endif
+ 
+ #ifdef EXTRA_LOGGING
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index fb5ccfba..d9319c92 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -826,7 +826,7 @@ CMenuScreenCustom aScreens[] = {
+ 	{ "FEO_GEN",MENUPAGE_OPTIONS, nil, nil,
+ 		
+ 		// This is how to add a basic menu changer.
+-	 	MENUACTION_CHANGEMENU,      "FEO_AUD",  {nil, SAVESLOT_NONE, MENUPAGE_SOUND_SETTINGS}, 0, 0, MENUALIGN_CENTER, 
++	 	// MENUACTION_CHANGEMENU,      "FEO_AUD",  {nil, SAVESLOT_NONE, MENUPAGE_SOUND_SETTINGS}, 0, 0, MENUALIGN_CENTER, 
+ 		
+ 		// Here is a basic menu with my fast loader toggle, and a back button.
+ 		// Adding this blank option seems to have fixed this in the main menu.
+-- 
+2.49.0.windows.1
+

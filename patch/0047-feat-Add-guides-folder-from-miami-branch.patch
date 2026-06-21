@@ -1,0 +1,403 @@
+From 39fb69bac9fc7392c4752d893c81c747ed7c3639 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 02:21:56 -0500
+Subject: [PATCH 47/58] feat: Add guides folder from miami branch * Update
+ file-changes.md for this project. * Move lua error log file into defines.
+
+---
+ guides/code-places.md             | 118 ++++++++++++++++++++++++++++++
+ guides/create-patches.md          |   7 ++
+ guides/file-changes.md            |  50 +++++++++++++
+ guides/lua-documentation.md       | 107 +++++++++++++++++++++++++++
+ src/extras/lua/lua_test.cpp       |  10 ++-
+ src/extras/menus/vehicle_menu.cpp |   2 +-
+ src/extras/utils/defines.cpp      |   3 +
+ src/extras/utils/defines.h        |   3 +
+ 8 files changed, 298 insertions(+), 2 deletions(-)
+ create mode 100644 guides/code-places.md
+ create mode 100644 guides/create-patches.md
+ create mode 100644 guides/file-changes.md
+ create mode 100644 guides/lua-documentation.md
+
+diff --git a/guides/code-places.md b/guides/code-places.md
+new file mode 100644
+index 00000000..9c3a6881
+--- /dev/null
++++ b/guides/code-places.md
+@@ -0,0 +1,118 @@
++# Useful things in the code
++Here is a list of things that seem to constantly run and can be used for events:
++
++CGame::Process - This processes pretty much everything for the game, list of items it processes:
++* CCutsceneMgr
++* CTheZones
++* CStreaming
++* Set CWindModifiers to 0
++
++<details>
++<summary> If the game is not paused (!CTimer::GetIsPaused()) </summary>
++
++        CSprite2d::SetRecipNearClip
++        CSprite2d::InitPerFrame
++        CFont::InitPerFrame
++
++		// Run the cheats
++		CPad::DoCheats
++		// Update the clock
++		CClock::Update
++
++        // Update the weather
++		CWeather::Update
++		
++        CTheScripts::Process
++		CCollision::Update
++		CScriptPaths::Update
++		CTrain::UpdateTrains();
++		CPlane::UpdatePlanes();
++		CHeli::UpdateHelis();
++		CDarkel::Update();
++		CSkidmarks::Update();
++		CAntennas::Update();
++		CGlass::Update();
++		CSceneEdit::Update();
++		CSetPieces::Update();
++		CEventList::Update();
++		CParticle::Update();
++		gFireManager.Update();
++        
++        CPopulation::Update(false);
++        CWeapon::UpdateWeapons();
++
++		// Only if CCutsceneMgr or CReplay not running, process the car generators and cranes.
++		if (!CCutsceneMgr::IsRunning())
++			CTheCarGenerators::Process();
++		if (!CReplay::IsPlayingBack())
++			CCranes::UpdateCranes();
++
++		CClouds::Update();
++		CMovingThings::Update();
++		CWaterCannons::Update();
++		CUserDisplay::Process();
++		CReplay::Update();
++
++        CWorld::Process();
++
++		gAccidentManager.Update();
++		CPacManPickups::Update();
++		CPickups::Update();
++		CGarages::Update();
++		CRubbish::Update();
++		CSpecialFX::Update();
++		CRopes::Update();
++		CTimeCycle::Update();
++
++		if (CReplay::ShouldStandardCameraBeProcessed())
++			TheCamera.Process();
++		CCullZones::Update();
++		if (!CReplay::IsPlayingBack())
++			CGameLogic::Update();
++
++		CBridge::Update();
++		CCoronas::DoSunAndMoon();
++		CCoronas::Update();
++		CShadows::UpdateStaticShadows();
++		CShadows::UpdatePermanentShadows();
++		gPhoneInfo.Update();
++
++		if (!CReplay::IsPlayingBack())
++		{
++			if (processTime < 2)
++				CCarCtrl::GenerateRandomCars();
++			CRoadBlocks::GenerateRoadBlocks();
++			CCarCtrl::RemoveDistantCars();
++			CCarCtrl::RemoveCarsIfThePoolGetsFull();
++		}
++
++</details>
++
++<details>
++<summary> CPed </summary>
++
++</details>
++
++<details>
++<summary> CAutomobile </summary>
++
++* ProcessControl - This seems to process the control for all vehicles, possibly mostly for the ped vehicles.
++* Teleport - A teleport function for vehicles, TODO Use this in cleo redux.
++
++
++</details>
++
++<details>
++<summary> CVehicle </summary>
++
++* IsLawEnforcementVehicle - Check if the vehicle is a cop car, enforcer, predator, rhino, barracks, fbi rancher, or vice chee.
++
++
++</details>
++
++
++
++<details>
++<summary> CWanted </summary>
++
++</details>
+\ No newline at end of file
+diff --git a/guides/create-patches.md b/guides/create-patches.md
+new file mode 100644
+index 00000000..4a8259b0
+--- /dev/null
++++ b/guides/create-patches.md
+@@ -0,0 +1,7 @@
++# To create patches
++* Link to this: https://stackoverflow.com/questions/52884437/git-generate-a-single-patch-across-multiple-commits
++
++(Currently on commit 46, patch number: 46)
++
++1. Run this command in the root of this project: git format-patch -n\<patchnumber\> -o patches
++2. Update the patch number in this file
+\ No newline at end of file
+diff --git a/guides/file-changes.md b/guides/file-changes.md
+new file mode 100644
+index 00000000..3d4547cd
+--- /dev/null
++++ b/guides/file-changes.md
+@@ -0,0 +1,50 @@
++This is a list of most new files or files that have been moved out of the game folder.
++
++You can download the 4k loading screens that I use from here:
++* https://gtaforums.com/topic/1000484-vciii-vice-city-4k-loading-screens/
++
++I haven't moved any files out of the game folder, and I probably won't for now
++
++The only new files that seems like is in 'ViceExtended/models' are these (Not implemented):
++* radio.txd - For extra radio icons. For other devs: search `#ifdef EX_RADIO_ICONS'` in the code to find usages.
++
++# In game folders
++| Folder | Change |
++|------|-------|
++| TXD Folder | Mostly all files in this folder have been replaced with HD versions for the loading screens. I have a random loding screen system to cycle between them on game start, this will need to be manually installed from the link in the top of this file. |
++
++# New files and additions:
++
++'ViceExtended/lua_scripts' folder, these files can be found in the 'utils/lua' directory in this repo.
++
++
++| Lua file | Description |
++|------|-----|
++| kcnet-busted.lua | Events defined in this file will run if the player has been busted. |
++| kcnet-events.lua | Events defined in this file will constantly run, so don't place anything in here that may crash the game, I don't have any protections in place for that currently. |
++| kcnet-keybind-events.lua | Events in this file will run when the F9 key is pressed, I may make this keybind configurable later. |
++| kcnet-wasted.lua | Events in this file will run if the player has been wasted. |
++| locations.lua | List of locations, this isn't currently in use. |
++| test.lua | This was the original main lua file, it is still required for some tasks and has some documentation. I may rename it to something else in the future. |
++| vehicles.lua | This is a list of vehicles for use in Lua, I couldn't get it working in the other lua scripts though. |
++
++Lua info for devs:
++| Lua file | Description |
++|------|-----|
++| kcnet-events.lua | This is set under the 'void CGame::Process' inside of Game.cpp. |
++| kcnet-busted.lua  | Running under `WBSTATE_BUSTED` in `GameLogic::Update` |
++| kcnet-keybind-events.lua  | This runs under `LuaSetup::LuaPlayingGameLoop` if the F9 key is pressed, I need to make this configurable later. |
++| kcnet-wasted.lua | Running under `WBSTATE_WASTED` in `GameLogic::Update`. |
++| test.lua | I'm not sure what this is doing, it seems to only run when the game starts up under `LuaTest::InitLua` |
++
++* test.lua - This is running under 'WBSTATE_WASTED' and 'WBSTATE_BUSTED' switch statements in GameLogic.cpp, and in the 'GS_PLAYING_GAME' switch statement within win.cpp.
++
++'ViceExtended' folder {My additions} (TODO Move these into 'ViceExtended/kcnet' folder or something):
++
++My items:
++* ImGui-Controls.ini - This will contain a config for xbox controller keybinds once I setup the config for ImGui with it, I don't have the config for Xbox keybinds working in OpenGL yet.
++* vehicles.ini - List of vehicles from the Cheat Menu of user-grinch on github, used by my ImGui menu.
++* warps.ini - List of warps from the Cheat Menu of user-grinch on github, used by my ImGui menu.
++
++'ViceExtended' folder:
++* gamecontrollerdb.txt - I think this is from the ReVC project originally, just moved into here.
+diff --git a/guides/lua-documentation.md b/guides/lua-documentation.md
+new file mode 100644
+index 00000000..5eeeb3ac
+--- /dev/null
++++ b/guides/lua-documentation.md
+@@ -0,0 +1,107 @@
++## Info about my lua test
++I will have a list of all functions that work in my lua test in here
++
++TODO I need to rename the test.lua file to kcnet-revc.lua or kcnet-revc-init.lua.
++It will need renamed in the C++ code and the file itself.
++
++These will always run on game startup, wasted, and busted if placed in the test.lua file under ViceExtended/lua_scripts.
++
++Warning: DO NOT place some of these in the kcnet-events.lua file
++
++TODO Make a list of what not to place in the kcnet-events.lua file.
++
++# Misc
++Run a test for the cheats, this was a basic test to run C++ functions but it isn't needed anymore.
++* cheat_test(Cheat)
++
++* List of items for cheat_test():
++1. BLOWMEUP - Blow up the players current vehicle
++2. KILLME - Run the suicide cheat
++3. SPAWNCAR - Test for spawning a car
++4. IMGUITG - This is a leftover and disabled, it used to be my original ImGui toggle.
++
++
++Toggle the players control on/off
++* toggle_control()
++
++-- A toggle for ImGui, I moved to using a keybind for this.
++* toggle_imgui()
++
++# Player
++Toggles
++
++Turn on never wanted
++* enable_never_wanted()
++
++Turn on infinite health
++* enable_infinite_health()
++
++Functions
++
++Set the players position to the specified coords
++* set_position(x, y, z)
++
++Heal the player to full health and give max armor
++* heal_player()
++
++Set the players spawn point, TODO Make this get the respawn point from the locations.lua
++* set_respawn_point(x, y, z, heading)
++
++Cancel the respawn, not sure if this works right
++* cancel_override_restart()
++
++Toggles for losing weapons when dying.
++* enable_lose_weapons_on_death()
++* disable_lose_weapons_on_death()
++
++Log the players coords and heading
++* log_player_coords()
++* log_player_heading()
++
++Check if player is in a vehicle
++* is_player_in_vehicle()
++
++Blow up the players vehicle
++* blow_up_vehicle()
++
++Kill the player if wanted
++* kill_wanted_player()
++
++Kill the player
++* kill_player()
++
++Change the players clothes, due to a crash with invalid models I have disabled this in the C++ code.
++TODO Fix this and stop it from crashing on invalid models
++* change_clothes("clothesName")
++
++Booleans/Other:
++
++Check if the player is alive
++* is_player_alive()
++
++Get the current wanted level if above 0
++* get_wanted_level()
++
++# Messages
++Display a hud help message
++* print_msg(message)
++
++Log messages in lua
++
++Log an info message
++* log_info(message)
++
++# World
++
++Clear the area of any peds and vehicles
++* clear_area(radius)
++
++Set ped density to 0, disable peds
++* disable_peds()
++
++Set vehicle density to 0, disable vehicles
++* disable_vehicles()
++
++Blow up all vehicles (Doesn't blow up the players vehicle)
++* blow_up_all_vehicles()
++
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 9b561556..b0abe2e9 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -573,9 +573,16 @@ LuaTest::LuaKeybindEvents()
+ 	// This seems to work.
+ 	if (!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaKeyBindScript.c_str())))
+ 	{
+-		LogFunctions::LogError("lua-errors.log", "Error, keybind lua events not found!");
++		LogFunctions::LogError(Defines::luaErrorLog, "Error, something went wrong when looking for the key bind file or the script has errors.");
+ 		return;
+ 	}
++
++	// New, for vehicle list
++	// TODO Implement this into the key bind script.
++	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaVehiclesScript.c_str())))
++	{
++
++	}
+ 		
+ 
+ }
+@@ -691,6 +698,7 @@ LuaTest::InitLua()
+ 	// I got this working, it now runs some changes to the C++ code, mostly just respawns.
+ 	// Toggle never wanted, toggle infinite health, toggle vehicles, and toggle peds.
+ 
++	// TODO Rename this in the future.
+ 	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaScript.c_str()))) {
+ 	//if(CheckLua(L, luaL_dofile(L, defines.luaScript.c_str()))) {
+ 
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index 4ffebbdd..e5e369c4 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -271,7 +271,7 @@ VehicleMenu::VehicleTab()
+ 	// Seems to work fine, copied in from the debug menu
+ 	IMGUITEXT("Toggle all vehicle repair.");
+ 	IMGUITEXT("Allows you to respray police vehicles.");
+-	//if (IMGUI_CHECKBOX("Toggle all veh repair", CGarage::m_allowAllVehiclesRespray))
++	// if (IMGUI_CHECKBOX("Toggle all veh repair", CGarage::m_allowAllVehiclesRespray))
+ 	if (IMGUI_CHECKBOX("Toggle all veh repair", &toggleAllVehicleRepair)) 
+ 	{ 
+ 		CGarages::ToggleRespray();
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index f185b6f6..f53f3e70 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -109,6 +109,9 @@ std::string Defines::luaKeyBindScript = luaScriptsFolder + "kcnet-keybind-events
+ std::string Defines::luaWastedScript = luaScriptsFolder + "kcnet-wasted.lua";
+ std::string Defines::luaBustedScript = luaScriptsFolder + "kcnet-busted.lua";
+ std::string Defines::luaSetupScript = luaScriptsFolder + "kcnet-setup.lua";
++std::string Defines::luaVehiclesScript = luaScriptsFolder + "vehicles.lua";
++
++std::string Defines::luaErrorLog = "lua-errors.log";
+ 
+ 
+ std::string Defines::luaLocationsScript = luaScriptsFolder + "locations.lua";
+diff --git a/src/extras/utils/defines.h b/src/extras/utils/defines.h
+index 8067539b..4cc8c965 100644
+--- a/src/extras/utils/defines.h
++++ b/src/extras/utils/defines.h
+@@ -68,6 +68,9 @@ public:
+ 	static std::string luaWastedScript;
+ 	static std::string luaBustedScript;
+ 	static std::string luaSetupScript;
++	static std::string luaVehiclesScript;
++
++	static std::string luaErrorLog;
+ 
+ 
+ 	static std::string luaLocationsScript;
+-- 
+2.49.0.windows.1
+

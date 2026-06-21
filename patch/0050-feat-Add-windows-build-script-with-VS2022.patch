@@ -1,0 +1,37 @@
+From ac37801e8e3760e84778d186e54e2c2157c7c383 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 22:08:51 -0500
+Subject: [PATCH 50/58] feat: Add windows build script with VS2022.
+
+---
+ build-windows.bat | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+ create mode 100644 build-windows.bat
+
+diff --git a/build-windows.bat b/build-windows.bat
+new file mode 100644
+index 00000000..1266d088
+--- /dev/null
++++ b/build-windows.bat
+@@ -0,0 +1,18 @@
++
++:: Basic powershell script to build for Windows with VS2022.
++:: You will need to run this premake command first:
++:: ./premake5 vs2022 --with-librw --imgui-opengl
++
++:: https://stackoverflow.com/a/78991150
++
++:: https://www.lineserve.net/blog/how-to-build-a-c-solution-in-release-mode-using-msbuild-exe-a-complete-step-by-step-guide
++
++:: Required to set the VS2022 env variables.
++call "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
++
++:: Build release
++MSBuild.exe build/reVC.sln /p:Configuration=Release
++
++:: Build debug
++:: MSBuild.exe build/reVC.sln /p:Configuration=Debug
++
+-- 
+2.49.0.windows.1
+

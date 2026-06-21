@@ -1,0 +1,3197 @@
+From dcf246f4324aef7252270914799e5f059682c706 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 01:09:06 -0500
+Subject: [PATCH 04/58] feat: Move ini functions, fix fast loader
+
+* The fast loader works on d3d9, but not OpenGL for some reason.
+* Add log_functions, and defines for the ini functions files.
+* Add fast loader to main menu.
+* Add reVC.ini into gamefiles.
+---
+ gamefiles/reVC.ini                     |  152 +++
+ premake5.lua                           |    3 +
+ src/core/Frontend.cpp                  |   35 +
+ src/core/Frontend.h                    |    4 +
+ src/core/MenuScreensCustom.cpp         |   30 +
+ src/core/config.h                      |   15 +-
+ src/core/re3.cpp                       |  494 --------
+ src/extras/debug/debug_functions.cpp   |   13 +-
+ src/extras/functions/ini_functions.cpp | 1425 ++++++++++++++++++++++++
+ src/extras/functions/ini_functions.h   |  104 ++
+ src/extras/functions/log_functions.cpp |  475 ++++++++
+ src/extras/functions/log_functions.h   |   33 +
+ src/extras/utils/defines.cpp           |  131 +++
+ src/extras/utils/defines.h             |   96 ++
+ 14 files changed, 2508 insertions(+), 502 deletions(-)
+ create mode 100644 gamefiles/reVC.ini
+ create mode 100644 src/extras/functions/ini_functions.cpp
+ create mode 100644 src/extras/functions/ini_functions.h
+ create mode 100644 src/extras/functions/log_functions.cpp
+ create mode 100644 src/extras/functions/log_functions.h
+ create mode 100644 src/extras/utils/defines.cpp
+ create mode 100644 src/extras/utils/defines.h
+
+diff --git a/gamefiles/reVC.ini b/gamefiles/reVC.ini
+new file mode 100644
+index 00000000..7afe3000
+--- /dev/null
++++ b/gamefiles/reVC.ini
+@@ -0,0 +1,152 @@
++[VideoMode]
++Width=1920
++Height=1080
++Depth=32
++Subsystem=0
++Windowed=1
++[Controller]
++HeadBob1stPerson=0
++HorizantalMouseSens=0.002500
++InvertMouseVertically=1
++DisableMouseSteering=1
++Vibration=0
++Method=0
++InvertPad=0
++Type=4
++JoystickName=0
++PadButtonsInited=0
++InvertVertically=0
++Autoaim=0
++LeftStickDeadzone=15
++RightStickDeadzone=15
++VibrationForce=0.500000
++PadLookSensX=0.001250
++PadAimSensX=0.000625
++PadLookSensY=0.001250
++PadAimSensY=0.000625
++MouseLookSensX=0.003125
++MouseAimSensX=0.001667
++MouseLookSensY=0.003125
++MouseAimSensY=0.001667
++[Audio]
++SfxVolume=49
++MusicVolume=37
++MP3BoostVolume=0
++Radio=6
++SpeakerType=0
++Provider=1
++DynamicAcoustics=1
++[Display]
++Brightness=256
++DrawDistance=1.200000
++Subtitles=0
++ShowHud=1
++RadarMode=0
++ShowLegends=0
++PedDensity=0.600000
++CarDensity=0.600000
++CutsceneBorders=1
++FreeCam=1
++GPS=1
++WeaponSight=1
++[Graphics]
++AspectRatio=0
++VSync=1
++Trails=1
++FrameLimiter=0
++MultiSampling=0
++IslandLoading=0
++PS2AlphaTest=1
++ColourFilter=2
++MotionBlur=0
++VehiclePipeline=0
++NeoRimLight=0
++NeoLightMaps=0
++NeoRoadGloss=0
++[General]
++SkinFile=$$""
++Language=0
++DrawVersionText=0
++NoMovies=1
++; Set the fast loader
++FastLoader=1
++; Set the game save to load on startup
++GameSaveOnStartup=2
++[CustomPipesValues]
++PostFXIntensity=1.000000
++NeoVehicleShininess=1.000000
++NeoVehicleSpecularity=1.000000
++RimlightMult=1.000000
++LightmapMult=1.000000
++GlossMult=1.000000
++[Rendering]
++BackfaceCulling=1
++NewRenderer=0
++[Draw]
++ProperScaling=1
++FixRadar=1
++FixSprites=1
++[Bindings]
++PED_FIREWEAPON=kbd:PADINS,2ndKbd:LCTRL,mouse:LEFT
++PED_CYCLE_WEAPON_RIGHT=2ndKbd:PADENTER,mouse:WHLDOWN
++PED_CYCLE_WEAPON_LEFT=kbd:PADDEL,mouse:WHLUP
++GO_FORWARD=kbd:UP,2ndKbd:W
++GO_BACK=kbd:DOWN,2ndKbd:S
++GO_LEFT=kbd:LEFT,2ndKbd:A
++GO_RIGHT=kbd:RIGHT,2ndKbd:D
++PED_SNIPER_ZOOM_IN=kbd:PGUP,2ndKbd:Z,mouse:WHLUP
++PED_SNIPER_ZOOM_OUT=kbd:PGDN,2ndKbd:X,mouse:WHLDOWN
++VEHICLE_ENTER_EXIT=kbd:ENTER,2ndKbd:F
++CAMERA_CHANGE_VIEW_ALL_SITUATIONS=kbd:HOME,2ndKbd:V
++PED_JUMPING=kbd:RCTRL,2ndKbd:SPC
++PED_SPRINT=2ndKbd:LSHIFT,kbd:RSHIFT
++PED_LOOKBEHIND=kbd:PADEND,2ndKbd:CAPSLK,mouse:MIDDLE
++PED_DUCK=kbd:C
++PED_ANSWER_PHONE=kbd:TAB
++VEHICLE_FIREWEAPON=kbd:PADINS,2ndKbd:LCTRL,mouse:LEFT
++VEHICLE_ACCELERATE=kbd:UP,2ndKbd:W
++VEHICLE_BRAKE=kbd:DOWN,2ndKbd:S
++VEHICLE_CHANGE_RADIO_STATION=kbd:INS,2ndKbd:R,mouse:WHLUP
++VEHICLE_HORN=2ndKbd:LSHIFT,kbd:RSHIFT
++TOGGLE_SUBMISSIONS=kbd:PLUS,2ndKbd:CAPSLK
++VEHICLE_HANDBRAKE=kbd:RCTRL,2ndKbd:SPC,mouse:RIGHT
++PED_1RST_PERSON_LOOK_LEFT=kbd:PADLEFT
++PED_1RST_PERSON_LOOK_RIGHT=kbd:PADRIGHT
++VEHICLE_LOOKLEFT=kbd:PADEND,2ndKbd:Q
++VEHICLE_LOOKRIGHT=kbd:PADDOWN,2ndKbd:E
++VEHICLE_LOOKBEHIND=mouse:MIDDLE
++VEHICLE_TURRETLEFT=kbd:PADLEFT
++VEHICLE_TURRETRIGHT=kbd:PAD5
++VEHICLE_TURRETUP=kbd:PADPGUP
++VEHICLE_TURRETDOWN=kbd:PADRIGHT
++PED_CYCLE_TARGET_LEFT=kbd:[
++PED_CYCLE_TARGET_RIGHT=2ndKbd:]
++PED_CENTER_CAMERA_BEHIND_PLAYER=kbd:#
++PED_LOCK_TARGET=kbd:DEL,mouse:RIGHT
++NETWORK_TALK=kbd:T
++PED_1RST_PERSON_LOOK_UP=kbd:PADUP
++PED_1RST_PERSON_LOOK_DOWN=kbd:PAD5
++_CONTROLLERACTION_36=
++TOGGLE_DPAD=
++SWITCH_DEBUG_CAM_ON=
++TAKE_SCREEN_SHOT=
++SHOW_MOUSE_POINTER_TOGGLE=
++UNKNOWN_ACTION=
++PED_WALK=kbd:LALT
++RADAR_ZOOM_OUT=kbd:T
++PED_RELOAD=kbd:R
++VEHICLE_LEFT_TURNSIGNALS=kbd:Z
++VEHICLE_RIGHT_TURNSIGNALS=kbd:X
++VEHICLE_EMERGENCYLIGHTS=kbd:Y
++[Other]
++Autosave=0
++[KCNet]
++; Not implemented
++ExtraLogging=0
++; Set this to 1 for enabling lua with F9, wasted/busted and also the lua events.
++; Set this to 0 for disabling lua
++LuaTest=1
++; Set this to 1 for enabling ImGui with F8
++; Set this to 0 for disabling the ImGui menu
++ImGuiMenuToggle=1
++; TODO Add a debug menu toggle in here.
+\ No newline at end of file
+diff --git a/premake5.lua b/premake5.lua
+index bc169b4d..d3c05e84 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -261,8 +261,10 @@ project "reVC"
+ 	-- New
+ 	files { addSrcFiles("vendor/TExtender/src/textender") }
+ 	files { addSrcFiles("src/extras/debug") }
++	files { addSrcFiles("src/extras/functions") }
+ 	files { addSrcFiles("src/extras/kcnet") }
+ 	files { addSrcFiles("src/extras/utils") }
++	
+ 	--
+ 
+ 	files { addSrcFiles("src") }
+@@ -299,6 +301,7 @@ project "reVC"
+ 	includedirs { ("vendor/d3d9") }
+ 	
+ 	includedirs { ("src/extras/debug") }
++	includedirs { ("src/extras/functions") }
+ 	includedirs { ("src/extras/kcnet") }
+ 	includedirs { ("src/extras/utils") }
+ 	
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index dde51395..811eb3d5 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -5215,6 +5215,41 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 		SaveSettings();
+ 		break;
+ #endif
++
++// This is where the toggles go, I think I messed up in the beginning.
++#ifdef _FAST_LOADER
++	case MENUACTION_FASTLOADER:
++		// TODO Check if user is on the main menu, if so don't automatically launch the save.
++		// This is setup under win.cpp in GS_FRONTEND, under this preprocessor:
++		// #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP 
++
++		// If this is toggled on the main menu, I want the user to stay on the
++		// main menu for that session.
++		// 
++		//if (!FrontEndMenuManager.m_bMenuActive) { 
++
++		// Temporary fix, this disables toggling the fast loader on the main menu but it can still be toggled when a save is loaded.
++		// TODO Come up with a better solution for this
++		if(!m_bGameNotLoaded) { 
++			gbFastLoader = !gbFastLoader;
++			SaveSettings();
++		}
++		break;
++
++		// TODO Setup later
++		// Oops, this needs to be obtained 
++		// from the ini file, not from the C++ definition.
++
++#ifdef _TEST1
++		case MENUACTION_FASTLOADER_SLOT:
++			// gbGameSaveOnStartup = ;
++			selectedSaveSlot = m_bSaveSlotNum;
++			SaveSettings();
++		break;
++#endif // _TEST1
++
++#endif // _FAST_LOADER
++
+ 	case MENUACTION_INVERTPADY:
+ 		CPad::bInvertLook4Pad = !CPad::bInvertLook4Pad;
+ 		SaveSettings(); // FIX: Why don't SaveSettings? Because of it's an hidden option? :(
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 52ba9fa0..738d6b54 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -235,6 +235,10 @@ enum eMenuScreen
+ #endif
+ 
+ 	MENUPAGE_OUTRO, // Originally 34, but CFO needs last screen to be empty to count number of menu pages
++#ifdef _FAST_LOADER
++	MENUPAGE_GENERAL_SETTINGS,
++#endif // _FAST_LOADER
++
+ 	MENUPAGES
+ };
+ 
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index ca3db581..61403c93 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -650,6 +650,12 @@ CMenuScreenCustom aScreens[] = {
+ #endif
+ 		 MENUACTION_CHANGEMENU,		"FEO_LAN", {nil, SAVESLOT_NONE, MENUPAGE_LANGUAGE_SETTINGS}, 0, 0, MENUALIGN_CENTER,
+ 		 MENUACTION_PLAYERSETUP,	"FET_PS", {nil, SAVESLOT_NONE, MENUPAGE_SKIN_SELECT}, 0, 0, MENUALIGN_CENTER,
++#ifdef MENU_TEST
++		// This works for a general menu, so far I have a fast loader toggle,
++		// and a back button for it
++		// General settings
++		 MENUACTION_CHANGEMENU,			"FEO_GEN", {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_CENTER,
++#endif // MENU_TEST
+ 		 MENUACTION_GOBACK,			"FEDS_TB", {nil, SAVESLOT_NONE, 0}, 0, 0, MENUALIGN_CENTER,
+    },
+ 
+@@ -813,6 +819,30 @@ CMenuScreenCustom aScreens[] = {
+ 
+ 	// MENUPAGE_OUTRO = 34
+ 	{ "", 0, nil, nil, },
++
++	// MENUPAGE_GENERAL_SETTINGS = 35
++	// Well changing from this to the below fixed the back button.
++	// { "FEO_GEN",MENUPAGE_GENERAL_SETTINGS, nil, nil,
++	{ "FEO_GEN",MENUPAGE_OPTIONS, nil, nil,
++		
++		// This is how to add a basic menu changer.
++	 	MENUACTION_CHANGEMENU,      "FEO_AUD",  {nil, SAVESLOT_NONE, MENUPAGE_SOUND_SETTINGS}, 0, 0, MENUALIGN_CENTER, 
++		
++		// Here is a basic menu with my fast loader toggle, and a back button.
++		// Adding this blank option seems to have fixed this in the main menu.
++		// I still need to fix the auto load from when it is pressed in the main menu,
++		// it shouldn't automatically start the game.
++		MENUACTION_NOTHING, "", { nil, SAVESLOT_NONE, MENUPAGE_NONE }, 40, 150, MENUALIGN_LEFT,
++
++#ifdef _FAST_LOADER
++		// This mostly works now, the only problem with it is that it
++		// automatically loads a save slot when I toggle it in the main menu,
++		// so if you want to go back to the main menu you can't.
++		// Well I have added an option to disable this being toggled in the main menu, so it can only be toggled in game
++		MENUACTION_FASTLOADER,      "FST_LD",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++	
++#endif // _FAST_LOADER
++	},
+ };
+ 
+ #endif
+diff --git a/src/core/config.h b/src/core/config.h
+index ccf13769..7d58f994 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -9,9 +9,6 @@
+ #define CUSTOM_CODE
+ 
+ #ifdef CUSTOM_CODE
+-
+-
+-
+ // Define game as GTAVC, going to make my ImGui menu work between GTA 3 and Vice City (Re3, ReVC)
+ // ImGui not implemented in this branch.
+ #define GTAVC
+@@ -31,8 +28,20 @@
+ #endif // _FAST_LOADER
+ 
+ // Enable the new cheats in debug_functions.cpp, this needs copied in from my miami branch.
++// Also located in ini_functions, and a few other places.
+ //#define DEBUG_EXTRA_CHEATS
+ 
++// Adds support for GPS marker like in Extended Vice project.
++// Will display a marker that will lead you to your destination like
++// in GTA 4 or GTA 5, also the marker texture has been changed to
++// look like the GTA SA one.
++// Also, there is an option to toggle this under display settings.
++// Not implemented, needs copied from miami branch.
++// #define EX_GPS
++
++// Enable the extra pause menu options
++#define MENU_TEST
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/core/re3.cpp b/src/core/re3.cpp
+index 8eddb9ee..ce050416 100644
+--- a/src/core/re3.cpp
++++ b/src/core/re3.cpp
+@@ -190,500 +190,6 @@ CustomFrontendOptionsPopulate(void)
+ }
+ #endif
+ 
+-// TODO Move into ini handler to replicate changes from my ReVC code on the miami branch.
+-#ifdef LOAD_INI_SETTINGS
+-#define MINI_CASE_SENSITIVE
+-#include "ini.h"
+-
+-mINI::INIFile ini("reVC.ini");
+-mINI::INIStructure cfg;
+-
+-bool ReadIniIfExists(const char *cat, const char *key, uint32 *out)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		char *endPtr;
+-		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool ReadIniIfExists(const char *cat, const char *key, uint8 *out)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		char *endPtr;
+-		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool ReadIniIfExists(const char *cat, const char *key, bool *out)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		char *endPtr;
+-		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool ReadIniIfExists(const char *cat, const char *key, int32 *out)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		char *endPtr;
+-		*out = strtol(section.get(key).c_str(), &endPtr, 0);
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool ReadIniIfExists(const char *cat, const char *key, int8 *out)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		char *endPtr;
+-		*out = strtol(section.get(key).c_str(), &endPtr, 0);
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool ReadIniIfExists(const char *cat, const char *key, float *out)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		char *endPtr;
+-		*out = strtof(section.get(key).c_str(), &endPtr);
+-		return true;
+-	}
+-	return false;
+-}
+-
+-bool ReadIniIfExists(const char *cat, const char *key, char *out, int size)
+-{
+-	mINI::INIMap<std::string> section = cfg.get(cat);
+-	if (section.has(key)) {
+-		strncpy(out, section.get(key).c_str(), size - 1);
+-		out[size - 1] = '\0';
+-		return true;
+-	}
+-	return false;
+-}
+-
+-void StoreIni(const char *cat, const char *key, uint32 val)
+-{
+-	char temp[11];
+-	sprintf(temp, "%u", val);
+-	cfg[cat][key] = temp;
+-}
+-
+-void StoreIni(const char *cat, const char *key, uint8 val)
+-{
+-	char temp[11];
+-	sprintf(temp, "%u", val);
+-	cfg[cat][key] = temp;
+-}
+-
+-void StoreIni(const char *cat, const char *key, int32 val)
+-{
+-	char temp[11];
+-	sprintf(temp, "%d", val);
+-	cfg[cat][key] = temp;
+-}
+-
+-void StoreIni(const char *cat, const char *key, int8 val)
+-{
+-	char temp[11];
+-	sprintf(temp, "%d", val);
+-	cfg[cat][key] = temp;
+-}
+-
+-void StoreIni(const char *cat, const char *key, float val)
+-{
+-	char temp[50];
+-	sprintf(temp, "%f", val);
+-	cfg[cat][key] = temp;
+-}
+-
+-void StoreIni(const char *cat, const char *key, char *val, int size)
+-{
+-	cfg[cat][key] = val;
+-}
+-
+-const char *iniControllerActions[] = { "PED_FIREWEAPON", "PED_CYCLE_WEAPON_RIGHT", "PED_CYCLE_WEAPON_LEFT", "GO_FORWARD", "GO_BACK", "GO_LEFT", "GO_RIGHT", "PED_SNIPER_ZOOM_IN",
+-	"PED_SNIPER_ZOOM_OUT", "VEHICLE_ENTER_EXIT", "CAMERA_CHANGE_VIEW_ALL_SITUATIONS", "PED_JUMPING", "PED_SPRINT", "PED_LOOKBEHIND", "PED_DUCK", "PED_ANSWER_PHONE", 
+-#ifdef BIND_VEHICLE_FIREWEAPON
+-	"VEHICLE_FIREWEAPON",
+-#endif
+-	"VEHICLE_ACCELERATE", "VEHICLE_BRAKE", "VEHICLE_CHANGE_RADIO_STATION", "VEHICLE_HORN", "TOGGLE_SUBMISSIONS", "VEHICLE_HANDBRAKE", "PED_1RST_PERSON_LOOK_LEFT",
+-	"PED_1RST_PERSON_LOOK_RIGHT", "VEHICLE_LOOKLEFT", "VEHICLE_LOOKRIGHT", "VEHICLE_LOOKBEHIND", "VEHICLE_TURRETLEFT", "VEHICLE_TURRETRIGHT", "VEHICLE_TURRETUP", "VEHICLE_TURRETDOWN",
+-	"PED_CYCLE_TARGET_LEFT", "PED_CYCLE_TARGET_RIGHT", "PED_CENTER_CAMERA_BEHIND_PLAYER", "PED_LOCK_TARGET", "NETWORK_TALK", "PED_1RST_PERSON_LOOK_UP", "PED_1RST_PERSON_LOOK_DOWN",
+-	"_CONTROLLERACTION_36", "TOGGLE_DPAD", "SWITCH_DEBUG_CAM_ON", "TAKE_SCREEN_SHOT", "SHOW_MOUSE_POINTER_TOGGLE", "UNKNOWN_ACTION" };
+-
+-const char *iniControllerTypes[] = { "kbd:", "2ndKbd:", "mouse:", "joy:" };
+-
+-const char *iniMouseButtons[] = {"LEFT","MIDDLE","RIGHT","WHLUP","WHLDOWN","X1","X2"};
+-
+-const char *iniKeyboardButtons[] = {"ESC","F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12",
+-	"INS","DEL","HOME","END","PGUP","PGDN","UP","DOWN","LEFT","RIGHT","DIVIDE","TIMES","PLUS","MINUS","PADDEL",
+-	"PADEND","PADDOWN","PADPGDN","PADLEFT","PAD5","NUMLOCK","PADRIGHT","PADHOME","PADUP","PADPGUP","PADINS",
+-	"PADENTER", "SCROLL","PAUSE","BACKSP","TAB","CAPSLK","ENTER","LSHIFT","RSHIFT","SHIFT","LCTRL","RCTRL","LALT",
+-	"RALT", "LWIN", "RWIN", "APPS", "NULL"};
+-
+-void LoadINIControllerSettings()
+-{
+-#ifdef DETECT_JOYSTICK_MENU
+-#ifdef XINPUT
+-	int storedJoy1 = -1;
+-	if (ReadIniIfExists("Controller", "JoystickName", &storedJoy1)) {
+-		CPad::XInputJoy1 = -1;
+-		CPad::XInputJoy2 = -1;
+-		XINPUT_STATE xstate;
+-		memset(&xstate, 0, sizeof(XINPUT_STATE));
+-
+-		// Firstly confirm & set joy 1
+-		if (XInputGetState(storedJoy1, &xstate) == ERROR_SUCCESS) {
+-			CPad::XInputJoy1 = storedJoy1;
+-		}
+-
+-		for (int i = 0; i <= 3; i++) {
+-			if (XInputGetState(i, &xstate) == ERROR_SUCCESS) {
+-				if (CPad::XInputJoy1 == -1)
+-					CPad::XInputJoy1 = i;
+-				else if (CPad::XInputJoy2 == -1 && i != CPad::XInputJoy1)
+-					CPad::XInputJoy2 = i;
+-			}
+-		}
+-
+-		// There is no plug event on XInput, so let's leave XInputJoy1/2 as 0/1 respectively, and hotplug will be possible.
+-		if (CPad::XInputJoy1 == -1) {
+-			CPad::XInputJoy1 = 0;
+-			CPad::XInputJoy2 = 1;
+-		} else if (CPad::XInputJoy2 == -1) {
+-			CPad::XInputJoy2 = (CPad::XInputJoy1 + 1) % 4;
+-		}
+-	}
+-#else
+-	ReadIniIfExists("Controller", "JoystickName", gSelectedJoystickName, 128);
+-#endif
+-#endif
+-	// force to default GTA behaviour (never overwrite bindings on joy change/initialization) if user init'ed/set bindings before we introduced that
+-	if (!ReadIniIfExists("Controller", "PadButtonsInited", &ControlsManager.ms_padButtonsInited)) {
+-		ControlsManager.ms_padButtonsInited = cfg.get("Bindings").size() != 0 ? 16 : 0;
+-	}
+-
+-	for (int32 i = 0; i < MAX_CONTROLLERACTIONS; i++) {
+-		char value[128];
+-		if (ReadIniIfExists("Bindings", iniControllerActions[i], value, 128)) {
+-			for (int32 j = 0; j < MAX_CONTROLLERTYPES; j++){
+-				ControlsManager.ClearSettingsAssociatedWithAction((e_ControllerAction)i, (eControllerType)j);
+-			}
+-
+-			for (char *binding = strtok(value,", "); binding != nil; binding = strtok(nil, ", ")) {
+-				int contType = -1;
+-				for (int32 k = 0; k < ARRAY_SIZE(iniControllerTypes); k++) {
+-					int len = strlen(iniControllerTypes[k]);
+-					if (strncmp(binding, iniControllerTypes[k], len) == 0) {
+-						contType = k;
+-						binding += len;
+-						break;
+-					}
+-				}
+-				if (contType == -1)
+-					continue;
+-
+-				int contKey;
+-				if (contType == JOYSTICK) {
+-					char *temp;
+-					contKey = strtol(binding, &temp, 0);
+-
+-				} else if (contType == KEYBOARD || contType == OPTIONAL_EXTRA) {
+-					if (strlen(binding) == 1) {
+-						contKey = binding[0];
+-					} else if(strcmp(binding, "SPC") == 0) {
+-						contKey = ' ';
+-					} else {
+-						for (int32 k = 0; k < ARRAY_SIZE(iniKeyboardButtons); k++) {
+-							if(strcmp(binding, iniKeyboardButtons[k]) == 0) {
+-								contKey = 1000 + k;
+-								break;
+-							}
+-						}
+-					}
+-				} else if (contType == MOUSE) {
+-					for (int32 k = 0; k < ARRAY_SIZE(iniMouseButtons); k++) {
+-						if(strcmp(binding, iniMouseButtons[k]) == 0) {
+-							contKey = 1 + k;
+-							break;
+-						}
+-					}
+-				}
+-
+-				ControlsManager.SetControllerKeyAssociatedWithAction((e_ControllerAction)i, contKey, (eControllerType)contType);
+-			}
+-		}
+-	}
+-}
+-
+-void SaveINIControllerSettings()
+-{
+-	for (int32 i = 0; i < MAX_CONTROLLERACTIONS; i++) {
+-		char value[128] = { '\0' };
+-
+-		// upper limit should've been GetNumOfSettingsForAction(i), but sadly even R* doesn't use it's own system correctly, and there are gaps between orders.
+-		for (int32 j = SETORDER_1; j < MAX_SETORDERS; j++){
+-
+-			// We respect the m_ContSetOrder, and join/implode/order the bindings according to that; using comma as seperator.
+-			for (int32 k = 0; k < MAX_CONTROLLERTYPES; k++){
+-				if (ControlsManager.m_aSettings[i][k].m_ContSetOrder == j) {
+-					char next[32];
+-					if (k == JOYSTICK) {
+-						snprintf(next, 32, "%s%d,", iniControllerTypes[k], ControlsManager.m_aSettings[i][k].m_Key);
+-
+-					} else if (k == KEYBOARD || k == OPTIONAL_EXTRA) {
+-						if (ControlsManager.m_aSettings[i][k].m_Key == ' ')
+-							snprintf(next, 32, "%sSPC,", iniControllerTypes[k]);
+-						else if (ControlsManager.m_aSettings[i][k].m_Key < 256)
+-							snprintf(next, 32, "%s%c,", iniControllerTypes[k], ControlsManager.m_aSettings[i][k].m_Key);
+-						else
+-							snprintf(next, 32, "%s%s,", iniControllerTypes[k], iniKeyboardButtons[ControlsManager.m_aSettings[i][k].m_Key - 1000]);
+-
+-					} else if (k == MOUSE) {
+-						snprintf(next, 32, "%s%s,", iniControllerTypes[k], iniMouseButtons[ControlsManager.m_aSettings[i][k].m_Key - 1]);
+-					}
+-					strcat(value, next);
+-					break;
+-				}
+-			}
+-		}
+-		int len = strlen(value);
+-		if (len > 0)
+-			value[len - 1] = '\0'; // to remove comma
+-
+-		StoreIni("Bindings", iniControllerActions[i], value, 128);
+-	}
+-
+-#ifdef DETECT_JOYSTICK_MENU
+-#ifdef XINPUT
+-	StoreIni("Controller", "JoystickName", CPad::XInputJoy1);
+-#else
+-	StoreIni("Controller", "JoystickName", gSelectedJoystickName, 128);
+-#endif
+-#endif
+-	StoreIni("Controller", "PadButtonsInited", ControlsManager.ms_padButtonsInited);
+-
+-	ini.write(cfg);
+-}
+-
+-bool LoadINISettings()
+-{
+-	if (!ini.read(cfg))
+-		return false;
+-
+-#ifdef IMPROVED_VIDEOMODE
+-	ReadIniIfExists("VideoMode", "Width", &FrontEndMenuManager.m_nPrefsWidth);
+-	ReadIniIfExists("VideoMode", "Height", &FrontEndMenuManager.m_nPrefsHeight);
+-	ReadIniIfExists("VideoMode", "Depth", &FrontEndMenuManager.m_nPrefsDepth);
+-	ReadIniIfExists("VideoMode", "Subsystem", &FrontEndMenuManager.m_nPrefsSubsystem);
+-	// Windowed mode is loaded below in CUSTOM_FRONTEND_OPTIONS section
+-#else
+-	ReadIniIfExists("Graphics", "VideoMode", &FrontEndMenuManager.m_nDisplayVideoMode);
+-#endif
+-	ReadIniIfExists("Controller", "HeadBob1stPerson", &TheCamera.m_bHeadBob);
+-	ReadIniIfExists("Controller", "HorizantalMouseSens", &TheCamera.m_fMouseAccelHorzntl);
+-	ReadIniIfExists("Controller", "InvertMouseVertically", &MousePointerStateHelper.bInvertVertically);
+-	ReadIniIfExists("Controller", "DisableMouseSteering", &CVehicle::m_bDisableMouseSteering);
+-	ReadIniIfExists("Controller", "Vibration", &FrontEndMenuManager.m_PrefsUseVibration);
+-	ReadIniIfExists("Audio", "SfxVolume", &FrontEndMenuManager.m_PrefsSfxVolume);
+-	ReadIniIfExists("Audio", "MusicVolume", &FrontEndMenuManager.m_PrefsMusicVolume);
+-	ReadIniIfExists("Audio", "MP3BoostVolume", &FrontEndMenuManager.m_PrefsMP3BoostVolume);
+-	ReadIniIfExists("Audio", "Radio", &FrontEndMenuManager.m_PrefsRadioStation);
+-#ifdef EXTERNAL_3D_SOUND
+-	ReadIniIfExists("Audio", "SpeakerType", &FrontEndMenuManager.m_PrefsSpeakers);
+-	ReadIniIfExists("Audio", "Provider", &FrontEndMenuManager.m_nPrefsAudio3DProviderIndex);
+-#endif
+-	ReadIniIfExists("Audio", "DynamicAcoustics", &FrontEndMenuManager.m_PrefsDMA);
+-	ReadIniIfExists("Display", "Brightness", &FrontEndMenuManager.m_PrefsBrightness);
+-	ReadIniIfExists("Display", "DrawDistance", &FrontEndMenuManager.m_PrefsLOD);
+-	ReadIniIfExists("Display", "Subtitles", &FrontEndMenuManager.m_PrefsShowSubtitles);
+-	ReadIniIfExists("Graphics", "AspectRatio", &FrontEndMenuManager.m_PrefsUseWideScreen);
+-	ReadIniIfExists("Graphics", "FrameLimiter", &FrontEndMenuManager.m_PrefsFrameLimiter);
+-#ifdef LEGACY_MENU_OPTIONS
+-	ReadIniIfExists("Graphics", "VSync", &FrontEndMenuManager.m_PrefsVsyncDisp);
+-	ReadIniIfExists("Graphics", "Trails", &CMBlur::BlurOn);
+-#endif
+-	ReadIniIfExists("General", "SkinFile", FrontEndMenuManager.m_PrefsSkinFile, 256);
+-	ReadIniIfExists("Controller", "Method", &FrontEndMenuManager.m_ControlMethod);
+-	ReadIniIfExists("General", "Language", &FrontEndMenuManager.m_PrefsLanguage);
+-	ReadIniIfExists("Display", "ShowHud", &FrontEndMenuManager.m_PrefsShowHud);
+-	ReadIniIfExists("Display", "RadarMode", &FrontEndMenuManager.m_PrefsRadarMode);
+-	ReadIniIfExists("Display", "ShowLegends", &FrontEndMenuManager.m_PrefsShowLegends);
+-
+-#ifdef EXTENDED_COLOURFILTER
+-	ReadIniIfExists("CustomPipesValues", "PostFXIntensity", &CPostFX::Intensity);
+-#endif
+-#ifdef EXTENDED_PIPELINES
+-	ReadIniIfExists("CustomPipesValues", "NeoVehicleShininess", &CustomPipes::VehicleShininess);
+-	ReadIniIfExists("CustomPipesValues", "NeoVehicleSpecularity", &CustomPipes::VehicleSpecularity);
+-	ReadIniIfExists("CustomPipesValues", "RimlightMult", &CustomPipes::RimlightMult);
+-	ReadIniIfExists("CustomPipesValues", "LightmapMult", &CustomPipes::LightmapMult);
+-	ReadIniIfExists("CustomPipesValues", "GlossMult", &CustomPipes::GlossMult);
+-#endif
+-	ReadIniIfExists("Rendering", "BackfaceCulling", &gBackfaceCulling);
+-#ifdef NEW_RENDERER
+-	ReadIniIfExists("Rendering", "NewRenderer", &gbNewRenderer);
+-#endif
+-
+-#ifdef PROPER_SCALING
+-	ReadIniIfExists("Draw", "ProperScaling", &CDraw::ms_bProperScaling);	
+-#endif
+-#ifdef FIX_RADAR
+-	ReadIniIfExists("Draw", "FixRadar", &CDraw::ms_bFixRadar);	
+-#endif
+-#ifdef FIX_SPRITES
+-	ReadIniIfExists("Draw", "FixSprites", &CDraw::ms_bFixSprites);	
+-#endif
+-#ifdef DRAW_GAME_VERSION_TEXT
+-	ReadIniIfExists("General", "DrawVersionText", &gbDrawVersionText);
+-#endif
+-#ifdef NO_MOVIES
+-	ReadIniIfExists("General", "NoMovies", &gbNoMovies);
+-#endif
+-
+-#ifdef CUSTOM_FRONTEND_OPTIONS
+-	bool migrate = cfg.get("FrontendOptions").size() != 0;
+-	for (int i = 0; i < MENUPAGES; i++) {
+-		for (int j = 0; j < NUM_MENUROWS; j++) {
+-			CMenuScreenCustom::CMenuEntry &option = aScreens[i].m_aEntries[j];
+-			if (option.m_Action == MENUACTION_NOTHING)
+-				break;
+-				
+-			// CFO check
+-			if (option.m_Action < MENUACTION_NOTHING && option.m_CFO->save) {
+-				// Migrate from old .ini to new .ini
+-				// Old values can only be int8, new ones can contain float if it is slider
+-				if (migrate && ReadIniIfExists("FrontendOptions", option.m_CFO->save, (int8*)option.m_CFO->value))
+-					cfg["FrontendOptions"].remove(option.m_CFO->save);
+-				else if (option.m_Action == MENUACTION_CFO_SLIDER)
+-					ReadIniIfExists(option.m_CFO->saveCat, option.m_CFO->save, (float*)option.m_CFO->value);
+-				else
+-					ReadIniIfExists(option.m_CFO->saveCat, option.m_CFO->save, (int8*)option.m_CFO->value);
+-
+-				if (option.m_Action == MENUACTION_CFO_SELECT) {
+-					option.m_CFOSelect->lastSavedValue = option.m_CFOSelect->displayedValue = *(int8*)option.m_CFO->value;
+-				}
+-			}
+-		}
+-	}
+-#endif
+-
+-	// Fetched in above block, but needs evaluation
+-#ifdef PED_CAR_DENSITY_SLIDERS
+-	CPopulation::MaxNumberOfPedsInUse = DEFAULT_MAX_NUMBER_OF_PEDS * CIniFile::PedNumberMultiplier;
+-	CPopulation::MaxNumberOfPedsInUseInterior = DEFAULT_MAX_NUMBER_OF_PEDS_INTERIOR * CIniFile::PedNumberMultiplier;
+-	CCarCtrl::MaxNumberOfCarsInUse = DEFAULT_MAX_NUMBER_OF_CARS * CIniFile::CarNumberMultiplier;
+-#endif
+-
+-	return true;
+-}
+-
+-void SaveINISettings()
+-{
+-#ifdef IMPROVED_VIDEOMODE
+-	StoreIni("VideoMode", "Width", FrontEndMenuManager.m_nPrefsWidth);
+-	StoreIni("VideoMode", "Height", FrontEndMenuManager.m_nPrefsHeight);
+-	StoreIni("VideoMode", "Depth", FrontEndMenuManager.m_nPrefsDepth);
+-	StoreIni("VideoMode", "Subsystem", FrontEndMenuManager.m_nPrefsSubsystem);
+-	// Windowed mode is loaded below in CUSTOM_FRONTEND_OPTIONS section
+-#else
+-	StoreIni("Graphics", "VideoMode", FrontEndMenuManager.m_nDisplayVideoMode);
+-#endif
+-	StoreIni("Controller", "HeadBob1stPerson", TheCamera.m_bHeadBob);
+-	StoreIni("Controller", "HorizantalMouseSens", TheCamera.m_fMouseAccelHorzntl);
+-	StoreIni("Controller", "InvertMouseVertically", MousePointerStateHelper.bInvertVertically);
+-	StoreIni("Controller", "DisableMouseSteering", CVehicle::m_bDisableMouseSteering);
+-	StoreIni("Controller", "Vibration", FrontEndMenuManager.m_PrefsUseVibration);
+-	StoreIni("Audio", "SfxVolume", FrontEndMenuManager.m_PrefsSfxVolume);
+-	StoreIni("Audio", "MusicVolume", FrontEndMenuManager.m_PrefsMusicVolume);
+-	StoreIni("Audio", "MP3BoostVolume", FrontEndMenuManager.m_PrefsMP3BoostVolume);
+-	StoreIni("Audio", "Radio", FrontEndMenuManager.m_PrefsRadioStation);
+-#ifdef EXTERNAL_3D_SOUND
+-	StoreIni("Audio", "SpeakerType", FrontEndMenuManager.m_PrefsSpeakers);
+-	StoreIni("Audio", "Provider", FrontEndMenuManager.m_nPrefsAudio3DProviderIndex);
+-#endif
+-	StoreIni("Audio", "DynamicAcoustics", FrontEndMenuManager.m_PrefsDMA);
+-	StoreIni("Display", "Brightness", FrontEndMenuManager.m_PrefsBrightness);
+-	StoreIni("Display", "DrawDistance", FrontEndMenuManager.m_PrefsLOD);
+-	StoreIni("Display", "Subtitles", FrontEndMenuManager.m_PrefsShowSubtitles);
+-	StoreIni("Graphics", "AspectRatio", FrontEndMenuManager.m_PrefsUseWideScreen);
+-#ifdef LEGACY_MENU_OPTIONS
+-	StoreIni("Graphics", "VSync", FrontEndMenuManager.m_PrefsVsyncDisp);
+-	StoreIni("Graphics", "Trails", CMBlur::BlurOn);
+-#endif
+-	StoreIni("Graphics", "FrameLimiter", FrontEndMenuManager.m_PrefsFrameLimiter);
+-	StoreIni("General", "SkinFile", FrontEndMenuManager.m_PrefsSkinFile, 256);
+-	StoreIni("Controller", "Method", FrontEndMenuManager.m_ControlMethod);
+-	StoreIni("General", "Language", FrontEndMenuManager.m_PrefsLanguage);
+-	StoreIni("Display", "ShowHud", FrontEndMenuManager.m_PrefsShowHud);
+-	StoreIni("Display", "RadarMode", FrontEndMenuManager.m_PrefsRadarMode);
+-	StoreIni("Display", "ShowLegends", FrontEndMenuManager.m_PrefsShowLegends);
+-
+-#ifdef EXTENDED_COLOURFILTER
+-	StoreIni("CustomPipesValues", "PostFXIntensity", CPostFX::Intensity);
+-#endif
+-#ifdef EXTENDED_PIPELINES
+-	StoreIni("CustomPipesValues", "NeoVehicleShininess", CustomPipes::VehicleShininess);
+-	StoreIni("CustomPipesValues", "NeoVehicleSpecularity", CustomPipes::VehicleSpecularity);
+-	StoreIni("CustomPipesValues", "RimlightMult", CustomPipes::RimlightMult);
+-	StoreIni("CustomPipesValues", "LightmapMult", CustomPipes::LightmapMult);
+-	StoreIni("CustomPipesValues", "GlossMult", CustomPipes::GlossMult);
+-#endif
+-	StoreIni("Rendering", "BackfaceCulling", gBackfaceCulling);
+-#ifdef NEW_RENDERER
+-	StoreIni("Rendering", "NewRenderer", gbNewRenderer);
+-#endif
+-
+-#ifdef PROPER_SCALING	
+-	StoreIni("Draw", "ProperScaling", CDraw::ms_bProperScaling);	
+-#endif
+-#ifdef FIX_RADAR
+-	StoreIni("Draw", "FixRadar", CDraw::ms_bFixRadar);
+-#endif
+-#ifdef FIX_SPRITES
+-	StoreIni("Draw", "FixSprites", CDraw::ms_bFixSprites);	
+-#endif
+-#ifdef DRAW_GAME_VERSION_TEXT
+-	StoreIni("General", "DrawVersionText", gbDrawVersionText);
+-#endif
+-#ifdef NO_MOVIES
+-	StoreIni("General", "NoMovies", gbNoMovies);
+-#endif
+-#ifdef CUSTOM_FRONTEND_OPTIONS
+-	for (int i = 0; i < MENUPAGES; i++) {
+-		for (int j = 0; j < NUM_MENUROWS; j++) {
+-			CMenuScreenCustom::CMenuEntry &option = aScreens[i].m_aEntries[j];
+-			if (option.m_Action == MENUACTION_NOTHING)
+-				break;
+-				
+-			if (option.m_Action < MENUACTION_NOTHING && option.m_CFO->save) {
+-				if (option.m_Action == MENUACTION_CFO_SLIDER)
+-					StoreIni(option.m_CFO->saveCat, option.m_CFO->save, *(float*)option.m_CFO->value);
+-				else
+-					StoreIni(option.m_CFO->saveCat, option.m_CFO->save, *(int8*)option.m_CFO->value);
+-			}
+-		}
+-	}
+-#endif
+-
+-	ini.write(cfg);
+-}
+-
+-#endif
+ 
+ #ifndef __MWERKS__
+ #ifndef MASTER
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 9a037cad..f2b441bb 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -66,13 +66,16 @@
+ #include "Garages.h"
+ 
+ // Cheats
+-//#include "custom_cheats.h"
+-//#include "player_cheats.h"
+-//#include "vehicle_cheats.h"
++#ifdef DEBUG_EXTRA_CHEATS
++#include "custom_cheats.h"
++#include "player_cheats.h"
++#include "vehicle_cheats.h"
+ 
+ // Functions
+-//#include "log_functions.h"
+-//#include "vehicle_functions.h"
++#include "log_functions.h"
++#include "vehicle_functions.h"
++
++#endif // DEBUG_EXTRA_CHEATS
+ 
+ #ifdef _IMGUI_TEST
+ #include "imgui_functions.h"
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+new file mode 100644
+index 00000000..7975ef71
+--- /dev/null
++++ b/src/extras/functions/ini_functions.cpp
+@@ -0,0 +1,1425 @@
++#include <csignal>
++#define WITHWINDOWS
++#include "common.h"
++#if defined DETECT_JOYSTICK_MENU && defined XINPUT
++#include <xinput.h>
++#if !defined(PSAPI_VERSION) || (PSAPI_VERSION > 1)
++#pragma comment(lib, "Xinput9_1_0.lib")
++#else
++#pragma comment(lib, "Xinput.lib")
++#endif
++#endif
++#include "Automobile.h"
++#include "Bike.h"
++#include "Boat.h"
++#include "Camera.h"
++#include "CarCtrl.h"
++#include "Clock.h"
++#include "Console.h"
++#include "ControllerConfig.h"
++#include "Credits.h"
++#include "Debug.h"
++#include "FileMgr.h"
++#include "Frontend.h"
++#include "Heli.h"
++#include "Hud.h"
++#include "IniFile.h"
++#include "MBlur.h"
++#include "MemoryHeap.h"
++#include "ModelIndices.h"
++#include "Occlusion.h"
++#include "Pad.h"
++#include "PlayerPed.h"
++#include "Population.h"
++#include "Radar.h"
++#include "Renderer.h"
++#include "SceneEdit.h"
++#include "Script.h"
++#include "Streaming.h"
++#include "Timecycle.h"
++#include "Vehicle.h"
++#include "WaterLevel.h"
++#include "Weather.h"
++#include "World.h"
++#include "Zones.h"
++#include "custompipes.h"
++#include "debugmenu.h"
++#include "main.h"
++#include "postfx.h"
++
++#include "crossplatform.h"
++
++#ifndef _WIN32
++#include "assert.h"
++#include <stdarg.h>
++#endif
++
++#include <list>
++
++#ifdef CUSTOM_CODE
++// Extra
++#include "Garages.h"
++
++//#include "custom_cheats.h"
++
++#include "ini_functions.h"
++
++// Needed for ImGui button, it's stored here.
++//#include "imgui_functions.h"
++
++// Needed for Logging the controller values
++#include "log_functions.h"
++#include "defines.h"
++
++//#include "misc_util.h"
++
++
++//#include "player_cheats.h"
++#include "imgui.h"
++
++//#include "vehicle_cheats.h"
++//#include "vehicle_functions.h"
++
++#include <map>
++#include <optional>
++
++#endif // CUSTOM_CODE
++
++/////////////////////
++// Ini functions
++/////////////////////
++
++#ifdef LOAD_INI_SETTINGS
++#define MINI_CASE_SENSITIVE
++
++
++// I have moved these values into defines to make it easier to modify them.
++// TODO Why does this format break in ReLCS and Re3?
++//mINI::INIFile ini(Defines::mainIniFile);
++// 
++
++// TODO Test this, it stopped loading fast loader and no movies from ini on here.
++// This is getting ridiculous, why did my fast loader, no movies and everything in the ini stop being loaded?
++// This happened in ReLCS but reverting this fixed it.. 
++// Idk what's wrong with it.
++mINI::INIFile ini("reVC.ini");
++
++mINI::INIStructure cfg;
++
++
++// Well I checked again and this breaks the controller imgui button
++// So it'll open properly but close if any DPad button is pressed, its only supposed to close
++// if the Right DPad and RB is pressed so I disabled it in win.cpp again.
++// Controller input, New for ImGui
++mINI::INIFile imguiIni(Defines::imGuiControlsIniFile);
++mINI::INIStructure imguiCfg;
++
++uint16
++ReadAndGetImGuiConfig(const char* key)
++{
++	mINI::INIMap<std::string> section = imguiCfg.get("Control");
++	if(section.has(key)) {
++		char *endPtr;
++		return strtol(section.get(key).c_str(), &endPtr, 0);
++	}
++	return 0;
++}
++
++// Function to split a string by delimiter
++std::vector<std::string>
++IniFunctions::SplitString(const std::string &str, char delimiter)
++{
++	std::vector<std::string> tokens;
++	std::stringstream ss(str);
++	std::string token;
++	while(std::getline(ss, token, delimiter)) { tokens.push_back(token); }
++	return tokens;
++}
++
++
++#ifdef DEBUG_EXTRA_CHEATS
++//------------------
++// Vehicles
++//------------------
++mINI::INIFile vehiclesIni(Defines::vehiclesIniFile);
++mINI::INIStructure vehiclesCfg;
++
++// Store vehicle data
++std::vector<IniFunctions::VehicleData> vehicles;
++
++// This seems to work, I just have it disabled because I need to
++// refactor the ImGui side of it, 
++// TODO Add a spawn button at the bottom.
++// TODO Add a spawn in vehicle checkbox.
++
++std::vector<IniFunctions::VehicleCategory>
++IniFunctions::LoadVehiclesFromIni(const std::string &filename)
++{
++	mINI::INIFile file(filename);
++	mINI::INIStructure ini;
++	file.read(ini);
++
++	std::vector<VehicleCategory> categories;
++	for(const auto &section : ini) {
++		VehicleCategory category;
++		category.name = section.first;
++
++		for(const auto &entry : section.second) {
++			std::string vehicleName = entry.first;
++			std::string vehicleIdStr = entry.second; // Vehicle ID is the value
++
++			VehicleData vehicleData;
++			vehicleData.name = vehicleName; // Set the vehicle name
++			try {
++				vehicleData.id = std::stoi(vehicleIdStr); // Convert ID to integer
++				category.vehicles.emplace_back(vehicleName, vehicleData);
++			} catch(const std::invalid_argument &e) {
++				std::cerr << "Error parsing vehicle ID: " << vehicleIdStr << " in " << vehicleName << std::endl;
++			} catch(const std::out_of_range &e) {
++				std::cerr << "Error parsing vehicle ID: " << vehicleIdStr << " in " << vehicleName << std::endl;
++			}
++		}
++
++		categories.push_back(category);
++	}
++	return categories;
++}
++
++//std::vector<IniFunctions::VehicleCategory> 
++//IniFunctions::LoadVehiclesFromIni(const std::string &filename)
++//{
++//	mINI::INIFile file(filename);
++//	mINI::INIStructure ini;
++//	file.read(ini);
++//
++//	std::vector<VehicleCategory> categories;
++//	for(const auto &section : ini) {
++//		VehicleCategory category;
++//		category.name = section.first;
++//
++//		for(const auto &entry : section.second) {
++//			std::string vehicleName = entry.first;
++//			std::string vehicleDataStr = entry.second;
++//
++//			std::stringstream ss(vehicleDataStr);
++//			VehicleData vehicleData;
++//			char comma;
++//
++//			if(ss >> vehicleData.name >> comma >> vehicleData.id) {
++//				category.vehicles.emplace_back(vehicleName, vehicleData);
++//
++//			//if(ss >> locationData.interiorId >> comma >> locationData.posX >> comma >> locationData.posY >> comma >> locationData.posZ) {
++//			//	category.locations.emplace_back(locationName, locationData);
++//			} else {
++//				std::cerr << "Error parsing location data: " << vehicleDataStr << std::endl;
++//			}
++//		}
++//
++//		categories.push_back(category);
++//	}
++//	return categories;
++//
++//}
++
++#endif // DEBUG_EXTRA_CHEATS
++
++/// <summary>
++/// This works for spawning in vehicles.
++/// TODO Add a spawn in vehicle checkbox
++/// TODO Fix this to have a spawn button at the bottom.
++/// </summary>
++/// <param name="categories"></param>
++/// 
++#ifdef DEBUG_EXTRA_CHEATS
++bool spawnPlayerInVehicle = false;
++void
++IniFunctions::DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &categories)
++{
++	CustomCheats customCheats = CustomCheats();
++
++	if(ImGui::CollapsingHeader("Vehicle Spawner")) {
++
++		ImGui::Separator();
++		ImGui::Text("Vehicle Spawner");
++
++		// Well this seems to work like this.
++		ImGui::Checkbox("Spawn in vehicle", &spawnPlayerInVehicle);
++
++		for(const auto &category : categories) {
++			if(ImGui::CollapsingHeader(category.name.c_str())) {
++
++				// I added a fix in ReLCS to where all the vehicle menus were the same size.
++				if(ImGui::BeginListBox(("##" + category.name).c_str(),
++				                       // ImVec2(-FLT_MIN, category.vehicles.size() * ImGui::GetTextLineHeightWithSpacing()))) {
++				                       ImVec2(-FLT_MIN, category.vehicles.size() + 10 * ImGui::GetTextLineHeightWithSpacing()))) {
++
++					for(const auto &vehicle : category.vehicles) {
++						ImGui::Text("%s", vehicle.first.c_str()); // Display the vehicle name
++
++						// if(ImGui::Selectable(location.first.c_str())) {}
++						// ImGui::SameLine(); // Place the button on the same line
++
++						if(ImGui::Button(("Spawn##" + vehicle.first).c_str())) { // Add a teleport button
++							std::cout << defines.KcLogString << "Spawning: " << category.name << " - " << vehicle.first
++							          << std::endl;
++							std::cout << defines.KcLogString << "Vehicle ID: " << vehicle.second.id << std::endl;
++
++							// Clear the area
++							customCheats.ClearItemsFromArea(25);
++
++							// Spawn the vehicle
++							if(spawnPlayerInVehicle) {
++								VehicleFunctions::SpawnVehicle(vehicle.second.id, true, true);
++							} else {
++								VehicleFunctions::SpawnVehicle(vehicle.second.id, false, false);
++							}
++
++							// PlayerCheats::SetPlayerPosition(location.second.posX, location.second.posY, location.second.posZ);
++						}
++					}
++					ImGui::EndListBox();
++				}
++			}
++		}
++	}
++
++}
++
++
++
++//------------------
++// Warps
++//------------------
++
++mINI::INIFile warpsIni(Defines::warpsIniFile);
++mINI::INIStructure warpsCfg;
++
++std::vector<IniFunctions::WarpData> warps; // Store warp data
++
++
++
++
++std::vector<IniFunctions::Category>
++IniFunctions::LoadLocationsFromIni(const std::string &filename)
++{
++	mINI::INIFile file(filename);
++	mINI::INIStructure ini;
++	file.read(ini);
++
++	std::vector<Category> categories;
++
++	for(const auto &section : ini) {
++		Category category;
++		category.name = section.first;
++
++		for(const auto &entry : section.second) {
++			std::string locationName = entry.first;
++			std::string locationDataStr = entry.second;
++
++			std::stringstream ss(locationDataStr);
++			LocationData locationData;
++			char comma;
++
++			if(ss >> locationData.interiorId >> comma >> locationData.posX >> comma >> locationData.posY >> comma >> locationData.posZ) {
++				category.locations.emplace_back(locationName, locationData);
++			} else {
++				std::cerr << "Error parsing location data: " << locationDataStr << std::endl;
++			}
++		}
++		categories.push_back(category);
++	}
++	return categories;
++}
++
++
++
++// New, from ReLCS
++/// <summary>
++/// Append to the locations file
++/// This won't overwrite previous warps
++/// This seems to work
++/// TODO Add a checkbox to overwrite previous warps if requested, keep off by default.
++/// </summary>
++/// <param name="filename">The name of the ini to append to</param>
++/// <param name="categoryName">The warp category</param>
++/// <param name="locationName">The warp location name</param>
++/// <param name="warpData">The WarpData struct</param>
++/// <returns></returns>
++bool
++IniFunctions::AppendLocationToIni(const std::string &filename, const std::string &categoryName, const std::string &locationName,
++                                  const IniFunctions::WarpData &warpData)
++{
++	mINI::INIFile file(filename);
++	mINI::INIStructure ini;
++
++	//Logger logger = Logger();
++
++	if(!file.read(ini)) {
++		std::cerr << "Error reading INI file: " << filename << std::endl;
++		return false;
++	}
++
++	// Check if the category and location name already exist
++	if(ini.has(categoryName) && ini[categoryName].has(locationName)) {
++		std::cerr << Defines::KcLogString << "Category and/or location name already exists. Cannot overwrite." << std::endl;
++		return false;
++	}
++
++	std::stringstream ss;
++	ss << warpData.interiorId << ", " << warpData.x << ", " << warpData.y << ", " << warpData.z;
++	std::string locationDataStr = ss.str();
++
++	// Adds the key, as it was proven to not exist.
++	ini[categoryName][locationName] = locationDataStr;
++
++	// Log the value as a test using my logging dll
++	// TODO Test this
++//#ifdef LOG_DLL_TEST
++//	logInfo(Defines::logFile.c_str(), locationDataStr.c_str());
++//#endif
++
++	if(!file.write(ini)) {
++		std::cerr << "Error writing to INI file: " << filename << std::endl;
++		return false;
++	}
++
++	return true;
++}
++
++/// <summary>
++/// This function is now in use for appending to my warps
++/// It takes the fileName, warp category name, warp location name, and a struct with the WarpData
++/// from IniFunctions
++/// </summary>
++/// <param name="filename">The name of the ini to append to</param>
++/// <param name="categoryName">The warp category</param>
++/// <param name="locationName">The warp location name</param>
++/// <param name="warpData">The WarpData struct</param>
++/// <returns></returns>
++bool
++IniFunctions::AppendWarpWithInput(const std::string &filename, std::string &categoryName, std::string &locationName, IniFunctions::WarpData &warpData)
++{
++	if(this->AppendLocationToIni(filename, categoryName, locationName, warpData)) {
++		std::cout << "Warp appended successfully." << std::endl;
++		return true;
++	} else {
++		std::cerr << "Failed to append warp." << std::endl;
++		return false;
++	}
++}
++//
++//
++
++//
++
++
++// This works without a button for categories
++
++//clang-format off
++
++/// <summary>
++/// Display the warp locations and teleport buttons with categories
++/// This is the ImGui part for the warp locations, runs menu handling for it.
++/// TODO Make a delete button for these
++/// TODO Fix this to work the the interior ids for ReVC and ReLCS.
++/// TODO Detect if the player is in an interior, if so teleport them to interior 0 (Main Map)
++/// </summary>
++/// <param name="categories"></param>
++
++void
++IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &categories)
++{
++	ImGui::Separator();
++	ImGui::Text("Warp locations");
++
++	//Logger logger = Logger();
++
++	for(const auto &category : categories) {
++		if(ImGui::CollapsingHeader(category.name.c_str())) {
++			if(ImGui::BeginListBox(("##" + category.name).c_str(),
++			                       // Add 10 to this, so all of these are the same size.
++			                       ImVec2(-FLT_MIN, category.locations.size() + 10 * ImGui::GetTextLineHeightWithSpacing()))) {
++				for(const auto &location : category.locations) {
++					ImGui::Text("%s", location.first.c_str()); // Display the location name
++
++					// TODO Test this output
++					std::string locationDataStr = "Teleporting to " + category.name + " - " + location.first + "\n" 
++						+ "Interior: " + std::to_string(location.second.interiorId) 
++						+ ", Pos: " + std::to_string(location.second.posX) + ", " 
++						+ std::to_string(location.second.posY) 
++						+ ", " + std::to_string(location.second.posZ);
++
++
++					// Oh this one removes the 
++					// if(ImGui::Selectable(location.first.c_str())) {}
++					ImGui::SameLine(); // Place the button on the same line
++
++					// Teleport button
++					if(ImGui::Button(("Teleport##" + location.first).c_str())) { // Add a teleport button
++#ifdef EXTRA_LOGGING
++						if(gbExtraLogging) {
++
++							// Teleport to location when the button is clicked
++							// std::cout << "Teleporting to: " << category.name << " - " << location.first << std::endl;
++							// std::cout << "Interior: " << location.second.interiorId << ", Pos: " << location.second.posX << ", "
++							//          << location.second.posY << ", " << location.second.posZ << std::endl;
++						}
++#endif
++
++						// TODO Why doesn't this work?
++//#ifdef LOG_DLL_TEST
++//						//logInfo(Defines::logFile.c_str(), locationDataStr.c_str());
++//						logger.info(Defines::logFile, locationDataStr);
++//						
++//#endif
++
++						PlayerCheats::SetPlayerPosition(location.second.posX, location.second.posY, location.second.posZ);
++
++					}
++				}
++				ImGui::EndListBox();
++			}
++		}
++	}
++}
++
++//clang-format on
++
++// Setup loading for Game init
++std::vector<IniFunctions::Category> loadedLocations;
++
++/// <summary>
++/// Calling this in CGame::Init
++/// And as a button under warp_menu
++/// </summary>
++void
++IniFunctions::LoadLocations()
++{
++	loadedLocations = LoadLocationsFromIni(defines.warpsIniFile);
++}
++
++/// <summary>
++/// Display the warp locations and teleport buttons
++/// </summary>
++void
++IniFunctions::DisplayLocationsImGui()
++{
++	DisplayLocations(loadedLocations);
++}
++
++// From ReLCS
++/// <summary>
++/// Remove warp locations from the ini file
++/// </summary>
++/// <param name="filename"></param>
++/// <param name="categoryName">Category to remove the warp from.</param>
++/// <param name="locationName">The warp name to remove</param>
++/// <returns>If a warp was removed</returns>
++bool
++IniFunctions::RemoveLocationFromIni(const std::string &filename, const std::string &categoryName, const std::string &locationName)
++{
++	mINI::INIFile file(filename);
++	mINI::INIStructure ini;
++
++	if(!file.read(ini)) {
++		std::cerr << "Error reading INI file: " << filename << std::endl;
++		return false;
++	}
++
++	if(ini.has(categoryName) && ini[categoryName].has(locationName)) {
++		ini[categoryName].remove(locationName);
++
++		// If the category is now empty, remove it too (optional)
++		if(ini[categoryName].size() == 0) { ini.remove(categoryName); }
++
++		if(!file.write(ini)) {
++			std::cerr << "Error writing to INI file: " << filename << std::endl;
++			return false;
++		}
++		return true;
++	} else {
++		std::cerr << "Category or location not found." << std::endl;
++		return false;
++	}
++}
++
++//
++
++//------------------
++// Read the data from the warp file
++//------------------
++IniFunctions::WarpData
++ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIStructure &warpsCfg)
++{
++	IniFunctions iniFunctions = IniFunctions();
++
++	// Set the default values
++	IniFunctions::WarpData result = {"", 0.0f, 0.0f, 0.0f};
++
++	mINI::INIMap<std::string> section = warpsCfg.get(sectionName);
++	if(section.has(key)) {
++		std::string dataString = section.get(key);
++		std::vector<std::string> components = iniFunctions.SplitString(dataString, ',');
++
++		// Get each of the values from the ini file
++		if(components.size() == 4) { // Expecting 4 components now
++			try {
++				result.interiorId = std::stoi(components[0]);
++				result.x = std::stof(components[1]);
++				result.y = std::stof(components[2]);
++				result.z = std::stof(components[3]);
++			
++			// Error handling
++			} catch(const std::invalid_argument &e) {
++				std::cerr << "Invalid WarpData component in INI file: " << e.what() << std::endl;
++			} catch(const std::out_of_range &e) {
++				std::cerr << "WarpData component out of range in INI file: " << e.what() << std::endl;
++			}
++		} else {
++			std::cerr << "Invalid WarpData format in INI file." << std::endl;
++		}
++	}
++	return result;
++}
++
++
++//------------------
++// End new tests
++//------------------
++
++//------------------
++// Old warp function
++//------------------
++
++/// <summary>
++/// This is now running in CGame::Initialise, this fixes the lag for ImGui.
++/// Now this only loads once instead of every frame.
++/// </summary>
++void
++IniFunctions::LoadWarpIni()
++{
++	std::cout << defines.KcLogString << "Before warpsIni.read()" << std::endl;
++	if(warpsIni.read(warpsCfg)) {
++		std::cout << defines.KcLogString << "warpsIni.read() returned true" << std::endl;
++
++		// Clear previous data
++		//categorizedWarps.clear();
++		// 
++		// Success! Now process the data and populate the warps vector
++		for(const auto &sectionPair : warpsCfg) {
++
++
++
++			
++			const std::string &sectionName = sectionPair.first;
++			const mINI::INIMap<std::string> &section = sectionPair.second;
++
++			for(const auto &pair : section) {
++
++				std::cout << "Section: " << sectionName << ", Key: " << pair.first << std::endl;
++
++				WarpData warpData = ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg);
++				// std::cout << defines.KcLogString << "warpData.name: " << warpData.name << std::endl;
++				std::cout << defines.KcLogString << "warpData.interiorId: " << warpData.interiorId << std::endl;
++				std::cout << defines.KcLogString << "warpData.x: " << warpData.x << std::endl;
++				std::cout << defines.KcLogString << "warpData.y: " << warpData.y << std::endl;
++				std::cout << defines.KcLogString << "warpData.z: " << warpData.z << std::endl;
++				// warpData.name = pair.first;
++				//  Set the warp data.
++
++				// Original function
++				warps.push_back(ReadAndGetWarpsConfig(sectionName.c_str(), pair.first.c_str(), warpsCfg));
++				warps.back().name = pair.first;
++			}
++
++
++			//std::string loadWarpsLogString = "Category " + sectionName + ", Warps: " + std::to_string(categorizedWarps[sectionName].size());
++			// Log this out somewhere.
++			// Well I'll attempt to use my dll test, I need to remember to use this more often.
++			//logInfo(defines.logFile.c_str(), loadWarpsLogString.c_str());
++			//LogFunctions::LogInfo(defines.logFile, loadWarpsLogString);
++
++			//std::cout << "Category: " << sectionName << ", Warps: " << categorizedWarps[sectionName].size() << std::endl;
++		}
++	} else {
++		
++		std::cerr << defines.KcLogString << "Error reading warp INI file !" << std::endl;
++	}
++
++	std::cout << defines.KcLogString << "warpsCfg size: " << warpsCfg.size() << std::endl;
++}
++
++
++
++
++
++//
++
++/// <summary>
++/// Display the current updated warp list, TODO Figure out how to move this to warp_menu.cpp or warp_functions.
++/// Old function without categories.
++/// </summary>
++void
++IniFunctions::ImGuiWarpList()
++{
++	Defines defines = Defines();
++	ImGui::Separator();
++	ImGui::Text("Warps");
++	static int selectedWarp = -1;
++
++		// Well this didn't work, it displays a collapsing header for the warps but lists each warp under them.
++	 //   for(const auto &categoryPair : warps) {
++		//if(ImGui::CollapsingHeader(categoryPair.name.c_str())) {
++			//
++			std::vector<std::string> warpStrings;
++
++			std::vector<const char *> warpNames;
++
++			for(const auto &str : warpStrings) { warpNames.push_back(str.c_str()); }
++
++			// Populate warpNames with the names from the warps vector
++			for(const auto &warp : warps) {
++				// TODO Test this, see what it does.
++				// if(ImGui::CollapsingHeader(warp.first.c_str())) {}
++				warpNames.push_back(warp.name.c_str());
++			}
++
++			if(ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpNames.size())) {
++				// Listbox selection handling is done for you by imgui.
++			}
++	          if(ImGui::Button("Warp to location")) {
++			
++				if(!warps.empty() && selectedWarp >= 0 && selectedWarp < warps.size()) {
++					// Get the selected warp data
++					const WarpData &selectedWarpData = warps[selectedWarp];
++
++					// Set player position
++					PlayerCheats::SetPlayerPosition(selectedWarpData.x, selectedWarpData.y, selectedWarpData.z);
++				}
++
++		//	}
++		//}
++	}
++}
++
++
++
++//std::vector<WarpData>
++//readAllWarpsFromIni(const std::string &filename, const std::string &section)
++//{
++//	std::vector<WarpData> warps;
++//	mINI::INIFile file(filename);
++//	mINI::INIStructure cfg;
++//	file.read(cfg);
++//
++//	mINI::INIMap<std::string> iniSection = cfg.get(section);
++//	for(const auto &pair : iniSection) { warps.push_back(readWarpDataFromIni(section, pair.first, cfg)); }
++//	return warps;
++//}
++
++
++// TODO Implement this
++struct SectionData {
++	std::map<std::string, std::string> keyValues; // Store key-value pairs
++};
++
++/// <summary>
++/// Not sure how exactly to use this just yet. I'll mess with it later.
++/// </summary>
++/// <param name="filename"></param>
++/// <param name="sectionNames"></param>
++/// <returns></returns>
++std::map<std::string, SectionData>
++readMultipleSections(const std::string &filename, const std::vector<std::string> &sectionNames)
++{
++	std::map<std::string, SectionData> sections;
++	mINI::INIFile file(filename);
++	mINI::INIStructure cfg;
++	file.read(cfg);
++
++	for(const auto &sectionName : sectionNames) {
++		mINI::INIMap<std::string> iniSection = cfg.get(sectionName);
++		SectionData sectionData;
++
++		for(const auto &pair : iniSection) { sectionData.keyValues[pair.first] = pair.second; }
++
++		sections[sectionName] = sectionData;
++	}
++	return sections;
++}
++
++#endif // DEBUG_EXTRA_CHEATS
++
++////////////////////
++// Public definitions
++///////////////////
++bool
++IniFunctions::ReadIniIfExists(const char *cat, const char *key, bool *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++
++#ifdef _TEST1
++bool 
++IniFunctions::ReadIniIfExists(const char *cat, const char *key, uint8 *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++#endif //_TEST1
++
++////////////////////
++// Private definitions
++///////////////////
++
++#ifdef EX_GPS
++
++CRGBA ReadAndGetWaypointColor(const char* key)
++{
++	CRGBA color = CRGBA(180, 24, 24, 255);
++
++	mINI::INIMap<std::string> section = cfg.get("Features");
++	if (section.has(key)) {
++		uint32 red, green, blue;
++		sscanf(section.get(key).c_str(), "%i, %i, %i", &red, &green, &blue);
++		color = CRGBA(red, green, blue, 255);
++		return color;
++	}
++	return color;
++}
++
++	CRGBA WaypointColor = ReadAndGetWaypointColor("WaypointColorRGB");
++#endif
++
++bool
++ReadIniIfExists(const char *cat, const char *key, uint32 *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++
++bool
++ReadIniIfExists(const char *cat, const char *key, uint8 *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++
++bool
++ReadIniIfExists(const char *cat, const char *key, bool *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtoul(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++
++
++
++
++bool
++ReadIniIfExists(const char *cat, const char *key, int32 *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtol(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++
++bool
++ReadIniIfExists(const char *cat, const char *key, int8 *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtol(section.get(key).c_str(), &endPtr, 0);
++		return true;
++	}
++	return false;
++}
++
++bool
++ReadIniIfExists(const char *cat, const char *key, float *out)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		char *endPtr;
++		*out = strtof(section.get(key).c_str(), &endPtr);
++		return true;
++	}
++	return false;
++}
++
++bool
++ReadIniIfExists(const char *cat, const char *key, char *out, int size)
++{
++	mINI::INIMap<std::string> section = cfg.get(cat);
++	if(section.has(key)) {
++		strncpy(out, section.get(key).c_str(), size - 1);
++		out[size - 1] = '\0';
++		return true;
++	}
++	return false;
++}
++
++void
++StoreIni(const char *cat, const char *key, uint32 val)
++{
++	char temp[11];
++	sprintf(temp, "%u", val);
++	cfg[cat][key] = temp;
++}
++
++void
++StoreIni(const char *cat, const char *key, uint8 val)
++{
++	char temp[11];
++	sprintf(temp, "%u", val);
++	cfg[cat][key] = temp;
++}
++
++void
++StoreIni(const char *cat, const char *key, int32 val)
++{
++	char temp[11];
++	sprintf(temp, "%d", val);
++	cfg[cat][key] = temp;
++}
++
++void
++StoreIni(const char *cat, const char *key, int8 val)
++{
++	char temp[11];
++	sprintf(temp, "%d", val);
++	cfg[cat][key] = temp;
++}
++
++void
++StoreIni(const char *cat, const char *key, float val)
++{
++	char temp[50];
++	sprintf(temp, "%f", val);
++	cfg[cat][key] = temp;
++}
++
++void
++StoreIni(const char *cat, const char *key, char *val, int size)
++{
++	cfg[cat][key] = val;
++}
++
++const char *iniControllerActions[] = {"PED_FIREWEAPON",
++                                      "PED_CYCLE_WEAPON_RIGHT",
++                                      "PED_CYCLE_WEAPON_LEFT",
++                                      "GO_FORWARD",
++                                      "GO_BACK",
++                                      "GO_LEFT",
++                                      "GO_RIGHT",
++                                      "PED_SNIPER_ZOOM_IN",
++                                      "PED_SNIPER_ZOOM_OUT",
++                                      "VEHICLE_ENTER_EXIT",
++                                      "CAMERA_CHANGE_VIEW_ALL_SITUATIONS",
++                                      "PED_JUMPING",
++                                      "PED_SPRINT",
++                                      "PED_LOOKBEHIND",
++                                      "PED_DUCK",
++                                      "PED_ANSWER_PHONE",
++#ifdef BIND_VEHICLE_FIREWEAPON
++                                      "VEHICLE_FIREWEAPON",
++#endif
++                                      "VEHICLE_ACCELERATE",
++                                      "VEHICLE_BRAKE",
++                                      "VEHICLE_CHANGE_RADIO_STATION",
++                                      "VEHICLE_HORN",
++                                      "TOGGLE_SUBMISSIONS",
++                                      "VEHICLE_HANDBRAKE",
++                                      "PED_1RST_PERSON_LOOK_LEFT",
++                                      "PED_1RST_PERSON_LOOK_RIGHT",
++                                      "VEHICLE_LOOKLEFT",
++                                      "VEHICLE_LOOKRIGHT",
++                                      "VEHICLE_LOOKBEHIND",
++                                      "VEHICLE_TURRETLEFT",
++                                      "VEHICLE_TURRETRIGHT",
++                                      "VEHICLE_TURRETUP",
++                                      "VEHICLE_TURRETDOWN",
++                                      "PED_CYCLE_TARGET_LEFT",
++                                      "PED_CYCLE_TARGET_RIGHT",
++                                      "PED_CENTER_CAMERA_BEHIND_PLAYER",
++                                      "PED_LOCK_TARGET",
++                                      "NETWORK_TALK",
++                                      "PED_1RST_PERSON_LOOK_UP",
++                                      "PED_1RST_PERSON_LOOK_DOWN",
++                                      "_CONTROLLERACTION_36",
++                                      "TOGGLE_DPAD",
++                                      "SWITCH_DEBUG_CAM_ON",
++                                      "TAKE_SCREEN_SHOT",
++                                      "SHOW_MOUSE_POINTER_TOGGLE",
++                                      "UNKNOWN_ACTION"};
++
++
++
++const char *iniControllerTypes[] = {"kbd:", "2ndKbd:", "mouse:", "joy:"};
++
++const char *iniMouseButtons[] = {"LEFT", "MIDDLE", "RIGHT", "WHLUP", "WHLDOWN", "X1", "X2"};
++
++const char *iniKeyboardButtons[] = {"ESC",     "F1",      "F2",     "F3",      "F4",       "F5",      "F6",     "F7",      "F8",     "F9",
++                                    "F10",     "F11",     "F12",    "INS",     "DEL",      "HOME",    "END",    "PGUP",    "PGDN",   "UP",
++                                    "DOWN",    "LEFT",    "RIGHT",  "DIVIDE",  "TIMES",    "PLUS",    "MINUS",  "PADDEL",  "PADEND", "PADDOWN",
++                                    "PADPGDN", "PADLEFT", "PAD5",   "NUMLOCK", "PADRIGHT", "PADHOME", "PADUP",  "PADPGUP", "PADINS", "PADENTER",
++                                    "SCROLL",  "PAUSE",   "BACKSP", "TAB",     "CAPSLK",   "ENTER",   "LSHIFT", "RSHIFT",  "SHIFT",  "LCTRL",
++                                    "RCTRL",   "LALT",    "RALT",   "LWIN",    "RWIN",     "APPS",    "NULL"};
++
++void
++LoadINIControllerSettings()
++{
++#ifdef DETECT_JOYSTICK_MENU
++#ifdef XINPUT
++	int storedJoy1 = -1;
++	if(ReadIniIfExists("Controller", "JoystickName", &storedJoy1)) {
++		CPad::XInputJoy1 = -1;
++		CPad::XInputJoy2 = -1;
++		XINPUT_STATE xstate;
++		memset(&xstate, 0, sizeof(XINPUT_STATE));
++
++		// Firstly confirm & set joy 1
++		if(XInputGetState(storedJoy1, &xstate) == ERROR_SUCCESS) { CPad::XInputJoy1 = storedJoy1; }
++
++		for(int i = 0; i <= 3; i++) {
++			if(XInputGetState(i, &xstate) == ERROR_SUCCESS) {
++				if(CPad::XInputJoy1 == -1)
++					CPad::XInputJoy1 = i;
++				else if(CPad::XInputJoy2 == -1 && i != CPad::XInputJoy1)
++					CPad::XInputJoy2 = i;
++			}
++		}
++
++		// There is no plug event on XInput, so let's leave XInputJoy1/2 as 0/1 respectively, and hotplug will be possible.
++		if(CPad::XInputJoy1 == -1) {
++			CPad::XInputJoy1 = 0;
++			CPad::XInputJoy2 = 1;
++		} else if(CPad::XInputJoy2 == -1) {
++			CPad::XInputJoy2 = (CPad::XInputJoy1 + 1) % 4;
++		}
++	}
++#else
++	ReadIniIfExists("Controller", "JoystickName", gSelectedJoystickName, 128);
++#endif
++#endif
++	// force to default GTA behaviour (never overwrite bindings on joy change/initialization) if user init'ed/set bindings before we introduced that
++	if(!ReadIniIfExists("Controller", "PadButtonsInited", &ControlsManager.ms_padButtonsInited)) {
++		ControlsManager.ms_padButtonsInited = cfg.get("Bindings").size() != 0 ? 16 : 0;
++	}
++
++	for(int32 i = 0; i < MAX_CONTROLLERACTIONS; i++) {
++		char value[128];
++		if(ReadIniIfExists("Bindings", iniControllerActions[i], value, 128)) {
++			for(int32 j = 0; j < MAX_CONTROLLERTYPES; j++) {
++				ControlsManager.ClearSettingsAssociatedWithAction((e_ControllerAction)i, (eControllerType)j);
++			}
++
++			for(char *binding = strtok(value, ", "); binding != nil; binding = strtok(nil, ", ")) {
++				int contType = -1;
++				for(int32 k = 0; k < ARRAY_SIZE(iniControllerTypes); k++) {
++					int len = strlen(iniControllerTypes[k]);
++					if(strncmp(binding, iniControllerTypes[k], len) == 0) {
++						contType = k;
++						binding += len;
++						break;
++					}
++				}
++				if(contType == -1) continue;
++
++				int contKey;
++				if(contType == JOYSTICK) {
++					char *temp;
++					contKey = strtol(binding, &temp, 0);
++
++				} else if(contType == KEYBOARD || contType == OPTIONAL_EXTRA) {
++					if(strlen(binding) == 1) {
++						contKey = binding[0];
++					} else if(strcmp(binding, "SPC") == 0) {
++						contKey = ' ';
++					} else {
++						for(int32 k = 0; k < ARRAY_SIZE(iniKeyboardButtons); k++) {
++							if(strcmp(binding, iniKeyboardButtons[k]) == 0) {
++								contKey = 1000 + k;
++								break;
++							}
++						}
++					}
++				} else if(contType == MOUSE) {
++					for(int32 k = 0; k < ARRAY_SIZE(iniMouseButtons); k++) {
++						if(strcmp(binding, iniMouseButtons[k]) == 0) {
++							contKey = 1 + k;
++							break;
++						}
++					}
++				}
++
++				ControlsManager.SetControllerKeyAssociatedWithAction((e_ControllerAction)i, contKey, (eControllerType)contType);
++			}
++		}
++	}
++}
++
++/// <summary>
++/// Save controller settings to the ".ini" file.
++/// </summary>
++void
++SaveINIControllerSettings()
++{
++	for(int32 i = 0; i < MAX_CONTROLLERACTIONS; i++) {
++		char value[128] = {'\0'};
++
++		// upper limit should've been GetNumOfSettingsForAction(i), but sadly even R* doesn't use it's own system correctly, and there are gaps between
++		// orders.
++		for(int32 j = SETORDER_1; j < MAX_SETORDERS; j++) {
++
++			// We respect the m_ContSetOrder, and join/implode/order the bindings according to that; using comma as seperator.
++			for(int32 k = 0; k < MAX_CONTROLLERTYPES; k++) {
++				if(ControlsManager.m_aSettings[i][k].m_ContSetOrder == j) {
++					char next[32];
++					if(k == JOYSTICK) {
++						snprintf(next, 32, "%s%d,", iniControllerTypes[k], ControlsManager.m_aSettings[i][k].m_Key);
++
++					} else if(k == KEYBOARD || k == OPTIONAL_EXTRA) {
++						if(ControlsManager.m_aSettings[i][k].m_Key == ' ')
++							snprintf(next, 32, "%sSPC,", iniControllerTypes[k]);
++						else if(ControlsManager.m_aSettings[i][k].m_Key < 256)
++							snprintf(next, 32, "%s%c,", iniControllerTypes[k], ControlsManager.m_aSettings[i][k].m_Key);
++						else
++							snprintf(next, 32, "%s%s,", iniControllerTypes[k],
++							         iniKeyboardButtons[ControlsManager.m_aSettings[i][k].m_Key - 1000]);
++
++					} else if(k == MOUSE) {
++						snprintf(next, 32, "%s%s,", iniControllerTypes[k],
++						         iniMouseButtons[ControlsManager.m_aSettings[i][k].m_Key - 1]);
++					}
++					strcat(value, next);
++					break;
++				}
++			}
++		}
++		int len = strlen(value);
++		if(len > 0) value[len - 1] = '\0'; // to remove comma
++
++		StoreIni("Bindings", iniControllerActions[i], value, 128);
++	}
++
++#ifdef DETECT_JOYSTICK_MENU
++#ifdef XINPUT
++	StoreIni("Controller", "JoystickName", CPad::XInputJoy1);
++#else
++	StoreIni("Controller", "JoystickName", gSelectedJoystickName, 128);
++#endif
++#endif
++	StoreIni("Controller", "PadButtonsInited", ControlsManager.ms_padButtonsInited);
++
++	ini.write(cfg);
++}
++
++/// <summary>
++/// Loads settings from the ".ini" file.
++/// </summary>
++/// <returns>Unknown</returns>
++bool
++LoadINISettings()
++{
++	if(!ini.read(cfg)) return false;
++
++#ifdef IMPROVED_VIDEOMODE
++	ReadIniIfExists("VideoMode", "Width", &FrontEndMenuManager.m_nPrefsWidth);
++	ReadIniIfExists("VideoMode", "Height", &FrontEndMenuManager.m_nPrefsHeight);
++	ReadIniIfExists("VideoMode", "Depth", &FrontEndMenuManager.m_nPrefsDepth);
++	ReadIniIfExists("VideoMode", "Subsystem", &FrontEndMenuManager.m_nPrefsSubsystem);
++	// Windowed mode is loaded below in CUSTOM_FRONTEND_OPTIONS section
++
++#ifdef EX_GPS
++	StoreIni("Display", "GPS", FrontEndMenuManager.m_PrefsGPS);
++#endif
++
++#else
++	ReadIniIfExists("Graphics", "VideoMode", &FrontEndMenuManager.m_nDisplayVideoMode);
++#endif
++
++#ifdef EX_GPS
++	ReadIniIfExists("Display", "GPS", &FrontEndMenuManager.m_PrefsGPS);
++#endif
++
++	ReadIniIfExists("Controller", "HeadBob1stPerson", &TheCamera.m_bHeadBob);
++	ReadIniIfExists("Controller", "HorizantalMouseSens", &TheCamera.m_fMouseAccelHorzntl);
++	ReadIniIfExists("Controller", "InvertMouseVertically", &MousePointerStateHelper.bInvertVertically);
++	ReadIniIfExists("Controller", "DisableMouseSteering", &CVehicle::m_bDisableMouseSteering);
++
++
++#ifdef IMPROVED_MENU_AND_INPUT
++	ReadIniIfExists("Controller", "InvertVertically", &FrontEndMenuManager.m_PrefsInvertVertically);
++	ReadIniIfExists("Controller", "Autoaim", &FrontEndMenuManager.m_PrefsAutoaim);
++	ReadIniIfExists("Controller", "LeftStickDeadzone", &FrontEndMenuManager.m_PrefsLeftStickDeadzone);
++	ReadIniIfExists("Controller", "RightStickDeadzone", &FrontEndMenuManager.m_PrefsRightStickDeadzone);
++	ReadIniIfExists("Controller", "VibrationForce", &FrontEndMenuManager.m_PrefsVibrationForce);
++	ReadIniIfExists("Controller", "PadLookSensX", &FrontEndMenuManager.m_PrefsPadLookSensX);
++	ReadIniIfExists("Controller", "PadAimSensX", &FrontEndMenuManager.m_PrefsPadAimSensX);
++	ReadIniIfExists("Controller", "PadLookSensY", &FrontEndMenuManager.m_PrefsPadLookSensY);
++	ReadIniIfExists("Controller", "PadAimSensY", &FrontEndMenuManager.m_PrefsPadAimSensY);
++	ReadIniIfExists("Controller", "MouseLookSensX", &FrontEndMenuManager.m_PrefsMouseLookSensX);
++	ReadIniIfExists("Controller", "MouseAimSensX", &FrontEndMenuManager.m_PrefsMouseAimSensX);
++	ReadIniIfExists("Controller", "MouseLookSensY", &FrontEndMenuManager.m_PrefsMouseLookSensY);
++	ReadIniIfExists("Controller", "MouseAimSensY", &FrontEndMenuManager.m_PrefsMouseAimSensY);
++	ReadIniIfExists("Display", "GPS", &FrontEndMenuManager.m_PrefsGPS);
++#else
++	ReadIniIfExists("Controller", "Vibration", &FrontEndMenuManager.m_PrefsUseVibration);
++#endif
++
++
++	ReadIniIfExists("Audio", "SfxVolume", &FrontEndMenuManager.m_PrefsSfxVolume);
++	ReadIniIfExists("Audio", "MusicVolume", &FrontEndMenuManager.m_PrefsMusicVolume);
++	ReadIniIfExists("Audio", "MP3BoostVolume", &FrontEndMenuManager.m_PrefsMP3BoostVolume);
++	ReadIniIfExists("Audio", "Radio", &FrontEndMenuManager.m_PrefsRadioStation);
++
++	// These should work.
++#if defined FIRST_PERSON && defined FIRING_AND_AIMING
++	ReadIniIfExists("Controller", "FOV_FirstPerson", &FrontEndMenuManager.m_PrefsFOV_FP);
++	ReadIniIfExists("Controller", "AutocenterCamInVeh_FirstPerson", &FrontEndMenuManager.m_PrefsAutocenterCamInVeh_FP);
++	ReadIniIfExists("Controller", "RelativeCamInVeh_DriveBy_FirstPerson", &FrontEndMenuManager.m_PrefsRelativeCamInVeh_DB_FP);
++	ReadIniIfExists("Controller", "DoomMode_FirstPerson", &FrontEndMenuManager.m_PrefsDoomMode_FP);
++#endif
++
++
++#ifdef EXTERNAL_3D_SOUND
++	ReadIniIfExists("Audio", "SpeakerType", &FrontEndMenuManager.m_PrefsSpeakers);
++	ReadIniIfExists("Audio", "Provider", &FrontEndMenuManager.m_nPrefsAudio3DProviderIndex);
++#endif
++	ReadIniIfExists("Audio", "DynamicAcoustics", &FrontEndMenuManager.m_PrefsDMA);
++	ReadIniIfExists("Display", "Brightness", &FrontEndMenuManager.m_PrefsBrightness);
++	ReadIniIfExists("Display", "DrawDistance", &FrontEndMenuManager.m_PrefsLOD);
++	ReadIniIfExists("Display", "Subtitles", &FrontEndMenuManager.m_PrefsShowSubtitles);
++	ReadIniIfExists("Graphics", "AspectRatio", &FrontEndMenuManager.m_PrefsUseWideScreen);
++	ReadIniIfExists("Graphics", "FrameLimiter", &FrontEndMenuManager.m_PrefsFrameLimiter);
++#ifdef LEGACY_MENU_OPTIONS
++	ReadIniIfExists("Graphics", "VSync", &FrontEndMenuManager.m_PrefsVsyncDisp);
++	ReadIniIfExists("Graphics", "Trails", &CMBlur::BlurOn);
++#endif
++	ReadIniIfExists("General", "SkinFile", FrontEndMenuManager.m_PrefsSkinFile, 256);
++	ReadIniIfExists("Controller", "Method", &FrontEndMenuManager.m_ControlMethod);
++	ReadIniIfExists("General", "Language", &FrontEndMenuManager.m_PrefsLanguage);
++	ReadIniIfExists("Display", "ShowHud", &FrontEndMenuManager.m_PrefsShowHud);
++	ReadIniIfExists("Display", "RadarMode", &FrontEndMenuManager.m_PrefsRadarMode);
++	ReadIniIfExists("Display", "ShowLegends", &FrontEndMenuManager.m_PrefsShowLegends);
++
++#ifdef EXTENDED_COLOURFILTER
++	ReadIniIfExists("CustomPipesValues", "PostFXIntensity", &CPostFX::Intensity);
++#endif
++#ifdef EXTENDED_PIPELINES
++	ReadIniIfExists("CustomPipesValues", "NeoVehicleShininess", &CustomPipes::VehicleShininess);
++	ReadIniIfExists("CustomPipesValues", "NeoVehicleSpecularity", &CustomPipes::VehicleSpecularity);
++	ReadIniIfExists("CustomPipesValues", "RimlightMult", &CustomPipes::RimlightMult);
++	ReadIniIfExists("CustomPipesValues", "LightmapMult", &CustomPipes::LightmapMult);
++	ReadIniIfExists("CustomPipesValues", "GlossMult", &CustomPipes::GlossMult);
++#endif
++	ReadIniIfExists("Rendering", "BackfaceCulling", &gBackfaceCulling);
++#ifdef NEW_RENDERER
++	ReadIniIfExists("Rendering", "NewRenderer", &gbNewRenderer);
++#endif
++
++#ifdef PROPER_SCALING
++	ReadIniIfExists("Draw", "ProperScaling", &CDraw::ms_bProperScaling);
++#endif
++#ifdef FIX_RADAR
++	ReadIniIfExists("Draw", "FixRadar", &CDraw::ms_bFixRadar);
++#endif
++#ifdef FIX_SPRITES
++	ReadIniIfExists("Draw", "FixSprites", &CDraw::ms_bFixSprites);
++#endif
++#ifdef DRAW_GAME_VERSION_TEXT
++	ReadIniIfExists("General", "DrawVersionText", &gbDrawVersionText);
++#endif
++#ifdef NO_MOVIES
++	ReadIniIfExists("General", "NoMovies", &gbNoMovies);
++#endif
++
++// KCNet
++
++#ifdef _FAST_LOADER
++	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
++#endif //_FAST_LOADER
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++
++#ifdef CUSTOM_FRONTEND_OPTIONS
++	bool migrate = cfg.get("FrontendOptions").size() != 0;
++	for(int i = 0; i < MENUPAGES; i++) {
++		for(int j = 0; j < NUM_MENUROWS; j++) {
++			CMenuScreenCustom::CMenuEntry &option = aScreens[i].m_aEntries[j];
++			if(option.m_Action == MENUACTION_NOTHING) break;
++
++			// CFO check
++			if(option.m_Action < MENUACTION_NOTHING && option.m_CFO->save) {
++				// Migrate from old .ini to new .ini
++				// Old values can only be int8, new ones can contain float if it is slider
++				if(migrate && ReadIniIfExists("FrontendOptions", option.m_CFO->save, (int8 *)option.m_CFO->value))
++					cfg["FrontendOptions"].remove(option.m_CFO->save);
++				else if(option.m_Action == MENUACTION_CFO_SLIDER)
++					ReadIniIfExists(option.m_CFO->saveCat, option.m_CFO->save, (float *)option.m_CFO->value);
++				else
++					ReadIniIfExists(option.m_CFO->saveCat, option.m_CFO->save, (int8 *)option.m_CFO->value);
++
++				if(option.m_Action == MENUACTION_CFO_SELECT) {
++					option.m_CFOSelect->lastSavedValue = option.m_CFOSelect->displayedValue = *(int8 *)option.m_CFO->value;
++				}
++			}
++		}
++	}
++#endif
++
++	// Fetched in above block, but needs evaluation
++#ifdef PED_CAR_DENSITY_SLIDERS
++	CPopulation::MaxNumberOfPedsInUse = DEFAULT_MAX_NUMBER_OF_PEDS * CIniFile::PedNumberMultiplier;
++	CPopulation::MaxNumberOfPedsInUseInterior = DEFAULT_MAX_NUMBER_OF_PEDS_INTERIOR * CIniFile::PedNumberMultiplier;
++	CCarCtrl::MaxNumberOfCarsInUse = DEFAULT_MAX_NUMBER_OF_CARS * CIniFile::CarNumberMultiplier;
++#endif
++
++	return true;
++}
++
++void
++SaveINISettings()
++{
++#ifdef IMPROVED_VIDEOMODE
++	StoreIni("VideoMode", "Width", FrontEndMenuManager.m_nPrefsWidth);
++	StoreIni("VideoMode", "Height", FrontEndMenuManager.m_nPrefsHeight);
++	StoreIni("VideoMode", "Depth", FrontEndMenuManager.m_nPrefsDepth);
++	StoreIni("VideoMode", "Subsystem", FrontEndMenuManager.m_nPrefsSubsystem);
++	// Windowed mode is loaded below in CUSTOM_FRONTEND_OPTIONS section
++#else
++	StoreIni("Graphics", "VideoMode", FrontEndMenuManager.m_nDisplayVideoMode);
++#endif
++	StoreIni("Controller", "HeadBob1stPerson", TheCamera.m_bHeadBob);
++	StoreIni("Controller", "HorizantalMouseSens", TheCamera.m_fMouseAccelHorzntl);
++	StoreIni("Controller", "InvertMouseVertically", MousePointerStateHelper.bInvertVertically);
++
++	StoreIni("Controller", "DisableMouseSteering", CVehicle::m_bDisableMouseSteering);
++	StoreIni("Controller", "Vibration", FrontEndMenuManager.m_PrefsUseVibration);
++
++	StoreIni("Audio", "SfxVolume", FrontEndMenuManager.m_PrefsSfxVolume);
++	StoreIni("Audio", "MusicVolume", FrontEndMenuManager.m_PrefsMusicVolume);
++	StoreIni("Audio", "MP3BoostVolume", FrontEndMenuManager.m_PrefsMP3BoostVolume);
++	StoreIni("Audio", "Radio", FrontEndMenuManager.m_PrefsRadioStation);
++#ifdef EXTERNAL_3D_SOUND
++	StoreIni("Audio", "SpeakerType", FrontEndMenuManager.m_PrefsSpeakers);
++	StoreIni("Audio", "Provider", FrontEndMenuManager.m_nPrefsAudio3DProviderIndex);
++#endif
++	StoreIni("Audio", "DynamicAcoustics", FrontEndMenuManager.m_PrefsDMA);
++	StoreIni("Display", "Brightness", FrontEndMenuManager.m_PrefsBrightness);
++	StoreIni("Display", "DrawDistance", FrontEndMenuManager.m_PrefsLOD);
++	StoreIni("Display", "Subtitles", FrontEndMenuManager.m_PrefsShowSubtitles);
++	StoreIni("Graphics", "AspectRatio", FrontEndMenuManager.m_PrefsUseWideScreen);
++#ifdef LEGACY_MENU_OPTIONS
++	StoreIni("Graphics", "VSync", FrontEndMenuManager.m_PrefsVsyncDisp);
++	StoreIni("Graphics", "Trails", CMBlur::BlurOn);
++#endif
++	StoreIni("Graphics", "FrameLimiter", FrontEndMenuManager.m_PrefsFrameLimiter);
++	StoreIni("General", "SkinFile", FrontEndMenuManager.m_PrefsSkinFile, 256);
++	StoreIni("Controller", "Method", FrontEndMenuManager.m_ControlMethod);
++	StoreIni("General", "Language", FrontEndMenuManager.m_PrefsLanguage);
++	StoreIni("Display", "ShowHud", FrontEndMenuManager.m_PrefsShowHud);
++	StoreIni("Display", "RadarMode", FrontEndMenuManager.m_PrefsRadarMode);
++	StoreIni("Display", "ShowLegends", FrontEndMenuManager.m_PrefsShowLegends);
++
++#ifdef EXTENDED_COLOURFILTER
++	StoreIni("CustomPipesValues", "PostFXIntensity", CPostFX::Intensity);
++#endif
++#ifdef EXTENDED_PIPELINES
++	StoreIni("CustomPipesValues", "NeoVehicleShininess", CustomPipes::VehicleShininess);
++	StoreIni("CustomPipesValues", "NeoVehicleSpecularity", CustomPipes::VehicleSpecularity);
++	StoreIni("CustomPipesValues", "RimlightMult", CustomPipes::RimlightMult);
++	StoreIni("CustomPipesValues", "LightmapMult", CustomPipes::LightmapMult);
++	StoreIni("CustomPipesValues", "GlossMult", CustomPipes::GlossMult);
++#endif
++	StoreIni("Rendering", "BackfaceCulling", gBackfaceCulling);
++#ifdef NEW_RENDERER
++	StoreIni("Rendering", "NewRenderer", gbNewRenderer);
++#endif
++
++#ifdef PROPER_SCALING
++	StoreIni("Draw", "ProperScaling", CDraw::ms_bProperScaling);
++#endif
++#ifdef FIX_RADAR
++	StoreIni("Draw", "FixRadar", CDraw::ms_bFixRadar);
++#endif
++#ifdef FIX_SPRITES
++	StoreIni("Draw", "FixSprites", CDraw::ms_bFixSprites);
++#endif
++#ifdef DRAW_GAME_VERSION_TEXT
++	StoreIni("General", "DrawVersionText", gbDrawVersionText);
++#endif
++#ifdef NO_MOVIES
++	StoreIni("General", "NoMovies", gbNoMovies);
++#endif
++
++
++// KCNet
++
++#ifdef _FAST_LOADER
++	StoreIni("General", "FastLoader", gbFastLoader);
++#endif //_FAST_LOADER
++
++//
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
++	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
++#endif
++
++#ifdef CUSTOM_FRONTEND_OPTIONS
++	for(int i = 0; i < MENUPAGES; i++) {
++		for(int j = 0; j < NUM_MENUROWS; j++) {
++			CMenuScreenCustom::CMenuEntry &option = aScreens[i].m_aEntries[j];
++			if(option.m_Action == MENUACTION_NOTHING) break;
++
++			if(option.m_Action < MENUACTION_NOTHING && option.m_CFO->save) {
++				if(option.m_Action == MENUACTION_CFO_SLIDER)
++					StoreIni(option.m_CFO->saveCat, option.m_CFO->save, *(float *)option.m_CFO->value);
++				else
++					StoreIni(option.m_CFO->saveCat, option.m_CFO->save, *(int8 *)option.m_CFO->value);
++			}
++		}
++	}
++#endif
++
++	ini.write(cfg);
++}
++
++#endif
++
++/////////////////////
++// End ini functions
++/////////////////////
+\ No newline at end of file
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+new file mode 100644
+index 00000000..7ceefc0f
+--- /dev/null
++++ b/src/extras/functions/ini_functions.h
+@@ -0,0 +1,104 @@
++#pragma once
++
++// Hmm I could probably use these elsewhere if needed.
++
++#include "ini.h"
++
++#include "defines.h"
++#ifdef DEBUG_EXTRA_CHEATS
++#include "player_cheats.h"
++#endif // DEBUG_EXTRA_CHEATS
++
++#include <string>
++#include <vector>
++#include <map>
++
++class IniFunctions
++{
++private:
++	Defines defines;	
++
++public:
++
++#ifdef DEBUG_EXTRA_CHEATS
++	struct WarpData {
++		// This isn't in my file, I'll add it later
++		std::string name;
++		int interiorId;
++
++		float x, y, z;
++	};
++
++	struct VehicleData {
++		std::string name;
++		int id;
++	};
++
++	struct LocationData {
++		int interiorId;
++		float posX, posY, posZ;
++	};
++
++	struct Category {
++		std::string name;
++		std::vector<std::pair<std::string, LocationData>> locations;
++	};
++
++	struct VehicleCategory {
++		std::string name;
++		std::vector<std::pair<std::string, VehicleData>> vehicles;
++	};
++
++	// New, warp categories
++#ifdef NEW_WARP_TEST
++	std::vector<IniFunctions::WarpData> categorizedWarps;
++#else
++	// Well I think these are the problem, they break it in here... I'll deal with this later.....
++	//std::map<std::string, std::vector<WarpData>> categorizedWarps;
++
++	//std::map<std::string, std::vector<WarpData>> warps;
++#endif
++
++#endif // DEBUG_EXTRA_CHEATS
++
++	static bool ReadIniIfExists(const char *cat, const char *key, bool *out);
++
++#ifdef DEBUG_EXTRA_CHEATS
++	void RenderWarpList(PlayerCheats &playerCheats, const std::string &iniFilename, const std::string &section);
++#endif // DEBUG_EXTRA_CHEATS
++
++	std::vector<std::string> SplitString(const std::string &str, char delimiter);
++
++#ifdef DEBUG_EXTRA_CHEATS
++	// Load locations
++	std::vector<Category> LoadLocationsFromIni(const std::string &filename);
++	void DisplayLocations(const std::vector<IniFunctions::Category> &categories);
++
++	// New load locations
++	void LoadLocations();
++	void DisplayLocationsImGui();
++	//
++
++	// Append to locations
++	bool AppendLocationToIni(const std::string &filename, const std::string &categoryName, const std::string &locationName,
++	                         const IniFunctions::WarpData &warpData);
++
++	// Append to warp locations with input
++	bool AppendWarpWithInput(const std::string &filename, std::string &categoryName, std::string &locationName, IniFunctions::WarpData &warpData);
++
++	// Addition for deleting warps from the ini file
++	bool RemoveLocationFromIni(const std::string &filename, const std::string &categoryName, const std::string &locationName);
++	//
++
++	// Load Vehicles
++	std::vector<VehicleCategory> LoadVehiclesFromIni(const std::string &filename);
++	void DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &categories);
++
++	//WarpData ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIStructure &warpsCfg);
++	void ImGuiWarpList();
++	
++	void LoadWarpIni();
++#endif // DEBUG_EXTRA_CHEATS
++
++
++};
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+new file mode 100644
+index 00000000..2f74c7fe
+--- /dev/null
++++ b/src/extras/functions/log_functions.cpp
+@@ -0,0 +1,475 @@
++#include "log_functions.h"
++
++#include "common.h"
++
++#include <iostream>
++#include <fstream>
++#include <string>
++
++#include <ctime>
++#include <iomanip>
++
++#include <chrono>
++#include <sstream>
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif //_WIN32
++
++// This log_functions file isn't specific to ReVC, it should work in any C++ program besides the 'TRACE' functions.
++
++// This is what I'm currently using for this test.
++// https://stackoverflow.com/questions/7400418/writing-a-log-file-in-c-c
++#include <cstdio>
++
++// Extras, KCNet
++// Defines, extra files
++#include "defines.h"
++
++// TODO Make this write over instead of appending the log file for now.
++
++// The boolean gbExtraLogging is set in the main menu and ini options to toggle this.
++
++
++// Set the file directory to ViceExtended
++// const char *filePath = "\\ViceExtended\\";
++// I had to remove the extra '\\' at the beginning of this to fix the log file path
++std::string filePath = "ViceExtended\\";
++// Add logs to the path.
++std::string logPath = filePath + "logs\\";
++    // This is in the functions
++//std::string logFilePath = filePath + fileName;
++
++// https://stackoverflow.com/questions/1200188/how-to-convert-stdstring-to-lpcstr
++// https://stackoverflow.com/questions/8931196/how-to-create-a-directory-in-c
++
++/// <summary>
++/// Check if a directory exists, for now this only works for Windows.
++/// TODO Make this work on Linux if I get around to testing it on there.
++/// </summary>
++/// <param name="folderPath">The path to check</param>
++/// <returns>If the folder exists</returns>
++bool
++#ifdef _WIN32
++CheckDirectoryExists(LPCSTR folderPath)
++#else
++CheckDirectoryExists(std::string folderPath)
++#endif //_WIN32
++{
++#ifdef _WIN32
++
++	// TODO Move this into another function.
++	// Create the directory if it doesn't already exist.
++	//CreateDirectory(logPath.c_str(), NULL);
++	//CreateDirectory(folderPath, NULL);
++	
++	// Check if the directory exists
++	// https://stackoverflow.com/questions/8233842/how-to-check-if-directory-exist-using-c-and-winapi
++	DWORD ftyp = GetFileAttributesA(folderPath);
++	if (ftyp == INVALID_FILE_ATTRIBUTES) { 
++		return false; // Something is wrong with the path
++	}
++
++	if (ftyp & FILE_ATTRIBUTE_DIRECTORY) { 
++		return true; // This is a valid directory
++	}
++
++	return false; // Not a directory
++
++	// 
++	//TRACE("KCNet - 'ViceExtended\logs' folder not found, creating one for you");
++#else
++	// Not implemented on other systems.
++	return false;
++#endif //_WIN32
++}
++
++
++// Logging functions
++
++/// <summary>
++/// Log to file
++/// Ohh, the problem with this is that I didn't have the directory created first.
++/// If the directory isn't created this won't run and fails.
++/// TODO Make this create the 'ViceExtended\logs' directory if it doesn't exist.
++/// This uses the 'ViceExtended\logs' directory.
++/// </summary>
++/// <param name="type">The type of log, info, warning, error</param>
++/// <param name="fileName">The file name to log to, set to 'ViceExtended\logs' folder</param>
++/// <param name="message">The message to log.</param>
++static void
++LogToFile(std::string type, std::string fileName, std::string message)
++{
++	
++	// Set this to the new logPath folder 'ViceExtended\logs'
++	std::string logFilePath = logPath + fileName;
++	
++	// Set this to the old logPath folder 'ViceExtended\'
++	//std::string logFilePath = filePath + fileName;
++
++	// Setup the ofstream for the logFile
++	std::ofstream logFile(logFilePath, std::ios::app);
++
++	// Temporary test, this shows the log file path from above.
++	// Why does this show weird symbols? It works in game
++	//TRACE("Path: %s", logFilePath);
++
++	// Create directory if it doesn't exist.
++	if (!CheckDirectoryExists(logPath.c_str())) {
++		
++		// This works, but the error message seems to cancel out the info log line.
++		// Create the directory if it doesn't already exist.
++		// This only works on Windows.
++#ifdef _WIN32
++		CreateDirectory(logPath.c_str(), NULL);
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
++#else
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, this can only create the folder on Windows!");
++#endif //_WIN32
++	}
++	
++	//
++
++	// Check if the file was opened.
++	if(logFile.is_open()) 
++	{
++
++		// This is Windows file directory specific stuff.
++#ifdef _WIN32
++
++		// Test for adding time to logs
++		std::time_t now = std::time(nullptr);
++		std::tm local_tm = *std::localtime(&now);
++
++		// https://stackoverflow.com/a/19535628
++		char result[MAX_PATH];
++		if(!GetCurrentDirectoryA(MAX_PATH, result) == 0) {
++			// This gets the current directory with the filename
++			// std::string exePath(result, GetModuleFileName(NULL, result, MAX_PATH));
++			// logFile << "File path: " << exePath << std::endl;
++			// https://cplusplus.com/forum/windows/187372/
++
++			// This gets the current directory, seems to work for my needs
++			std::string currentDirectory(result, GetCurrentDirectoryA(MAX_PATH, result));
++
++			// Temporary test, this is supposed to show the log file path from above.
++			// Why does this show weird symbols? It works in game
++			//TRACE("Path: %s", result);
++			
++
++			// Set the folder to Vice Extended
++			// These don't seem to be in use.
++			
++			//currentDirectory = currentDirectory + "\\ViceExtended\\";
++			//currentDirectory = currentDirectory + "\\ViceExtended\\" + "logs\\";
++			// Old path
++			//std::string logFilePath = currentDirectory + fileName;
++
++			// TODO Make this use a log folder path.
++			// New path
++			//std::string logFilePathNew = currentDirectory + "logs\\" + fileName;
++			//TRACE("Path: %s", logFilePathNew.c_str());
++			//
++			
++
++			// Test for making the time into a variable, got this idea from Google AI.
++			std::ostringstream oss;
++			oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
++			std::string formatted_time = oss.str();
++			//
++
++
++			// This works fine like this
++			// Logs like this:
++			// Error: Time <Message>
++			logFile << "[" << type << "] " << "[" << formatted_time << "] " << message;
++
++			// Old tests
++			//logFile << "[" << formatted_time << "] " << "Folder path: " << currentDirectory << std::endl;
++			//logFile << "[" << formatted_time << "] " << "File path: " << logFilePath << std::endl;
++			// logFile << "File path: " << logFilePath << std::endl;
++
++			// These work
++			// logFile << "Folder path: " << currentDirectory << std::endl;
++			// logFile << "File path: " << logFilePath << std::endl;
++
++			// Close the log file.
++			logFile.close();
++		}
++
++		// TODO Figure out why this message always displays.
++#endif //_WIN32
++	} else {
++		// Well this has some weird symbols in it..
++		//TRACE("KCNet - File %s not found.", fileName);		
++		//TRACE("KCNet - Logging not implemented.");
++	}
++}
++
++
++/// <summary>
++/// Log a info message to the file.
++/// Adds a new line at the end of the text.
++/// </summary>
++/// <param name="fileName">The file to log to</param>
++/// <param name="message">The message</param>
++void
++LogFunctions::LogInfo(std::string fileName, std::string message)
++{
++	// Print this to file:
++	// Info + Text + New line
++	LogToFile("Info", fileName, message + "\n");
++}
++
++
++/// <summary>
++/// Log a warning message to the file.
++/// Adds a new line at the end of the text.
++/// </summary>
++/// <param name="fileName">The file to log to</param>
++/// <param name="message">The message</param>
++void
++LogFunctions::LogWarning(std::string fileName, std::string message)
++{
++	// Print this to file:
++	// Warning + Text + New line
++	LogToFile("Warning", fileName, message + "\n");
++}
++
++/// <summary>
++/// Log a error message to the file.
++/// Adds a new line at the end of the text.
++/// </summary>
++/// <param name="fileName">The file to log to</param>
++/// <param name="message">The message</param>
++void
++LogFunctions::LogError(std::string fileName, std::string message)
++{
++	// Print this to file:
++	// Error + Text + New line
++	LogToFile("Error", fileName, message + "\n");
++}
++
++/// <summary>
++/// This is a quick test to run the above functions.
++/// </summary>
++void
++LogFunctions::LogTest()
++{
++	Defines defines = Defines();
++	std::string logFilePath = logPath + defines.logFile;
++
++	LogFunctions::LogInfo(logFilePath, "This is an info message");
++
++}
++
++
++// https://stackoverflow.com/questions/143174/how-do-i-get-the-directory-that-a-program-is-running-from
++
++
++/// <summary>
++/// This works now, check if the file exists in the 'ViceExtended\\' folder.
++/// https://www.scaler.com/topics/cpp-check-if-the-file-exists/
++/// This should check if the log file exists under 'ViceExtended\\fileName'
++/// </summary>
++/// <param name="fileName">The file name to check if exists</param>
++/// <returns>If the file exists or not.</returns>
++bool
++//LogFunctions::DoesFileExist(const char *fileName)
++LogFunctions::DoesFileExist(std::string fileName)
++{
++	// Working
++	//std::string logFilePath = filePath + fileName;
++	
++	// New test
++	std::string logFilePath = logPath + fileName;
++
++	// Create an ifstream named file
++	std::ifstream logFile;
++
++	// Attempt to open the file
++	logFile.open(logFilePath);
++
++	if(logFile) {
++		return true;
++	} else {
++		return false;
++	}
++}
++
++/// <summary>
++/// This was just a test function, to check if the log file exists.
++/// This was tested working using 'TRACE'.
++/// </summary>
++void
++LogFunctions::DoesFileExistTest()
++{
++	Defines defines = Defines();
++	/*std::string logFile = "KCNet";*/
++	if (LogFunctions::DoesFileExist(defines.logFile))
++	{ 
++		TRACE("File %s exists\n", defines.logFile);
++	} else {
++		TRACE("File %s doesn't exist\n", defines.logFile);
++	}
++
++}
++
++char pBuf[256];
++size_t len = sizeof(pBuf);
++//
++
++// This may be very useful:
++// https://www.geeksforgeeks.org/logging-system-in-cpp/
++
++// TODO Setup this to set the file extension seperately.
++
++/// <summary>
++/// This should log text to a file.
++/// This creates a file!
++/// I wonder how to write to it.
++/// I used something from Google AI to figure out this basic logging test.
++/// </summary>
++/// <param name="fileName">The file to log to.</param>
++void
++//LogFunctions::LogText(std::string fileName)
++LogFunctions::LogText(const char *fileName)
++{
++	//freopen(fileName + ".log", "w", stdout);
++	//freopen(fileName, "w", stdout);
++
++	// From Google AI
++	// Open the log file in append mode
++	
++	// Set the file directory to ViceExtended
++	//const char *filePath = "\\ViceExtended\\";
++	// I had to remove the extra '\\' at the beginning of this to fix the log file path
++	// I moved this outside of this function
++	//std::string filePath = "ViceExtended\\";
++	std::string logFilePath = filePath + fileName;
++
++
++	// Changed this to have the new path in it.
++	//std::ofstream logFile(fileName, std::ios::app);
++	std::ofstream logFile(logFilePath, std::ios::app);
++
++	// Check if the file was opened successfully
++	if(logFile.is_open()) 
++	{
++	
++	    // Log some values
++		//int myInt = 42;
++		//double myDouble = 3.14;
++
++		
++		// logFile << "Integer: " << myInt << std::endl;
++		// logFile << "Double: " << myDouble << std::endl;
++
++		// This is Windows file directory specific stuff.
++		#ifdef _WIN32
++
++		// Test for adding time to logs
++		std::time_t now = std::time(nullptr);
++		std::tm local_tm = *std::localtime(&now);
++		//int bytes = GetModuleFileName(NULL, pBuf, len);
++
++		// https://stackoverflow.com/a/19535628
++		// This gets the current file name
++		char result[MAX_PATH];
++		//std::string myString(result, GetModuleFileName(NULL, result, MAX_PATH));
++
++		//if(GetCurrentDirectoryA(MAX_PATH, result) == 0) 
++		//{ 
++		//	return ""; 
++		//}
++		if (!GetCurrentDirectoryA(MAX_PATH, result) == 0) { 
++			// This gets the current directory with the filename
++			//std::string exePath(result, GetModuleFileName(NULL, result, MAX_PATH));
++			// logFile << "File path: " << exePath << std::endl;
++			// https://cplusplus.com/forum/windows/187372/
++			
++			// This gets the current directory, seems to work for my needs
++			std::string currentDirectory(result, GetCurrentDirectoryA(MAX_PATH, result));
++			
++			// TODO Add the ViceExtended folder to this, this doesn't seem to set it.
++			currentDirectory = currentDirectory + "\\ViceExtended\\";
++			std::string logFilePath = currentDirectory + fileName;
++
++			// Test for making this into a variable, got this idea from Google AI.
++			std::ostringstream oss;
++			oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
++			std::string formatted_time = oss.str();
++
++			//std::string currentTime = std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
++			
++			//logFile << "File path: " << result << std::endl;
++			
++			// This works for displaying this with the date and time.
++			//logFile << "[" << formatted_time << "] Application started" << std::endl;
++			
++			logFile << "[" << formatted_time << "] " << "Folder path: " << currentDirectory << std::endl;
++			logFile << "[" << formatted_time << "] " << "File path: " << logFilePath << std::endl;
++
++			// logFile << "File path: " << logFilePath << std::endl;
++
++
++			// These work
++			//logFile << "Folder path: " << currentDirectory << std::endl;
++
++			//logFile << "File path: " << logFilePath << std::endl;
++		}
++		#endif //_WIN32
++
++		// This didn't work
++		//fs::path currentPath = fs::current_path();
++		//std::string myString = "Current program path: " << currentPath.string() << std::endl;
++
++		
++
++		// Close the log file
++		logFile.close();
++
++		std::cout << "Values logged to " << fileName << std::endl;
++		// This seems to work, output to Visual Studio console but I've disabled it.
++		// TRACE("Values logged to %s", fileName);
++	} else {
++		std::cerr << "Error opening log file: " << fileName << std::endl;
++	}
++
++	//
++
++	//std::cout << ""
++}
++
++/// <summary>
++/// This should output logs to a test.log file
++/// This test is added to the debug menu, it is an easier way to log in ReVC.
++/// </summary>
++void
++LogFunctions::LogText()
++{
++	Defines defines = Defines();
++	// Give the path like this:
++	// 'ViceExtended\logs\fileName.log'
++	std::string logFilePath = logPath + defines.logFile;
++
++	// TODO Setup a date for this in the file name
++	// Original method
++	const char *logFile = "KCNet-ReVC.log";
++
++	//TRACE(logFilePath.c_str());
++
++	//LogFunctions::LogText(logFile);
++
++	// These get new lines added to the messages in the logging functions above.
++	LogFunctions::LogInfo(logFile, "This is a info message.");
++	LogFunctions::LogWarning(logFile, "This is a warning message.");
++	LogFunctions::LogError(logFile, "This is a error message.");
++
++	// TODO Fix this use the 'ViceExtended\logs' directory.
++	// I think I have to set this in the LogToFile function.
++	// const char *logFileNew = logFilePath.c_str();
++	// This complains about the file not being found in the new directory.
++	//LogFunctions::LogText(logFileNew);
++	//LogFunctions::LogInfo(logFileNew, defines.logFile);
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+new file mode 100644
+index 00000000..9e48fd6a
+--- /dev/null
++++ b/src/extras/functions/log_functions.h
+@@ -0,0 +1,33 @@
++#pragma once
++#include <iostream>
++#include <string>
++
++// I have started working on a dll for this log functions project, 
++// I will need to double check the paths in ReVC once I test it, since I modified the functions a bit
++
++// The project name so far is KCNet-Logging-Dll, I'll probably come up with a better name sometime.
++// I have made the project open source under the MIT license since it's something I am playing around with.
++
++class LogFunctions
++{
++//private:
++	
++public:
++	// Check if a file exists.
++	//static bool DoesFileExist(const char *fileName);
++	static bool DoesFileExist(std::string fileName);
++	// TODO Remove this
++	static void DoesFileExistTest();
++
++	// Logging
++	static void LogInfo(std::string fileName, std::string message);
++	static void LogWarning(std::string fileName, std::string message);
++	static void LogError(std::string fileName, std::string message);
++	
++	// static void LogText(std::string fileName);
++	static void LogText(const char *fileName);
++	static void LogText();
++
++	// Tests
++	static void LogTest();
++};
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+new file mode 100644
+index 00000000..f185b6f6
+--- /dev/null
++++ b/src/extras/utils/defines.cpp
+@@ -0,0 +1,131 @@
++#include "defines.h"
++
++#include "config.h"
++
++// Game path folder
++#if defined(GTAVC)
++std::string Defines::gamePathFolder = "ViceExtended/";
++#elif defined(GTA3)
++std::string Defines::gamePathFolder = "LibertyExtended/";
++#elif defined(GTALCS)
++std::string Defines::gamePathFolder = "LCSExtended/";
++#endif
++
++// TODO Remove this later
++std::string viceExtendedFolder = "ViceExtended/";
++
++// std::string logFolderPath = viceExtendedFolder + "logs/";
++
++std::string logFolderPath = Defines::gamePathFolder + "logs/";
++
++// This is mostly in use for cout in the -console of ReVC, so I can read the value easier.
++std::string Defines::KcLogString = "||||&&&&KCNET&&&&|||| ";
++
++// This is required.
++// Set the log file path
++
++// Log files
++#if defined(GTAVC)
++std::string Defines::logFile = "KCNet-ReVC.log";
++#elif defined(GTA3)
++std::string Defines::logFile = "KCNet-Re3.log";
++#elif defined(GTALCS)
++std::string Defines::logFile = "KCNet-ReLCS.log";
++#endif
++
++std::string Defines::logFilePath = viceExtendedFolder + "/logs/" + Defines::logFile;
++
++std::string Defines::pluginSdkTestLog = "KCNet-PluginSdk-Test.log";
++
++// Lua log file
++#if defined(GTAVC)
++std::string Defines::luaLogFile = "KCNet-ReVC-lua.log";
++#elif defined(GTA3)
++std::string Defines::luaLogFile = "KCNet-Re3-lua.log";
++#elif defined(GTALCS)
++std::string Defines::luaLogFile = "KCNet-ReLCS-lua.log";
++#endif
++
++// ImGui Menu name
++#if defined(GTAVC)
++std::string Defines::imGuiMenuName = "KCNet ReVC ImGui";
++#elif defined(GTA3)
++std::string Defines::imGuiMenuName = "KCNet Re3 ImGui";
++#elif defined(GTALCS)
++std::string Defines::imGuiMenuName = "KCNet LCS ImGui";
++#endif
++
++std::string Defines::tomlLogFile = "KCNet-toml.log";
++
++// Fonts
++std::string Defines::fontFile = "cheat_menu.ttf";
++
++// Modification name
++#if defined(GTAVC)
++std::string Defines::modificationName = "KCNet-ReVC";
++#elif defined(GTA3)
++std::string Defines::modificationName = "KCNet-Re3";
++#elif defined(GTALCS)
++std::string Defines::modificationName = "KCNet-ReLCS";
++#endif
++//
++
++// ImGui menu name
++#if defined(GTAVC)
++std::string Defines::menuName = "KCNet-ReVC-ImGui";
++#elif defined(GTA3)
++std::string Defines::menuName = "KCNet-Re3-ImGui";
++#elif defined(GTALCS)
++std::string Defines::menuName = "KCNet-ReLCS-ImGui";
++#endif
++
++// Set the program modification author
++std::string Defines::modificationAuthor = "kelson8";
++
++// Set the program version.
++// TODO Make this grab from my latest internal gitea releases or something.
++// std::string Defines::programVersion = "1.1";
++#if defined(GTAVC)
++std::string Defines::programVersion = "1.2a - Pre Release";
++#elif defined(GTA3)
++std::string Defines::programVersion = "1.2a - Pre Release";
++#elif defined(GTALCS)
++std::string Defines::programVersion = "1.0a - Pre Release";
++#endif
++
++// Vice extended folder, lua scripts.
++// For now I only have a test.lua in this but it works when wasted/busted and on game startup.
++
++std::string luaScriptsFolder = Defines::gamePathFolder + "lua_scripts/";
++
++// std::string luaScriptsFolder = viceExtendedFolder + "lua_scripts/";
++
++// Lua files, mostly in use in lua_test.cpp
++// TODO Rename file to something else.
++std::string Defines::luaScript = luaScriptsFolder + "test.lua";
++
++// New lua items
++std::string Defines::luaKeyBindScript = luaScriptsFolder + "kcnet-keybind-events.lua";
++std::string Defines::luaWastedScript = luaScriptsFolder + "kcnet-wasted.lua";
++std::string Defines::luaBustedScript = luaScriptsFolder + "kcnet-busted.lua";
++std::string Defines::luaSetupScript = luaScriptsFolder + "kcnet-setup.lua";
++
++
++std::string Defines::luaLocationsScript = luaScriptsFolder + "locations.lua";
++
++std::string Defines::luaEventsScript = luaScriptsFolder + "kcnet-events.lua";
++
++// Game ini files
++#if defined(GTAVC)
++std::string Defines::mainIniFile = "reVC.ini";
++#elif defined(GTA3)
++std::string Defines::mainIniFile = "re3.ini";
++#elif defined(GTALCS)
++std::string Defines::mainIniFile = "reLCS.ini";
++#endif
++
++std::string Defines::imGuiControlsIniFile = Defines::gamePathFolder + "ImGui-Controls.ini";
++std::string Defines::warpsIniFile = Defines::gamePathFolder + "warps.ini";
++std::string Defines::featuresIniFile = Defines::gamePathFolder + "features.ini";
++
++std::string Defines::vehiclesIniFile = Defines::gamePathFolder + "vehicles.ini";
+\ No newline at end of file
+diff --git a/src/extras/utils/defines.h b/src/extras/utils/defines.h
+new file mode 100644
+index 00000000..8067539b
+--- /dev/null
++++ b/src/extras/utils/defines.h
+@@ -0,0 +1,96 @@
++#pragma once
++
++#include <iostream>
++
++// New for dll logging
++//#define LOG_CLASS_TEST
++//#define LOG_DLL_TEST
++//
++
++// This works, but shouldn't be used
++//#define LOG(x) std::cout << x << std::endl
++
++// Can be used like this:
++
++// LOG(Defines::KcLogString << memAddressString);
++
++//#undef LOG
++
++// This should work for logging with a message
++template <typename T>
++inline void
++log_output(const T &message)
++{
++	std::cout << message << std::endl;
++}
++
++// TODO Test this
++
++#define TO_STRING(VALUE) std::to_string(VALUE)
++
++// TODO Figure out how to do inline for this.
++//inline std::string
++//to_strings(std::string message)
++//{
++//	return std::to_string(message);
++//}
++
++// TODO Move file path defines into here, so I can easily change the folder path from 'ViceExtended'
++// To something else.
++class Defines
++{
++public:
++	// Files
++	//const char *logFile = "KCNet-ReVC.log";
++	// Logs
++	static std::string logFile;
++	static std::string luaLogFile;
++
++	static std::string logFilePath;
++	// Plugin sdk test
++	static std::string pluginSdkTestLog;
++
++	// Toml logging
++	static std::string tomlLogFile;
++
++
++	// New for specifying the game folder
++	static std::string gamePathFolder;
++
++	// Log string for cout, cerr debug
++	static std::string KcLogString;
++
++	// Files
++	static std::string fontFile;
++	// Lua
++	static std::string luaScript;
++	static std::string luaKeyBindScript;
++	static std::string luaWastedScript;
++	static std::string luaBustedScript;
++	static std::string luaSetupScript;
++
++
++	static std::string luaLocationsScript;
++	static std::string luaEventsScript;
++
++
++	// Ini
++	static std::string mainIniFile;
++	static std::string imGuiControlsIniFile;
++	static std::string warpsIniFile;
++	// Vice Extended features
++	static std::string featuresIniFile;
++
++	// Vehicles
++	static std::string vehiclesIniFile;
++
++	// ImGui info
++	static std::string imGuiMenuName;
++
++
++	// Program info
++	static std::string modificationName;
++	static std::string menuName;
++	static std::string modificationAuthor;
++	static std::string programVersion;
++};
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

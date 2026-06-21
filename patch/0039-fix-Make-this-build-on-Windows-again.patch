@@ -1,0 +1,36 @@
+From 356f5e94e0c8df6e7bfa108559ef57b867908918 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 18:31:26 -0500
+Subject: [PATCH 39/58] fix: Make this build on Windows again
+
+---
+ src/skel/glfw/glfw.cpp | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index c6ccbf05..12fc9cea 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -1996,15 +1996,15 @@ bool	luaInit = false;
+ int
+ main(int argc, char *argv[])
+ {
+-#endif
+-	RwV2d pos;
+-	RwInt32 i;
+-
+ #ifdef LUA_TEST
+ 	// Test for making a lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
+ 	bool luaInit = false;
+ #endif
+ 
++#endif
++	RwV2d pos;
++	RwInt32 i;
++
+ #ifdef USE_CUSTOM_ALLOCATOR
+ 	InitMemoryMgr();
+ #endif
+-- 
+2.49.0.windows.1
+

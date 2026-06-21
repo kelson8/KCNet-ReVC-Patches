@@ -1,0 +1,17 @@
+From e9eade523633e0e9f7e26d99d81d0509d4d41fac Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 14:42:07 -0500
+Subject: [PATCH 12/58] fix: Move build.yml into workflows folder
+
+---
+ .gitea/{ => workflows}/build.yml | 0
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ rename .gitea/{ => workflows}/build.yml (100%)
+
+diff --git a/.gitea/build.yml b/.gitea/workflows/build.yml
+similarity index 100%
+rename from .gitea/build.yml
+rename to .gitea/workflows/build.yml
+-- 
+2.49.0.windows.1
+

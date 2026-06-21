@@ -1,0 +1,25 @@
+From f7a8a2051b8e662f7defa9d400d7177cfaccb2c4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 14:46:28 -0500
+Subject: [PATCH 14/58] fix: Fix dependency install for build.yml
+
+---
+ .gitea/workflows/build.yml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitea/workflows/build.yml b/.gitea/workflows/build.yml
+index 67452af9..ad0882a9 100644
+--- a/.gitea/workflows/build.yml
++++ b/.gitea/workflows/build.yml
+@@ -27,7 +27,7 @@ jobs:
+       image: registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
+       run: |
+         apt-get update
+-        apt-get install -y --no-install-recommends
++        apt-get install -y --no-install-recommends \
+         libopenal-dev \
+         libglew-dev \
+         libglfw3-dev \
+-- 
+2.49.0.windows.1
+

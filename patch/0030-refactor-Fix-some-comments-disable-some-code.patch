@@ -1,0 +1,86 @@
+From 31a4ecd31a7186966978c1494824498633bedc71 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 13:33:20 -0500
+Subject: [PATCH 30/58] refactor: Fix some comments, disable some code
+
+---
+ src/extras/functions/imgui_setup.cpp |  6 ------
+ src/skel/glfw/glfw.cpp               | 22 +++++-----------------
+ 2 files changed, 5 insertions(+), 23 deletions(-)
+
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index f5295286..93db208b 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -4,12 +4,6 @@
+ 
+ #include "imgui_setup.h"
+ 
+-// TODO Figure out how to make this work on Linux.
+-// It shouldn't be too hard if I can get this ImGui setup code migrated over
+-// And also I need to switch from DirectX9 in skel/win.cpp, to using OpenGL or something in skel/glfw.cpp
+-// I'm not too sure on how to use OpenGL just yet with ImGui.
+-// I am currently loading ImGui by adding it into the d3ddevice.cpp file in librw.
+-
+ #include "imgui.h"
+ 
+ #if defined(_WIN32) && defined(RW_D3D9)
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index df3d3280..068b31e9 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -76,24 +76,20 @@ long _dwOperatingSystemVersion;
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
+ 
+-// TODO Fix ImGui to work on OpenGL
+ #ifdef _IMGUI_TEST
+ 
+ // Moved ImGui init, ImGui loop, controller and mouse/keyboard keybinds into here
+ #include "imgui_setup.h"
+ 
+ #include "imgui.h"
+-#include "imgui_impl_dx9.h"
+-#include "imgui_impl_win32.h"
+ 
+ #include "imgui_functions.h"
+ #include "imgui_main_menu.h"
+ 
+-
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(RW_GL3)
+ // Required for opening menu with Xbox controller.
+ #include <Xinput.h>
+-#endif // _WIN32
++#endif // _WIN32 && !RW_GL3
+ 
+ bool bInit = false;
+ #ifdef _WIN32
+@@ -106,21 +102,13 @@ HWND mainWindow = nullptr;
+ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ 
+ // Forward declare message handler from imgui_impl_win32.cpp
+-#ifdef _WIN32
++#if defined(_WIN32) && defined(RW_D3D9)
+ extern IMGUI_IMPL_API LRESULT
+ ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+-// LRESULT WINAPI
+-// MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+-// #include "imgui_impl_dx9.h"
+-// TODO Why the hell is this not working? It's in the backends folder...
+-//#include "imgui_impl_win32.h
+-
+-#include "backends/imgui_impl_win32.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
+ #endif // _WIN32
+ 
+-// #include "imgui.h"
+-
+-
+ #endif // _IMGUI_TEST
+ 
+ #ifdef DISABLE_PAUSE_FOCUS_LOSS
+-- 
+2.49.0.windows.1
+

@@ -1,0 +1,124 @@
+From 299e4ed5290ae40a995cec3a2ef89628f46a36da Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 23:54:42 -0500
+Subject: [PATCH 53/58] feat: Add package-release.ps1 for Windows
+
+* This will package a release, debug, and game files zip.
+---
+ package-release.ps1 | 104 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 104 insertions(+)
+ create mode 100644 package-release.ps1
+
+diff --git a/package-release.ps1 b/package-release.ps1
+new file mode 100644
+index 00000000..89a1bf57
+--- /dev/null
++++ b/package-release.ps1
+@@ -0,0 +1,104 @@
++# 7zip for main extraction, should fallback to built in archiver if 7z isn't found.
++$7zPath = "C:\Program Files\7-Zip\7z.exe"
++
++# TODO Fix 7zip to work for this.
++
++# 64 bit
++$RELEASE_64 = "bin/win-amd64-librw_gl3_glfw-oal/Release"
++$DEBUG_64 = "bin/win-amd64-librw_gl3_glfw-oal/Debug"
++$RELEASES_FOLDER = "Releases"
++$GAMEFILES_FOLDER = "gamefiles"
++# Set the version to output here.
++$PROJECT_VERSION = "1.2.1"
++
++$PLATFORM = "Windows"
++
++# Compressed zip files
++$RELEASE_ZIP = "$RELEASES_FOLDER\$PROJECT_VERSION\Release-$PLATFORM-reVC-$PROJECT_VERSION.zip"
++$DEBUG_ZIP = "$RELEASES_FOLDER\$PROJECT_VERSION\Debug-$PLATFORM-reVC-$PROJECT_VERSION.zip"
++$GAMEFILES_ZIP = "$RELEASES_FOLDER\$PROJECT_VERSION\gamefiles-reVC-$PROJECT_VERSION.zip"
++
++# https://stackoverflow.com/questions/16906170/create-directory-if-it-does-not-exist
++
++
++# Debug lines
++# Write-Output $RELEASE_ZIP
++# Write-Output $DEBUG_ZIP
++# Write-Output $GAMEFILES_ZIP
++# Write-Output $PROJECT_VERSION
++
++#------
++# Functions
++#------
++
++function Compress-Files {
++    param (
++        [string]$7zPath,
++        [string]$releasePath,
++        [string]$releaseZip
++    )
++
++    # Check if 7-Zip is valid
++    if (Test-Path $7zPath) {
++        Write-Output "Using 7-Zip to compress files."
++        & $7zPath a -t7z "$releaseZip" "$releasePath\*"
++    }
++    else {
++        Write-Warning "7-Zip not found at $7zPath. Falling back to Compress-Archive."
++        
++        # Fallback to Compress-Archive
++        if (Test-Path $releasePath) {
++            Compress-Archive -Path "$releasePath\*" -DestinationPath "$releaseZip" -Update
++        }
++        else {
++            Write-Warning "Release build not found at $releasePath. Skipping."
++        }
++    }
++}
++
++##
++
++#------
++# Creating folders
++#------
++# Create releases directory if it doesn't exist.
++if (!(Test-Path -PathType container $RELEASES_FOLDER)) {
++    Write-Output "$RELEASES_FOLDER doesn't exist, creating it now."
++    New-Item -ItemType Directory -Path $RELEASES_FOLDER | Out-Null
++}
++
++# Create release version directory if it doesn't exist.
++if (!(Test-Path -PathType container "$RELEASES_FOLDER\$PROJECT_VERSION")) {
++    Write-Output "$RELEASES_FOLDER/$PROJECT_VERSION doesn't exist, creating it now."
++    New-Item -ItemType Directory -Path "$RELEASES_FOLDER\$PROJECT_VERSION" | Out-Null
++}
++
++#------
++# Compressing and copying files
++#------
++# Copy release and debug builds
++
++# Compress Release and Debug builds
++foreach ($build in @(
++    @{ Path = $RELEASE_64; Zip = $RELEASE_ZIP; Type = "Release" },
++    @{ Path = $DEBUG_64; Zip = $DEBUG_ZIP; Type = "Debug" },
++    @{ Path = $GAMEFILES_FOLDER; Zip = $GAMEFILES_ZIP; Type = "Gamefiles" }
++)) {
++    $buildPath = $build.Path
++    $buildZip = $build.Zip
++    $buildType = $build.Type
++
++    if (Test-Path $buildPath) {
++        Write-Output "Copying $buildType build to $buildZip"
++
++        if (Test-Path $buildZip) {
++            Write-Output "$buildType zip already exists, overwriting it."
++        } else {
++            Write-Output "$buildType zip doesn't exist, creating it now."
++        }
++
++        Compress-Files -7zPath $7zPath -releasePath $buildPath -releaseZip $buildZip
++    } else {
++        Write-Warning "$buildType build not found at $buildPath. Skipping."
++    }
++}
+-- 
+2.49.0.windows.1
+

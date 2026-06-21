@@ -1,0 +1,83 @@
+From e18686fb7f0b51b0c9802ef99751791b16912489 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 18:17:00 -0500
+Subject: [PATCH 49/58] feat: Add Linux builder script, and release script
+
+---
+ make-x64.sh        | 18 ++++++++++++++++++
+ package-release.sh | 37 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 55 insertions(+)
+ create mode 100755 make-x64.sh
+ create mode 100755 package-release.sh
+
+diff --git a/make-x64.sh b/make-x64.sh
+new file mode 100755
+index 00000000..b703a3be
+--- /dev/null
++++ b/make-x64.sh
+@@ -0,0 +1,18 @@
++#!/bin/bash
++
++# Basic script to build Debug and Release for x64.
++
++BUILD_FOLDER=build
++DEBUG_BUILD=debug_linux-amd64-librw_gl3_glfw-oal
++RELEASE_BUILD=release_linux-amd64-librw_gl3_glfw-oal
++
++if [ ! -d build ]; then
++    echo "Build folder not found, running premake."
++    ./premake5Linux --with-librw --imgui-opengl --no-git-hash gmake2
++fi
++
++cd build
++# make config=debug_linux-amd64-librw_gl3_glfw-oal -j$(nproc)
++make config=$DEBUG_BUILD -j$(nproc)
++make config=$RELEASE_BUILD -j$(nproc)
++# make config=release_linux-amd64-librw_gl3_glfw-oal -j$(nproc)
+diff --git a/package-release.sh b/package-release.sh
+new file mode 100755
+index 00000000..517c8f01
+--- /dev/null
++++ b/package-release.sh
+@@ -0,0 +1,37 @@
++#!/bin/bash
++
++# 64 bit
++RELEASE_64=bin/linux-amd64-librw_gl3_glfw-oal/Release
++DEBUG_64=bin/linux-amd64-librw_gl3_glfw-oal/Debug
++RELEASES_FOLDER=Releases
++GAMEFILES_FOLDER=gamefiles
++# Set the version to output here.
++PROJECT_VERSION=1.2
++
++# Compressed zip files
++RELEASE_ZIP=$RELEASES_FOLDER/Release-Linux-reVC-$PROJECT_VERSION.zip
++DEBUG_ZIP=$RELEASES_FOLDER/Debug-Linux-reVC-$PROJECT_VERSION.zip
++GAMEFILES_ZIP=$RELEASES_FOLDER/gamefiles-reVC-$PROJECT_VERSION.zip
++
++if [ ! -d $RELEASES_FOLDER ]; then
++    echo "Releases folder not found, creating it now."
++    mkdir $RELEASES_FOLDER
++fi
++
++# Basic script to package the built release and debug files
++if [ -f $RELEASE_64/reVC ]; then
++    echo "reVC release build found, zipping."
++    zip $RELEASE_ZIP $RELEASE_64/reVC
++fi
++
++if [ -f $DEBUG_64/reVC ]; then
++    echo "reVC debug build found, zipping."
++    zip $DEBUG_ZIP $DEBUG_64/reVC
++fi
++
++
++# Game files
++if [ -d $GAMEFILES_FOLDER ]; then
++    echo "Gamefiles folder found, zipping."
++    zip -r $GAMEFILES_ZIP $GAMEFILES_FOLDER
++fi
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

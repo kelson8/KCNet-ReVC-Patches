@@ -1,0 +1,2735 @@
+From 9ba1b4b7bbb1ab9db1411da0d393702a92505abb Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 16:25:19 -0500
+Subject: [PATCH 34/58] feat: Add experimental lua support * This builds but is
+ untested
+
+---
+ .gitmodules                            |   3 +
+ lib/lua                                |   1 +
+ premake5.lua                           |  21 +-
+ src/control/GameLogic.cpp              | 158 +++++
+ src/core/Game.cpp                      |  35 +
+ src/core/Pad.cpp                       |   6 +
+ src/core/config.h                      |  16 +
+ src/core/main.cpp                      |   8 +-
+ src/extras/functions/ini_functions.cpp |  11 +-
+ src/extras/lua/lua_functions.cpp       | 656 +++++++++++++++++
+ src/extras/lua/lua_functions.h         |  80 +++
+ src/extras/lua/lua_helpers.cpp         |  41 ++
+ src/extras/lua/lua_helpers.h           |  27 +
+ src/extras/lua/lua_setup.cpp           | 177 +++++
+ src/extras/lua/lua_setup.h             |   7 +
+ src/extras/lua/lua_test.cpp            | 944 +++++++++++++++++++++++++
+ src/extras/lua/lua_test.h              | 113 +++
+ src/skel/glfw/glfw.cpp                 |  57 ++
+ 18 files changed, 2355 insertions(+), 6 deletions(-)
+ create mode 160000 lib/lua
+ create mode 100644 src/extras/lua/lua_functions.cpp
+ create mode 100644 src/extras/lua/lua_functions.h
+ create mode 100644 src/extras/lua/lua_helpers.cpp
+ create mode 100644 src/extras/lua/lua_helpers.h
+ create mode 100644 src/extras/lua/lua_setup.cpp
+ create mode 100644 src/extras/lua/lua_setup.h
+ create mode 100644 src/extras/lua/lua_test.cpp
+ create mode 100644 src/extras/lua/lua_test.h
+
+diff --git a/.gitmodules b/.gitmodules
+index acf7006a..00e0fd88 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -17,3 +17,6 @@
+ [submodule "lib/imgui"]
+ 	path = lib/imgui
+ 	url = https://github.com/ocornut/imgui.git
++[submodule "lib/lua"]
++	path = lib/lua
++	url = https://github.com/lua/lua.git
+diff --git a/lib/lua b/lib/lua
+new file mode 160000
+index 00000000..c6b48482
+--- /dev/null
++++ b/lib/lua
+@@ -0,0 +1 @@
++Subproject commit c6b484823806e08e1756b1a6066a3ace6f080fae
+diff --git a/premake5.lua b/premake5.lua
+index ad0700ee..36b7bbfe 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -330,7 +330,6 @@ project "reVC"
+ 	-- ImGui menus
+ 	includedirs { "src/extras/menus" }
+ 	files { addSrcFiles("src/extras/menus") }
+-	-- includedirs { "lib/lua" }
+ 
+ 	files { addSrcFiles("src") }
+ 	files { addSrcFiles("src/animation") }
+@@ -372,6 +371,8 @@ project "reVC"
+ 	includedirs { ("src/extras/functions") }
+ 	includedirs { ("src/extras/kcnet") }
+ 	includedirs { ("src/extras/utils") }
++
++
+ 	--
+ 
+ 	includedirs { "src" }
+@@ -402,12 +403,30 @@ project "reVC"
+ 		defines { "USE_OUR_VERSIONING" }
+ 	end
+ 
++
+ 	if _OPTIONS["with-opus"] then
+ 		includedirs { "vendor/ogg/include" }
+ 		includedirs { "vendor/opus/include" }
+ 		includedirs { "vendor/opusfile/include" }
+ 	end
+ 
++	-- Lua
++	files { addSrcFiles("src/extras/lua") }
++	includedirs { "src/extras/lua" }
++
++	-- files { addSrcFiles("lib/lua") }
++	
++	includedirs { "lib/lua" }
++	
++	-- This works for excluding the files
++	-- TODO Remove onelua.c from this.
++	files {
++		"lib/lua/*.c",
++		"lib/lua/*.h",
++	}
++
++	--
++
+ 	-- New, only enable d3dx9 lib on Windows..
+ 	filter "platforms:win*"
+ 		-- Add imgui files for Windows
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 63c685d1..e4f303d7 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -32,6 +32,18 @@
+ #include "screendroplets.h"
+ #include "SaveBuf.h"
+ 
++#ifdef LUA_TEST
++#include "lua_test.h"
++#endif
++
++#ifdef CUSTOM_CODE //Logging functions
++#include "log_functions.h"
++#include "defines.h"
++
++// For extra logging toggle
++#include "main.h"
++#endif
++
+ uint8 CGameLogic::ActivePlayers;
+ uint8 CGameLogic::ShortCutState;
+ CAutomobile* CGameLogic::pShortCutTaxi;
+@@ -96,16 +108,34 @@ CGameLogic::SortOutStreamingAndMemory(const CVector &pos)
+ 	CTimer::Update();
+ }
+ 
++/// <summary>
++/// Main game logic updating
++/// </summary>
+ void
+ CGameLogic::Update()
+ {
+ 	CVector vecRestartPos;
+ 	float fRestartFloat;
+ 
++#ifdef CUSTOM_CODE
++	Defines defines = Defines();
++#endif
++
++#ifdef LUA_TEST
++	LuaTest luaTest = LuaTest();
++#endif
++
+ #ifdef MISSION_REPLAY
+ 	// what a place to check!
++
++	// TODO Try to use this format to start a script.
+ 	if (gbTryingPorn4Again) {
+ 		CRunningScript* pScript = CTheScripts::pActiveScripts;
++		//pScript->AddScriptToList
++			
++			// TODO Test this format, I might be able to start the mission scripts with it.
++			CTheScripts::StartNewScript(pScript->m_nIp);
++
+ 		if (pScript && !CGeneral::faststricmp(pScript->m_abScriptName, "porno4"))
+ 			gbTryingPorn4Again = false;
+ 	}
+@@ -117,6 +147,8 @@ CGameLogic::Update()
+ 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+ 
+ 	switch (pPlayerInfo.m_WBState) {
++
++	// If player is playing
+ 	case WBSTATE_PLAYING:
+ 		if (pPlayerInfo.m_pPed->m_nPedState == PED_DEAD) {
+ 			pPlayerInfo.m_pPed->ClearAdrenaline();
+@@ -127,12 +159,20 @@ CGameLogic::Update()
+ 			pPlayerInfo.ArrestPlayer();
+ 		}
+ 		break;
++
++	// If player is wasted
+ 	case WBSTATE_WASTED:
+ #ifdef MISSION_REPLAY
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > AddExtraDeathDelay() + 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= AddExtraDeathDelay() + 0x800)) {
+ #else
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= 0x800)) {
+ #endif
++			// This fades the camera out.
++			// TODO Add a toggle for this and fading the camera in, I didn't know these could be changed
++//#ifdef CUSTOM_CODE
++//
++//#endif
++
+ 			TheCamera.SetFadeColour(200, 200, 200);
+ 			TheCamera.Fade(2.0f, FADE_OUT);
+ 		}
+@@ -168,27 +208,99 @@ CGameLogic::Update()
+ 			CMessages::ClearMessages();
+ 			CCarCtrl::ClearInterestingVehicleList();
+ 			CWorld::ClearExcitingStuffFromArea(pPlayerInfo.GetPos(), 4000.0f, true);
++
++			// This works!
++#ifdef LUA_TEST
++			// Reset back to normal, now test is in initLua
++			//if (luaTest.toggleRespawnPoint) {
++
++			//}
++
++			CRestart::FindClosestHospitalRestartPoint(pPlayerInfo.GetPos(), &vecRestartPos, &fRestartFloat);
++			
++
++#else
+ 			CRestart::FindClosestHospitalRestartPoint(pPlayerInfo.GetPos(), &vecRestartPos, &fRestartFloat);
++
++#endif
+ 			CRestart::OverrideHospitalLevel = LEVEL_GENERIC;
+ 			CRestart::OverridePoliceStationLevel = LEVEL_GENERIC;
++
++			// Oops, this has to be before my time to pass value below.
++#ifdef LUA_TEST         // Wasted, reinit lua
++			// This works in here! I didn't think it would, I guess I added it to the wrong code before.
++			// TODO Set this to also override the players spawn.
++
++			// Switched to new file, now loads from the wasted events instead of the init lua.
++			luaTest.WastedLuaEvents();
++
++			// This works!!
++			// Setup a lua function for this.
++			//CVector airportVector = CVector(-1515.1f, -1182.1f, 16.5f);
++			//float airportHeading = 0.0f;
++
++			//vecRestartPos = airportVector;
++			//fRestartFloat = airportHeading;
++
++
++			//CRestart::OverrideNextRestart(airportVector, airportHeading);
++			//CRestart::OverridePosition = airportVector;
++			//CRestart::OverrideHeading = airportHeading;
++#endif
++			//
++
++			// Pass the time
++#ifdef LUA_TEST
++
++			// Run lua file after being wasted
++//#ifdef EXTRA_LOGGING
++//			if(gbExtraLogging) {
++//				std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
++//				LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++//			}
++//#endif
++
++			// I had to init lua before this.
++			//PassTime(luaTest.timeToPass);
++			// Reverted back to normal
++			PassTime(720);
++#else
+ 			PassTime(720);
++#endif
++			
++
+ 			RestorePlayerStuffDuringResurrection(pPlayerInfo.m_pPed, vecRestartPos, fRestartFloat);
+ 			AfterDeathArrestSetUpShortCutTaxi();
+ 			SortOutStreamingAndMemory(pPlayerInfo.GetPos());
++
+ 			TheCamera.m_fCamShakeForce = 0.0f;
+ 			TheCamera.SetMotionBlur(0, 0, 0, 0, MOTION_BLUR_NONE);
++
+ 			CPad::GetPad(0)->StopShaking(0);
+ 			CReferences::RemoveReferencesToPlayer();
++
+ 			CPopulation::m_CountDownToPedsAtStart = 10;
+ 			CCarCtrl::CountDownToCarsAtStart = 10;
++
++			// Set player controls to enabled
+ 			CPad::GetPad(CWorld::PlayerInFocus)->DisablePlayerControls = PLAYERCONTROL_ENABLED;
++			// Fade the camera in
++			// TODO Add a toggle for this and fading the camera out, I didn't know these could be changed
++
++//#ifndef CUSTOM_CODE
+ 			if (CRestart::bFadeInAfterNextDeath) { 
+ 				TheCamera.SetFadeColour(200, 200, 200);
+ 				TheCamera.Fade(4.0f, FADE_IN);
+ 			} else
+ 				CRestart::bFadeInAfterNextDeath = true;
++//#endif
++
++
++
+ 		}
+ 		break;
++
++	// If player is busted
+ 	case WBSTATE_BUSTED:
+ #ifdef MISSION_REPLAY
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > AddExtraDeathDelay() + 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= AddExtraDeathDelay() + 0x800)) {
+@@ -228,6 +340,8 @@ CGameLogic::Update()
+ 			pPlayerInfo.m_nBustedAudioStatus = BUSTEDAUDIO_NONE;
+ #endif
+ 			pPlayerInfo.m_WBState = WBSTATE_PLAYING;
++
++			// Take tha players money.
+ 			int takeMoney;
+ 
+ 			switch (pPlayerInfo.m_pPed->m_pWanted->GetWantedLevel()) {
+@@ -251,6 +365,10 @@ CGameLogic::Update()
+ 				takeMoney = 1500;
+ 				break;
+ 			}
++
++			// Set get out of jail free back to false if its enabled.
++			// Or take the players money and clear their weapons.
++			// Hmm I could modify this to where the player doesn't lose weapons with a toggle.
+ 			if (pPlayerInfo.m_bGetOutOfJailFree) {
+ 				pPlayerInfo.m_bGetOutOfJailFree = false;
+ 			} else {
+@@ -258,6 +376,7 @@ CGameLogic::Update()
+ 				pPlayerInfo.m_pPed->ClearWeapons();
+ 			}
+ 
++			// If the player is in a vehicle, I'm quite sure this removes them.
+ 			if (pPlayerInfo.m_pPed->bInVehicle) {
+ 				CVehicle *pVehicle = pPlayerInfo.m_pPed->m_pMyVehicle;
+ 				if (pVehicle != nil) {
+@@ -278,25 +397,64 @@ CGameLogic::Update()
+ 			CCarCtrl::ClearInterestingVehicleList();
+ 			CWorld::ClearExcitingStuffFromArea(pPlayerInfo.GetPos(), 4000.0f, true);
+ 			CRestart::FindClosestPoliceRestartPoint(pPlayerInfo.GetPos(), &vecRestartPos, &fRestartFloat);
++
+ 			CRestart::OverrideHospitalLevel = LEVEL_GENERIC;
+ 			CRestart::OverridePoliceStationLevel = LEVEL_GENERIC;
++
++
++			// Run lua file after being busted
++#ifdef LUA_TEST // Busted, reinit lua
++
++			// This works when the player is busted.
++			//  Switched to new file, now loads from the busted events instead of the init lua.
++			luaTest.BustedLuaEvents();
++#endif
++			//
++			// Get time to pass value from lua, TODO Add config option for this in lua
++#ifdef LUA_TEST
++			
++
++//#ifdef EXTRA_LOGGING
++//			if(gbExtraLogging) {
++//				std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
++//				LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++//			}
++//#endif
++
++			// I had to init lua before this.
++			//PassTime(luaTest.timeToPass);
++			// Reverted back to normal
++			PassTime(720);
++#else
+ 			PassTime(720);
++#endif
++
+ 			RestorePlayerStuffDuringResurrection(pPlayerInfo.m_pPed, vecRestartPos, fRestartFloat);
+ 			AfterDeathArrestSetUpShortCutTaxi();
+ 			pPlayerInfo.m_pPed->ClearWeapons();
++
+ 			SortOutStreamingAndMemory(pPlayerInfo.GetPos());
++
+ 			TheCamera.m_fCamShakeForce = 0.0f;
+ 			TheCamera.SetMotionBlur(0, 0, 0, 0, MOTION_BLUR_NONE);
++
+ 			CPad::GetPad(0)->StopShaking(0);
+ 			CReferences::RemoveReferencesToPlayer();
++
+ 			CPopulation::m_CountDownToPedsAtStart = 10;
+ 			CCarCtrl::CountDownToCarsAtStart = 10;
++
++			// Enable player controls
+ 			CPad::GetPad(CWorld::PlayerInFocus)->DisablePlayerControls = PLAYERCONTROL_ENABLED;
++
+ 			if (CRestart::bFadeInAfterNextArrest) {
+ 				TheCamera.SetFadeColour(0, 0, 0);
+ 				TheCamera.Fade(4.0f, FADE_IN);
+ 			} else
+ 				CRestart::bFadeInAfterNextArrest = true;
++
++
++
+ 		}
+ 		break;
+ 	case WBSTATE_FAILED_CRITICAL_MISSION:
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 25a28383..0664a2cd 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -96,6 +96,26 @@
+ #include "TexturePools.h"
+ #endif
+ 
++#ifdef CUSTOM_CODE
++#include "ini_functions.h"
++#endif // CUSTOM_CODE
++
++#ifdef LUA_TEST
++#include "lua_test.h"
++// Warp loading, moved into Game.h for test.
++//#include "ini_functions.h"
++
++// Logging
++#include "log_functions.h"
++
++// Misc stuff for my project
++#include "misc_util.h"
++
++// Extra stuff for defines.
++#include "defines.h"
++
++#endif // CUSTOM_CODE - LUA_TEST
++
+ // search for TExtender to see changes
+ #include "TExtender.h"
+ 
+@@ -460,6 +480,21 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	CdStreamAddImage("MODELS\\GTA3.IMG");
+ 
++
++#ifdef CUSTOM_CODE
++	IniFunctions iniFunctions = IniFunctions();
++
++
++	// TODO Add changes to miami-dev!!
++	// Load the warps ini file for the menu.
++	iniFunctions.LoadWarpIni();
++
++	// Loading the locations into memory, for use in the ImGui menu.
++	iniFunctions.LoadLocations();
++	//
++
++#endif // CUSTOM_CODE
++
+ 	CFileLoader::LoadLevel("DATA\\DEFAULT.DAT");
+ 	CFileLoader::LoadLevel(datFile);
+ 
+diff --git a/src/core/Pad.cpp b/src/core/Pad.cpp
+index 3638c5c7..b149b33c 100644
+--- a/src/core/Pad.cpp
++++ b/src/core/Pad.cpp
+@@ -1581,6 +1581,12 @@ void CPad::AddToPCCheatString(char c)
+ 		RenderWaterLayersCheat();
+ #endif
+ 
++// TODO Add cheats to activate lua functions when I set those up.
++#ifdef LUA_TEST
++	//if(!_CHEATCMP("PUEMWOLB"))
++	//	// Run the init lua function, which can test the cheats
++#endif //LUA_TEST
++
+ #undef _CHEATCMP
+ }
+ 
+diff --git a/src/core/config.h b/src/core/config.h
+index 9b0aa395..fc18984a 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -58,6 +58,22 @@
+ // Toggle ImGui on/off, works with OpenGL on Windows and Linux.
+ #define _IMGUI_TEST
+ 
++// Toggle the Lua test
++// This is currently broken on miami-dev-lua, I need to fix up Lua support and test it.
++#define LUA_TEST
++
++// If lua is enabled, also enable these.
++#ifdef LUA_TEST
++// This works for basic lua events!!!
++// I setup the blow_up_vehicle function in lua.
++// Just don't put anything that'll constantly run in this lua file.
++#define LUA_EVENT_TEST
++
++// Moves some lua functions out of lua_test, I'm nearly done with this.
++// I will possibly separate this out like lua_player_functions.cpp, lua_world_functions.cpp, and more.
++#define MOVE_LUA_FUNCTIONS
++#endif
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index aee6f5d6..e732f8c5 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -122,10 +122,6 @@ bool gbNoMovies;
+ bool gbFastLoader;
+ #endif
+ 
+-#ifdef LUA_TEST
+-bool gbLuaTest;
+-#endif //LUA_TEST
+-
+ #ifdef _IMGUI_TEST
+ bool gbImGuiToggle;
+ #endif
+@@ -146,6 +142,10 @@ bool gbFalloffBike = true;
+ uint8 gbGameSaveOnStartup = 0;
+ #endif
+ 
++#ifdef LUA_TEST
++bool gbLuaTest;
++#endif //LUA_TEST
++
+ volatile int32 frameCount;
+ 
+ RwRGBA gColourTop;
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 0e9d1d31..294c1775 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1407,12 +1407,21 @@ SaveINISettings()
+ 	StoreIni("General", "FastLoader", gbFastLoader);
+ #endif //_FAST_LOADER
+ 
+-//
++#ifdef LUA_TEST
++	StoreIni("KCNet", "LuaTest", gbLuaTest);
++#endif
++
++#ifdef _IMGUI_TEST
++	StoreIni("KCNet", "ImGuiMenuToggle", gbImGuiToggle);
++#endif
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+ 	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
+ #endif
+ 
++//
++
++
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	for(int i = 0; i < MENUPAGES; i++) {
+ 		for(int j = 0; j < NUM_MENUROWS; j++) {
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+new file mode 100644
+index 00000000..6622e266
+--- /dev/null
++++ b/src/extras/lua/lua_functions.cpp
+@@ -0,0 +1,656 @@
++#include "pch.h"
++
++#ifdef LUA_TEST
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++
++#include <iostream>
++
++#include <vector>
++
++#include <fstream>
++#include <iostream>
++#include <string>
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif
++
++// Add in my log functions.
++#include "defines.h"
++#include "log_functions.h"
++
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
++#include "file_functions.h"
++
++#include "custom_cheats.h"
++#include "player_cheats.h"
++
++// ImGui test
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++#endif
++
++// VC Specific
++#include "Hud.h"
++#include "Radar.h"
++#include "Text.h"
++
++#include "Automobile.h"
++#include "Bike.h"
++#include "Boat.h"
++#include "Heli.h"
++
++#include "Pad.h"
++#include "Restart.h"
++
++// Well Entity.h is needed before PlayerInfo.h
++#include "Entity.h"
++#include "PlayerInfo.h"
++#include "PlayerPed.h"
++
++#include "CarCtrl.h"
++#include "Population.h"
++#include "World.h"
++
++// Test for getting coords and heading.
++#include "player_util.h"
++
++// Well I got this stuff working in this file.
++
++/* Lua help:
++* To get a string: 
++*	lua_tostring(L, 1);
++
++* To get a float: 
++Example for player coords with 3 values:
++*	float playerPosX = (float)lua_tonumber(L, 1);
++*	float playerPosY = (float)lua_tonumber(L, 2);
++*	float playerPosZ = (float)lua_tonumber(L, 3);
++
++* To get an int:
++*	
++
++* To push a boolean:
++*	I have a custom function called pushBooleanToLua which can be used to push a boolean from C++
++*	to the lua code.
++
++
++*/
++
++//------- Lua utils --------//
++
++/// <summary>
++/// Push a boolean to lua.
++/// </summary>
++/// <param name="L"></param>
++/// <param name="value"></param>
++void
++pushBooleanToLua(lua_State *L, bool value)
++{
++	lua_pushboolean(L, value);
++}
++
++
++
++
++
++
++// clang-format off
++//------- Log utils/ Message utils --------//
++extern "C" 
++{
++
++	/// <summary>
++	/// Log the players coords to the lua file, this works.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	logPlayerCoordsLua(lua_State *L)
++	{
++		Defines defines = Defines();
++		PlayerUtil playerUtil = PlayerUtil();
++
++		CVector playerCoords = playerUtil.PlayerCoords();
++		float playerX = playerCoords.x;
++		float playerY = playerCoords.y;
++		float playerZ = playerCoords.z;
++
++		LogFunctions::LogInfo(defines.luaLogFile,
++	                      "Player coords X:" + std::to_string(playerX) + " Y: " + std::to_string(playerY) + " Z: " + std::to_string(playerZ));
++
++		return 1;
++	}
++
++	/// <summary>
++        /// Log the players heading to the lua file, this works.
++        /// </summary>
++        /// <param name="L"></param>
++        /// <returns></returns>
++	int
++    logPlayerHeadingLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    PlayerUtil playerUtil = PlayerUtil();
++
++	    float playerHeading = playerUtil.PlayerHeading();
++	    LogFunctions::LogInfo(defines.luaLogFile, "Player heading: " + std::to_string(playerHeading));
++
++	    return 1;
++	}
++
++	// Log info/warning/error messages
++
++	/// <summary>
++    /// This works, log an info message using lua.
++    /// </summary>
++    /// <param name="L"></param>
++    /// <returns></returns>
++    int
++    logMessageLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    // std::string logString = lua_tostring(L, 1);
++	    const char *logString = lua_tostring(L, 1);
++
++	    if(logString == nullptr) {
++			// Oops, forgot this.
++		    lua_pushstring(L, "Error: missing string argument");
++		    return 1;
++		}
++
++	    LogFunctions::LogInfo(defines.luaLogFile, logString);
++
++	    return 0;
++	}
++
++	/// <summary>
++	/// Log a warning message in lua
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++    logWarningMessageLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    const char *logString = lua_tostring(L, 1);
++
++	    if(logString == nullptr) {
++			// Oops, forgot this.
++		    lua_pushstring(L, "Error: missing string argument");
++		    return 1;
++		}
++
++	    LogFunctions::LogWarning(defines.luaLogFile, logString);
++
++	    return 1;
++	}
++
++	/// <summary>
++	/// Log an error message in lua
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++    logErrorMessageLua(lua_State *L)
++    {
++		Defines defines = Defines();
++	    const char *logString = lua_tostring(L, 1);
++
++	    if(logString == nullptr) {
++			// Oops, forgot this.
++		    lua_pushstring(L, "Error: missing string argument");
++		    return 1;
++		}
++
++	    LogFunctions::LogError(defines.luaLogFile, logString);
++
++	    return 1;
++	}
++	
++	// Log current directory
++	// I think this just logs the game directory
++	int
++	logCurrentDirectoryLua(lua_State* L)
++	{
++		LogFunctions::LogInfo(Defines::luaLogFile, FileFunctions::CurrentDirectory());
++		return 0;
++	}
++
++	// Display a help message to the hud using lua, this works
++	// To use this in lua: print_msg(message)
++	int
++	customHelpMessageLua(lua_State* L)
++	{
++	    const char *messageText = lua_tostring(L, 1);
++
++		if (lua_tostring(L, 1)) { 
++			CustomCheats::CustomHelpMessage(messageText);
++		}
++
++	    return 1;
++
++	}
++
++}
++
++
++// clang-format off
++
++//-----------------------
++// World options
++//-----------------------
++extern "C"
++{
++	// Clear items in the specified area
++	// TODO Test this
++	int
++	clearAreaLua(lua_State* L)
++	{
++		CustomCheats customCheats = CustomCheats();
++		int radius = lua_tointeger(L, 1);
++		
++		customCheats.ClearItemsFromArea(radius);
++
++		return 1;
++	}
++
++	int
++	disablePedsLua(lua_State *L)
++	{
++		PlayerCheats playerCheats = PlayerCheats();
++		CPopulation::PedDensityMultiplier = 0.0f;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Peds have been disabled");
++
++		return 1;
++	}
++
++	int
++	disableVehiclesLua(lua_State *L)
++	{
++		CCarCtrl::CarDensityMultiplier = 0.0f;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Vehicles have been disabled");
++
++		return 1;
++	}
++
++	/// <summary>
++	/// Blow up all vehicles, lua function.
++	/// </summary>
++	int
++	blowUpAllVehiclesLua(lua_State* L)
++	{
++		CustomCheats::BlowUpAllCars();
++		return 1;
++	}
++
++}
++
++//-----------------------
++// Vehicle options
++//-----------------------
++
++// clang-format off
++extern "C"
++{
++	// Well this didn't seem to work.
++	int
++	createVehicleLua(lua_State* L)
++	{
++		// TODO Figure out how to check if the vehicle model is valid, possibly use the debug menu functions.
++		// Check if it's between these values:
++		//MI_LANDSTAL, MI_VICECHEE
++
++		// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
++
++		int vehicleId = lua_tonumber(L, 1);
++		// Why does this not work
++		bool deleteLastVehicle = lua_toboolean(L, 2);
++		// Oops, I had this set to float, that could've been causing a problem.
++		bool warpIntoVehicle = lua_toboolean(L, 3);
++
++		VehicleFunctions::SpawnVehicle(vehicleId, deleteLastVehicle, warpIntoVehicle);
++
++		return 3;
++	}
++}
++
++//-----------------------
++// Player options
++//-----------------------
++
++// Moved from lua_test.cpp
++
++extern "C"
++{
++	/// <summary>
++	/// This sets the position in the lua function I have defined as a test.
++	/// The values even are able to be changed without restarting the game.
++	/// This will be very useful for later once I figure out menus.
++	/// lua function: set_position(X, Y, Z)
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	SetPlayerPositionLua(lua_State *L)
++	{
++		CPlayerPed *pPed = FindPlayerPed();
++		CVector pPlayerPos = FindPlayerCoors();
++
++		// These seem to work in lua.
++		float playerPosX = (float)lua_tonumber(L, 1);
++		float playerPosY = (float)lua_tonumber(L, 2);
++		float playerPosZ = (float)lua_tonumber(L, 3);
++
++		// pPlayerPos.x = playerPosX;
++		// pPlayerPos.y = playerPosY;
++		// pPlayerPos.z = playerPosZ;
++
++		CVector newPlayerPos = CVector(playerPosX, playerPosY, playerPosZ);
++		// FindPlayerPed()->SetPosition(playerPos);
++
++		// TODO Switch to using this as a test, should fix the camera movement.
++		// For some reason this one is a bit glitchy.
++		//PlayerCheats::SetPlayerPosition(newPlayerPos.x, newPlayerPos.y, newPlayerPos.z);
++
++		FindPlayerPed()->SetPosition(newPlayerPos);
++
++		// TODO Test this for ImGui
++		// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++
++		// This is being called?
++		// CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++
++		// Ok, the values are there, this is printing properly it looks like
++		LogFunctions::LogInfo(Defines::luaLogFile,
++	                      "X: " + std::to_string(playerPosX) + " Y: " + std::to_string(playerPosY) + "Z: " + std::to_string(playerPosZ));
++
++		// TRACE("X: %s Y: %s Z: %s", playerPosX, playerPosY, playerPosZ);
++
++		// Test setting the player at random coords
++
++		// Make a random number generator
++		// Make it pick between lists of numbers within the range of the map
++
++		// This return value is the amount of parameters I'm quite sure.
++		return 3;
++	}
++
++	// Well this toggles the players control on/off
++	// Could be useful for ImGui.
++	bool playerControl = true;
++	int
++	TogglePlayerControlLua(lua_State *L)
++	{
++		playerControl = !playerControl;
++		if(!playerControl) {
++			CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++			CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++		} else {
++			CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++			// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_ENABLED);
++			CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++		}
++
++		return 1;
++	}
++
++	int
++	enableNeverWantedLua(lua_State *L)
++	{
++		PlayerCheats::EnableNeverWanted();
++		LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
++
++		return 1;
++	}
++
++	int
++	enablePlayerInfiniteHealthLua(lua_State *L)
++	{
++		PlayerCheats playerCheats = PlayerCheats();
++		playerCheats.EnableInfiniteHealth();
++		LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was enabled");
++
++		return 1;
++	}
++
++
++	/// <summary>
++	/// Basic test for healing the player in lua, this works.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	HealPlayerLua(lua_State *L)
++	{
++		CPlayerPed *pPed = FindPlayerPed();
++		pPed->m_fHealth = 250;
++		pPed->m_fArmour = 100;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Player was healed");
++
++		return 1;
++	}
++
++
++	//------- Vehicle --------//
++
++	/// <summary>
++	/// This works for logging if the player is in a vehicle, tested with logMessageLua in lua.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	extern "C" int 
++	isPlayerInVehicleLua(lua_State* L)
++	{
++		VehicleFunctions vehicleFunctions = VehicleFunctions();
++		bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
++		pushBooleanToLua(L, isInVehicle);
++		return 1;
++	}
++
++
++
++	/// <summary>
++	/// TODO Test this for the events in lua.
++	/// </summary>
++	/// <param name="L"></param>
++	/// <returns></returns>
++	int
++	blowUpPlayerVehicleLua(lua_State *L)
++	{
++		VehicleFunctions vehicleFunctions = VehicleFunctions();
++		bool isInVehicle = vehicleFunctions.IsPlayerInVehicle();
++
++		if (isInVehicle) 
++		{ 
++			vehicleFunctions.BlowUpVehicle();
++		}
++
++		return 1;
++	}
++	//
++
++
++	//------- Toggle lose weapons on death --------//
++
++	// Oops, I had these functions reversed, no wonder it wasn't working.. lol
++	int
++	enableLoseWeaponsOnDeathLua(lua_State *L)
++	{
++		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++	
++		// TODO Test with this
++		//LuaTest& luaTestInstance = LuaTest::GetInstance();
++
++#ifdef LUA_HELPERS_TEST
++		lua_State* luaVM = GetLuaVMFromSingleton();
++		if(luaVM) return 0;
++#endif
++
++		//LuaTest luaTest = LuaTest();
++		Defines defines = Defines();
++		pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		pPlayerInfo.m_bGetOutOfJailFree = false;
++
++#ifdef EXTRA_LOGGING
++		if (gbExtraLogging)
++		{
++			std::string toggleWeaponsDeathString = "You will now lose weapons on death";
++			LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		}
++#endif
++
++		
++		return 1;
++	}
++
++	// Oops, I had these functions reversed, no wonder it wasn't working.. lol
++	int
++	disableLoseWeaponsOnDeathLua(lua_State *L)
++	{
++		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++		// TODO Test with this
++//#ifdef LUA_HELPERS_TEST
++//		lua_State* luaVM = GetLuaVMFromSingleton();
++//		if(luaVM) return 0;
++//#endif
++
++		Defines defines = Defines();
++		pPlayerInfo.m_bGetOutOfHospitalFree = true;
++		pPlayerInfo.m_bGetOutOfJailFree = true;
++
++		// This is annoying, it runs everytime the game starts or lua inits
++#ifdef EXTRA_LOGGING
++		if (gbExtraLogging)
++		{
++			std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
++			LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++		}
++
++#endif
++		return 1;
++	}
++
++	// Disabled this for now.
++	int
++	toggleLoseWeaponsOnDeathLua(lua_State *L)
++	{
++		CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++		LuaTest luaTest = LuaTest();
++		// TODO Test this
++		//LuaTest& luaTestInstance = LuaTest::GetInstance();
++		Defines defines = Defines();
++
++		// TODO Test this
++		// pPlayerInfo.m_bGetOutOfHospitalFree = luaTest.toggleLoseWeaponsOnDeath;
++
++		if(luaTest.toggleLoseWeaponsOnDeath) 
++		//if(luaTestInstance.toggleLoseWeaponsOnDeath) 
++		{
++			pPlayerInfo.m_bGetOutOfHospitalFree = true;
++		} else {
++			pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		}
++
++
++		std::string toggleWeaponsDeathString =
++			luaTest.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
++			//luaTestInstance.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
++		 LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++
++		// if (luaTest.toggleLoseWeaponsOnDeath)
++		//{
++		// }
++
++		return 1;
++	}
++
++
++	// This works, displays in lua if I have a wanted level more then 0, tested with this lua code:
++	/*
++	-- Display text on the hud as a help message
++	if display_help_text then
++	-- Works for displaying wanted level, should work for anything I setup in the C++ side also.
++	-- This will be very useful instead of logging the values unless I need to.
++	wanted_level = get_wanted_level()
++	print_msg("WL: " .. wanted_level)
++	end
++	*/
++	int
++	checkWantedLevelLua(lua_State* L)
++	{
++	        CPlayerPed *pPlayer = FindPlayerPed();
++	        PlayerCheats playerCheats = PlayerCheats();
++
++			int wantedLevel = playerCheats.GetWantedLevel();
++
++			if (wantedLevel > 0) { 
++				lua_pushinteger(L, wantedLevel);
++			}
++
++			return 1;
++	}
++
++	int
++	killPlayerIfWantedLua(lua_State* L)
++	{
++		PlayerCheats playerCheats = PlayerCheats();
++		if(playerCheats.GetWantedLevel() > 0) 
++		{
++			playerCheats.SuicideCheat(); 
++		}
++
++		return 1;
++	}
++
++	int 
++	suicideCheatLua(lua_State* L)
++	{
++			PlayerCheats playerCheats = PlayerCheats();
++	        CPlayerPed *pPlayer = FindPlayerPed();
++			if (!pPlayer->DyingOrDead())
++			{ 
++				playerCheats.SuicideCheat();
++			}
++		return 1;
++	}
++
++	int 
++	isPlayerAliveLua(lua_State* L)
++	{
++	        CPlayerPed *pPlayer = FindPlayerPed();
++	        bool isPlayerAlive = !pPlayer->DyingOrDead();
++	        pushBooleanToLua(L, isPlayerAlive);
++	        return 1;
++	}
++
++	// TODO Figure out how to disable certain functions in kcnet-events.lua
++	// TODO Fix this to not crash if the model is invalid.
++	int
++	changePlayerClothesLua(lua_State* L)
++	{
++		std::string clothesStringLua = lua_tostring(L, 1);
++
++	    PlayerUtil playerUtil = PlayerUtil();
++	    playerUtil.ChangeClothes(clothesStringLua.c_str());
++	    return 1;
++	}
++
++}
++
++//
++
++
++// clang-format on
++
++#endif //LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+new file mode 100644
+index 00000000..f40b7a62
+--- /dev/null
++++ b/src/extras/lua/lua_functions.h
+@@ -0,0 +1,80 @@
++#pragma once
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++// clang-format off
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++	extern int enableLoseWeaponsOnDeathLua(lua_State *L);
++	extern int disableLoseWeaponsOnDeathLua(lua_State *L);
++	extern int toggleLoseWeaponsOnDeathLua(lua_State *L);
++
++	extern int logPlayerCoordsLua(lua_State *L);
++	extern int logPlayerHeadingLua(lua_State *L);
++
++	//------------- Vehicle ------------//
++	extern int createVehicleLua(lua_State *L);
++
++	//------------- Player ------------//
++	// Vehicle
++	extern int isPlayerInVehicleLua(lua_State *L);
++    extern int blowUpPlayerVehicleLua(lua_State *L);
++    extern int blowUpAllVehiclesLua(lua_State *L);
++
++	extern int SetPlayerPositionLua(lua_State *L);
++	extern int TogglePlayerControlLua(lua_State *L);
++	extern int HealPlayerLua(lua_State *L);
++
++	// 
++	extern int enableNeverWantedLua(lua_State *L);
++	extern int enablePlayerInfiniteHealthLua(lua_State *L);
++
++	extern int changePlayerClothesLua(lua_State *L);
++
++	extern int killPlayerIfWantedLua(lua_State *L);
++    extern int isPlayerAliveLua(lua_State *L);
++
++	extern int suicideCheatLua(lua_State *L);
++
++	extern int checkWantedLevelLua(lua_State *L);
++
++	//
++
++	//------------- World ------------//
++	extern int clearAreaLua(lua_State* L);
++
++	extern int disablePedsLua(lua_State *L);
++	extern int disableVehiclesLua(lua_State *L);
++	//
++    
++
++	//------------- Messages ------------//
++	extern int logMessageLua(lua_State *L);
++	extern int logWarningMessageLua(lua_State *L);
++	extern int logErrorMessageLua(lua_State *L);
++
++	extern int logCurrentDirectoryLua(lua_State *L);
++
++    extern int customHelpMessageLua(lua_State *L);
++
++	
++
++#ifdef __cplusplus
++}
++#endif
++
++// clang-format on
++
++// TODO Is this needed? I'm using this global above.
++class LuaFunctions
++{
++
++
++};
+diff --git a/src/extras/lua/lua_helpers.cpp b/src/extras/lua/lua_helpers.cpp
+new file mode 100644
+index 00000000..9bd66693
+--- /dev/null
++++ b/src/extras/lua/lua_helpers.cpp
+@@ -0,0 +1,41 @@
++#include "lua_helpers.h"
++#include "defines.h"
++#include "log_functions.h"
++
++#include "config.h"
++
++#ifdef LUA_TEST
++
++#ifdef LUA_HELPERS_TEST
++
++/// <summary>
++/// TODO Test this
++/// This should get the lua instance for use in my functions.
++/// It should be a shortcut to using this in my lua_test.cpp and lua_functions.cpp.
++/// To use in a function:
++/// First, include this header lua_helpers.h
++/// Then, in the function add this:
++/*
++        lua_State* luaVM = GetLuaVMFromSingleton();
++        if (!luaVM) return 0; // Or handle the error
++*/
++/// </summary>
++/// <returns></returns>
++lua_State *
++GetLuaVMFromSingleton()
++{
++	LuaTest &luaTestInstance = LuaTest::GetInstance();
++	lua_State *luaVM = luaTestInstance.GetLuaState();
++
++	if(!luaVM) {
++		Defines defines;
++		LogFunctions::LogError(defines.luaLogFile, "Lua state not initialized in LuaTest Singleton!");
++		return nullptr; // Return nullptr to indicate failure
++	}
++
++	return luaVM;
++}
++
++#endif
++
++#endif
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_helpers.h b/src/extras/lua/lua_helpers.h
+new file mode 100644
+index 00000000..8875ec3c
+--- /dev/null
++++ b/src/extras/lua/lua_helpers.h
+@@ -0,0 +1,27 @@
++#pragma once
++
++#include "config.h"
++
++#ifdef LUA_TEST
++
++#define LUA_HELPERS_TEST
++#ifdef LUA_HELPERS_TEST
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++#include "lua_test.h"
++
++lua_State *
++GetLuaVMFromSingleton();
++
++
++
++#endif // LUA_HELPERS_TEST
++
++
++#endif //LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+new file mode 100644
+index 00000000..1a11f652
+--- /dev/null
++++ b/src/extras/lua/lua_setup.cpp
+@@ -0,0 +1,177 @@
++#include "lua_setup.h"
++
++#include "pch.h"
++
++#include "imgui_setup.h"
++
++
++
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++
++
++#include "imgui_main_menu.h"
++
++#include <string>
++#include <iostream>
++
++#include "main.h"
++
++// Begin win.cpp headers
++#if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
++
++// Required for opening menu with Xbox controller.
++//#include <Xinput.h>
++
++//#include <winerror.h>
++#include <windows.h>
++//#include <mmsystem.h>
++//#include <shellapi.h>
++//
++//#include <windowsx.h>
++//#include <basetsd.h>
++
++//#include <regstr.h>
++//#include <shlobj.h>
++//
++//#include <dbt.h>
++
++#endif
++
++//#pragma warning(push)
++//#pragma warning(disable : 4005)
++//
++//#include <ddraw.h>
++//#include <DShow.h>
++//#pragma warning( pop )
++//
++//#define WM_GRAPHNOTIFY	WM_USER+13
++
++//#ifndef USE_D3D9
++//#pragma comment( lib, "d3d8.lib" )
++//#endif
++//#pragma comment( lib, "ddraw.lib" )
++//#pragma comment( lib, "Winmm.lib" )
++//#pragma comment( lib, "dxguid.lib" )
++//#pragma comment( lib, "strmiids.lib" )
++//#pragma comment( lib, "dinput8.lib" )
++
++
++//#include "common.h"
++
++#if (defined(_MSC_VER))
++#include <tchar.h>
++#endif /* (defined(_MSC_VER)) */
++#include <stdio.h>
++#include "rwcore.h"
++#include "resource.h"
++#include "skeleton.h"
++
++//#include "platform.h"
++//#include "crossplatform.h"
++
++// End win.cpp headers
++
++// Lua test
++#include "lua_test.h"
++
++#include "imgui_functions.h"
++
++// ReVC
++// Timer for the keybind
++#include "Timer.h"
++#include "Pad.h"
++
++
++#include "ControllerConfig.h"
++
++
++
++#include "defines.h"
++
++//****************************/
++// Lua stuff
++//****************************/
++
++//---------------
++// Keybinds
++//---------------
++
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++
++#define CTRLJUSTDOWN(key)                                                                                                                                      \
++	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++//
++
++/// <summary>
++/// This will run the loop for checking if the lua keybind is pressed.
++/// </summary>
++void
++LuaSetup::LuaPlayingGameLoop()
++{
++#ifdef LUA_TEST
++
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	LuaTest luaTest = LuaTest();
++
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
++
++	// This works without lua
++	static int newTime = 0;
++	// Check if lua is enabled in the config before running
++	// Reload the lua function, I have it named InitLua for now.
++	// TODO Make this run luaTest.LuaKeybindEvents() when I set it up
++	if(gbLuaTest) {
++		if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++			newTime = CTimer::GetTimeInMilliseconds();
++			// Reinit lua.
++			//luaTest.InitLua();
++
++			// This loads the lua keybind file, I switched from using InitLua
++			luaTest.LuaKeybindEvents();
++			
++		}
++	}
++
++	// Some of the idea for this test came from here:
++	// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/CreateCar/Main.cpp
++
++	// I think I fixed the delay, I made the newTime variable static.
++	// TODO Do more testing with this later.
++
++	// I moved the ImGui test above outside of the lua test.
++	// TODO Make this lua test auto run on startup, it can set infinite health and never wanted by default.
++	// I added this to the ReVC.ini file.
++	// If this is enabled in there, this will run otherwise it does nothing.
++	//
++
++	// I have disabled the lua keybind for now, right now it is setup to
++	// auto teleport the player, setup never wanted and setup infinte health on game startup if enabled.
++	//           if(gbLuaTest) {
++
++	//            //if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 1000) {
++	//            if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++	//// TODO Figure out how to make this use Control + M
++	//            //if(CTRLDOWN() && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++	//             // Wow this seems to work, with a delay now.
++	//             // I figured out how to output this to a log.
++
++	//             newTime = CTimer::GetTimeInMilliseconds();
++	//             luaTest.InitLua();
++	//            }
++	//           }
++#endif // LUA_TEST
++}
++
++
++//****************************/
++// End lua stuff
++//****************************/
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_setup.h b/src/extras/lua/lua_setup.h
+new file mode 100644
+index 00000000..ceda3544
+--- /dev/null
++++ b/src/extras/lua/lua_setup.h
+@@ -0,0 +1,7 @@
++#pragma once
++class LuaSetup
++{
++public:
++	// Main loop for running lua with the keybind.
++	void LuaPlayingGameLoop();
++};
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+new file mode 100644
+index 00000000..c1f1fe5e
+--- /dev/null
++++ b/src/extras/lua/lua_test.cpp
+@@ -0,0 +1,944 @@
++// Well trying to move this to sol didn't work well.
++// I guess it doesn't like C++14 and changing it breaks ReVC.
++
++#include "pch.h"
++
++#ifdef LUA_TEST
++
++#include "lua_test.h"
++#include <iostream>
++
++#include <vector>
++
++// This should possibly work for keybinds, I wonder where I would place them..
++// Oh wait, maybe in the GS_PLAYING_GAME under win.cpp
++// Have one of them run the addstuff function.
++
++// I got a keybind working for this in win.cpp under GS_PLAYING_GAME
++// #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++// I got this printing to the TRACE in Visual Studio, I wonder how to make a basic chatbox or something for this.
++// It shouldn't be too hard to implement some type of command system.
++
++// It would probably be easier to start off with keybinds.
++
++// TODO Figure out how to make cheats activate something within the lua code.
++// So if I have a cheat 'blowmeup' in lua, it'll run the C++ function.
++
++// TODO Make a basic chat system like in Luanti (MineTest)
++// So if I type '/tp 3, 3, 30', it'll teleport me to those coords.
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++#include <fstream>
++#include <iostream>
++#include <string>
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif
++
++// Add in my log functions.
++#include "defines.h"
++#include "log_functions.h"
++
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
++
++#include "custom_cheats.h"
++#include "player_cheats.h"
++
++// ImGui test
++#define _IMGUI_TEST
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++#endif
++
++// VC Specific
++#include "Hud.h"
++#include "Radar.h"
++#include "Text.h"
++
++#include "Automobile.h"
++#include "Bike.h"
++#include "Boat.h"
++#include "Heli.h"
++
++#include "Pad.h"
++#include "Restart.h"
++
++// Well Entity.h is needed before PlayerInfo.h
++#include "Entity.h"
++#include "PlayerInfo.h"
++#include "PlayerPed.h"
++
++#include "CarCtrl.h"
++#include "Population.h"
++#include "World.h"
++
++// Get the player coords and heading
++#include "player_util.h"
++
++// Moving lua functions into here.
++#include "lua_functions.h"
++
++// Some of this new code was inspired by the MTA SA code
++// https://github.com/multitheftauto/mtasa-blue/tree/master
++
++/// <summary>
++/// Constructor test, so far just initialize the variable m_luaVM, setup lua libraries.
++/// Well I moved the init and loading the lua libraries into the constructor.
++/// Create a new VM, fixes the null issue in imgui_commands
++/// </summary>
++
++LuaTest::LuaTest() { 
++	m_luaVM = luaL_newstate(); 
++
++	// Load LUA libraries, TODO is this needed in here?
++	luaopen_base(m_luaVM);
++	luaopen_math(m_luaVM);
++	luaopen_string(m_luaVM);
++	luaopen_table(m_luaVM);
++	luaopen_debug(m_luaVM);
++	luaopen_utf8(m_luaVM);
++	luaopen_os(m_luaVM);
++
++	// This works here, just need to fix it properly in the lua_functions file.
++	this->RegisterLuaFunctions(m_luaVM);
++
++}
++
++//------- Begin cheat functions --------//
++
++// Test, this may or may not work.
++void
++GetBlipIcon()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector pPlayerPos = FindPlayerCoors();
++
++	CRadar radar = CRadar();
++
++	// I wonder how this one works.
++	// int blip = radar.SetCoordBlip(eBlipType::BLIP_CAR, pPlayerPos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++	// radar.SetBlipSprite();
++}
++
++// TODO Figure out how to do this, and where to place this for the cheats to work.
++// Got most of this from CPad::AddToPCCheatString
++#ifdef LUA_CHEAT_TEST
++
++char KeyBoardCheatString[30];
++
++extern "C" int
++CheatTest(lua_State *L)
++{
++	char c;
++	for(int32 i = ARRAY_SIZE(KeyBoardCheatString) - 2; i >= 0; i--) KeyBoardCheatString[i + 1] = KeyBoardCheatString[i];
++
++	KeyBoardCheatString[0] = c;
++
++	// These can be generated by reversing the letters to it.
++	// So if you want a 'KILLME' cheat, it would be 'EMLLIK'
++#define _CHEATCMP(str) strncmp(str, KeyBoardCheatString, sizeof(str) - 1)
++#ifdef LUA_TEST
++	// BLOWMEUP
++	// if(!_CHEATCMP("PUEMWOLB"))
++	//	// Run the init lua function, which can test the cheats
++#endif // LUA_TEST
++
++#undef _CHEATCMP
++}
++
++#endif // LUA_CHEAT_TEST
++
++#ifdef _IMGUI_TEST
++extern "C" int
++toggleImGuiLua(lua_State *L)
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++	return 1;
++}
++#endif
++
++// Not sure how exactly to use this, I may need to add it into Pad.cpp
++// Oh I need to add this somewhere that it will constantly run.
++// TODO Test this in a loop somewhere, possibly in the main game loop or something.
++// This basic test works in the lua code, now I can toggle these.
++extern "C" int
++CheatTestNew(lua_State *L)
++{
++	// Begin new test
++	// char KeyBoardCheatString[30];
++	// char c;
++	// for(int32 i = ARRAY_SIZE(KeyBoardCheatString) - 2; i >= 0; i--) KeyBoardCheatString[i + 1] = KeyBoardCheatString[i];
++
++	// KeyBoardCheatString[0] = c;
++
++	// These can be generated by reversing the letters to it.
++	// So if you want a 'KILLME' cheat, it would be 'EMLLIK'
++	// #define _CHEATCMP(str) strncmp(str, KeyBoardCheatString, sizeof(str) - 1)
++
++	// End new test
++
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++#endif
++
++	std::string cheatString = lua_tostring(L, 1);
++	// const char* cheatString = lua_tostring(L, 1);
++
++	if(cheatString == "BLOWMEUP") {
++		// Check if player is in vehicle, blow them up.
++		if(!pPed->EnteringCar() && pPed->bInVehicle) {
++			CVehicle *currentVeh = pPed->m_pMyVehicle;
++			currentVeh->m_fHealth = 0;
++		}
++
++	} else if(cheatString == "KILLME") {
++		//} else if(!_CHEATCMP("KILLME")) {
++		// Kill the player, print the message "You have been exterminated"
++		FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++		FindPlayerPed()->m_fArmour = 0;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Player has been killed");
++	} else if(cheatString == "SPAWNCAR") {
++		// This works!! I didn't think spawning a car would work.
++		if(lua_isnumber(L, 2)) {
++			int vehicleModel = lua_tointeger(L, 2);
++			vehicleFunctions.SpawnVehicle(vehicleModel, false, false);
++
++			// Test for toggling the ImGui menu
++		}
++#ifdef _IMGUI_TEST
++		else if(cheatString == "IMGUITG") {
++			// ImGuiFunctions::ImGuiDone = !ImGuiFunctions::ImGuiDone;
++			// imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++			TRACE("Toggled");
++			// toggleImGuiLua();
++		}
++
++#endif
++	}
++	// switch(cheatString) {
++	//
++	// }
++
++	return 1;
++}
++
++// Well this toggles the players control on/off
++// Could be useful for ImGui.
++#ifndef MOVE_LUA_FUNCTIONS
++bool playerControl = true;
++extern "C" int
++TogglePlayerControlLua(lua_State *L)
++{
++	playerControl = !playerControl;
++	if(!playerControl) {
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++	} else {
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++		// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_ENABLED);
++		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++	}
++
++	return 1;
++}
++#endif
++
++/// <summary>
++/// This works for respawning the player.
++/// TODO Make this get the X, Y, Z, and heading in lua also.
++/// </summary>
++/// <param name="l"></param>
++/// <returns></returns>
++
++///
++extern "C" int
++setRespawnPointLua(lua_State *L)
++{
++	Defines defines = Defines();
++	LuaTest luaTest = LuaTest();
++
++	// This doesn't update the values right
++	float spawnPosX = (float)lua_tonumber(L, 1);
++	float spawnPosY = (float)lua_tonumber(L, 2);
++	float spawnPosZ = (float)lua_tonumber(L, 3);
++	float spawnHeading = (float)lua_tonumber(L, 4);
++
++	// Set values in the header
++	luaTest.spawnPosX = spawnPosX;
++	luaTest.spawnPosY = spawnPosY;
++	luaTest.spawnPosZ = spawnPosZ;
++	luaTest.spawnHeading = spawnHeading;
++	//
++
++	CVector spawnVector = CVector(spawnPosX, spawnPosY, spawnPosZ);
++
++	std::string spawnVectorString = "Spawn Vector value: X: " + std::to_string(spawnPosX) + " Y: " + std::to_string(spawnPosY) +
++	                                " Z: " + std::to_string(spawnPosZ) + " Heading: " + std::to_string(spawnHeading);
++
++	LogFunctions::LogInfo(defines.luaLogFile, spawnVectorString);
++
++	// CVector airportVector = CVector(-1515.1f, -1182.1f, 16.5f);
++	// float airportHeading = 0.0f;
++
++	// vecRestartPos = airportVector;
++	// fRestartFloat = airportHeading;
++
++	// CRestart::OverrideNextRestart(airportVector, airportHeading);
++	// CRestart::OverridePosition = airportVector;
++	// CRestart::OverrideHeading = airportHeading;
++
++	CRestart::OverrideNextRestart(spawnVector, spawnHeading);
++	CRestart::OverridePosition = spawnVector;
++	CRestart::OverrideHeading = spawnHeading;
++
++	return 1;
++}
++
++/// <summary>
++/// Disable the override respawn, fix it back to normal.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int
++cancelOverrideNextRestartLua(lua_State *L)
++{
++	Defines defines = Defines();
++
++	CRestart::CancelOverrideRestart();
++
++	LogFunctions::LogInfo(defines.luaLogFile, "Disabled override restart.");
++	return 1;
++}
++
++
++
++
++//------- End cheat functions --------//
++
++// Check lua globals, made this into a function
++bool
++LuaTest::CheckLua(lua_State *L, int r)
++{
++	// Check if the value is valid
++	if(r != LUA_OK) {
++		std::string errorMsg = lua_tostring(L, -1);
++		// std::cout << errorMsg << std::endl;
++		TRACE("KCNet - Lua Error", errorMsg);
++		return false;
++	} /*else {
++	        TRACE("KCNet - Lua Error");
++	}*/
++
++	return true;
++}
++
++// TODO Test from Google Gemini
++void
++printTable(lua_State *L, int index)
++{
++	Defines defines = Defines();
++
++	lua_pushnil(L);
++	while(lua_next(L, index) != 0) {
++		if(lua_isstring(L, -2)) {
++			std::string key = lua_tostring(L, -2);
++
++			if(lua_isnumber(L, -1)) {
++				std::cout << key << ": " << lua_tointeger(L, -1) << std::endl;
++
++				LogFunctions::LogInfo(defines.logFile, "Key: " + key + " Value: ");
++
++			} else if(lua_isstring(L, -1)) {
++				std::cout << key << ": " << lua_tostring(L, -1) << std::endl;
++
++				LogFunctions::LogInfo(defines.logFile, "Key: " + key);
++
++			} else if(lua_istable(L, -1)) {
++				std::cout << key << ": (Table)" << std::endl;
++				LogFunctions::LogInfo(defines.logFile, key + ": (Table) " );
++				printTable(L, lua_gettop(L)); // Recursively print sub-table
++			}
++		}
++		lua_pop(L, 1);
++	}
++}
++
++/// <summary>
++/// I had to add this to the class to fix it.
++/// I got this working, I had to add lua_State *L and get the lua state
++/// To move this back into the init function if needed:
++/// Rename the 'L' variable in each lua_register to 'm_luaVM'
++/// </summary>
++void
++LuaTest::RegisterLuaFunctions(lua_State *L)
++{
++	// Test for checking is 'L' is null
++	assert(L != nullptr);
++	// 
++
++	// Cheat test
++	lua_register(L, "cheat_test", CheatTestNew);
++
++	// Toggle player control
++	lua_register(L, "toggle_control", TogglePlayerControlLua);
++
++	// Test for ImGui
++	lua_register(L, "toggle_imgui", toggleImGuiLua);
++
++
++
++	//------------- Vehicle ------------//
++	
++	// Test for creating a vehicle, this will probably crash on invalid models.
++	// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
++	// Usage: create_vehicle(145, true, true)
++	lua_register(L, "create_vehicle", createVehicleLua);
++
++	//------------- Player ------------//
++
++	// Auto enable never wanted in the lua script
++	lua_register(L, "enable_never_wanted", enableNeverWantedLua);
++
++	// Auto enable infinite health in the lua script
++	lua_register(L, "enable_infinite_health", enablePlayerInfiniteHealthLua);
++
++	// This seems to work now.
++	lua_register(L, "set_position", SetPlayerPositionLua);
++	// lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
++
++	lua_register(L, "heal_player", HealPlayerLua);
++
++	// This works
++	// TODO Get CVector for respawn from file.
++	lua_register(L, "set_respawn_point", setRespawnPointLua);
++
++	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
++	lua_register(L, "cancel_override_restart", cancelOverrideNextRestartLua);
++
++	// Toggles for losing weapons when dying.
++	lua_register(L, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
++	lua_register(L, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
++
++	// Log the player coords and heading
++	lua_register(L, "log_player_coords", logPlayerCoordsLua);
++	lua_register(L, "log_player_heading", logPlayerHeadingLua);
++
++	// Vehicle
++	// Check if player is in a vehicle
++	lua_register(L, "is_player_in_vehicle", isPlayerInVehicleLua);
++	// Blow up the players vehicle
++	lua_register(L, "blow_up_vehicle", blowUpPlayerVehicleLua);
++	// Blow up all vehicles
++	lua_register(L, "blow_up_all_vehicles", blowUpAllVehiclesLua);
++
++	// Kill the player if wanted
++	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
++
++	// Kill the player cheat
++	lua_register(L, "kill_player", suicideCheatLua);
++
++	// Check if the player is alive
++	lua_register(L, "is_player_alive", isPlayerAliveLua);
++
++	// TODO Setup changing player clothes, check if the model is invalid.
++	// Until I figure that out, I have disabled this.
++	// lua_register(L, "change_clothes", changePlayerClothesLua);
++
++	// Get the current wanted level if above 0
++	lua_register(L, "get_wanted_level", checkWantedLevelLua);
++
++	//
++
++	//-------------- World --------------//
++	// Auto disable peds and vehicles in the lua script
++	lua_register(L, "disable_peds", disablePedsLua);
++	lua_register(L, "disable_vehicles", disableVehiclesLua);
++
++	// Clear the area of any peds and vehicles.
++	// Example: clear_area(radius)
++	lua_register(L, "clear_area", clearAreaLua);
++	//
++
++	//------------- Messages ------------//
++
++	// Display a hud help message
++	lua_register(L, "print_msg", customHelpMessageLua);
++
++	// Log messages in lua
++	// This works, log an info message in lua
++	// TODO Rename this function to logInfoMessageLua
++	lua_register(L, "log_info", logMessageLua);
++	
++	// Log warning and error messages in lua
++	lua_register(L, "log_warning", logWarningMessageLua);
++	lua_register(L, "log_error", logErrorMessageLua);
++	
++	// Log the current directory
++	lua_register(L, "log_directory", logCurrentDirectoryLua);
++
++	//logCurrentDirectoryLua
++
++	
++}
++
++/// <summary>
++/// This works for events in lua within a separate file, I tested it and if I have the same
++/// item in test.lua (Main script) it won't run the blow up vehicle function if enabled without the keybind.
++/// Running in CGame::Process
++/// </summary>
++void 
++LuaTest::LuaEvents()
++{
++	Defines defines = Defines();
++	LuaTest luaTest = LuaTest();
++
++	// TODO Move into the constructor
++	// TODO Fix other functions and remove this from them:
++	// LuaTest luaTest = LuaTest();
++	// Make them use this instead:
++	/*
++	#ifdef LUA_HELPERS_TEST
++		lua_State* luaVM = GetLuaVMFromSingleton();
++		if(luaVM) return 0;
++	#endif
++	*/
++	luaTest.RegisterLuaFunctions(m_luaVM);
++
++	// Switch to this shorter method.
++	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaEventsScript.c_str()))) {
++		LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaEventsScript + "Couldn't be loaded!");
++	}
++
++}
++
++// TODO Fix these to work
++// Seperate out the game init stuff for CGame::Init into kcnet-init.lua or something
++// Make wasted and busted events use their own file: "kcnet-wasted-events.lua" and "kcnet-busted-events.lua
++// Make the keybind events only run when F9 is pressed or the specified keybind
++
++// Usages of the InitLua function below:
++/*
++For wasted/busted:
++	Wasted: Under WBSTATE_WASTED in CGameLogic::Update()
++	Busted: Under WBSTATE_BUSTED in CGameLogic::Update()
++
++For game init:
++	Under GS_PLAYING_GAME in win.cpp (Inside of WinMain)
++
++For keybinds:
++	Under LuaSetup::LuaPlayingGameLoop() in my custom functions, this runs in the main loop.
++*/
++
++// clang-format off
++/// <summary>
++/// Run the events when the player is busted
++/// </summary>
++void
++LuaTest::BustedLuaEvents()
++{
++	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaBustedScript.c_str()))) 
++	{
++	
++	}
++}
++
++/// <summary>
++/// Run the events when the player is wasted
++/// </summary>
++void
++LuaTest::WastedLuaEvents()
++{
++	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaWastedScript.c_str()))) 
++	{
++	
++	}
++}
++
++/// <summary>
++/// Run the events when the keybind is pressed
++/// </summary>
++void
++LuaTest::LuaKeybindEvents()
++{
++	//Defines defines = Defines();
++	// This seems to work.
++	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaKeyBindScript.c_str()))) 
++	{
++	
++	}
++
++}
++
++
++// TODO Set this up to run, for now it is just not hooked up to anything.
++
++/// <summary>
++/// Run the events on game init
++/// </summary>
++void
++LuaTest::SetupLua()
++{
++	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaSetupScript.c_str()))) 
++	{
++	
++	}
++}
++
++
++
++/// <summary>
++/// TODO Fix this to work, I would like to stop using the global namespace in Lua.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" {
++	int LuaOpenTestFunctions(lua_State* L) {
++		static const luaL_Reg mylib[] = {
++			{"create_vehicle_test", createVehicleLua},
++			{NULL, NULL}                       // Sentinel to mark the end of the array
++		};
++
++		luaL_newlib(L, mylib);
++
++		return 1;
++	}
++}
++
++/// <summary>
++/// Taken idea from this in CLuaMain.cpp within MTA SA.
++/// https://github.com/multitheftauto/mtasa-blue/blob/master/Client/mods/deathmatch/logic/lua/CLuaMain.cpp
++/// TODO Separate the functions, I should be able to separate the init from the functions
++/// </summary>
++void
++LuaTest::InitLua()
++{
++	Defines defines = Defines();
++	LuaTest luaTest = LuaTest();
++
++
++
++
++
++	// Create a new VM, moved into constructor
++	//m_luaVM = luaL_newstate();
++	// TODO Implement this from MTA
++	// m_pLuaManager->OnLuaMainOpenVM(this, m_luaVM);
++
++	// So I'll need to try to replicate these files:
++	// CLuaManager.cpp, CLuaManager.h,
++
++	// Setup the lua message, this seems to print now, I added this to GGame::Initialise
++	// TRACE("KCNet - Lua Test started");
++	//
++
++	// Set the instruction count hook
++	// TODO Fix this
++	// lua_sethook(m_luaVM, InstructionCountHook, LUA_MASKCOUNT, HOOK_INSTRUCTION_COUNT);
++
++
++
++
++
++	// Test moving into here
++	// Well this crashes it like this
++	//luaTest.RegisterLuaFunctions();
++
++	//lua_State *L = LuaTest::GetInstance().GetLuaState();
++
++	// This seems to work now.
++	// lua_register(m_luaVM, "set_position", SetPlayerPositionLua);
++	// Well like this it works in the imgui_commands but not on init, I cannot press the keybind for it.. Oh wait..
++	// I got this working as a command in imgui_commands
++	// Usage: set_position(posX, posY, posZ)
++	//lua_register(L, "set_position", SetPlayerPositionLua);
++
++
++	// I finally got this working, I had to pass the lua state to it!
++
++	// Moved into the constructor
++	// TODO Migrate other functions to using this in the constructor.
++	// Reverted
++	//luaTest.RegisterLuaFunctions(m_luaVM);
++
++	// TODO Make lua use this instead of cluttering up the main namespace:
++	//luaL_requiref(m_luaVM, "testfunctions", LuaOpenTestFunctions, 1);
++ //   // Pop the loaded module table from the stack
++ //   lua_pop(m_luaVM, 1);
++
++	//
++
++	// TODO Hook this up to the ImGui command test.
++
++	//----------------
++
++	// TODO Setup this for ImGui later.
++	// I could use something like this so I don't have to keep changing the code.
++	// lua_getglobal(m_luaVM, "vehicle_mass");
++
++	// if ((float)lua_isnumber(m_luaVM, -1)) {
++	//	vehicleTurnMass = lua_tonumber(m_luaVM, -1);
++	// }
++
++	// for (const char* file : files) {
++	//	if (luaL_dofile(m_luaVM, file) != 0) {
++	//		lua_pop(m_luaVM, 1);
++	//	}
++	// }
++
++	// I got this working, it now runs some changes to the C++ code, mostly just respawns.
++	// Toggle never wanted, toggle infinite health, toggle vehicles, and toggle peds.
++
++	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaScript.c_str()))) {
++	//if(CheckLua(L, luaL_dofile(L, defines.luaScript.c_str()))) {
++
++		// I was able to output this value to the log.
++		// TODO Setup table with locations in this file.
++		//if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaLocationsScript.c_str()))) {
++
++		//	// TODO Test this, should output something.
++		//	// Test for getting a locations table
++		//	lua_getglobal(m_luaVM, "locations_table");
++
++			// Well this breaks it.
++			// Check if it's a table
++#ifdef LUA_TABLE_TEST
++			//if(lua_istable(m_luaVM, -1)) {
++
++				printTable(m_luaVM, -1); // Print the table, output to log file.
++
++				// Iterate through the table
++			//	lua_pushnil(m_luaVM); // Push nil as the inital key.
++
++			//	while(lua_next(m_luaVM, -2) != 0) { // -2: table is below the key.
++			//		                            // Key is at -2, value is at -1
++			//		if(lua_isstring(m_luaVM, -2)) {
++			//			std::string key = lua_tostring(m_luaVM, -2);
++
++			//			if(lua_isnumber(m_luaVM, -1)) {
++			//				int value = static_cast<int>(lua_tointeger(m_luaVM, -1));
++
++			//				LogFunctions::LogInfo(defines.logFile, "Key: " + key + " Value: " + std::to_string(value));
++
++			//				std::cout << "Key: " << key << ", Value: " << value << std::endl;
++
++			//			} else if(lua_isstring(m_luaVM, -1)) {
++			//				std::string value = lua_tostring(m_luaVM, -1);
++
++			//				LogFunctions::LogInfo(defines.logFile, "Key: " + key + " Value: " + value);
++
++			//				std::cout << "Key: " << key << ", Value: " << value << std::endl;
++
++			//			} else if(lua_istable(m_luaVM, -1)) {
++
++			//				LogFunctions::LogInfo(defines.logFile, "Key: " + key + "Value (Sub Table): ");
++			//				std::cout << "Key: " << key << ", Value: (Sub Table)" << std::endl;
++			//				// Handle sub tables here. For a more comprehensive example, a recursive
++			//				// function would be needed.
++			//			}
++			//		}
++			//		lua_pop(m_luaVM, 1); // Pop the value, keep the key for next iteration
++			//	}
++			//} else {
++			//	LogFunctions::LogError(defines.logFile, "locations_table is not a table!");
++			//}
++
++#endif //LUA_TABLE_TEST
++
++		}
++		//} else {
++		//	LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaLocationsScript + "Couldn't be loaded!");
++		//}
++
++			// TODO Test this
++			// Pop the table from the stack
++			//lua_pop(m_luaVM, 1);
++			//
++
++		// This works, I can get booleans from Lua now!
++	//	lua_getglobal(m_luaVM, "test_bool_file2");
++	//	if(lua_isboolean(m_luaVM, -1)) {
++	//		bool test_bool_file2 = static_cast<float>(lua_toboolean(m_luaVM, -1));
++	//		// LuaTest::toggleRespawnPoint = toggleRespawnPoint;
++
++	//		// I've never really used this much before.
++	//		std::string toggleTestFile2 =
++	//		    test_bool_file2 ? "Boolean enabled in " + defines.luaLocationsScript : "Boolean disabled in " + defines.luaLocationsScript;
++	//		// Disabled, this is spammy.
++	//		//LogFunctions::LogInfo(defines.logFile, toggleTestFile2);
++	//		//
++	//		// std::string toggleRespawnString = toggleRespawnPoint ? "Respawn point enabled" : "Respawn point disabled";
++	//	}
++	//}
++
++
++	//-------------------
++	// First lua file
++	//-------------------
++
++	// TODO Figure out how to get this.
++	// For now I'll just use the toggles above.
++	//lua_getglobal(m_luaVM, "lose_weapons_bool");
++	//if (lua_isboolean(m_luaVM, -1)) 
++	//{ 
++	//	bool toggleLoseWeaponsOnDeath = static_cast<bool>(lua_toboolean(m_luaVM, -1));
++	//	LuaTest::toggleLoseWeaponsOnDeath = toggleLoseWeaponsOnDeath;
++
++	//	std::string toggleWeaponsDeathString = luaTest.toggleLoseWeaponsOnDeath 
++	//		? "You will no longer lose weapons on death" 
++	//		: "You will now lose weapons on death";
++
++	//	 LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
++
++	//}
++
++	// Test for setting the time pass variable when wasted or busted, this is what changes the time.
++	lua_getglobal(m_luaVM, "time_to_pass");
++	if(lua_isnumber(m_luaVM, -1)) {
++		int timeToPass = static_cast<int>(lua_tointeger(m_luaVM, -1));
++		// TRACE("Value is a number");
++		LuaTest::timeToPass = timeToPass;
++		std::string timeToPassString = "Time to pass set to: " + std::to_string(timeToPass);
++
++		// Disabled, this is spammy.
++		//LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
++	}
++
++	// This works, I can get booleans from Lua now!
++	lua_getglobal(m_luaVM, "toggle_respawn_point");
++	if(lua_isboolean(m_luaVM, -1)) {
++		bool toggleRespawnPoint = static_cast<float>(lua_toboolean(m_luaVM, -1));
++		LuaTest::toggleRespawnPoint = toggleRespawnPoint;
++
++		// I've never really used this much before.
++		std::string toggleRespawnString = toggleRespawnPoint ? "Respawn point enabled" : "Respawn point disabled";
++
++		// This is spammy
++		// LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
++	}
++
++	// Run a function in lua
++
++	// Disabled this for now, it will be useful for later.
++	// lua_getglobal(m_luaVM, "AddStuff");
++	// if(lua_isfunction(m_luaVM, -1)) {
++	//	lua_pushnumber(m_luaVM, 3.5f);
++	//	lua_pushnumber(m_luaVM, 7.2f);
++
++	////	// The pcall function executes the function.
++	//	if(CheckLua(m_luaVM, lua_pcall(m_luaVM, 2, 1, 0))) {
++	//		float number1 = (float)lua_tonumber(m_luaVM, -1);
++	//		//TRACE("[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got %f", number1);
++	//		// TODO Figure out how exactly to log this.
++	//		// TODO Figure out a better way to log this.
++	//		std::string addStuffVar = "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got ";
++	//		std::string result = addStuffVar + std::to_string(number1);
++	//		 LogFunctions::LogInfo(Defines::luaLogFile, result);
++	//		//std::cout << "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got " << number1 << std::endl;
++	//		}
++	//	}
++
++	else
++	{
++		LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaScript + "Couldn't be loaded!");
++	}
++// TRACE("KCNet ReVC - LUA_TEST");
++
++	// I think I moved this into a destructor.
++	//lua_close(m_luaVM);
++
++/* MTA SA, TODO Implement the security from it and other stuff that will be needed for ReVC
++
++// Initialize security restrictions. Very important to prevent lua trojans and viruses!
++InitSecurity();
++
++// Register module functions
++CLuaCFunctions::RegisterFunctionsWithVM(m_luaVM);
++
++// Create class metatables
++InitClasses(m_luaVM);
++
++// Update global variables
++lua_pushelement(m_luaVM, g_pClientGame->GetRootEntity());
++lua_setglobal(m_luaVM, "root");
++
++lua_pushresource(m_luaVM, m_pResource);
++lua_setglobal(m_luaVM, "resource");
++
++lua_pushelement(m_luaVM, m_pResource->GetResourceEntity());
++lua_setglobal(m_luaVM, "resourceRoot");
++
++lua_pushstring(m_luaVM, m_pResource->GetName());
++lua_setglobal(m_luaVM, "resourceName");
++
++lua_pushelement(m_luaVM, m_pResource->GetResourceGUIEntity());
++lua_setglobal(m_luaVM, "guiRoot");
++
++lua_pushelement(m_luaVM, g_pClientGame->GetLocalPlayer());
++lua_setglobal(m_luaVM, "localPlayer");
++
++*/
++}
++
++// TODO Fix this, possibly use the same concept from MTA SA, if I can get it to work.
++#ifdef LUA_TEST
++
++// void
++// HelloWorldTest(lua_State *L)
++//{
++//
++//	// Lua states is needed, to do anything in lua
++//	// TODO Figure this out in a function other then main
++//	//lua_State *L = luaL_newstate();
++//
++//	// Open the libraries, without this, stuff like math won't work
++//	//luaL_openlibs(L);
++//
++//
++//	// Make this run from a file
++//	if(CheckLua(L, luaL_dofile(L, "src/scripts/test.lua"))) {
++//
++//		// Run a function in lua
++//		lua_getglobal(L, "AddStuff");
++//		if(lua_isfunction(L, -1)) {
++//			lua_pushnumber(L, 3.5f);
++//			lua_pushnumber(L, 7.2f);
++//
++//			// The pcall function executes the function.
++//			if(CheckLua(L, lua_pcall(L, 2, 1, 0))) {
++//				float number1 = (float)lua_tonumber(L, -1);
++//				std::cout << "[C++] Called in Lua 'AddStuff(3.5f, 7.2f)', got " << number1 << std::endl;
++//			}
++//		}
++//
++//		// Get the program name
++//		// lua_getglobal(L, "ProgamName");
++//		// if (lua_isstring(L, -1))
++//		//{
++//		//	std::string programName = (std::string)lua_tostring(L, -1);
++//		//	std::cout << "Program name: " << programName << std::endl;
++//		//}
++//
++//	}
++//
++//
++//
++//	// Cleanup the lua vm
++//	lua_close(L);
++// }
++
++#endif // LUA_TEST
++
++#endif // LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+new file mode 100644
+index 00000000..b4162c2a
+--- /dev/null
++++ b/src/extras/lua/lua_test.h
+@@ -0,0 +1,113 @@
++#pragma once
++
++#ifdef LUA_TEST
++
++//
++// Lua
++extern "C"
++{
++#include <lua.h>
++#include <lauxlib.h>
++#include <lualib.h>
++}
++
++#include "defines.h"
++
++#include <iostream>
++#include <string>
++#include <fstream>
++
++// Needed for CVector
++#include "common.h"
++//
++
++// TODO Test this out here
++// This breaks it.
++//extern lua_State *m_luaVM;
++
++class LuaTest
++{
++private:
++	// lua_State *m_luaVM;
++	lua_State *m_luaVM;
++
++	// Register the lua functions
++	void RegisterLuaFunctions(lua_State *L);
++
++	//LuaTest() { 
++	//	m_luaVM = luaL_newstate();
++
++	//}
++	Defines defines;
++
++public:
++// TODO Fix this, possibly use the same concept from MTA SA, if I can get it to work.
++#ifdef LUA_TEST
++	static void HelloWorldTest();
++#endif
++
++	// TODO Make getters and setters for this
++	// Time to pass variable
++	int timeToPass;
++
++
++	// Spawn position.
++	float spawnPosX;
++	float spawnPosY;
++	float spawnPosZ;
++	float spawnHeading;
++
++	bool toggleRespawnPoint;
++
++	// For enabling/disabling losing weapons on wasted or busted
++	bool toggleLoseWeaponsOnDeath;
++
++	// TODO Implement this
++	// For enabling/disabling losing money on wasted or busted
++	bool toggleLoseCashOnDeath;
++
++	// TODO Test this, this might work well in here.
++	CVector spawnPosVector = CVector(spawnPosX, spawnPosY, spawnPosZ);
++
++
++	float vehicleTurnMass;
++
++	LuaTest();
++	void InitLua();
++	
++	bool CheckLua(lua_State *L, int r);
++
++	// Run the custom event system I am working on in Lua
++	void LuaEvents();
++
++	// New events, going to move init, keybind events, wasted and busted events into their own file
++	void BustedLuaEvents();
++	void WastedLuaEvents();
++	void LuaKeybindEvents();
++	void SetupLua();
++
++
++	// These might work for getting the m_luaVM variable in the private class above.
++	static LuaTest& GetInstance()
++	{ 
++		static LuaTest instance;
++		return instance;
++	}
++
++	lua_State *GetLuaState() 
++	{ 
++		return m_luaVM; 
++	}
++
++	~LuaTest()
++	{
++		if (m_luaVM) 
++		{ 
++			lua_close(m_luaVM);
++		}
++	}
++
++
++};
++
++#endif //LUA_TEST
+\ No newline at end of file
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 068b31e9..2ceb53c6 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -101,6 +101,33 @@ HWND mainWindow = nullptr;
+ // Set the resize variables
+ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ 
++// Lua test
++#ifdef CUSTOM_CODE
++
++
++#ifdef LUA_TEST
++#include "lua_test.h"
++
++
++#include "lua_setup.h"
++#endif //LUA_TEST
++// Timer for the keybind
++#include "Timer.h"
++#include "defines.h"
++
++
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                     \
++	 ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++// Test for disabling pause on focus loss
++bool isGameFocused = true; // Initially focused
++
++#endif //CUSTOM_CODE
++
+ // Forward declare message handler from imgui_impl_win32.cpp
+ #if defined(_WIN32) && defined(RW_D3D9)
+ extern IMGUI_IMPL_API LRESULT
+@@ -1950,6 +1977,11 @@ WinMain(HINSTANCE instance,
+ 	RwChar** argv;
+ 	SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, nil, SPIF_SENDCHANGE);
+ 
++#ifdef LUA_TEST
++// Test for making a lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
++bool	luaInit = false;
++#endif
++
+ #ifndef MASTER
+ 	if (strstr(cmdLine, "-console"))
+ 	{
+@@ -2133,6 +2165,10 @@ main(int argc, char *argv[])
+ 	FastLoader fastLoader = FastLoader();
+ #endif
+ 
++#ifdef LUA_TEST
++	LuaSetup luaSetup = LuaSetup();
++#endif
++
+ #ifdef PS2_MENU
+ 	int32 r = TheMemoryCard.CheckCardStateAtGameStartUp(CARD_ONE);
+ 	if (   r == CMemoryCard::ERR_DIRNOENTRY  || r == CMemoryCard::ERR_NOFORMAT
+@@ -2432,6 +2468,19 @@ main(int argc, char *argv[])
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
+ 						}
+ 
++#ifdef LUA_TEST
++							//! TODO: Fix this
++						    // TODO Make a separate lua file for auto load variables like these.
++						    // First, check if lua is enabled in the ini, if not run the lua init.
++						    LuaTest luaTest = LuaTest();
++							if(gbLuaTest) {
++								if(!luaInit) {
++									luaTest.InitLua();
++									luaInit = true;
++								}
++						    }
++#endif
++
+ 						// TODO Fix this to work with OpenGL, should be the same concept for the loop.
+ #ifdef _IMGUI_TEST
+ 					        // Run the ImGui loop that checks for controller input, and mouse/keyboard input if enabled in the ini
+@@ -2441,6 +2490,14 @@ main(int argc, char *argv[])
+ 
+ #endif
+ 
++#ifdef LUA_TEST
++							// Run the Lua loop that checks for mouse/keyboard input if enabled in the ini
++							if(gbLuaTest) 
++							{
++							    luaSetup.LuaPlayingGameLoop();
++							}
++#endif
++
+ 						break;
+ 					}
+ 				}
+-- 
+2.49.0.windows.1
+

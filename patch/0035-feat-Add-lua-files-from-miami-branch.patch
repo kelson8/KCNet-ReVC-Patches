@@ -1,0 +1,2326 @@
+From 872c6e8ba96042f41322d0672f4ed65e55e54223 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 17:38:25 -0500
+Subject: [PATCH 35/58] feat: Add lua files from miami branch
+
+* Add lua files, disable oneluac.c in premake.
+* Enable extra logging preprocessor.
+* Setup some logging on Linux, this hasn't been tested.
+
+* Enable lua events in Game.cpp.
+* Cleanup lua_test.cpp a bit.
+
+* Update american gxt strings.
+---
+ .../ViceExtended/lua_scripts/kcnet-busted.lua |  16 +
+ .../ViceExtended/lua_scripts/kcnet-events.lua |  33 ++
+ .../lua_scripts/kcnet-keybind-events.lua      | 109 ++++
+ .../ViceExtended/lua_scripts/kcnet-wasted.lua |  16 +
+ .../ViceExtended/lua_scripts/locations.lua    |  20 +
+ gamefiles/ViceExtended/lua_scripts/test.lua   | 417 +++++++++++++++
+ .../ViceExtended/lua_scripts/vehicles.lua     | 356 +++++++++++++
+ premake5.lua                                  |   4 +
+ src/core/Frontend.cpp                         |  14 +
+ src/core/Frontend.h                           |   4 +
+ src/core/Game.cpp                             |   7 +
+ src/core/MenuScreensCustom.cpp                |   6 +
+ src/core/config.h                             |   3 +
+ src/core/main.cpp                             |   4 +
+ src/core/main.h                               |   4 +
+ src/extras/functions/ini_functions.cpp        |   4 +
+ src/extras/functions/log_functions.cpp        | 180 ++++---
+ src/extras/functions/log_functions.h          |  12 +
+ src/extras/lua/lua_test.cpp                   |  26 +-
+ src/skel/glfw/glfw.cpp                        |   8 +-
+ utils/gxt/american.txt                        | 486 ++++++++++++++++--
+ 21 files changed, 1588 insertions(+), 141 deletions(-)
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/kcnet-busted.lua
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/kcnet-events.lua
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/kcnet-wasted.lua
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/locations.lua
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/test.lua
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/vehicles.lua
+
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-busted.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-busted.lua
+new file mode 100644
+index 00000000..bb8c2e3e
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-busted.lua
+@@ -0,0 +1,16 @@
++-- TODO Set this up, events to run when busted
++
++-- Quick test for this here:
++-- Log the player coordinates and heading when respawning.
++local log_coords = true
++local log_heading = true
++
++print("KCNet -- Player busted")
++
++if log_coords then
++	log_player_coords()
++end
++
++if log_heading then
++	log_player_heading()
++end
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua
+new file mode 100644
+index 00000000..01e45d80
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua
+@@ -0,0 +1,33 @@
++-- My custom event system running in lua
++-- KCNet Event System ReVC
++
++-- Functions for this:
++-- blow_up_vehicle - This blows up the current vehicle if the player is in one.
++-- kill_wanted_player - This will kill the player if they get wanted.
++-- is_player_in_vehicle - Check if the player is in a vehicle, automatically runs on certain things like blow_up_vehicle
++-- kill_player - This will kill the player.
++
++-- Booleans for this:
++-- is_player_alive - Check if the player is alive.
++
++local chaos_mode = false
++
++-- if is_player_in_vehicle() then
++if chaos_mode then
++    -- Player vehicle check is done in the function, although I could change that if needed.
++    -- Blow up vehicle
++	-- blow_up_vehicle()
++
++    -- Kill player if wanted
++    -- This works, I fixed the C++ function to not run if the player has died.
++    kill_wanted_player()
++
++    -- Well this still spams the message
++    -- if is_player_in_vehicle() and is_player_alive() then
++    --     kill_player()
++    -- end
++
++	
++end
++
++-----
+\ No newline at end of file
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+new file mode 100644
+index 00000000..3ba24133
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+@@ -0,0 +1,109 @@
++-- TODO Move keybind events in here for testing, when running with F9.
++
++------
++-- Vehicle functions
++------
++-- Create a vehicle
++-- 
++-- create_vehicle(vehicle id, delete last vehicle, warp into vehicle)
++-- Example:
++-- create_vehicle(145, true, true)
++
++
++-- This works! Now test.lua is just for starting the game.
++-- I'll rename it to kcnet-setup.lua later
++
++print("kcnet-keybind-events.lua loaded")
++
++-- This works but doesn't delete the previous vehicle.
++local create_vehicle_toggle = false
++
++
++-- TODO Make this get from a list of random values
++-- Teleport the player to a random spawn I setup.
++local teleportPlayerToSpawn = false
++local teleportPlayerToAirport = false
++
++local spawnX = -258.1
++local spawnY = -453.1
++local spawnZ = 13.5
++
++local airportX = -1515.1
++local airportY = -1182.1
++local airportZ = 16.5
++local airportHeading = 0.0
++
++-- if teleportPlayerToSpawn then
++-- 	set_position(spawnX, spawnY, spawnZ)
++-- elseif teleportPlayerToAirport then
++-- 	set_position(airportX, airportY, airportZ)
++-- 	-- set_heading(spawnHeading)
++-- end
++
++if create_vehicle_toggle then
++	-- create_vehicle(145, true, true)
++    -- This can set the position of the player and the vehicle.
++    -- if teleportPlayerToSpawn then
++    --     set_position(spawnX, spawnY, spawnZ)
++    -- end
++
++	create_vehicle(145, true, true)
++
++	-- TODO Test this in a different namespace
++	-- Well this didn't work.
++	-- test_functions.create_vehicle_test(145, true, true)
++
++	-- Well this doesn't work being moved in another file.
++	-- local infernus = vehicle_test.getVehicleIdByName("Infernus")
++	-- print("Test" .. infernus)
++	
++
++	-- I wonder why this doesn't work
++	-- local infernus = getVehicleIdByName("Infernus")
++	-- print(infernus)
++	-- create_vehicle(infernus, true, true)
++
++
++	-- TODO Fix this below, should create a random vehicle.
++	-- To create a random vehicle from the available IDs (keys):
++	-- print(vehicles)
++	-- print("Inspecting vehicles table:")
++	-- for k, v in pairs(vehicles) do
++	--   print("Key:", k, "Value:", v)
++	-- end
++
++	-- local availableIds = {}
++	-- print("Before loop - availableIds:", availableIds) -- Check if it's an empty table initially
++
++  	-- -- Populate availableIds with vehicle IDs
++  	-- for id, name in pairs(vehicles) do
++    -- 	print("Inside loop - ID:", id, "Name:", name)
++    -- 	table.insert(availableIds, id)
++    -- 	print("Inside loop - availableIds:", availableIds)
++  	-- end
++  
++	-- print("After loop - availableIds:", availableIds) -- Check the final content
++
++	-- -- This print doesn't run but it shows nil if i comment the above code out.
++	-- -- print(availableIds)
++	
++  	-- -- Select a random ID and create the vehicle
++  	-- if #availableIds > 0 then -- Ensure there are IDs in the table
++    -- 	local randomIndex = math.random(#availableIds)
++    -- 	local randomVehicleId = availableIds[randomIndex]
++    -- 	create_vehicle(randomVehicleId, true, true)
++    -- 	print("Created random vehicle with ID:", randomVehicleId)
++  	-- else
++    -- 	print("Error: No vehicle IDs found in availableIds.")
++  	-- end
++end
++
++
++------
++-- Misc functions
++------
++
++blow_up_vehicles_cheat = false
++if blow_up_vehicles_cheat then
++	blow_up_all_vehicles()
++end
+\ No newline at end of file
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-wasted.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-wasted.lua
+new file mode 100644
+index 00000000..66f4fd7b
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-wasted.lua
+@@ -0,0 +1,16 @@
++-- Events to run when the player is wasted
++
++print("KCNet -- Player wasted")
++
++-- Quick test for this here:
++-- Log the player coordinates and heading when respawning.
++local log_coords = false
++local log_heading = false
++
++if log_coords then
++	log_player_coords()
++end
++
++if log_heading then
++	log_player_heading()
++end
+diff --git a/gamefiles/ViceExtended/lua_scripts/locations.lua b/gamefiles/ViceExtended/lua_scripts/locations.lua
+new file mode 100644
+index 00000000..cbced822
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/locations.lua
+@@ -0,0 +1,20 @@
++-- TODO Fix this to work in multiple files.
++
++-- Location table for C++
++-- TODO Test this.
++locations_table = {
++
++{airportX = -1515.1,
++airportY = -1182.1,
++airportZ = 16.5,}
++
++}
++
++
++
++
++
++-- Test file
++
++-- This is working, I can get the value in this file.
++test_bool_file2 = false
+\ No newline at end of file
+diff --git a/gamefiles/ViceExtended/lua_scripts/test.lua b/gamefiles/ViceExtended/lua_scripts/test.lua
+new file mode 100644
+index 00000000..8a15c577
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/test.lua
+@@ -0,0 +1,417 @@
++-- local vehicle_test = require 'vehicles'
++
++-- C++
++-- Testing moving out of the global namespace
++-- local test_functions = require("testfunctions")
++
++-- log_info(package.path)
++-- local path_length = string.len(package.path)
++-- print("Package path length:", path_length)
++-- log_info("Package path length: " .. path_length) -- Log the length itself
++
++-- log_info("Test")
++
++-- print(package.path)
++
++print("KCNet -- test.lua loaded")
++
++
++-- I have remapped this Lua mod from F8 to F9
++
++-- print("hello ReVC!")
++
++-- I added a reload function to my lua test using the 'F9' keybind
++
++-- TODO Rename this file to kcnet_revc.lua
++-- Also try to rename it in the C++ side.
++
++-- This lua file runs when the game starts up, and when the player is busted/wasted.
++-- I could make it load specific parts of this if a player is in a vehicle.
++
++-----------
++-- All lua functions
++-----------
++
++-- Run a test for the cheats, this was a basic test to run C++ functions but it isn't needed anymore.
++-- cheat_test()
++
++-- Toggle the players control on/off
++-- toggle_control()
++
++-- A toggle for ImGui, I moved to using a keybind for this.
++-- toggle_imgui()
++
++------
++-- Toggles
++------
++
++-- Turn on never wanted
++-- enable_never_wanted()
++
++-- Turn on infinite health
++-- enable_infinite_health()
++
++-- Set ped density to 0, disable peds
++-- disable_peds()
++
++-- Set vehicle density to 0, disable vehicles
++-- disable_vehicles()
++
++------
++-- Player functions
++------
++
++-- Set the players position to the specified coords
++-- set_position(x, y, z)
++
++-- Heal the player to full health and give max armor
++-- heal_player()
++
++-- Set the players spawn point, TODO Make this get the respawn point from the locations.lua
++-- set_respawn_point(x, y, z, heading)
++
++-- Cancel the respawn, not sure if this works right
++-- cancel_override_restart()
++
++-- Toggles for losing weapons when dying.
++-- enable_lose_weapons_on_death()
++-- disable_lose_weapons_on_death()
++
++-- Log the players coords and heading
++-- log_player_coords()
++-- log_player_heading()
++
++-- Check if player is in a vehicle
++-- is_player_in_vehicle()
++
++-- Blow up the players vehicle
++-- blow_up_vehicle()
++
++-- Blow up all vehicles (Doesn't blow up the players vehicle)
++-- blow_up_all_vehicles()
++
++-- Kill the player if wanted
++-- kill_wanted_player()
++
++-- Kill the player
++-- kill_player()
++
++-- Check if the player is alive
++-- is_player_alive()
++
++-- Change the players clothes, due to a crash with invalid models I have disabled this in the C++ code.
++-- TODO Fix this and stop it from crashing on invalid models
++-- change_clothes("clothesName")
++
++-- Get the current wanted level if above 0
++-- get_wanted_level()
++
++------
++-- Message functions
++------
++
++-- Display a hud help message
++-- print_msg(message)
++
++-- Log messages in lua
++
++-- Log an info message
++-- log_info(message)
++
++-- Log a warning message
++-- log_warning(message)
++
++-- Log a error message
++-- log_error(message)
++
++------
++-- World functions
++------
++-- Clear the area of any peds and vehicles
++-- clear_area(radius)
++
++-----------
++-- Toggles
++-----------
++
++local setPositionEnabled = false
++local healPlayerEnabled = false
++-- This works fine for my new cheat test.
++-- I would like to eventually make my own menu for my lua functions.
++local cheatTestEnabled = false
++local playerControlTestEnabled = false
++
++-- I got this to auto start in win.cpp by adding the initLua 
++-- function into the GS_PLAYING_GAME loop, once toggled on it shouldn't run anymore.
++-- So anything I run in this file now will auto start.
++local enableNeverWanted = false
++local enableInfiniteHealth = false
++
++-- Setup auto teleports to locations when the game starts
++-- Teleport the player to a random spawn I setup.
++local teleportPlayerToSpawn = false
++-- Teleport the player to the airport.
++local teleportPlayerToAirport = false
++
++-- These seem to work.
++
++-- Set ped density to 0.0
++local disablePeds = false
++-- Set vehicle density to 0.0
++local disableVehicles = false
++
++-- Display a log message using my C++ functions, logs to 'ViceExtended/logs/KCNet-ReVC-lua.log'
++local log_test = false
++
++-- Log warnings and errors to the lua log file as a test
++-- These work
++local log_warning_test = false
++local log_error_test = false
++
++-- This should change the players clothes
++-- This works
++-- TODO Fix this 
++-- Due to the invalid models crashing this I disabled it in the C++ code, now it won't do anything.
++local change_clothes_enabled = false
++
++-- Display a help message on the hud
++-- Uses CustomCheats::CustomHelpMessage(string)
++local display_help_text = false
++
++
++-- Blow up all cars
++-- Uses CustomCheats::BlowUpAllCars()
++local blow_up_cars_toggle = false
++
++local clear_area_toggle = false
++
++-- Quick test for logging the current directory in lua.
++
++-- log_directory()
++
++-----------
++-- Locations
++-----------
++-- -- TODO Figure out how to move these into another file
++
++local spawnX = -258.1
++local spawnY = -453.1
++local spawnZ = 13.5
++
++local airportX = -1515.1
++local airportY = -1182.1
++local airportZ = 16.5
++local airportHeading = 0.0
++
++-- TODO Test this
++-- dofile("locations.lua")
++--
++
++-----------
++-- Set C++ values
++-----------
++
++-- Test for logging in lua, this works!
++if log_test then
++	if is_player_in_vehicle() then
++		log_info("KCNet - Player is in a vehicle")
++	else
++		log_info("KCNet - Player is not in a vehicle")
++	end
++	-- log_info("KCNet - Test msg from lua")
++end
++
++-- These work, disabled above
++if log_warning_test then
++	log_warning("Test message")
++end
++
++if log_error_test then
++	log_error("Test message")
++end
++
++-- Toggle the respawn point or if the player respawns normally
++-- This is mostly working, it only takes effect after the player dies once.
++-- TODO Add this to my ImGui menu later.
++toggle_respawn_point = false
++
++
++-- This sets the time that is passed when wasted.
++-- The default value is 720
++local default_time_to_pass = 720
++-- TODO Add a boolean for this toggle.
++time_to_pass = default_time_to_pass
++
++-- If the logging is enabled for the player coords and heading, press F9
++local log_coords = false
++local log_heading = false
++
++if log_coords then
++	log_player_coords()
++end
++
++if log_heading then
++	log_player_heading()
++end
++
++-- Change the players clothes
++-- TODO Fix this to not crash if the model is invalid.
++if change_clothes_enabled then
++	change_clothes("player2")
++	-- change_clothes("invalid")
++end
++
++-- Display text on the hud as a help message
++if display_help_text then
++	-- Works for displaying wanted level, should work for anything I setup in the C++ side also.
++	-- This will be very useful instead of logging the values unless I need to.
++	wanted_level = get_wanted_level()
++	print_msg("WL: " .. wanted_level)
++end
++
++-- If the player will lose their weapons when dying, set to true by default
++-- If set to false, the player will not lose weapons when dying.
++
++-- local lose_weapons = false
++local lose_weapons = true
++
++-- if not lose_weapons then
++if not lose_weapons then
++	disable_lose_weapons_on_death()
++else
++	enable_lose_weapons_on_death()
++end
++
++
++-- Blow up all cars cheat
++if blow_up_cars_toggle then
++	blow_up_all_vehicles()
++end
++
++-- Clear the area of any peds and vehicles.
++if clear_area_toggle then
++	clear_area(25)
++end
++
++-- Here is a list of vehicles for this:
++-- https://gtamods.com/wiki/List_of_vehicles_(VC)
++
++-- Disabled
++-- toggle_lose_weapons_on_death()
++
++-- Toggle the players respawn to a new value, this works if the player dies instead of going to the hospital.
++-- Added this stuff into WBSTATE_WASTED and WBSTATE_BUSTED under CGameLogic::Update()
++-- It'll run anytime the player is busted/wasted or even when the game starts up.
++-- I don't have a keybind for this anymore, although that could be useful for reloading this.
++
++if toggle_respawn_point then
++	-- Run the setRespawnPointLua function in C++
++	-- set_position(spawnX, spawnY, spawnZ)
++	set_respawn_point(spawnX, spawnY, spawnZ, airportHeading)
++else
++	-- This should disable the override restart, although It'll keep running
++	-- TODO Find a way to fix that.
++
++	-- Run the cancelOverrideNextRestartLua function in C++
++	-- cancel_override_restart()
++	-- set_respawn_point(airportX, airportY, airportZ, airportHeading)
++end
++
++
++
++
++-- -- This works for an auto spawn system, TODO Make this grab random values from lua
++if teleportPlayerToSpawn then
++	set_position(spawnX, spawnY, spawnZ)
++elseif teleportPlayerToAirport then
++	set_position(airportX, airportY, airportZ)
++	-- set_heading(spawnHeading)
++end
++
++-----------
++-- Toggles
++-----------
++
++-- Turn the ped density multiplier to 0.0
++if disablePeds then
++	disable_peds()
++end
++
++-- Turn the vehicle density multiplier to 0.0
++if disableVehicles then
++	disable_vehicles()
++end
++
++if enableNeverWanted then
++	enable_never_wanted()
++end
++
++if enableInfiniteHealth then
++	enable_infinite_health()
++end
++
++-- Test for toggling ImGui
++-- Moved this into the C++ code under F8, don't use this anymore.
++-- local imGuiToggleEnabled = false
++
++-----------
++-- End Toggles
++-----------
++
++-- Test for imgui_main_menu.cpp
++vehicle_mass = 1000.2
++
++
++-- This is disabled in the C++ code.
++function AddStuff(num1, num2)
++	return num1 + num2
++end
++
++
++-----------
++-- Old functions
++-----------
++
++-- Here is a list of stuff to be used for cheat_test
++-- cheat_test activates a list of cheats defined in my ReVC C++ code.
++-- 1. BLOWMEUP (This sets the players vehicle on fire if in one.)
++-- 2. KILLME (This kills the player.)
++-- 3. SPAWNCAR {vehicleID} (This spawns a vehicle with the specified vehicle ID)
++-- 4. IMGUITG (Test for toggling ImGui)
++
++-- TODO Figure out how to add cheats to this.
++-- For now I'll just hard code a couple values to make sure its working.
++
++if setPositionEnabled then
++	-- Test calling function from C++
++	-- OMG this works!! I was able to call this function in C++ that sets the players position.
++	-- What if i change this file while its running?
++	-- I can change this file while it's running!!
++	-- That's very useful, I can add menus to this once I figure out how to make them like the debug menu.
++	set_position(3,3,30)
++
++-- This seems to work fine, heal the player if enabled.
++elseif healPlayerEnabled then
++	heal_player()
++
++-- I got this working somehow, Idk what I changed.
++elseif cheatTestEnabled then
++	-- cheat_test("BLOWMEUP")
++	cheat_test("KILLME")
++	-- cheat_test("SPAWNCAR", 150)
++	-- cheat_test("IMGUITG")
++
++
++elseif playerControlTestEnabled then
++	-- This makes it to where the player controls can be toggled on/off.
++	toggle_control()
++
++-- This toggles on and off properly.
++elseif imGuiToggleEnabled then
++	toggle_imgui()
++	
++end
++
++-----------
++-- End old functions
++-----------
+\ No newline at end of file
+diff --git a/gamefiles/ViceExtended/lua_scripts/vehicles.lua b/gamefiles/ViceExtended/lua_scripts/vehicles.lua
+new file mode 100644
+index 00000000..0338d4ce
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/vehicles.lua
+@@ -0,0 +1,356 @@
++-- TODO Figure out how to make test.lua read from this.
++-- local vehicle_test = require 'vehicles'
++--
++
++-- Vehicle enums
++-- Make the game load vehicles.lua, and a few others in here
++local vehicles = {
++	[400] = "Landstal",
++	[401] = "Bravura",
++	[402] = "Buffalo",
++	[403] = "Linerunner",
++	[404] = "Perennial",
++	[405] = "Sentinel",
++	[406] = "Dumper",
++	[407] = "Firetruck",
++	[408] = "Trashmaster",
++	[409] = "Stretch",
++	[410] = "Manana",
++	[411] = "Infernus",
++	[412] = "Voodoo",
++	[413] = "Pony",
++	[414] = "Mule",
++	[415] = "Cheetah",
++	[416] = "Ambulance",
++	[417] = "FBI Rancher",
++	[418] = "Moonbeam",
++	[419] = "Esperanto",
++	[420] = "Taxi",
++	[421] = "Washington",
++	[422] = "Bobcat",
++	[423] = "Mr. Whoopee",
++	[424] = "BF Injection",
++	[425] = "Hunter",
++	[426] = "Police",
++	[427] = "Enforcer",
++	[428] = "Securicar",
++	[429] = "Banshee",
++	[430] = "Predator",
++	[431] = "Bus",
++	[432] = "Rhino",
++	[433] = "Barracks OL",
++	[434] = "Sanchez",
++	[435] = "Blista Compact",
++	[436] = "Stinger",
++	[437] = "Dodo",
++	[438] = "Coach",
++	[439] = "Cabbie",
++	[440] = "Stallion",
++	[441] = "Rumpo",
++	[442] = "RC Bandit",
++	[443] = "Romero",
++	[444] = "Packer",
++	[445] = "Admiral",
++	[446] = "Squalo",
++	[447] = "Seasparrow",
++	[448] = "Pizza Boy",
++	[449] = "Gang Burrito",
++	[450] = "Golf Caddy",
++	[451] = "Baggage Handler",
++	[452] = "VCN Maverick",
++	[453] = "Sandking",
++	[454] = "Baggage",
++	[455] = "Helicopter", -- Generic Helicopter (likely unused directly)
++	[456] = "Sparrow",
++	[457] = "Yankee",
++	[458] = "Top Fun Van",
++	[459] = "Skimmer",
++	[460] = "PCJ-600",
++	[461] = "Faggio",
++	[462] = "Freeway",
++	[463] = "Angel",
++	[464] = "Bike", -- Generic Bike (likely unused directly)
++	[465] = "BMX",
++	[466] = "RC Goblin",
++	[467] = "Hotring Racer",
++	[468] = "Sandking", -- Duplicate entry in the source list
++	[469] = "Bloodring Banger",
++	[470] = "Hotring Racer", -- Duplicate entry in the source list
++	[471] = "Police Maverick",
++	[472] = "Cuban Hermes",
++	[473] = "Caddy", -- Duplicate of Golf Caddy in the source list
++	[474] = "Baggage Handler", -- Duplicate entry in the source list
++	[475] = "Pizza Boy", -- Duplicate entry in the source list
++	[476] = "Gang Burrito", -- Duplicate entry in the source list
++	[477] = "Sandking", -- Duplicate entry in the source list
++	[478] = "VCN Maverick", -- Duplicate entry in the source list
++	[479] = "Hotring Racer", -- Duplicate entry in the source list
++	[480] = "Bloodring Banger", -- Duplicate entry in the source list
++	[481] = "Hotring Racer", -- Duplicate entry in the source list
++	[482] = "FBI Washington",
++	[483] = "Virgo",
++	[484] = "Greenwood",
++	[485] = "Oceanic",
++	[486] = "Voches",
++	[487] = "Taxi", -- Duplicate entry in the source list
++	[488] = "Hermes",
++	[489] = "Sabre",
++	[490] = "Phoenix",
++	[491] = "Walton",
++	[492] = "Regina",
++	[493] = "Comet",
++	[494] = "PCJ-600", -- Duplicate entry in the source list
++	[495] = "Sanchez", -- Duplicate entry in the source list
++	[496] = "Stinger", -- Duplicate entry in the source list
++	[497] = "Perennial", -- Duplicate entry in the source list
++	[498] = "Blista Compact", -- Duplicate entry in the source list
++	[499] = "Banshee", -- Duplicate entry in the source list
++	[500] = "Esperanto", -- Duplicate entry in the source list
++	[501] = "Taxi", -- Duplicate entry in the source list
++	[502] = "Buffalo", -- Duplicate entry in the source list
++	[503] = "Sentinel", -- Duplicate entry in the source list
++	[504] = "Manana", -- Duplicate entry in the source list
++	[505] = "Landstal", -- Duplicate entry in the source list
++	[506] = "Bravura", -- Duplicate entry in the source list
++	[507] = "FBI Rancher", -- Duplicate entry in the source list
++	[508] = "Virgo", -- Duplicate entry in the source list
++	[509] = "Greenwood", -- Duplicate entry in the source list
++	[510] = "Oceanic", -- Duplicate entry in the source list
++	[511] = "Voches", -- Duplicate entry in the source list
++	[512] = "Admiral", -- Duplicate entry in the source list
++	[513] = "Stretch", -- Duplicate entry in the source list
++	[514] = "Washington", -- Duplicate entry in the source list
++	[515] = "Hermes", -- Duplicate entry in the source list
++	[516] = "Sabre", -- Duplicate entry in the source list
++	[517] = "Phoenix", -- Duplicate entry in the source list
++	[518] = "Walton", -- Duplicate entry in the source list
++	[519] = "Regina", -- Duplicate entry in the source list
++	[520] = "Comet", -- Duplicate entry in the source list
++	[521] = "Love Fist Limo",
++	[522] = "Bloodring Banger", -- Duplicate entry in the source list
++	[523] = "Bloodring Banger", -- Duplicate entry in the source list
++	[524] = "Hotring Racer", -- Duplicate entry in the source list
++	[525] = "Hotring Racer", -- Duplicate entry in the source list
++	[526] = "Sabre Turbo",
++	[527] = "Tampa",
++	[528] = "Phoenix", -- Duplicate entry in the source list
++	[529] = "Banshee", -- Duplicate entry in the source list
++	[530] = "BF Injection", -- Duplicate entry in the source list
++	[531] = "Police", -- Duplicate entry in the source list
++	[532] = "Enforcer", -- Duplicate entry in the source list
++	[533] = "Securicar", -- Duplicate entry in the source list
++	[534] = "Rhino", -- Duplicate entry in the source list
++	[535] = "Barracks OL", -- Duplicate entry in the source list
++	[536] = "FBI Washington", -- Duplicate entry in the source list
++	[537] = "Hunter", -- Duplicate entry in the source list
++	[538] = "Coastguard",
++	[539] = "Dinghy",
++	[540] = "Perennial", -- Duplicate entry in the source list
++	[541] = "Sentinel", -- Duplicate entry in the source list
++	[542] = "Bravura", -- Duplicate entry in the source list
++	[543] = "Buffalo", -- Duplicate entry in the source list
++	[544] = "Landstal", -- Duplicate entry in the source list
++	[545] = "Bobcat", -- Duplicate entry in the source list
++	[546] = "Moonbeam", -- Duplicate entry in the source list
++	[547] = "Esperanto", -- Duplicate entry in the source list
++	[548] = "Taxi", -- Duplicate entry in the source list
++	[549] = "Washington", -- Duplicate entry in the source list
++	[550] = "Stallion", -- Duplicate entry in the source list
++	[551] = "Blista Compact", -- Duplicate entry in the source list
++	[552] = "Cheetah", -- Duplicate entry in the source list
++	[553] = "FBI Rancher", -- Duplicate entry in the source list
++	[554] = "Oceanic", -- Duplicate entry in the source list
++	[555] = "Virgo", -- Duplicate entry in the source list
++	[556] = "Greenwood", -- Duplicate entry in the source list
++	[557] = "Manana", -- Duplicate entry in the source list
++	[558] = "Admiral", -- Duplicate entry in the source list
++	[559] = "Hermes", -- Duplicate entry in the source list
++	[560] = "Sabre", -- Duplicate entry in the source list
++	[561] = "Phoenix", -- Duplicate entry in the source list
++	[562] = "Walton", -- Duplicate entry in the source list
++	[563] = "Regina", -- Duplicate entry in the source list
++	[564] = "Comet", -- Duplicate entry in the source list
++	[565] = "PCJ-600", -- Duplicate entry in the source list
++	[566] = "Sanchez", -- Duplicate entry in the source list
++	[567] = "Stinger", -- Duplicate entry in the source list
++	[568] = "Banshee", -- Duplicate entry in the source list
++	[569] = "Infernus", -- Duplicate entry in the source list
++	[570] = "Voodoo", -- Duplicate entry in the source list
++	[571] = "Cuban Hermes", -- Duplicate entry in the source list
++	[572] = "Sabre Turbo", -- Duplicate entry in the source list
++	[573] = "Tampa", -- Duplicate entry in the source list
++	[574] = "Admiral", -- Duplicate entry in the source list
++	[575] = "Stretch", -- Duplicate entry in the source list
++	[576] = "Washington", -- Duplicate entry in the source list
++	[577] = "Sabre", -- Duplicate entry in the source list
++	[578] = "Phoenix", -- Duplicate entry in the source list
++	[579] = "Comet", -- Duplicate entry in the source list
++	[580] = "Banshee", -- Duplicate entry in the source list
++	[581] = "Infernus", -- Duplicate entry in the source list
++	[582] = "Cheetah", -- Duplicate entry in the source list
++	[583] = "FBI Rancher", -- Duplicate entry in the source list
++	[584] = "Police Maverick", -- Duplicate entry in the source list
++	[585] = "Sparrow", -- Duplicate entry in the source list
++	[586] = "Sea Sparrow", -- Typo in the source list, assuming Seasparrow
++	[587] = "Hunter", -- Duplicate entry in the source list
++	[588] = "Police", -- Duplicate entry in the source list
++	[589] = "Enforcer", -- Duplicate entry in the source list
++	[590] = "Barracks OL", -- Duplicate entry in the source list
++	[591] = "Rhino", -- Duplicate entry in the source list
++	[592] = "Ambulance", -- Duplicate entry in the source list
++	[593] = "Firetruck", -- Duplicate entry in the source list
++	[594] = "Trashmaster", -- Duplicate entry in the source list
++	[595] = "Linerunner", -- Duplicate entry in the source list
++	[596] = "Dumper", -- Duplicate entry in the source list
++	[597] = "Securicar", -- Duplicate entry in the source list
++	[598] = "FBI Washington", -- Duplicate entry in the source list
++	[599] = "Coastguard", -- Duplicate entry in the source list
++	[600] = "Dinghy", -- Duplicate entry in the source list
++	[601] = "VCN Maverick", -- Duplicate entry in the source list
++	[602] = "Skimmer", -- Duplicate entry in the source list
++	[603] = "PCJ-600", -- Duplicate entry in the source list
++	[604] = "Freeway", -- Duplicate entry in the source list
++	[605] = "Angel", -- Duplicate entry in the source list
++	[606] = "BMX", -- Duplicate entry in the source list
++	[607] = "RC Bandit", -- Duplicate entry in the source list
++	[608] = "RC Goblin", -- Duplicate entry in the source list
++	[609] = "Hotring Racer", -- Duplicate entry in the source list
++	[610] = "Bloodring Banger", -- Duplicate entry in the source list
++	[611] = "Sandking", -- Duplicate entry in the source list
++	[612] = "Baggage Handler", -- Duplicate entry in the source list
++	[613] = "Pizza Boy", -- Duplicate entry in the source list
++	[614] = "Gang Burrito", -- Duplicate entry in the source list
++	[615] = "Mule", -- Duplicate entry in the source list
++	[616] = "Yankee", -- Duplicate entry in the source list
++	[617] = "Top Fun Van", -- Duplicate entry in the source list
++	[618] = "Coach", -- Duplicate entry in the source list
++	[619] = "Cabbie", -- Duplicate entry in the source list
++	[620] = "Bus", -- Duplicate entry in the source list
++	[621] = "Mr. Whoopee", -- Duplicate entry in the source list
++	[622] = "Pizza Boy", -- Duplicate entry in the source list
++	[623] = "Baggage", -- Duplicate entry in the source list
++	[624] = "Baggage Handler", -- Duplicate entry in the source list
++	[625] = "Golf Caddy", -- Duplicate entry in the source list
++	[626] = "VCN Maverick", -- Duplicate entry in the source list
++	[627] = "Sparrow", -- Duplicate entry in the source list
++	[628] = "Sea Sparrow", -- Assuming Seasparrow
++	[629] = "Police Maverick", -- Duplicate entry in the source list
++	[630] = "Cuban Hermes", -- Duplicate entry in the source list
++	[631] = "Love Fist Limo", -- Duplicate entry in the source list
++	[632] = "Sabre Turbo", -- Duplicate entry in the source list
++	[633] = "Tampa", -- Duplicate entry in the source list
++	[634] = "Sandking", -- Duplicate entry in the source list
++	[635] = "Walton", -- Duplicate entry in the source list
++	[636] = "Regina", -- Duplicate entry in the source list
++	[637] = "Comet", -- Duplicate entry in the source list
++	[638] = "Phoenix", -- Duplicate entry in the source list
++	[639] = "Virgo", -- Duplicate entry in the source list
++	[640] = "Greenwood", -- Duplicate entry in the source list
++	[641] = "Oceanic", -- Duplicate entry in the source list
++	[642] = "Voches", -- Duplicate entry in the source
++}
++
++--
++
++local vehiclesByName = {
++	["Landstal"] = 400,
++	["Bravura"] = 401,
++	["Buffalo"] = 402,
++	["Linerunner"] = 403,
++	["Perennial"] = 404,
++	["Sentinel"] = 405,
++	["Dumper"] = 406,
++	["Firetruck"] = 407,
++	["Trashmaster"] = 408,
++	["Stretch"] = 409,
++	["Manana"] = 410,
++	["Infernus"] = 411,
++	["Voodoo"] = 412,
++	["Pony"] = 413,
++	["Mule"] = 414,
++	["Cheetah"] = 415,
++	["Ambulance"] = 416,
++	["FBI Rancher"] = 417,
++	["Moonbeam"] = 418,
++	["Esperanto"] = 419,
++	["Taxi"] = 420,
++	["Washington"] = 421,
++	["Bobcat"] = 422,
++	["Mr. Whoopee"] = 423,
++	["BF Injection"] = 424,
++	["Hunter"] = 425,
++	["Police"] = 426,
++	["Enforcer"] = 427,
++	["Securicar"] = 428,
++	["Banshee"] = 429,
++	["Predator"] = 430,
++	["Bus"] = 431,
++	["Rhino"] = 432,
++	["Barracks OL"] = 433,
++	["Sanchez"] = 434,
++	["Blista Compact"] = 435,
++	["Stinger"] = 436,
++	["Dodo"] = 437,
++	["Coach"] = 438,
++	["Cabbie"] = 439,
++	["Stallion"] = 440,
++	["Rumpo"] = 441,
++	["RC Bandit"] = 442,
++	["Romero"] = 443,
++	["Packer"] = 444,
++	["Admiral"] = 445,
++	["Squalo"] = 446,
++	["Seasparrow"] = 447,
++	["Pizza Boy"] = 448,
++	["Gang Burrito"] = 449,
++	["Golf Caddy"] = 450,
++	["Baggage Handler"] = 451,
++	["VCN Maverick"] = 452,
++	["Sandking"] = 453,
++	["Baggage"] = 454,
++	["Helicopter"] = 455, -- Generic Helicopter
++	["Sparrow"] = 456,
++	["Yankee"] = 457,
++	["Top Fun Van"] = 458,
++	["Skimmer"] = 459,
++	["PCJ-600"] = 460,
++	["Faggio"] = 461,
++	["Freeway"] = 462,
++	["Angel"] = 463,
++	["Bike"] = 464, -- Generic Bike
++	["BMX"] = 465,
++	["RC Goblin"] = 466,
++	["Hotring Racer"] = 467,
++	["Police Maverick"] = 471,
++	["Cuban Hermes"] = 472,
++	["FBI Washington"] = 482,
++	["Virgo"] = 483,
++	["Greenwood"] = 484,
++	["Oceanic"] = 485,
++	["Voches"] = 486,
++	["Hermes"] = 488,
++	["Sabre"] = 489,
++	["Phoenix"] = 490,
++	["Walton"] = 491,
++	["Regina"] = 492,
++	["Comet"] = 493,
++	["Love Fist Limo"] = 521,
++	["Sabre Turbo"] = 526,
++	["Tampa"] = 527,
++	["Coastguard"] = 538,
++	["Dinghy"] = 539,
++	["Sea Sparrow"] = 586 -- Corrected typo from source list
++  }
++
++-- Example of how you might use this table in a function:
++function getVehicleIdByName(name)
++	return vehiclesByName[name]
++  end
++
++local infernusId = getVehicleIdByName("Infernus")
++-- log_info("ID of Infernus:", infernusId)
++print("ID of Infernus:", infernusId) -- Output: ID of Infernus: 411
++
++local unknownId = getVehicleIdByName("DoesNotExist")
++print("ID of DoesNotExist:", unknownId) -- Output: ID of DoesNotExist: nil
++-- print(package.path)
+\ No newline at end of file
+diff --git a/premake5.lua b/premake5.lua
+index 36b7bbfe..eb90453c 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -425,6 +425,10 @@ project "reVC"
+ 		"lib/lua/*.h",
+ 	}
+ 
++	exclude {
++		"lib/lua/oneluac.c"
++	}
++
+ 	--
+ 
+ 	-- New, only enable d3dx9 lib on Windows..
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 811eb3d5..3438a5fa 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -1141,6 +1141,12 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					break;
+ #endif
+ 
++#ifdef EXTRA_LOGGING
++				case MENUACTION_EXTRA_LOGGING:
++					rightText = TheText.Get(gbExtraLogging ? "FEM_ON" : "FEM_OFF");
++				break;
++#endif // EXTRA_LOGGING
++
+ #ifdef GAMEPAD_MENU
+ 				case MENUACTION_CTRLVIBRATION:
+ 					if (m_PrefsUseVibration)
+@@ -5250,6 +5256,14 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 
+ #endif // _FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++	case MENUACTION_EXTRA_LOGGING: 
++		gbExtraLogging = !gbExtraLogging;
++		SaveSettings();
++		
++		break;
++#endif //EXTRA_LOGGING
++
+ 	case MENUACTION_INVERTPADY:
+ 		CPad::bInvertLook4Pad = !CPad::bInvertLook4Pad;
+ 		SaveSettings(); // FIX: Why don't SaveSettings? Because of it's an hidden option? :(
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 738d6b54..806aff97 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -316,6 +316,10 @@ enum eMenuAction
+ 	// Fast loader menu option in Frontend.cpp
+ 	MENUACTION_FASTLOADER,
+ #endif
++
++#ifdef EXTRA_LOGGING
++	MENUACTION_EXTRA_LOGGING,
++#endif // EXTRA_LOGGING
+ };
+ 
+ enum eCheckHover
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 0664a2cd..bca8fbe3 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -929,6 +929,13 @@ void CGame::Process(void)
+ 			VarUpdatePlayerCoords = false;
+ 		}
+ #endif
++
++#ifdef LUA_EVENT_TEST
++		LuaTest luaTest = LuaTest();
++		// Load events from kcnet-events.lua or whatever is set in defines.cpp.
++		luaTest.LuaEvents();
++#endif
++
+ 		CSprite2d::SetRecipNearClip();
+ 		CSprite2d::InitPerFrame();
+ 		CFont::InitPerFrame();
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 61403c93..fb5ccfba 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -841,7 +841,13 @@ CMenuScreenCustom aScreens[] = {
+ 		// Well I have added an option to disable this being toggled in the main menu, so it can only be toggled in game
+ 		MENUACTION_FASTLOADER,      "FST_LD",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
+ 	
++		// TODO Implement fast loader slot management in game menu.
++		// MENUACTION_CFO_SLIDER,      "FST_SLT",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
+ #endif // _FAST_LOADER
++
++#ifdef EXTRA_LOGGING
++		MENUACTION_EXTRA_LOGGING,      "KCEXLOG",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
++#endif //EXTRA_LOGGING
+ 	},
+ };
+ 
+diff --git a/src/core/config.h b/src/core/config.h
+index fc18984a..89055ac1 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -58,6 +58,9 @@
+ // Toggle ImGui on/off, works with OpenGL on Windows and Linux.
+ #define _IMGUI_TEST
+ 
++// Adds extra logging features for KCNet, can be toggled in the general settings menu.
++#define EXTRA_LOGGING
++
+ // Toggle the Lua test
+ // This is currently broken on miami-dev-lua, I need to fix up Lua support and test it.
+ #define LUA_TEST
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e732f8c5..868221ef 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -122,6 +122,10 @@ bool gbNoMovies;
+ bool gbFastLoader;
+ #endif
+ 
++#ifdef EXTRA_LOGGING
++bool gbExtraLogging;
++#endif // EXTRA_LOGGING
++
+ #ifdef _IMGUI_TEST
+ bool gbImGuiToggle;
+ #endif
+diff --git a/src/core/main.h b/src/core/main.h
+index 6678b378..5588c677 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -79,6 +79,10 @@ extern bool gbNoMovies;
+ extern bool gbFastLoader;
+ #endif //_FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++extern bool gbExtraLogging;
++#endif // EXTRA_LOGGING
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ extern uint8 gbGameSaveOnStartup;
+ #endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 294c1775..98c488f6 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1407,6 +1407,10 @@ SaveINISettings()
+ 	StoreIni("General", "FastLoader", gbFastLoader);
+ #endif //_FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++	StoreIni("KCNet", "ExtraLogging", gbExtraLogging);
++#endif
++
+ #ifdef LUA_TEST
+ 	StoreIni("KCNet", "LuaTest", gbLuaTest);
+ #endif
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index 2f74c7fe..5f63cf2c 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -16,6 +16,12 @@
+ #include <Windows.h>
+ #endif //_WIN32
+ 
++// TODO Test
++#ifdef __linux__
++#include <unistd.h>
++#include <linux/limits.h>
++#endif // __linux__
++
+ // This log_functions file isn't specific to ReVC, it should work in any C++ program besides the 'TRACE' functions.
+ 
+ // This is what I'm currently using for this test.
+@@ -87,6 +93,78 @@ CheckDirectoryExists(std::string folderPath)
+ 
+ // Logging functions
+ 
++/// <summary>
++/// Set the log type for the output message, converts the enum to a string
++/// </summary>
++static std::string
++LogType(LogLevels type)
++{
++	switch (type)
++	{
++	case LogLevels::LOG_INFO: 
++		return "Info";
++		break;
++	case LogLevels::LOG_WARN: 
++		return "Warning"; 
++		break;
++	case LogLevels::LOG_ERROR: 
++		return "Error"; 
++		break;
++	case LogLevels::LOG_DEBUG: 
++		return "Debug"; 
++		break;
++	default: 
++		return "Log type invalid";
++		break;
++	}
++
++	return "Log type invalid";
++}
++
++/// <summary>
++/// Log formatter, makes this not duplicate as much code.
++/// Setup the log to be formatted, and logged in here.
++/// </summary>
++/// <param name="type">The type of log, info, warning, error</param>
++/// <param name="message">The message to log.</param>
++/// <param name="logFile">The logFile ofstream</param>
++/// <param name="local_tm">The time to log to the file.</param>
++static void
++LogFormat(LogLevels type, std::string message, std::ofstream& logFile, std::tm local_tm)
++{
++	// Make the time into a variable.
++	std::ostringstream oss;
++	oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
++	std::string formatted_time = oss.str();
++	//
++
++	// This works fine like this
++	// Logs like this:
++	// Error: Time <Message>
++	//logFile << "[" << type << "] " << "[" << formatted_time << "] " << message;
++	logFile << "[" << LogType(type) << "] " << "[" << formatted_time << "] " << message;
++}
++
++/// <summary>
++/// Create the log folder.
++/// </summary>
++void
++LogFunctions::CreateLogFolder()
++{
++	if(!CheckDirectoryExists(logPath.c_str())) {
++
++		// This works, but the error message seems to cancel out the info log line.
++		// Create the directory if it doesn't already exist.
++		// This only works on Windows.
++#ifdef _WIN32
++		CreateDirectory(logPath.c_str(), NULL);
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
++#else
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, this can only create the folder on Windows!");
++#endif //_WIN32
++	}
++}
++
+ /// <summary>
+ /// Log to file
+ /// Ohh, the problem with this is that I didn't have the directory created first.
+@@ -98,7 +176,7 @@ CheckDirectoryExists(std::string folderPath)
+ /// <param name="fileName">The file name to log to, set to 'ViceExtended\logs' folder</param>
+ /// <param name="message">The message to log.</param>
+ static void
+-LogToFile(std::string type, std::string fileName, std::string message)
++LogToFile(LogLevels type, std::string fileName, std::string message)
+ {
+ 	
+ 	// Set this to the new logPath folder 'ViceExtended\logs'
+@@ -113,37 +191,23 @@ LogToFile(std::string type, std::string fileName, std::string message)
+ 	// Temporary test, this shows the log file path from above.
+ 	// Why does this show weird symbols? It works in game
+ 	//TRACE("Path: %s", logFilePath);
+-
+-	// Create directory if it doesn't exist.
+-	if (!CheckDirectoryExists(logPath.c_str())) {
+-		
+-		// This works, but the error message seems to cancel out the info log line.
+-		// Create the directory if it doesn't already exist.
+-		// This only works on Windows.
+-#ifdef _WIN32
+-		CreateDirectory(logPath.c_str(), NULL);
+-		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
+-#else
+-		TRACE("KCNet - 'ViceExtended\\logs' folder not found, this can only create the folder on Windows!");
+-#endif //_WIN32
+-	}
+ 	
+ 	//
+ 
++	// Time for the logs
++	std::time_t now = std::time(nullptr);
++	std::tm local_tm = *std::localtime(&now);
++
+ 	// Check if the file was opened.
+ 	if(logFile.is_open()) 
+ 	{
+-
+ 		// This is Windows file directory specific stuff.
+ #ifdef _WIN32
+ 
+-		// Test for adding time to logs
+-		std::time_t now = std::time(nullptr);
+-		std::tm local_tm = *std::localtime(&now);
+-
+ 		// https://stackoverflow.com/a/19535628
+ 		char result[MAX_PATH];
+-		if(!GetCurrentDirectoryA(MAX_PATH, result) == 0) {
++		if(!GetCurrentDirectoryA(MAX_PATH, result) == 0) 
++		{
+ 			// This gets the current directory with the filename
+ 			// std::string exePath(result, GetModuleFileName(NULL, result, MAX_PATH));
+ 			// logFile << "File path: " << exePath << std::endl;
+@@ -152,53 +216,40 @@ LogToFile(std::string type, std::string fileName, std::string message)
+ 			// This gets the current directory, seems to work for my needs
+ 			std::string currentDirectory(result, GetCurrentDirectoryA(MAX_PATH, result));
+ 
+-			// Temporary test, this is supposed to show the log file path from above.
+-			// Why does this show weird symbols? It works in game
+-			//TRACE("Path: %s", result);
+-			
+-
+-			// Set the folder to Vice Extended
+-			// These don't seem to be in use.
+-			
+-			//currentDirectory = currentDirectory + "\\ViceExtended\\";
+-			//currentDirectory = currentDirectory + "\\ViceExtended\\" + "logs\\";
+-			// Old path
+-			//std::string logFilePath = currentDirectory + fileName;
+-
+-			// TODO Make this use a log folder path.
+-			// New path
+-			//std::string logFilePathNew = currentDirectory + "logs\\" + fileName;
+-			//TRACE("Path: %s", logFilePathNew.c_str());
+-			//
+-			
+-
+-			// Test for making the time into a variable, got this idea from Google AI.
+-			std::ostringstream oss;
+-			oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+-			std::string formatted_time = oss.str();
+-			//
++			// Log to the file.
++			LogFormat(type, message, logFile, local_tm);
+ 
++			// Make the time into a variable.
++			//std::ostringstream oss;
++			//oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
++			//std::string formatted_time = oss.str();
++			////
+ 
+-			// This works fine like this
+-			// Logs like this:
+-			// Error: Time <Message>
+-			logFile << "[" << type << "] " << "[" << formatted_time << "] " << message;
++			//// This works fine like this
++			//// Logs like this:
++			//// Error: Time <Message>
++			//logFile << "[" << LogType(type) << "] " << "[" << formatted_time << "] " << message;
++		}
+ 
+-			// Old tests
+-			//logFile << "[" << formatted_time << "] " << "Folder path: " << currentDirectory << std::endl;
+-			//logFile << "[" << formatted_time << "] " << "File path: " << logFilePath << std::endl;
+-			// logFile << "File path: " << logFilePath << std::endl;
++#elif defined(__linux__)
++		// https://stackoverflow.com/questions/298510/how-to-get-the-current-directory-in-a-c-program
++		// TODO Implement on linux
++		char cwd[PATH_MAX];
++		if(getcwd(cwd, sizeof(cwd)) != NULL) {
++			printf("Current working dir: %s\n", cwd);
++			
++			// Log to the file.
++			LogFormat(type, message, logFile, local_tm);
+ 
+-			// These work
+-			// logFile << "Folder path: " << currentDirectory << std::endl;
+-			// logFile << "File path: " << logFilePath << std::endl;
++		} else {
++			perror("Directory not found, creating it for you.");
+ 
+-			// Close the log file.
+-			logFile.close();
++			return 1;
+ 		}
+-
+-		// TODO Figure out why this message always displays.
+ #endif //_WIN32
++
++		// Close the log file.
++		logFile.close();
+ 	} else {
+ 		// Well this has some weird symbols in it..
+ 		//TRACE("KCNet - File %s not found.", fileName);		
+@@ -218,7 +269,7 @@ LogFunctions::LogInfo(std::string fileName, std::string message)
+ {
+ 	// Print this to file:
+ 	// Info + Text + New line
+-	LogToFile("Info", fileName, message + "\n");
++	LogToFile(LogLevels::LOG_INFO, fileName, message + "\n");
+ }
+ 
+ 
+@@ -233,7 +284,8 @@ LogFunctions::LogWarning(std::string fileName, std::string message)
+ {
+ 	// Print this to file:
+ 	// Warning + Text + New line
+-	LogToFile("Warning", fileName, message + "\n");
++	//LogToFile("Warning", fileName, message + "\n");
++	LogToFile(LogLevels::LOG_WARN, fileName, message + "\n");
+ }
+ 
+ /// <summary>
+@@ -247,7 +299,7 @@ LogFunctions::LogError(std::string fileName, std::string message)
+ {
+ 	// Print this to file:
+ 	// Error + Text + New line
+-	LogToFile("Error", fileName, message + "\n");
++	LogToFile(LogLevels::LOG_ERROR, fileName, message + "\n");
+ }
+ 
+ /// <summary>
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+index 9e48fd6a..aeaf54c1 100644
+--- a/src/extras/functions/log_functions.h
++++ b/src/extras/functions/log_functions.h
+@@ -8,6 +8,13 @@
+ // The project name so far is KCNet-Logging-Dll, I'll probably come up with a better name sometime.
+ // I have made the project open source under the MIT license since it's something I am playing around with.
+ 
++enum class LogLevels {
++	LOG_INFO,
++	LOG_ERROR,
++	LOG_WARN,
++	LOG_DEBUG,
++};
++
+ class LogFunctions
+ {
+ //private:
+@@ -30,4 +37,9 @@ public:
+ 
+ 	// Tests
+ 	static void LogTest();
++
++	static void CreateLogFolder();
++
++//private:
++	//static void LogFormat(std::string type, std::string message, std::ofstream logFile, std::tm local_tm);
+ };
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index c1f1fe5e..9b561556 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -549,10 +549,8 @@ For keybinds:
+ void
+ LuaTest::BustedLuaEvents()
+ {
+-	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaBustedScript.c_str()))) 
+-	{
+-	
+-	}
++	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaBustedScript.c_str()))) 
++		return;
+ }
+ 
+ /// <summary>
+@@ -561,10 +559,8 @@ LuaTest::BustedLuaEvents()
+ void
+ LuaTest::WastedLuaEvents()
+ {
+-	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaWastedScript.c_str()))) 
+-	{
+-	
+-	}
++	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaWastedScript.c_str()))) 
++		return;
+ }
+ 
+ /// <summary>
+@@ -575,10 +571,12 @@ LuaTest::LuaKeybindEvents()
+ {
+ 	//Defines defines = Defines();
+ 	// This seems to work.
+-	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaKeyBindScript.c_str()))) 
++	if (!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaKeyBindScript.c_str())))
+ 	{
+-	
++		LogFunctions::LogError("lua-errors.log", "Error, keybind lua events not found!");
++		return;
+ 	}
++		
+ 
+ }
+ 
+@@ -628,10 +626,6 @@ LuaTest::InitLua()
+ 	Defines defines = Defines();
+ 	LuaTest luaTest = LuaTest();
+ 
+-
+-
+-
+-
+ 	// Create a new VM, moved into constructor
+ 	//m_luaVM = luaL_newstate();
+ 	// TODO Implement this from MTA
+@@ -648,10 +642,6 @@ LuaTest::InitLua()
+ 	// TODO Fix this
+ 	// lua_sethook(m_luaVM, InstructionCountHook, LUA_MASKCOUNT, HOOK_INSTRUCTION_COUNT);
+ 
+-
+-
+-
+-
+ 	// Test moving into here
+ 	// Well this crashes it like this
+ 	//luaTest.RegisterLuaFunctions();
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 2ceb53c6..a7addea3 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -75,7 +75,6 @@ long _dwOperatingSystemVersion;
+ #include "fast_loader.h"
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
+-
+ #ifdef _IMGUI_TEST
+ 
+ // Moved ImGui init, ImGui loop, controller and mouse/keyboard keybinds into here
+@@ -103,7 +102,7 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ 
+ // Lua test
+ #ifdef CUSTOM_CODE
+-
++#include "log_functions.h"
+ 
+ #ifdef LUA_TEST
+ #include "lua_test.h"
+@@ -2274,6 +2273,11 @@ main(int argc, char *argv[])
+ 
+ #endif
+ 
++#ifdef CUSTOM_CODE
++								// Create the log folder if it doesn't exist.
++								LogFunctions::CreateLogFolder();
++#endif // CUSTOM_CODE
++
+ 						break;
+ 					}
+ 
+diff --git a/utils/gxt/american.txt b/utils/gxt/american.txt
+index 94ea95c4..d017ce8f 100644
+--- a/utils/gxt/american.txt
++++ b/utils/gxt/american.txt
+@@ -485,7 +485,7 @@ Check Out at the Check In
+ Loose Ends
+ 
+ [ANSWER]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ to answer your cell phone.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~to answer your cell phone.
+ 
+ [MOB_01A]
+ Awright me ol'china! It's Paul. I might have a little result for you, but I need to speak to you in person.
+@@ -1477,17 +1477,17 @@ Accelerate
+ [FEC_CCF]
+ Configuration
+ 
+-[FEC_CF1]
+-Setup 1
++[FEC_CF1]   
++Classic
+ 
+-[FEC_CF2]
+-Setup 2
++[FEC_CF2]   
++Standard
+ 
+-[FEC_CF3]
+-Setup 3
++[FEC_CF3]   
++Classic
+ 
+-[FEC_CF4]
+-Setup 4
++[FEC_CF4]   
++Standard
+ 
+ [FEC_CDP]
+ Controller Display
+@@ -3577,9 +3577,77 @@ Display Setup
+ [FEO_LAN]
+ Language Setup
+ 
++[FEO_TES]
++Test
++
+ [FEO_PLA]
+ Player Setup
+ 
++{ KCNet Custom }
++
++
++[FEO_GEN]
++General Settings
++
++[FST_LD]
++Fast Loader
++
++[FST_SLT]
++Fast Loader Slot
++
++[FST_SL1]
++Slot 1
++
++[FST_SL2]
++Slot 2
++
++[FST_SL3]
++Slot 3
++
++[FST_SL4]
++Slot 4
++
++[FST_SL5]
++Slot 5
++
++[FST_SL6]
++Slot 6
++
++[FST_SL7]
++Slot 7
++
++[FST_SL8]
++Slot 8
++
++[KCCARLK]
++Car Locked
++
++[KCCARUK]
++Car Unlocked
++
++[EXPLDIS]
++Vehicles can no longer explode when upside down.
++
++[EXPLEN]
++Vehicles can now explode when upside down.
++
++[POLWDIS]
++Custom police weapons disabled
++
++[POLWEN]
++Custom police weapons enabled
++
++[PLSPKDS]
++Police spike strips disabled
++
++[PLSPKEN]
++Police spike strips enabled
++
++[KCEXLOG]
++Extra Logging
++
++{ End KCNet Custom }
++
+ [FEA_OUT]
+ Output
+ 
+@@ -3944,7 +4012,7 @@ NO LONGER NEEDED
+ NO LONGER NEEDED
+ 
+ [HELP31]
+-To do a drive-by, first look left or right using the ~h~~k~~VEHICLE_LOOKLEFT~~w~ or the ~h~~k~~VEHICLE_LOOKRIGHT~.
++To do a drive-by, first look left or right using the ~h~~k~~VEHICLE_LOOKLEFT~ ~w~or the ~h~~k~~VEHICLE_LOOKRIGHT~ ~w~.
+ 
+ [HELP34]
+ You must have a sub machine gun to perform a drive-by.
+@@ -4229,7 +4297,7 @@ Casual
+ Mr Vercetti
+ 
+ [OUTFT10]
+-Tracksuit
++Black Tracksuit
+ 
+ [OUTFT13]
+ MC Tommy
+@@ -4301,34 +4369,34 @@ Tank now available from the Army Barracks!
+ Hunter now available from the Army Barracks!
+ 
+ [CLOTH1]
+-Soiree outfit delivered to Rafael's on Ocean Beach.
++Soiree outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH2]
+ Street outfit delivered to Safehouses.
+ 
+ [CLOTH3]
+-Coveralls outfit delivered to Tooled Up in The North Point Mall.
++Coveralls outfit delivered to Safehouses.
+ 
+ [CLOTH4]
+-Country Club outfit delivered to The Golf Club in Leaf Links.
++Country Club outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH5]
+-Havana outfit delivered to Little Havana Streetwear in Little Havana.
++Havana outfit delivered to Safehouses.
+ 
+ [CLOTH6]
+-Cop outfit delivered to Police Station on Washington Beach.
++Cop outfit delivered to Safehouses.
+ 
+ [CLOTH7]
+-Casual outfit delivered to Gash in The North Point Mall.
++Casual outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH8]
+-Mr Vercetti outfit delivered to Collar & Cuffs on Ocean Beach.
++Mr Vercetti outfit delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH9]
+-Tracksuit outfit delivered to Jocksport in Downtown.
++Tracksuit outfits delivered to Safehouses. New clothes are available at Gash in The North Point Mall.
+ 
+ [CLOTH10]
+-Bank Job outfit delivered to Malibu Club in Vice Point.
++Bank Job outfit delivered to Safehouses.
+ 
+ [MOB_62A]
+ Tommy, is Ricardo Diaz, I want to thank you for looking out for me my man.
+@@ -4478,16 +4546,16 @@ Press the~h~ ~k~~VEHICLE_HANDBRAKE~ button ~w~to apply the vehicle's ~h~handbrak
+ Press the ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~button to enter or exit a vehicle.
+ 
+ [HELP27]
+-Press the ~h~~k~~VEHICLE_TURRETUP~~w~ button and the ~h~~k~~VEHICLE_TURRETDOWN~~w~ button, to shift your weight on a bike.
++Press the ~h~~k~~VEHICLE_TURRETUP~ ~w~button and the ~h~~k~~VEHICLE_TURRETDOWN~ ~w~button, to shift your weight on a bike.
+ 
+ [HELP28]
+-Press the ~h~~k~~VEHICLE_TURRETUP~~w~ button and the ~h~~k~~VEHICLE_TURRETDOWN~~w~ button, to shift your weight on a bike.
++Press the ~h~~k~~VEHICLE_TURRETUP~ ~w~button and the ~h~~k~~VEHICLE_TURRETDOWN~ ~w~button, to shift your weight on a bike.
+ 
+ [HELP35]
+-Press the ~h~~k~~GO_LEFT~~w~, and the ~h~~k~~GO_RIGHT~~w~, to steer the vehicle.
++Press the ~h~~k~~GO_LEFT~,~w~ and the ~h~~k~~GO_RIGHT~,~w~ to steer the vehicle.
+ 
+ [HELP36]
+-Press the ~h~~k~~GO_LEFT~~w~, and the ~h~~k~~GO_RIGHT~~w~, to steer the vehicle.
++Press the ~h~~k~~GO_LEFT~,~w~ and the ~h~~k~~GO_RIGHT~,~w~ to steer the vehicle.
+ 
+ [HELP42]
+ Follow the ~q~pink blip~w~ to find the hotel.
+@@ -6341,7 +6409,7 @@ Fastest time for 'Cone Crazy'
+ Stop in the ~q~pink marker.
+ 
+ [HELP45]
+-Press the ~h~~k~~PED_DUCK~~w~ button to duck. This will increase the accuracy of guns you are holding.
++Press the ~h~~k~~PED_DUCK~ ~w~button to duck. This will increase the accuracy of guns you are holding.
+ 
+ [RCR1_5]
+ RC Bandit Race
+@@ -6437,16 +6505,16 @@ Warning! This savegame is set to use DTS. This requires DTS compatible hardware
+ Fastest time for Checkpoint Charlie
+ 
+ [HELP50]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to set the camera behind you.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to set the camera behind you.
+ 
+ [HELP51]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to set the camera behind you.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to set the camera behind you.
+ 
+ [HELP52]
+-Press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to set the camera behind you.
++Press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to set the camera behind you.
+ 
+ [HELP53]
+-Press ~h~~k~~PED_CYCLE_WEAPON_LEFT~~w~ button or ~h~~k~~PED_CYCLE_WEAPON_RIGHT~~w~ button to cycle through your available weapons.
++Press ~h~~k~~PED_CYCLE_WEAPON_LEFT~ ~w~button or ~h~~k~~PED_CYCLE_WEAPON_RIGHT~ ~w~button to cycle through your available weapons.
+ 
+ [HELP46]
+ There are eight different types of weapon.
+@@ -6458,7 +6526,7 @@ You can carry one of each type of weapon at a time - one type of pistol, one typ
+ ~w~Cost: $~1~ ~r~Buying this will replace your current weapon.
+ 
+ [HELP2A2]
+-Press the ~h~~k~~PED_SPRINT~~w~ button when running to ~h~sprint
++Press the ~h~~k~~PED_SPRINT~ ~w~button when running to ~h~sprint
+ 
+ [HLPSN_A]
+ The sniper rifle allows you to zoom in and fire accurately at targets from a distance.
+@@ -6470,26 +6538,26 @@ Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~target~w~ with the sn
+ Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~target~w~ with the sniper rifle.
+ 
+ [HLPSN_D]
+-Press the ~h~~k~~PED_SNIPER_ZOOM_IN~~w~ button ~w~to ~h~zoom in ~w~with the rifle and the~h~ ~k~~PED_SNIPER_ZOOM_OUT~ button ~w~to ~h~zoom out ~w~again.
++Press the ~h~~k~~PED_SNIPER_ZOOM_IN~ ~w~button ~w~to ~h~zoom in ~w~with the rifle and the~h~ ~k~~PED_SNIPER_ZOOM_OUT~ button ~w~to ~h~zoom out ~w~again.
+ 
+ [HLPSN_E]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button ~w~to ~h~fire~w~ the sniper rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button ~w~to ~h~fire~w~ the sniper rifle.
+ 
+ [HLPSN_F]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button ~w~to ~h~fire~w~ the sniper rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button ~w~to ~h~fire~w~ the sniper rifle.
+ 
+ [HLPSN_G]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ the sniper rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ the sniper rifle.
+ 
+ [PLANE_H]
+-Use the ~h~~k~~VEHICLE_ACCELERATE~~w~ button to accelerate, Left and right to turn.
++Use the ~h~~k~~VEHICLE_ACCELERATE~ ~w~button to accelerate, Left and right to turn.
+ 
+ [PLANE_4] { reVC update }
+-{ Use the ~h~~k~~VEHICLE_ACCELERATE~~w~ button to accelerate, Left and right to turn. }
++{ Use the ~h~~k~~VEHICLE_ACCELERATE~ ~w~button to accelerate, Left and right to turn. }
+ Use the right analog stick to accelerate, pull back on the left analog stick to climb, push forwards to descend. Left and right to turn.
+ 
+ [HELP55]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to attack the chef.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to attack the chef.
+ 
+ [STPR_8]
+ Pole Position Club
+@@ -6759,7 +6827,7 @@ Longest Stoppie distance (m)
+ Longest 2 wheels distance (m)
+ 
+ [OUTFT11]
+-Tracksuit
++Red Tracksuit
+ 
+ [OUTFT12]
+ Frankie
+@@ -6810,7 +6878,7 @@ ALETHEIA SIMONSON
+ JOHN JANSEN
+ 
+ [CUNTY]
+-New clothes delivered to the Vercetti Estate!
++New clothes delivered to Safehouses!
+ 
+ [GOODBOY]
+ $50 Good Citizen Bonus!
+@@ -6831,10 +6899,10 @@ Are you sure you want to start a new game? All progress will be lost. Proceed?
+ TIME:
+ 
+ [HELP56]
+-Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~~w~ button to change camera modes.
++Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~ ~w~button to change camera modes.
+ 
+ [HELP57]
+-Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~~w~ button to change camera modes.
++Press the ~h~~k~~CAMERA_CHANGE_VIEW_ALL_SITUATIONS~ ~w~button to change camera modes.
+ 
+ [HELP58]
+ While targeting you can press the ~h~~k~~PED_CYCLE_TARGET_LEFT~ button or ~k~~PED_CYCLE_TARGET_RIGHT~ ~w~button to cycle through targets.
+@@ -7296,7 +7364,7 @@ PLAYER SKIN SETUP
+ OPTION NOT AVAILABLE
+ 
+ [FEH_MPH]
+-MOUSE, CURSORS TO MOVE - PGUP, PGDN, MSWHEEL TO ZOOM, L - LEGEND
++MOUSE, CURSORS to move, MOUSE WHEEL to zoom, L - legend, RIGHT MOUSE BUTTON - marker, TAB - collectables
+ 
+ [FEA_MP3]
+ MP3 PLAYER
+@@ -9952,10 +10020,10 @@ Fire Fighter mission ended.
+ ~g~Burning vehicles reported in the ~a~ area. Go and extinguish the fire.
+ 
+ [SPRAY_4:FIRETRK] { reVC update }
+-Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~~w~ and ~h~~k~~VEHICLE_TURRETRIGHT~~w~.
++Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~ ~w~and ~h~~k~~VEHICLE_TURRETRIGHT~.~w~
+ 
+ [SPRAY_1:FIRETRK] { reVC update }
+-Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~~w~ and ~h~~k~~VEHICLE_TURRETRIGHT~~w~.
++Use the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button to fire the water cannon. Aim using ~h~~k~~VEHICLE_TURRETLEFT~ ~w~and ~h~~k~~VEHICLE_TURRETRIGHT~.~w~
+ 
+ {=================================== MISSION TABLE GENERA1 ===================================}
+ 
+@@ -10288,31 +10356,31 @@ Tommy! I'll stay here and watch over Diaz!
+ The Kruger is an assault rifle, which allows you to manually aim in 1st person.
+ 
+ [GEN3_58:GENERA3]
+-Press and hold the~h~ ~k~~PED_LOCK_TARGET~~w~ button to ~h~aim~w~ with an assault rifle.
++Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~aim~w~ with an assault rifle.
+ 
+ [GEN3_59:GENERA3]
+-Press and hold the~h~ ~k~~PED_LOCK_TARGET~~w~ button to ~h~aim~w~ with an assault rifle.
++Press and hold the~h~ ~k~~PED_LOCK_TARGET~ ~w~button to ~h~aim~w~ with an assault rifle.
+ 
+ [GEN3_60:GENERA3]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ an assault rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ an assault rifle.
+ 
+ [GEN3_61:GENERA3]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ an assault rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ an assault rifle.
+ 
+ [GEN3_62:GENERA3]
+-Press the ~h~~k~~PED_FIREWEAPON~~w~ button to ~h~fire~w~ an assault rifle.
++Press the ~h~~k~~PED_FIREWEAPON~ ~w~button to ~h~fire~w~ an assault rifle.
+ 
+ [GEN3_63:GENERA3]
+ As well as performing drive-by's,~h~ motorbikes ~w~allow you to ~h~shoot forwards~w~.
+ 
+ [GEN3_64:GENERA3] { reVC update }
+-To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~~w~ button.
++To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button.
+ 
+ [GEN3_65:GENERA3] { reVC update }
+-To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~~w~ button.
++To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button.
+ 
+ [GEN3_66:GENERA3] { reVC update }
+-To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~~w~ button.
++To shoot forwards while on a bike press the ~h~~k~~VEHICLE_FIREWEAPON~ ~w~button.
+ 
+ [GEN3_67:GENERA3]
+ You must have a sub machine gun to shoot forwards on a motorbike.
+@@ -10881,7 +10949,7 @@ ICECREAM ASSET COMPLETED
+ ~g~The icecream factory will now generate revenue up to a maximum of $~1~. Make sure you collect it regularly.
+ 
+ [ICC1_2:ICECRE1]
+-~g~Park your van and press the ~h~~k~~VEHICLE_HORN~~w~ to play your ice cream jingle to notify customers that your ready for business.
++~g~Park your van and press the ~h~~k~~VEHICLE_HORN~ ~w~to play your ice cream jingle to notify customers that your ready for business.
+ 
+ [ICC1_16:ICECRE1]
+ ~g~Use your Mr. Whoopee van to distribute Cherry Poppers product around Vice City.
+@@ -12331,7 +12399,7 @@ Hey! Get back on the bike!
+ Pizzas left:
+ 
+ [PIZ1_06:PIZZA]
+-Press the~h~ ~k~~TOGGLE_SUBMISSIONS~~w~ when on the bike to cancel the mission.
++Press the~h~ ~k~~TOGGLE_SUBMISSIONS~ ~w~when on the bike to cancel the mission.
+ 
+ [PIZ1_13:PIZZA]
+ Get these delivered nice and hot.
+@@ -12950,7 +13018,7 @@ Oh, we gotta redecorate this place. We gotta make it look older.
+ You're my lawyer, Rosenberg, not my interior decorator. Got it?
+ 
+ [BUYP3:PROT1]
+-Stand inside the pickup, then press the ~h~~k~~PED_ANSWER_PHONE~~w~ button to purchase that property.
++Stand inside the pickup, then press the ~h~~k~~PED_ANSWER_PHONE~ ~w~button to purchase that property.
+ 
+ [PRO1_13:PROT1]
+ ~g~You have five minutes to smash them all.
+@@ -13928,7 +13996,7 @@ Press the ~h~~k~~VEHICLE_LOOKRIGHT~ ~w~button to rotate the helicopter clockwise
+ ~r~You destroyed the TOPFUN van that contained the bombs and RC helicopter!
+ 
+ [TEX3_32:SERG3]
+-You can ~h~look behind~w~ by simultaneously pressing the ~h~~k~~VEHICLE_LOOKLEFT~~w~ and the ~h~~k~~VEHICLE_LOOKRIGHT~~w~ buttons.
++You can ~h~look behind~w~ by simultaneously pressing the ~h~~k~~VEHICLE_LOOKLEFT~ ~w~and the ~h~~k~~VEHICLE_LOOKRIGHT~ ~w~buttons.
+ 
+ [TEX3_4:SERG3] { reVC update }
+ ~g~To drop a bomb press the~h~ ~k~~VEHICLE_FIREWEAPON~ ~g~button.
+@@ -13992,7 +14060,7 @@ Pushing ~h~forward on the analog stick ~w~increases the rotor speed, causing the
+ To drop a bomb press the ~h~~k~~VEHICLE_HANDBRAKE~ ~w~button.
+ 
+ [TEX3_23:SERG3]
+-Press the ~h~~k~~VEHICLE_TURRETUP~~w~ and ~h~~k~~VEHICLE_TURRETDOWN~~w~ buttons to tilt the helicopter in the direction you wish to maneuver it.
++Press the ~h~~k~~VEHICLE_TURRETUP~ ~w~and ~h~~k~~VEHICLE_TURRETDOWN~ ~w~buttons to tilt the helicopter in the direction you wish to maneuver it.
+ 
+ {=================================== MISSION TABLE TAXI1 ===================================}
+ 
+@@ -14432,6 +14500,310 @@ PED DENSITY
+ [FEM_CAR]
+ CAR DENSITY
+ 
++{______________________________Vice Extended______________________________}
++[FEC_AIM]
++Auto aiming
++
++[FEC_LSX]
++Look sensitivity X
++
++[FEC_LSY]   
++Look sensitivity Y
++
++[FEC_ASX]   
++Aiming sensitivity X
++
++[FEC_ASY]   
++Aiming sensitivity Y
++
++[FEC_IVL]   
++Invert vertically
++
++[FEC_LZN]   
++Left stick deadzone
++
++[FEC_RZN]   
++Right stick deadzone
++
++[FEC_VBF]   
++Vibration force
++
++[FEC_PRS]   
++Previous radio station
++
++[FEC_NRS]   
++Next radio station
++
++[FEC_RTC]   
++Rotate camera
++
++[FET_AGC]   
++GAMEPAD CONFIGURATION
++
++[FET_AGS]   
++GAMEPAD SETTINGS
++
++[FEC_FOV]   
++Field of view
++
++[FEC_ACV]   
++Auto-centering in vehicle
++
++[FEC_RVD]   
++Relative vehicle while driveby
++
++[FEC_DOM]   
++DOOM Mode
++
++[GA_22]
++Just one car!
++
++[GA_23]
++You don't have enough money to buy this modification
++
++[GA_24]
++You already have this modification
++
++[LG_39]
++Property for sale
++
++[FEC_WAL]
++Walk
++
++[FEC_RZO]
++Radar zoom
++
++[FEC_REL]
++Reload weapon
++
++[FED_GPS]
++GPS
++
++[FEC_DS5]
++DUALSENSE
++
++[FEC_ATK]
++Attack
++
++[FET_SGP]
++Store gallery photos
++
++[FES_SAV]
++You cannot save the game at this time.
++
++[FET_AUT]
++Autosave
++
++[FEM_SL9]
++Autosave File Not Present
++
++[FEO_OTH]
++Other settings
++
++[LG_40]
++Bomb shop
++
++[LG_41]
++Race
++
++[LG_42]
++Store
++
++[FEC_LTS]
++Left turn signals
++
++[FEC_RTS]
++Right turn signals
++
++[FEC_EML]
++Emergency lights
++
++[CLOTH_1]
++Use ~h~~k~~GO_LEFT~ ~w~~h~~k~~GO_RIGHT~ ~w~to select clothes. To buy the selected clothes, press ~h~~k~~PED_SPRINT~.~w~ Press ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~to leave the store.
++
++[CLOTH_2]
++You don't have enough money to buy this item
++
++[FED_BRL]
++Borderless
++
++[CLOTH_3]
++Purchased
++
++[CLOTH_4]
++Use ~h~~k~~GO_LEFT~ ~h~~k~~GO_RIGHT~ ~w~to select clothes. To put on the selected clothes, press ~h~~k~~PED_SPRINT~.~w~ Press ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~to leave the wardrobe.
++
++[CLOTH_5]
++Used
++
++[FEM_PHT]
++PHOTO MODE
++
++[PM_CAM]
++CAMERA
++
++[PM_ZOOM]
++ZOOM
++
++[PM_TILT]
++TILT
++
++[PM_ZOTI]
++ZOOM AND TILT
++
++[PM_NCP]
++NEAR CLIP PLANE
++
++[PM_CHAR]
++CHARACTER
++
++[PM_VSBL]
++VISIBILITY
++
++[PM_CLTH]
++CLOTHES
++
++[PM_ANIM]
++ANIMATION
++
++[PM_ANFR]
++ANIMATION FRAME
++
++[PM_WEAP]
++WEAPON
++
++[PM_MUZL]
++MUZZLE FLASH
++
++[PM_ROT]
++ROTATE
++
++[PM_SKY]
++SKY
++
++[PM_SUN]
++SUN AND MOON ANGLE
++
++[PM_HOUR]
++TIME IN HOURS
++
++[PM_MIN]
++TIME IN MINUTES
++
++[PM_WTHR]
++WEATHER
++
++[PM_SNNY]
++SUNNY
++
++[PM_CLDY]
++CLOUDY
++
++[PM_RANY]
++RAINY
++
++[PM_FGGY]
++FOGGY
++
++[PM_SNN2]
++SUNNY 2
++
++[PM_HRCN]
++HURRICANE
++
++[PM_LGHT]
++LIGHT
++
++[PM_DEFL]
++DEFAULT LIGHT
++
++[PM_COLR]
++COLOR RED
++
++[PM_COLG]
++COLOR GREEN
++
++[PM_COLB]
++COLOR BLUE
++
++[PM_DARK]
++DARK LIGHT
++
++[PM_EFFE]
++EFFECTS
++
++[PM_CLFL]
++COLORFILTER
++
++[PM_INTS]
++INTENSITY
++
++[PM_BRTN]
++BRIGHTNESS
++
++[PM_FRMS]
++FRAMES
++
++[PM_TOGL]
++MENU
++
++[PM_EXIT]
++EXIT
++
++[PM_MOVE]
++MOVE
++
++[PM_PHTO]
++PHOTO
++
++[PM_UI]
++UI
++
++[PM_SPED]
++SPEED
++
++[PM_ADJS]
++ADJUST
++
++[PM_MVLI]
++MOVE LIGHT
++
++[PM_MVCH]
++MOVE CHARACTER
++
++[PM_SAVE]
++PHOTO SAVED TO VICEEXTENDED\USERFILES\GALLERY
++
++[FED_WST]
++Weapon sight
++
++[FEM_COM]
++Complex
++
++[FEM_DEF]
++Default
++
++[LG_43]
++Hidden package
++
++[LG_44]
++Unique stunt
++
++[LG_45]
++Rampage
++
++[MOB_SKP]
++Press ~h~~k~~VEHICLE_ENTER_EXIT~ ~w~to skip a phone call.
++
++[FEH_MPJ]
++LEFT STICK to move, TRIGGERS to zoom, RIGHT BUMPER - legend, LEFT BUTTON - marker, LEFT BUMPER - collectables
++
++[BERETTA]
++Beretta
++
++[FEL_UKR]
++UKRAINIAN
++
+ { end of file }
+ [DUMMY]
+ THIS LABEL NEEDS TO BE HERE !!!
+-- 
+2.49.0.windows.1
+

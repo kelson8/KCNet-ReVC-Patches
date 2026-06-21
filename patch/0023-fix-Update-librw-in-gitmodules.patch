@@ -1,0 +1,25 @@
+From 5c8f562459410d4496cbdd3cb7943952f84fb479 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 06:05:48 -0500
+Subject: [PATCH 23/58] fix: Update librw in gitmodules
+
+---
+ .gitmodules | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitmodules b/.gitmodules
+index c02cd303..8a53f23a 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -12,7 +12,7 @@
+ 	branch = master
+ [submodule "vendor/librw"]
+ 	path = vendor/librw
+-	url = https://github.com/aap/librw.git
++	url = git@git.internal.kelsoncraft.net:kelson8/librw.git
+ 	branch = master
+ [submodule "lib/imgui"]
+ 	path = lib/imgui
+-- 
+2.49.0.windows.1
+

@@ -1,0 +1,221 @@
+From 7c7bfb3c22a1f92ba9a9dfa0013693472c86ff7f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 12:32:19 -0500
+Subject: [PATCH 26/58] feat: Fix controller support for ImGui * Enable menu
+ movement for RW_GL3. * Remove some old code, remove clear_color variable from
+ MainMenu.
+
+---
+ gamefiles/ViceExtended/ImGui-Controls.ini | 26 +++++++++-
+ src/extras/functions/imgui_setup.cpp      | 63 +++++++++++++++++++----
+ src/extras/menus/imgui_main_menu.cpp      | 35 ++-----------
+ src/extras/menus/imgui_main_menu.h        |  3 +-
+ 4 files changed, 83 insertions(+), 44 deletions(-)
+
+diff --git a/gamefiles/ViceExtended/ImGui-Controls.ini b/gamefiles/ViceExtended/ImGui-Controls.ini
+index 866e07f7..eeabe7ef 100644
+--- a/gamefiles/ViceExtended/ImGui-Controls.ini
++++ b/gamefiles/ViceExtended/ImGui-Controls.ini
+@@ -1,7 +1,29 @@
+ [Control]
+ ; This reads the values for the ImGui menu toggle on controller
+-ImGuiButton1=256 ; XINPUT_GAMEPAD_RIGHT_SHOULDER
+-ImGuiButton2=8 ; XINPUT_GAMEPAD_DPAD_RIGHT
++; D3D9, not in use.
++; ImGuiButton1=256 ; XINPUT_GAMEPAD_RIGHT_SHOULDER
++; ImGuiButton2=8 ; XINPUT_GAMEPAD_DPAD_RIGHT
++
++; GLFW
++ImGuiButton1=0 ; A Button
++ImGuiButton2=5 ; Right Bumper
++
++; List of Keybinds for GLFW
++; GLFW_GAMEPAD_BUTTON_A               0
++; GLFW_GAMEPAD_BUTTON_B               1
++; GLFW_GAMEPAD_BUTTON_X               2
++; GLFW_GAMEPAD_BUTTON_Y               3
++; GLFW_GAMEPAD_BUTTON_LEFT_BUMPER     4
++; GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER    5
++; GLFW_GAMEPAD_BUTTON_BACK            6
++; GLFW_GAMEPAD_BUTTON_START           7
++; GLFW_GAMEPAD_BUTTON_GUIDE           8
++; GLFW_GAMEPAD_BUTTON_LEFT_THUMB      9
++; GLFW_GAMEPAD_BUTTON_RIGHT_THUMB     10
++; GLFW_GAMEPAD_BUTTON_DPAD_UP         11
++; GLFW_GAMEPAD_BUTTON_DPAD_RIGHT      12
++; GLFW_GAMEPAD_BUTTON_DPAD_DOWN       13
++; GLFW_GAMEPAD_BUTTON_DPAD_LEFT       14
+ 
+ 
+ ; Here are a list of keybinds for XINPUT below:
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index d4d90310..6dac9cc9 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -280,18 +280,13 @@ ImGuiSetup::InitImGui()
+ #endif // _WIN32
+ }
+ 
+-// Function to poll XInput and toggle ImGui window
+ /// <summary>
+-/// TODO Fix to work with D3D9 and OpenGL.
+-/// Currently, this is broken.
++/// Function to poll XInput and toggle ImGui window.
++/// This now works with GLFW also, I need to make it get the controller values from the config.
+ /// </summary>
+ void
+ ImGuiSetup::HandleControllerInput()
+ {
+-#if defined(_WIN32) && defined(RW_D3D9)
+-	XINPUT_STATE state;
+-	ZeroMemory(&state, sizeof(XINPUT_STATE));
+-
+ 	// ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 	// Well this works? I wasn't expecting it to work like this.
+ 	ImGuiFunctions imGuiFunctions;
+@@ -299,10 +294,16 @@ ImGuiSetup::HandleControllerInput()
+ 	uint16 button1 = imGuiFunctions.getImGuiButton1();
+ 	uint16 button2 = imGuiFunctions.getImGuiButton2();
+ 
+-	DWORD result = XInputGetState(0, &state); // Get state of controller 0
+-
+ 	static int newTime = 0;
+ 
++#if defined(_WIN32) && defined(RW_D3D9)
++	XINPUT_STATE state;
++	ZeroMemory(&state, sizeof(XINPUT_STATE));
++
++
++
++	DWORD result = XInputGetState(0, &state); // Get state of controller 0
++
+ 	if(result == ERROR_SUCCESS) {
+ 		// Check for button press (e.g., the 'A' button)
+ 		// if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
+@@ -331,6 +332,50 @@ ImGuiSetup::HandleControllerInput()
+ 			// You might want to display a message or log an error
+ 		}
+ 	}
++#else
++	// Mostly adapted from CapturePad in glfw.cpp
++	int8 glfwPad = -1;
++	// TODO Fix this, seems to only be set to 1 with D3D9 so I'll deal with it later.
++	int32 padID = 0;
++
++	if(padID == 0)
++		glfwPad = PSGLOBAL(joy1id);
++	else if(padID == 1)
++		glfwPad = PSGLOBAL(joy2id);
++	else
++		assert("invalid padID");
++
++	if(glfwPad == -1) 
++		return;
++
++	int numButtons, numAxes;
++	const uint8 *buttons = glfwGetJoystickButtons(glfwPad, &numButtons);
++	const float *axes = glfwGetJoystickAxes(glfwPad, &numAxes);
++	GLFWgamepadstate gamepadState;
++
++	ControlsManager.m_NewState.buttons = (uint8 *)buttons;
++	ControlsManager.m_NewState.numButtons = numButtons;
++	ControlsManager.m_NewState.id = glfwPad;
++	ControlsManager.m_NewState.isGamepad = glfwGetGamepadState(glfwPad, &gamepadState);
++
++	// Run the controller check code, set a delay so it isn't as glitchy.
++	if(ControlsManager.m_NewState.isGamepad && CTimer::GetTimeInMilliseconds() - newTime > 500) 
++	{
++		// This works!
++		// TODO Move the configs into ImGui-Controls.ini, for now I'll hardcode to A and RB.
++		if (gamepadState.buttons[GLFW_GAMEPAD_BUTTON_A] && gamepadState.buttons[GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER])
++		//if (gamepadState.buttons[button1] && gamepadState.buttons[button2])
++		{
++			imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++		}
++
++		// Close ImGui with B Button.
++		// TODO Move into ImGui-Controls.ini and name closeButton or something.
++		if(imGuiFunctions.ImGuiActive && gamepadState.buttons[GLFW_GAMEPAD_BUTTON_B]) 
++			imGuiFunctions.ImGuiActive = false;
++	}
++
++
+ #endif // #if _WIN32 && RW_D3D9
+ }
+ 
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index 5942169a..a3b90c48 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -78,11 +78,11 @@ bool showMainMenuBar = false;
+ 
+ // Enable this to enable menu movement and resize, it has some bad screen tearing.
+ // Seems to work fine on ReLCS for some reason though.
+-#if defined(GTALCS)
++// This also seems to work with GLFW so I enabled it.
++#if defined(GTALCS) || defined(RW_GL3)
+ bool menuMovingEnabled = true;
+ #else
+ bool menuMovingEnabled = false;
+-
+ #endif
+ 
+ 
+@@ -99,38 +99,11 @@ toggleSecondWindow()
+ 	}
+ }
+ 
+-//bool ImGuiMenus::ShowWindow2;
+-//bool ImGuiMenus::ShowWindow2 = false;
+-//
+-//void
+-//ShowDemoWindow()
+-//{
+-//	
+-//}
+-//
+-//// This is disabled in the code.
+-//void
+-//Window2()
+-//{
+-//	//ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
+-//	ImGui::Begin("Another Window", &ImGuiMenus::ShowWindow2); // Pass a pointer to our bool variable (the window will have a closing button that
+-//	                                                      // will clear the bool when clicked)
+-//	ImGui::Text("Hello from another window!");
+-//	//if(ImGui::Button("Close Me")) show_another_window = false;
+-//	if(ImGui::Button("Close Me")) 
+-//		ImGuiMenus::ShowWindow2 = false;
+-//	ImGui::End();
+-//}
+-
+-
+-
+ /// <summary>
+-/// This is the test window that shows up.
++/// This is the main window that shows up.
+ /// </summary>
+-/// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
+ void
+-//ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
+-ImGuiMenus::MainMenu(ImVec4 clear_color)
++ImGuiMenus::MainMenu()
+ {
+ 	ImGuiIO io;
+ 	static float f = 0.0f;
+diff --git a/src/extras/menus/imgui_main_menu.h b/src/extras/menus/imgui_main_menu.h
+index 7dc4f708..7b3c0d37 100644
+--- a/src/extras/menus/imgui_main_menu.h
++++ b/src/extras/menus/imgui_main_menu.h
+@@ -20,8 +20,7 @@
+ class ImGuiMenus
+ {
+ public:
+-
+-	void MainMenu(ImVec4 clear_color);
++	void MainMenu();
+ 	bool ShowWindow2;
+ };
+ 
+-- 
+2.49.0.windows.1
+

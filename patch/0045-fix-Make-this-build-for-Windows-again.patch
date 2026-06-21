@@ -1,0 +1,121 @@
+From 69809c5c7335090465750f63574f2261c0ea5e23 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 01:05:48 -0500
+Subject: [PATCH 45/58] fix: Make this build for Windows again
+
+---
+ src/extras/cheats/custom_cheats.cpp | 14 ++++++++------
+ src/extras/kcnet/pch.h              | 11 +----------
+ src/extras/utils/message_util.cpp   | 12 ++++++++----
+ src/extras/utils/message_util.h     |  2 +-
+ 4 files changed, 18 insertions(+), 21 deletions(-)
+
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 4d6ec69d..8e9a06d4 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -1,15 +1,17 @@
+-// Oh oops, this is required, it wouldn't build without it..
+-// TODO Fix this to work on Linux, I don't know if this will
++#include "pch.h"
++
++// TODO Is this needed?
++#if defined(_WIN32) && defined(RW_D3D9)
+ #define WITHDINPUT
+-#include "common.h"
+-#include "crossplatform.h"
+-#include "platform.h"
++#endif // _WIN32 && RW_D3D9
+ 
+ #include <string>
+ 
+ #include "custom_cheats.h"
+ #include "misc_util.h"
+ 
++#include "message_util.h"
++
+ // Vehicle functions
+ #include "vehicle_functions.h"
+ 
+@@ -727,7 +729,7 @@ CustomCheats::CustomHelpMessage(std::string text)
+ 
+ 	// Well, this didn't seem to work right somewhere
+ 	// TODO Fix this to work
+-	//wchar *convertedMessage = miscUtil.ConvertToUnicode(text);
++	//wchar *convertedMessage = MessageUtil::ConvertToUnicode(text);
+ 	//CHud::SetHelpMessage(convertedMessage, false, false);
+ }
+ 
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+index 4c22aead..de11aa25 100644
+--- a/src/extras/kcnet/pch.h
++++ b/src/extras/kcnet/pch.h
+@@ -3,15 +3,7 @@
+ #include <vector>
+ #include <string>
+ #include <sstream>
+-
+-// ReVC
+-#ifdef _WIN32
+-// TODO Is this needed? Seems to be auto disabled in common.h if it's active.
+-#define WITHDINPUT
+-    #ifdef RW_D3D9
+-        #define WITHD3D
+-    #endif // RW_D3D9
+-#endif // _WIN32
++#include <functional>
+ 
+ #include "common.h"
+ #include "crossplatform.h"
+@@ -21,4 +13,3 @@
+ 
+ //
+ 
+-#include <functional>
+\ No newline at end of file
+diff --git a/src/extras/utils/message_util.cpp b/src/extras/utils/message_util.cpp
+index 58cf44cd..5a4799ac 100644
+--- a/src/extras/utils/message_util.cpp
++++ b/src/extras/utils/message_util.cpp
+@@ -5,6 +5,9 @@
+ #include "Font.h"
+ #include "Hud.h"
+ 
++// Max text length for the message to be converted.
++constexpr int MAX_TEXT = 50;
++
+ /// <summary>
+ /// Show a help message to the hud
+ /// </summary>
+@@ -51,12 +54,13 @@ MessageUtil::SetMessageOnScreen(wchar *message)
+ /// <summary>
+ /// This is supposed to convert a string to Unicode, but it doesn't work yet.
+ /// </summary>
+-/// <param name="message"></param>
++/// <param name="textToConvert"></param>
+ wchar
+-MessageUtil::ConvertToUnicode(const char* textToConvert, int textLength)
++MessageUtil::ConvertToUnicode(const char* textToConvert)
+ {
+-	char str[textLength];
+-	wchar ustr[textLength];
++
++	char str[MAX_TEXT];
++	wchar ustr[MAX_TEXT];
+ 
+ 	// sprintf(str, "Log folder not found!");
+ 	sprintf(str, textToConvert);
+diff --git a/src/extras/utils/message_util.h b/src/extras/utils/message_util.h
+index 7bd8ec41..39243e5b 100644
+--- a/src/extras/utils/message_util.h
++++ b/src/extras/utils/message_util.h
+@@ -14,5 +14,5 @@ public:
+ 	static void SetMessageOnScreen(wchar *message);
+ 
+ 	// Convert a message to Ascii.
+-	static wchar ConvertToUnicode(const char* textToConvert, int textLength);
++	static wchar ConvertToUnicode(const char* textToConvert);
+ };
+-- 
+2.49.0.windows.1
+

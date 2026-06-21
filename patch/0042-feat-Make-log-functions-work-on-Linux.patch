@@ -1,0 +1,813 @@
+From 015199e03b77a95e83a4d69e1ca9fe9c55ded607 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 21:37:04 -0500
+Subject: [PATCH 42/58] feat: Make log functions work on Linux * Cleanup log
+ functions file, move check directory exist function into file_functions.
+
+* Add convert to unicode function into message_util, it doesn't work yet
+---
+ src/extras/debug/debug_functions.cpp    |   8 -
+ src/extras/functions/file_functions.cpp |  51 ++-
+ src/extras/functions/log_functions.cpp  | 399 +++++-------------------
+ src/extras/functions/log_functions.h    |  24 +-
+ src/extras/utils/message_util.cpp       |  25 +-
+ src/extras/utils/message_util.h         |   3 +
+ 6 files changed, 139 insertions(+), 371 deletions(-)
+
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 580a6343..e828f0c9 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -1002,14 +1002,6 @@ DebugMenuPopulate(void)
+        //  TODO Fix this to work right.
+        // DebugMenuAddCmd("Test", "Give RC Car", CustomCheats::GiveRcCar);
+ 
+-		// Misc testing
+-		// Log to a test file.
+-		DebugMenuAddCmd("Test", "Log test", LogFunctions::LogText);
+-		// Check if file exists
+-		DebugMenuAddCmd("Test", "Check file", LogFunctions::DoesFileExistTest);
+-		// Old function
+-		// DebugMenuAddCmd("Test", "Log test N", LogFunctions::LogTest);
+-
+ 		// Menu test, this shows up in the game under DoRWStuffEndOfFrame in main.cpp
+ 		// DebugMenuAddCmd("Test", "Menu test", CustomCheats::SetText);
+ 		// Test for toggling the text
+diff --git a/src/extras/functions/file_functions.cpp b/src/extras/functions/file_functions.cpp
+index 47044e8f..e13f2b80 100644
+--- a/src/extras/functions/file_functions.cpp
++++ b/src/extras/functions/file_functions.cpp
+@@ -7,12 +7,21 @@
+ #include <Windows.h>
+ #endif
+ 
+-// For path max.
++// For path max, and mkdir
+ #ifdef __linux__
+ #include <unistd.h>
+ #include <linux/limits.h>
++
++#include <dirent.h>
++#include <sys/stat.h>
+ #endif // __linux__
+ 
++// https://stackoverflow.com/questions/143174/how-do-i-get-the-directory-that-a-program-is-running-from
++/// https://www.scaler.com/topics/cpp-check-if-the-file-exists/
++
++// This may be very useful:
++// https://www.geeksforgeeks.org/logging-system-in-cpp/
++
+ //------------- File functions ---------------/
+ 
+ 
+@@ -52,10 +61,11 @@ std::string FileFunctions::CurrentDirectory()
+ }
+ 
+ 
++// https://stackoverflow.com/questions/1200188/how-to-convert-stdstring-to-lpcstr
++// https://stackoverflow.com/questions/8931196/how-to-create-a-directory-in-c
+ 
+ /// <summary>
+-/// Check if a directory exists, for now this only works for Windows.
+-/// TODO Make this work on Linux if I get around to testing it on there.
++/// Check if a directory exists, works between Windows and Linux.
+ /// </summary>
+ /// <param name="folderPath">The path to check</param>
+ /// <returns>If the folder exists</returns>
+@@ -66,31 +76,38 @@ FileFunctions::CheckDirectoryExists(LPCSTR folderPath)
+ FileFunctions::CheckDirectoryExists(std::string folderPath)
+ #endif //_WIN32
+ {
+-#ifdef _WIN32
+-
+-	// TODO Move this into another function.
+-	// Create the directory if it doesn't already exist.
+-	// CreateDirectory(logPath.c_str(), NULL);
+-	// CreateDirectory(folderPath, NULL);
+-
++#ifdef _WIN32	
+ 	// Check if the directory exists
+ 	// https://stackoverflow.com/questions/8233842/how-to-check-if-directory-exist-using-c-and-winapi
+ 	DWORD ftyp = GetFileAttributesA(folderPath);
+-	if(ftyp == INVALID_FILE_ATTRIBUTES) {
++	if (ftyp == INVALID_FILE_ATTRIBUTES) { 
+ 		return false; // Something is wrong with the path
+ 	}
+ 
+-	if(ftyp & FILE_ATTRIBUTE_DIRECTORY) {
++	if (ftyp & FILE_ATTRIBUTE_DIRECTORY) { 
+ 		return true; // This is a valid directory
+ 	}
+ 
+ 	return false; // Not a directory
+ 
+-	//
+-	// TRACE("KCNet - 'ViceExtended\logs' folder not found, creating one for you");
+-#else
+-	// Not implemented on other systems.
+-	return false;
++#else // Linux
++	// This seems to work fine for checking the directory on Linux.
++	// https://stackoverflow.com/questions/4980815/c-determining-if-directory-not-a-file-exists-in-linux
++    if ( folderPath == "") 
++		return false;
++
++    DIR *pDir;
++    bool bExists = false;
++
++    pDir = opendir (folderPath.c_str());
++
++    if (pDir != NULL)
++    {
++        bExists = true;
++        (void) closedir (pDir);
++    }
++
++    return bExists;
+ #endif //_WIN32
+ }
+ 
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index bae0370a..abeb16f6 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -2,8 +2,8 @@
+ 
+ #include "common.h"
+ 
+-#include <iostream>
+ #include <fstream>
++#include <iostream>
+ #include <string>
+ 
+ #include <ctime>
+@@ -16,10 +16,13 @@
+ #include <Windows.h>
+ #endif //_WIN32
+ 
+-// For path max.
++// For path max, and mkdir
+ #ifdef __linux__
+-#include <unistd.h>
+ #include <linux/limits.h>
++#include <unistd.h>
++
++// #include <dirent.h>
++#include <sys/stat.h>
+ #endif // __linux__
+ 
+ // This log_functions file isn't specific to ReVC, it should work in any C++ program besides the 'TRACE' functions.
+@@ -28,94 +31,57 @@
+ // https://stackoverflow.com/questions/7400418/writing-a-log-file-in-c-c
+ #include <cstdio>
+ 
++// For AsciiToUnicode
++#include "Font.h"
++
+ // Extras, KCNet
+ // Defines, extra files
+ #include "defines.h"
+ 
+-// TODO Make this write over instead of appending the log file for now.
++#include "file_functions.h"
++#include "message_util.h"
+ 
+ // The boolean gbExtraLogging is set in the main menu and ini options to toggle this.
+ 
+-
+ // Set the file directory to ViceExtended
+ // const char *filePath = "\\ViceExtended\\";
+ // I had to remove the extra '\\' at the beginning of this to fix the log file path
++// This now supports Windows and Linux.
++#ifdef _WIN32
+ std::string filePath = "ViceExtended\\";
+ // Add logs to the path.
+ std::string logPath = filePath + "logs\\";
+-    // This is in the functions
+-//std::string logFilePath = filePath + fileName;
+-
+-// https://stackoverflow.com/questions/1200188/how-to-convert-stdstring-to-lpcstr
+-// https://stackoverflow.com/questions/8931196/how-to-create-a-directory-in-c
+-
+-/// <summary>
+-/// Check if a directory exists, for now this only works for Windows.
+-/// TODO Make this work on Linux if I get around to testing it on there.
+-/// </summary>
+-/// <param name="folderPath">The path to check</param>
+-/// <returns>If the folder exists</returns>
+-bool
+-#ifdef _WIN32
+-CheckDirectoryExists(LPCSTR folderPath)
+ #else
+-CheckDirectoryExists(std::string folderPath)
+-#endif //_WIN32
+-{
+-#ifdef _WIN32
+-
+-	// TODO Move this into another function.
+-	// Create the directory if it doesn't already exist.
+-	//CreateDirectory(logPath.c_str(), NULL);
+-	//CreateDirectory(folderPath, NULL);
+-	
+-	// Check if the directory exists
+-	// https://stackoverflow.com/questions/8233842/how-to-check-if-directory-exist-using-c-and-winapi
+-	DWORD ftyp = GetFileAttributesA(folderPath);
+-	if (ftyp == INVALID_FILE_ATTRIBUTES) { 
+-		return false; // Something is wrong with the path
+-	}
+-
+-	if (ftyp & FILE_ATTRIBUTE_DIRECTORY) { 
+-		return true; // This is a valid directory
+-	}
+-
+-	return false; // Not a directory
++std::string filePath = "ViceExtended/";
++// Add logs to the path.
++std::string logPath = filePath + "logs/";
++#endif // _WIN32
++       // This is in the functions
++// std::string logFilePath = filePath + fileName;
+ 
+-	// 
+-	//TRACE("KCNet - 'ViceExtended\logs' folder not found, creating one for you");
+-#else
+-	// Not implemented on other systems.
+-	return false;
+-#endif //_WIN32
++// Constructor/Destructor
++LogFunctions::LogFunctions()
++{
++	// TODO Try to move this here, I don't know if this runs early enough.
++	// CreateLogFolder();
+ }
+ 
+-
+ // Logging functions
+ 
+ /// <summary>
+ /// Set the log type for the output message, converts the enum to a string
+ /// </summary>
+-static std::string
+-LogType(LogLevels type)
++// static std::string
++std::string
++// LogType(LogLevels type)
++LogFunctions::LogType(LogLevels type)
+ {
+-	switch (type)
+-	{
+-	case LogLevels::LOG_INFO: 
+-		return "Info";
+-		break;
+-	case LogLevels::LOG_WARN: 
+-		return "Warning"; 
+-		break;
+-	case LogLevels::LOG_ERROR: 
+-		return "Error"; 
+-		break;
+-	case LogLevels::LOG_DEBUG: 
+-		return "Debug"; 
+-		break;
+-	default: 
+-		return "Log type invalid";
+-		break;
++	switch(type) {
++	case LogLevels::LOG_INFO: return "Info"; break;
++	case LogLevels::LOG_WARN: return "Warning"; break;
++	case LogLevels::LOG_ERROR: return "Error"; break;
++	case LogLevels::LOG_DEBUG: return "Debug"; break;
++	default: return "Log type invalid"; break;
+ 	}
+ 
+ 	return "Log type invalid";
+@@ -129,8 +95,9 @@ LogType(LogLevels type)
+ /// <param name="message">The message to log.</param>
+ /// <param name="logFile">The logFile ofstream</param>
+ /// <param name="local_tm">The time to log to the file.</param>
+-static void
+-LogFormat(LogLevels type, std::string message, std::ofstream& logFile, std::tm local_tm)
++void
++LogFunctions::LogFormat(LogLevels type, std::string message, std::ofstream &logFile, std::tm local_tm)
++// LogFormat(LogLevels type, std::string message, std::ofstream& logFile, std::tm local_tm)
+ {
+ 	// Make the time into a variable.
+ 	std::ostringstream oss;
+@@ -141,7 +108,7 @@ LogFormat(LogLevels type, std::string message, std::ofstream& logFile, std::tm l
+ 	// This works fine like this
+ 	// Logs like this:
+ 	// Error: Time <Message>
+-	//logFile << "[" << type << "] " << "[" << formatted_time << "] " << message;
++	// logFile << "[" << type << "] " << "[" << formatted_time << "] " << message;
+ 	logFile << "[" << LogType(type) << "] " << "[" << formatted_time << "] " << message;
+ }
+ 
+@@ -151,16 +118,17 @@ LogFormat(LogLevels type, std::string message, std::ofstream& logFile, std::tm l
+ void
+ LogFunctions::CreateLogFolder()
+ {
+-	if(!CheckDirectoryExists(logPath.c_str())) {
++	if(!FileFunctions::CheckDirectoryExists(logPath.c_str())) {
+ 
+ 		// This works, but the error message seems to cancel out the info log line.
+ 		// Create the directory if it doesn't already exist.
+-		// This only works on Windows.
++		// This works on Windows and Linux.
++
++		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
+ #ifdef _WIN32
+ 		CreateDirectory(logPath.c_str(), NULL);
+-		TRACE("KCNet - 'ViceExtended\\logs' folder not found, creating one for you");
+ #else
+-		TRACE("KCNet - 'ViceExtended\\logs' folder not found, this can only create the folder on Windows!");
++		mkdir(logPath.c_str(), 0755);
+ #endif //_WIN32
+ 	}
+ }
+@@ -175,23 +143,25 @@ LogFunctions::CreateLogFolder()
+ /// <param name="type">The type of log, info, warning, error</param>
+ /// <param name="fileName">The file name to log to, set to 'ViceExtended\logs' folder</param>
+ /// <param name="message">The message to log.</param>
+-static void
+-LogToFile(LogLevels type, std::string fileName, std::string message)
++// static void
++void
++LogFunctions::LogToFile(LogLevels type, std::string fileName, std::string message)
++// LogToFile(LogLevels type, std::string fileName, std::string message)
+ {
+-	
++
+ 	// Set this to the new logPath folder 'ViceExtended\logs'
+ 	std::string logFilePath = logPath + fileName;
+-	
++
+ 	// Set this to the old logPath folder 'ViceExtended\'
+-	//std::string logFilePath = filePath + fileName;
++	// std::string logFilePath = filePath + fileName;
+ 
+ 	// Setup the ofstream for the logFile
+ 	std::ofstream logFile(logFilePath, std::ios::app);
+ 
+ 	// Temporary test, this shows the log file path from above.
+ 	// Why does this show weird symbols? It works in game
+-	//TRACE("Path: %s", logFilePath);
+-	
++	// TRACE("Path: %s", logFilePath);
++
+ 	//
+ 
+ 	// Time for the logs
+@@ -199,15 +169,13 @@ LogToFile(LogLevels type, std::string fileName, std::string message)
+ 	std::tm local_tm = *std::localtime(&now);
+ 
+ 	// Check if the file was opened.
+-	if(logFile.is_open()) 
+-	{
++	if(logFile.is_open()) {
+ 		// This is Windows file directory specific stuff.
+ #ifdef _WIN32
+ 
+ 		// https://stackoverflow.com/a/19535628
+ 		char result[MAX_PATH];
+-		if(!GetCurrentDirectoryA(MAX_PATH, result) == 0) 
+-		{
++		if(!GetCurrentDirectoryA(MAX_PATH, result) == 0) {
+ 			// This gets the current directory with the filename
+ 			// std::string exePath(result, GetModuleFileName(NULL, result, MAX_PATH));
+ 			// logFile << "File path: " << exePath << std::endl;
+@@ -218,87 +186,72 @@ LogToFile(LogLevels type, std::string fileName, std::string message)
+ 
+ 			// Log to the file.
+ 			LogFormat(type, message, logFile, local_tm);
+-
+-			// Make the time into a variable.
+-			//std::ostringstream oss;
+-			//oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+-			//std::string formatted_time = oss.str();
+-			////
+-
+-			//// This works fine like this
+-			//// Logs like this:
+-			//// Error: Time <Message>
+-			//logFile << "[" << LogType(type) << "] " << "[" << formatted_time << "] " << message;
+ 		}
+ 
+ #elif defined(__linux__)
+ 		// https://stackoverflow.com/questions/298510/how-to-get-the-current-directory-in-a-c-program
+-		// TODO Implement on linux
+ 		char cwd[PATH_MAX];
+ 		if(getcwd(cwd, sizeof(cwd)) != NULL) {
+ 			// printf("Current working dir: %s\n", cwd);
+-			
++
+ 			// Log to the file.
+ 			LogFormat(type, message, logFile, local_tm);
+ 
+ 		} else {
+-			// perror("Directory not found, creating it for you.");
+-
+-			// return;
++			// I don't think this is needed
+ 		}
+ #endif //_WIN32
+ 
+ 		// Close the log file.
+ 		logFile.close();
+ 	} else {
+-		// Well this has some weird symbols in it..
+-		//TRACE("KCNet - File %s not found.", fileName);		
+-		//TRACE("KCNet - Logging not implemented.");
++		// TODO Make this into a function to convert the Ascii characters to unicode.
++		char str[30];
++		wchar ustr[30];
++
++		sprintf(str, "Log folder not found!");
++
++		// This converts the text to show up in game
++		AsciiToUnicode(str, ustr);
++
++		// wchar messageToWrite = MessageUtil::ConvertToUnicode("Log folder not found", 40);
++
++		// perror("Directory not found, creating it for you.");
++		MessageUtil::SetMessage(ustr);
++		// return;
+ 	}
+ }
+ 
+-
+ /// <summary>
+ /// Log a info message to the file.
+-/// Adds a new line at the end of the text.
+ /// </summary>
+ /// <param name="fileName">The file to log to</param>
+ /// <param name="message">The message</param>
+ void
+ LogFunctions::LogInfo(std::string fileName, std::string message)
+ {
+-	// Print this to file:
+-	// Info + Text + New line
+ 	LogToFile(LogLevels::LOG_INFO, fileName, message + "\n");
+ }
+ 
+-
+ /// <summary>
+ /// Log a warning message to the file.
+-/// Adds a new line at the end of the text.
+ /// </summary>
+ /// <param name="fileName">The file to log to</param>
+ /// <param name="message">The message</param>
+ void
+ LogFunctions::LogWarning(std::string fileName, std::string message)
+ {
+-	// Print this to file:
+-	// Warning + Text + New line
+-	//LogToFile("Warning", fileName, message + "\n");
+ 	LogToFile(LogLevels::LOG_WARN, fileName, message + "\n");
+ }
+ 
+ /// <summary>
+ /// Log a error message to the file.
+-/// Adds a new line at the end of the text.
+ /// </summary>
+ /// <param name="fileName">The file to log to</param>
+ /// <param name="message">The message</param>
+ void
+ LogFunctions::LogError(std::string fileName, std::string message)
+ {
+-	// Print this to file:
+-	// Error + Text + New line
+ 	LogToFile(LogLevels::LOG_ERROR, fileName, message + "\n");
+ }
+ 
+@@ -312,216 +265,4 @@ LogFunctions::LogTest()
+ 	std::string logFilePath = logPath + defines.logFile;
+ 
+ 	LogFunctions::LogInfo(logFilePath, "This is an info message");
+-
+-}
+-
+-
+-// https://stackoverflow.com/questions/143174/how-do-i-get-the-directory-that-a-program-is-running-from
+-
+-
+-/// <summary>
+-/// This works now, check if the file exists in the 'ViceExtended\\' folder.
+-/// https://www.scaler.com/topics/cpp-check-if-the-file-exists/
+-/// This should check if the log file exists under 'ViceExtended\\fileName'
+-/// </summary>
+-/// <param name="fileName">The file name to check if exists</param>
+-/// <returns>If the file exists or not.</returns>
+-bool
+-//LogFunctions::DoesFileExist(const char *fileName)
+-LogFunctions::DoesFileExist(std::string fileName)
+-{
+-	// Working
+-	//std::string logFilePath = filePath + fileName;
+-	
+-	// New test
+-	std::string logFilePath = logPath + fileName;
+-
+-	// Create an ifstream named file
+-	std::ifstream logFile;
+-
+-	// Attempt to open the file
+-	logFile.open(logFilePath);
+-
+-	if(logFile) {
+-		return true;
+-	} else {
+-		return false;
+-	}
+-}
+-
+-/// <summary>
+-/// This was just a test function, to check if the log file exists.
+-/// This was tested working using 'TRACE'.
+-/// </summary>
+-void
+-LogFunctions::DoesFileExistTest()
+-{
+-	Defines defines = Defines();
+-	/*std::string logFile = "KCNet";*/
+-	if (LogFunctions::DoesFileExist(defines.logFile))
+-	{ 
+-		TRACE("File %s exists\n", defines.logFile);
+-	} else {
+-		TRACE("File %s doesn't exist\n", defines.logFile);
+-	}
+-
+ }
+-
+-char pBuf[256];
+-size_t len = sizeof(pBuf);
+-//
+-
+-// This may be very useful:
+-// https://www.geeksforgeeks.org/logging-system-in-cpp/
+-
+-// TODO Setup this to set the file extension seperately.
+-
+-/// <summary>
+-/// This should log text to a file.
+-/// This creates a file!
+-/// I wonder how to write to it.
+-/// I used something from Google AI to figure out this basic logging test.
+-/// </summary>
+-/// <param name="fileName">The file to log to.</param>
+-void
+-//LogFunctions::LogText(std::string fileName)
+-LogFunctions::LogText(const char *fileName)
+-{
+-	//freopen(fileName + ".log", "w", stdout);
+-	//freopen(fileName, "w", stdout);
+-
+-	// From Google AI
+-	// Open the log file in append mode
+-	
+-	// Set the file directory to ViceExtended
+-	//const char *filePath = "\\ViceExtended\\";
+-	// I had to remove the extra '\\' at the beginning of this to fix the log file path
+-	// I moved this outside of this function
+-	//std::string filePath = "ViceExtended\\";
+-	std::string logFilePath = filePath + fileName;
+-
+-
+-	// Changed this to have the new path in it.
+-	//std::ofstream logFile(fileName, std::ios::app);
+-	std::ofstream logFile(logFilePath, std::ios::app);
+-
+-	// Check if the file was opened successfully
+-	if(logFile.is_open()) 
+-	{
+-	
+-	    // Log some values
+-		//int myInt = 42;
+-		//double myDouble = 3.14;
+-
+-		
+-		// logFile << "Integer: " << myInt << std::endl;
+-		// logFile << "Double: " << myDouble << std::endl;
+-
+-		// This is Windows file directory specific stuff.
+-		#ifdef _WIN32
+-
+-		// Test for adding time to logs
+-		std::time_t now = std::time(nullptr);
+-		std::tm local_tm = *std::localtime(&now);
+-		//int bytes = GetModuleFileName(NULL, pBuf, len);
+-
+-		// https://stackoverflow.com/a/19535628
+-		// This gets the current file name
+-		char result[MAX_PATH];
+-		//std::string myString(result, GetModuleFileName(NULL, result, MAX_PATH));
+-
+-		//if(GetCurrentDirectoryA(MAX_PATH, result) == 0) 
+-		//{ 
+-		//	return ""; 
+-		//}
+-		if (!GetCurrentDirectoryA(MAX_PATH, result) == 0) { 
+-			// This gets the current directory with the filename
+-			//std::string exePath(result, GetModuleFileName(NULL, result, MAX_PATH));
+-			// logFile << "File path: " << exePath << std::endl;
+-			// https://cplusplus.com/forum/windows/187372/
+-			
+-			// This gets the current directory, seems to work for my needs
+-			std::string currentDirectory(result, GetCurrentDirectoryA(MAX_PATH, result));
+-			
+-			// TODO Add the ViceExtended folder to this, this doesn't seem to set it.
+-			currentDirectory = currentDirectory + "\\ViceExtended\\";
+-			std::string logFilePath = currentDirectory + fileName;
+-
+-			// Test for making this into a variable, got this idea from Google AI.
+-			std::ostringstream oss;
+-			oss << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+-			std::string formatted_time = oss.str();
+-
+-			//std::string currentTime = std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
+-			
+-			//logFile << "File path: " << result << std::endl;
+-			
+-			// This works for displaying this with the date and time.
+-			//logFile << "[" << formatted_time << "] Application started" << std::endl;
+-			
+-			logFile << "[" << formatted_time << "] " << "Folder path: " << currentDirectory << std::endl;
+-			logFile << "[" << formatted_time << "] " << "File path: " << logFilePath << std::endl;
+-
+-			// logFile << "File path: " << logFilePath << std::endl;
+-
+-
+-			// These work
+-			//logFile << "Folder path: " << currentDirectory << std::endl;
+-
+-			//logFile << "File path: " << logFilePath << std::endl;
+-		}
+-		#endif //_WIN32
+-
+-		// This didn't work
+-		//fs::path currentPath = fs::current_path();
+-		//std::string myString = "Current program path: " << currentPath.string() << std::endl;
+-
+-		
+-
+-		// Close the log file
+-		logFile.close();
+-
+-		std::cout << "Values logged to " << fileName << std::endl;
+-		// This seems to work, output to Visual Studio console but I've disabled it.
+-		// TRACE("Values logged to %s", fileName);
+-	} else {
+-		std::cerr << "Error opening log file: " << fileName << std::endl;
+-	}
+-
+-	//
+-
+-	//std::cout << ""
+-}
+-
+-/// <summary>
+-/// This should output logs to a test.log file
+-/// This test is added to the debug menu, it is an easier way to log in ReVC.
+-/// </summary>
+-void
+-LogFunctions::LogText()
+-{
+-	Defines defines = Defines();
+-	// Give the path like this:
+-	// 'ViceExtended\logs\fileName.log'
+-	std::string logFilePath = logPath + defines.logFile;
+-
+-	// TODO Setup a date for this in the file name
+-	// Original method
+-	const char *logFile = "KCNet-ReVC.log";
+-
+-	//TRACE(logFilePath.c_str());
+-
+-	//LogFunctions::LogText(logFile);
+-
+-	// These get new lines added to the messages in the logging functions above.
+-	LogFunctions::LogInfo(logFile, "This is a info message.");
+-	LogFunctions::LogWarning(logFile, "This is a warning message.");
+-	LogFunctions::LogError(logFile, "This is a error message.");
+-
+-	// TODO Fix this use the 'ViceExtended\logs' directory.
+-	// I think I have to set this in the LogToFile function.
+-	// const char *logFileNew = logFilePath.c_str();
+-	// This complains about the file not being found in the new directory.
+-	//LogFunctions::LogText(logFileNew);
+-	//LogFunctions::LogInfo(logFileNew, defines.logFile);
+-}
+\ No newline at end of file
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+index aeaf54c1..a8b09944 100644
+--- a/src/extras/functions/log_functions.h
++++ b/src/extras/functions/log_functions.h
+@@ -2,6 +2,8 @@
+ #include <iostream>
+ #include <string>
+ 
++#include <ctime>
++
+ // I have started working on a dll for this log functions project, 
+ // I will need to double check the paths in ReVC once I test it, since I modified the functions a bit
+ 
+@@ -16,30 +18,24 @@ enum class LogLevels {
+ };
+ 
+ class LogFunctions
+-{
+-//private:
+-	
++{	
+ public:
+-	// Check if a file exists.
+-	//static bool DoesFileExist(const char *fileName);
+-	static bool DoesFileExist(std::string fileName);
+-	// TODO Remove this
+-	static void DoesFileExistTest();
++
++	LogFunctions();
+ 
+ 	// Logging
+ 	static void LogInfo(std::string fileName, std::string message);
+ 	static void LogWarning(std::string fileName, std::string message);
+ 	static void LogError(std::string fileName, std::string message);
+-	
+-	// static void LogText(std::string fileName);
+-	static void LogText(const char *fileName);
+-	static void LogText();
+ 
+ 	// Tests
+ 	static void LogTest();
+ 
+ 	static void CreateLogFolder();
+ 
+-//private:
+-	//static void LogFormat(std::string type, std::string message, std::ofstream logFile, std::tm local_tm);
++private:
++	static void LogToFile(LogLevels type, std::string fileName, std::string message);
++	static void LogFormat(LogLevels type, std::string message, std::ofstream& logFile, std::tm local_tm);
++
++	static std::string LogType(LogLevels type);
+ };
+diff --git a/src/extras/utils/message_util.cpp b/src/extras/utils/message_util.cpp
+index 072b85a3..58cf44cd 100644
+--- a/src/extras/utils/message_util.cpp
++++ b/src/extras/utils/message_util.cpp
+@@ -1,9 +1,9 @@
+-#include "pch.h"
+ #include "message_util.h"
++#include "pch.h"
+ 
+ // ReVC
+-#include "Hud.h"
+ #include "Font.h"
++#include "Hud.h"
+ 
+ /// <summary>
+ /// Show a help message to the hud
+@@ -20,7 +20,7 @@ MessageUtil::SetMessage(wchar *message)
+ /// </summary>
+ /// <param name="message"></param>
+ void
+-MessageUtil::SetBigMessage(wchar* message)
++MessageUtil::SetBigMessage(wchar *message)
+ {
+ 	CHud::SetBigMessage(message, FONT_STANDARD);
+ }
+@@ -47,3 +47,22 @@ MessageUtil::SetMessageOnScreen(wchar *message)
+ 	// TODO Setup a loop for this to display messages at the bottom instead of on the top left for the hud
+ 	CHud::SetMessage(message);
+ }
++
++/// <summary>
++/// This is supposed to convert a string to Unicode, but it doesn't work yet.
++/// </summary>
++/// <param name="message"></param>
++wchar
++MessageUtil::ConvertToUnicode(const char* textToConvert, int textLength)
++{
++	char str[textLength];
++	wchar ustr[textLength];
++
++	// sprintf(str, "Log folder not found!");
++	sprintf(str, textToConvert);
++
++	// This converts the text to show up in game
++	AsciiToUnicode(str, ustr);
++
++	return *ustr;
++}
+diff --git a/src/extras/utils/message_util.h b/src/extras/utils/message_util.h
+index a52854b8..7bd8ec41 100644
+--- a/src/extras/utils/message_util.h
++++ b/src/extras/utils/message_util.h
+@@ -12,4 +12,7 @@ public:
+ 	static void SetPagerMessage(wchar *message);
+ 	// Show a message at the bottom of the screen, needs to be in a loop.
+ 	static void SetMessageOnScreen(wchar *message);
++
++	// Convert a message to Ascii.
++	static wchar ConvertToUnicode(const char* textToConvert, int textLength);
+ };
+-- 
+2.49.0.windows.1
+

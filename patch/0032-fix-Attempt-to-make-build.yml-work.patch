@@ -1,0 +1,31 @@
+From b0c8a3e3233df9decbbbaf422f93c3de361c9b17 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 14:35:30 -0500
+Subject: [PATCH 32/58] fix: Attempt to make build.yml work
+
+---
+ .gitea/workflows/build.yml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/.gitea/workflows/build.yml b/.gitea/workflows/build.yml
+index 9ce261a1..4caf0b41 100644
+--- a/.gitea/workflows/build.yml
++++ b/.gitea/workflows/build.yml
+@@ -52,11 +52,11 @@ jobs:
+       image: registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
+       # This should build the files.
+       # I'm quite sure this is cached or something.
++      # # cd /reVC
+       run: |
+-        cd /reVC
+         ./premake5Linux --no-git-hash=1 --with-librw gmake2
+         cd ./build
+         make config=${{ secrets.LINUX_BUILD_TYPE }} -j$(nproc)
+-        ls /reVC/bin/${{ secrets.LINUX_BUILD_TYPE }}
++        ls ./bin/${{ secrets.LINUX_BUILD_TYPE }}
+         
+         
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

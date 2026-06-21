@@ -1,0 +1,251 @@
+From 25278746cb58ef5707145bc321838b875ea6dfda Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 18:11:35 -0500
+Subject: [PATCH 36/58] feat: Fix Linux build
+
+---
+ .vscode/c_cpp_properties.json           |  5 ++++-
+ .vscode/settings.json                   |  3 ++-
+ premake5.lua                            |  4 ----
+ src/extras/functions/file_functions.cpp | 26 +++++++++++++++++++++++--
+ src/extras/functions/file_functions.h   |  9 +++++++--
+ src/extras/functions/log_functions.cpp  |  8 ++++----
+ src/extras/lua/lua_functions.cpp        |  5 ++++-
+ src/extras/lua/lua_setup.cpp            |  4 ++++
+ src/skel/glfw/glfw.cpp                  |  9 +++++++++
+ 9 files changed, 58 insertions(+), 15 deletions(-)
+
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+index aaaff995..029ffc87 100644
+--- a/.vscode/c_cpp_properties.json
++++ b/.vscode/c_cpp_properties.json
+@@ -21,7 +21,10 @@
+     {
+       "name": "Linux",
+       "includePath": ["${default}"],
+-      "defines": ["XDG_ROOT"],
++      "defines": [
++        "XDG_ROOT",
++        "RW_GL3"
++      ],
+       "compilerPath": "/usr/bin/gcc",
+       "compilerArgs": ["-ggdb"],
+       "cStandard": "gnu11",
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index ebf50d03..1eb3ad61 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -4,6 +4,7 @@
+   "C_Cpp.default.includePath": [
+     "lib/imgui/",
+     "lib/imgui/backends",
++    "lib/lua",
+     "src",
+     "src/animation",
+     "src/audio",
+@@ -37,7 +38,7 @@
+     "src/text",
+     "src/vehicles",
+     "src/weapons",
+-    "vendor/librw"
++    "vendor/librw",
+   ],
+   "C_Cpp.vcFormat.indent.gotoLabels": "leftmostColumn",
+   "C_Cpp.vcFormat.space.pointerReferenceAlignment": "right",
+diff --git a/premake5.lua b/premake5.lua
+index eb90453c..36b7bbfe 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -425,10 +425,6 @@ project "reVC"
+ 		"lib/lua/*.h",
+ 	}
+ 
+-	exclude {
+-		"lib/lua/oneluac.c"
+-	}
+-
+ 	--
+ 
+ 	-- New, only enable d3dx9 lib on Windows..
+diff --git a/src/extras/functions/file_functions.cpp b/src/extras/functions/file_functions.cpp
+index 52abedfc..47044e8f 100644
+--- a/src/extras/functions/file_functions.cpp
++++ b/src/extras/functions/file_functions.cpp
+@@ -7,17 +7,26 @@
+ #include <Windows.h>
+ #endif
+ 
++// For path max.
++#ifdef __linux__
++#include <unistd.h>
++#include <linux/limits.h>
++#endif // __linux__
++
+ //------------- File functions ---------------/
+ 
+-#ifdef _WIN32
++
+ bool FileFunctions::DoesFileExist(const std::string& fileName)
+ {
+ 	std::ifstream file(fileName);
+ 	return file.good();
+ }
+ 
++
++// TODO Test for Linux
+ std::string FileFunctions::CurrentDirectory()
+ {
++#ifdef _WIN32
+     char current_dir[MAX_PATH];
+     if (GetCurrentDirectoryA(MAX_PATH, current_dir) != 0)
+     {
+@@ -26,9 +35,22 @@ std::string FileFunctions::CurrentDirectory()
+     else {
+         return "Error getting current directory.";
+     }
++
++#elif __linux__
++	// 
++	char cwd[PATH_MAX];
++		if(getcwd(cwd, sizeof(cwd)) != NULL) 
++		{
++			// TODO Test this
++			return cwd;
++		}
++		else {
++			return "Error getting current directory.";
++		}
++
++#endif // _WIN32
+ }
+ 
+-#endif
+ 
+ 
+ /// <summary>
+diff --git a/src/extras/functions/file_functions.h b/src/extras/functions/file_functions.h
+index 16c515de..ff06275a 100644
+--- a/src/extras/functions/file_functions.h
++++ b/src/extras/functions/file_functions.h
+@@ -8,13 +8,18 @@
+ 
+ class FileFunctions {
+ public:
+-#ifdef _WIN32
+-	// TODO Fix for Linux
+ 
++	// TODO Fix all this for Linux
+ 	// Folder stuff
+ 	static bool DoesFileExist(const std::string& fileName);
+ 	static std::string CurrentDirectory();
+ 
++#ifdef _WIN32
++
++
++
++	
++
+ 	static bool CheckDirectoryExists(LPCSTR folderPath);
+ #else 
+ 	static bool CheckDirectoryExists(std::string folderPath);
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index 5f63cf2c..bae0370a 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -16,7 +16,7 @@
+ #include <Windows.h>
+ #endif //_WIN32
+ 
+-// TODO Test
++// For path max.
+ #ifdef __linux__
+ #include <unistd.h>
+ #include <linux/limits.h>
+@@ -236,15 +236,15 @@ LogToFile(LogLevels type, std::string fileName, std::string message)
+ 		// TODO Implement on linux
+ 		char cwd[PATH_MAX];
+ 		if(getcwd(cwd, sizeof(cwd)) != NULL) {
+-			printf("Current working dir: %s\n", cwd);
++			// printf("Current working dir: %s\n", cwd);
+ 			
+ 			// Log to the file.
+ 			LogFormat(type, message, logFile, local_tm);
+ 
+ 		} else {
+-			perror("Directory not found, creating it for you.");
++			// perror("Directory not found, creating it for you.");
+ 
+-			return 1;
++			// return;
+ 		}
+ #endif //_WIN32
+ 
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 6622e266..b3644a6f 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -221,7 +221,10 @@ extern "C"
+ 	int
+ 	logCurrentDirectoryLua(lua_State* L)
+ 	{
+-		LogFunctions::LogInfo(Defines::luaLogFile, FileFunctions::CurrentDirectory());
++// #ifdef _WIN32
++		// LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
++		// LogFunctions::LogInfo(Defines::luaLogFile, FileFunctions::CurrentDirectory());
++// #endif
+ 		return 0;
+ 	}
+ 
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 1a11f652..6214ef57 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -66,7 +66,11 @@
+ #endif /* (defined(_MSC_VER)) */
+ #include <stdio.h>
+ #include "rwcore.h"
++
++#ifdef _WIN32
+ #include "resource.h"
++#endif // _WIN32
++
+ #include "skeleton.h"
+ 
+ //#include "platform.h"
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index a7addea3..c6ccbf05 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -103,6 +103,7 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ // Lua test
+ #ifdef CUSTOM_CODE
+ #include "log_functions.h"
++#include "file_functions.h"
+ 
+ #ifdef LUA_TEST
+ #include "lua_test.h"
+@@ -1999,6 +2000,11 @@ main(int argc, char *argv[])
+ 	RwV2d pos;
+ 	RwInt32 i;
+ 
++#ifdef LUA_TEST
++	// Test for making a lua init variable, to auto setup stuff like never wanted, infinite health and more possibly in a different lua file.
++	bool luaInit = false;
++#endif
++
+ #ifdef USE_CUSTOM_ALLOCATOR
+ 	InitMemoryMgr();
+ #endif
+@@ -2276,6 +2282,9 @@ main(int argc, char *argv[])
+ #ifdef CUSTOM_CODE
+ 								// Create the log folder if it doesn't exist.
+ 								LogFunctions::CreateLogFolder();
++
++								// Test for logger
++								LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
+ #endif // CUSTOM_CODE
+ 
+ 						break;
+-- 
+2.49.0.windows.1
+

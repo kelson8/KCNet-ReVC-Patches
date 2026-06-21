@@ -1,0 +1,55 @@
+From 364c7c11ad8d39e8ac44f9726aee5f68ebac15a8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 13:23:16 -0500
+Subject: [PATCH 29/58] refactor: Update comment in config, update readme
+
+---
+ README.md         | 7 ++++---
+ src/core/config.h | 5 +----
+ 2 files changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/README.md b/README.md
+index c4fe71fd..dead05ce 100644
+--- a/README.md
++++ b/README.md
+@@ -32,10 +32,10 @@ I may rework my code and bring some of the more used parts into this branch, the
+ on the main build that I have for ReVC.
+ 
+ ## ImGui info
+-The miami-dev-imgui branch has ImGui testing copied in from my miami branch, I almost got this building on Linux but I get some linker erorrs.
++This project has an ImGui mod menu, which can be opened with `F8` on the keyboard, or `RB` + `A` on an Xbox controller.
+ 
+-I got this building and running on Windows, this has not yet been tested on Linux but it should work since I'm using OpenGL.
+-Well, I tested ImGui on my Steam deck and now it seems to work, I accidentally disabled the ImGui init for other platforms in glfw.cpp.
++I got this building and running on Windows and Linux.
++Tested ImGui on my Steam deck and now it seems to work, I accidentally disabled the ImGui init for other platforms in glfw.cpp.
+ 
+ Librw is now added in as a submodule within the opengl-imgui branch
+ * https://git.internal.kelsoncraft.net/kelson8/librw/src/branch/opengl-imgui/
+@@ -98,6 +98,7 @@ Some of them can be toggled at runtime, some cannot.
+   * Controller configuration menu
+   * ...
+ * Can load DFFs and TXDs from other platforms, possibly with a performance penalty
++* Added ImGui for a mod menu.
+ * ...
+ 
+ ## To-Do
+diff --git a/src/core/config.h b/src/core/config.h
+index 28773a52..9b0aa395 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -55,10 +55,7 @@
+ // Needs copied from miami branch
+ //#define EX_COP_FUNCTIONS
+ 
+-// Toggle ImGui on/off, this won't work yet, I need to work on getting ImGui working with OpenGL,
+-// and I have to change some Windows specific items such as HWND.
+-// TODO Fix this on Windows, I have it showing up but it's very buggy and the mouse doesn't work right.
+-// Linux support will come later.
++// Toggle ImGui on/off, works with OpenGL on Windows and Linux.
+ #define _IMGUI_TEST
+ 
+ #endif // CUSTOM_CODE
+-- 
+2.49.0.windows.1
+

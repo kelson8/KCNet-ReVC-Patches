@@ -1,0 +1,416 @@
+From cc090ccf64df7272076934a3087e10fd94cf8fab Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 13:16:40 -0500
+Subject: [PATCH 28/58] feat: Update/refactor ImGui code a bit * Add
+ premake-vs2022.cmd for building with vs2022 and the imgui-opengl flag.
+
+* Disable D3D8 and D3D9 in the premake.
+---
+ premake-vs2022.cmd                       |   1 +
+ premake5.lua                             |  26 +++--
+ src/extras/functions/imgui_functions.cpp | 132 ++---------------------
+ src/extras/functions/imgui_setup.cpp     |  11 +-
+ src/extras/functions/imgui_setup.h       |   2 +
+ src/extras/menus/imgui_main_menu.cpp     |  26 +----
+ src/extras/menus/imgui_main_menu.h       |  14 ---
+ src/extras/menus/warp_menu.cpp           |   6 +-
+ 8 files changed, 38 insertions(+), 180 deletions(-)
+ create mode 100644 premake-vs2022.cmd
+
+diff --git a/premake-vs2022.cmd b/premake-vs2022.cmd
+new file mode 100644
+index 00000000..1acfa0a2
+--- /dev/null
++++ b/premake-vs2022.cmd
+@@ -0,0 +1 @@
++premake5 vs2022 --with-librw --imgui-opengl
+diff --git a/premake5.lua b/premake5.lua
+index c89134a8..ad0700ee 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -45,12 +45,13 @@ newoption {
+ 
+ -- TODO Test Try to see if imgui-opengl works later on Windows.
+ -- TODO Add toggle option to disable ImGui when building, I'll do that later on.
+--- TODO Try to make this work with the D3d9 build, if using d3d9 it breaks the build with an error.
++-- TODO set imgui-opengl as default
+ newoption {
+ 	trigger     = "imgui-opengl",
+ 	description = "Use OpenGL for ImGui"
+ }
+ 
++-- Not in use, I don't plan on supporting D3D9 with this build anymore.
+ newoption {
+ 	trigger     = "imgui-directx",
+ 	description = "Use D3d9 for ImGui"
+@@ -60,6 +61,12 @@ newoption {
+ 
+ require("autoconf")
+ 
++-- TODO Test, this should auto enable imgui-opengl
++-- This just breaks the build.
++-- if(not _OPTIONS["imgui-opengl"]) then
++-- 	_OPTIONS["imgui-opengl"]
++-- end
++
+ if(_OPTIONS["with-librw"]) then
+ 	Librw = "vendor/librw"
+ else
+@@ -100,13 +107,16 @@ workspace "reVC"
+ 	filter { "system:windows" }
+ 		configurations { "Vanilla" }
+ 		platforms {
+-			"win-x86-RW34_d3d8-mss",
+-			"win-x86-librw_d3d9-mss",
+-			"win-x86-librw_gl3_glfw-mss",
+-			"win-x86-RW34_d3d8-oal",
+-			"win-x86-librw_d3d9-oal",
+-			"win-x86-librw_gl3_glfw-oal",
+-			"win-amd64-librw_d3d9-oal",
++			-- Disabled D3D8, D3D9, and x86 builds.
++			-- Project now uses OpenGL and 64 bit.
++			-- This is untested with 32 bit, it might work.
++			-- "win-x86-RW34_d3d8-mss",
++			-- "win-x86-librw_d3d9-mss",
++			-- "win-x86-librw_gl3_glfw-mss",
++			-- "win-x86-RW34_d3d8-oal",
++			-- "win-x86-librw_d3d9-oal",
++			-- "win-x86-librw_gl3_glfw-oal",
++			-- "win-amd64-librw_d3d9-oal",
+ 			"win-amd64-librw_gl3_glfw-oal",
+ 		}
+ 
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 84982d80..b5ac27f6 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -111,12 +111,14 @@ ImGuiFunctions::PrintToOutput(const char* text)
+ #ifdef _WIN32
+ 	OutputDebugString(text);
+ #else
+-	// TODO Fix other platform support
++	// Basic cout logger for this.
++	std::cout << Defines::KcLogString << text;
+ #endif // _WIN32
+ }
+ 
+ // Disabled, broken on my OpenGL build
+ // TODO Learn exactly how this is working
++// This doesn't seem to be in use anywhere.
+ // This works for displaying a list of numbers which could be used for vehicle ids.
+ //void
+ //ImGuiFunctions::VehiclesListBox(int &selectedItem)
+@@ -211,30 +213,21 @@ ImGuiFunctions::SetupContext()
+ 	ImGuiFunctions::SetupFonts(io);
+ }
+ 
+-// TODO Why is this duplicated in imgui_setup.cpp and imgui_functions.cpp?
++/// <summary>
++/// Shutdown the ImGui system.
++/// </summary>
+ void
+ ImGuiFunctions::ShutdownImGui()
+ {
+-	// Shutdown Imgui, was I forgetting that?
+-	// Shutdown DX9 for this and cleanup
+-	// This fixes the crashes without the menu being open..
+-	// I'm so close on getting this to finally work, it's been so long.
+-	// Shutdown Imgui, was I forgetting that?
+-	// Shutdown DX9 for this and cleanup
++	// Shutdown DX9/OpenGL for this and cleanup
+ 
+ 	// Copied in changes from OpenGL testing.
+ #if defined(_WIN32) && defined(RW_D3D9)
+ 	ImGui_ImplWin32_Shutdown();
+ #elif defined(_WIN32) || defined(__linux__) && defined(RW_GL3)
+-	// TODO Implement imgui shutdown with OpenGL.
+-
+     // Cleanup
+ 	ImGui_ImplOpenGL3_Shutdown();
+ 	ImGui_ImplGlfw_Shutdown();
+-	
+-
+-	//glfwDestroyWindow(PSGLOBAL);
+-	//glfwTerminate();
+ #endif // _WIN32 && RW_D3D9
+ 
+ 	ImGui::DestroyContext();
+@@ -312,117 +305,6 @@ bool ImGuiFunctions::ShowSecondWindow = false;
+ 
+ //---------- End ImGui setup/shutdown functions ----------//
+ 
+-// Code moved out of d3ddevice.cpp in librw
+-// TODO Make this work later.
+-#ifdef _MOVE_CODE
+-void
+-ImGuiFunctions::RunImGui()
+-{
+-
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-	bool show_demo_window = true;
+-	bool show_another_window = false;
+-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+-
+-	// d3ddevice->EndScene();
+-	/*
+-
+-	        rw::d3d::d3ddevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+-	        rw::d3d::d3ddevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+-	        rw::d3d::d3ddevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+-	        D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
+-	                                              (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
+-	*/
+-
+-	// The while loop was crashing this
+-	// while(!ImGuiFunctions::ImGuiDone) {
+-	// Setup the new frames
+-
+-	// if (imGuiFunctions.ImGuiEnabled) {
+-
+-	//	}
+-
+-	if(!imGuiFunctions.ImGuiDone) {
+-
+-		ImGui_ImplDX9_NewFrame();
+-		ImGui_ImplWin32_NewFrame();
+-		ImGui::NewFrame();
+-
+-		// Test for mouse
+-		ClipCursor(NULL);
+-		// if (imGuiFunctions.ImGuiEnabled) {
+-		//	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-		//
+-		//} else {
+-		//
+-		//}
+-
+-		//
+-		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+-		// if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+-
+-		{
+-			// https://www.unknowncheats.me/forum/general-programming-and-reversing/505033-imgui-mouse-interaction-video.html
+-			ImGuiIO &io = ImGui::GetIO();
+-			// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
+-			// Hmm, with my new menu setup, the mouse shows up but cannot click on anything.
+-			// Something in the code is overriding the mouse.. TODO Fix that.
+-
+-			// Update mouse position
+-			POINT p;
+-			GetCursorPos(&p);
+-			// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
+-			// Idk what I did to break this...
+-			// ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
+-			io.MousePos = ImVec2(p.x, p.y);
+-
+-			// Update mouse button state
+-			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+-			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+-
+-			// Toggle ImGui with right mouse button
+-			// if(io.MouseDown[1]) { ImGuiFunctions::ImGuiDone = true; }
+-
+-			// Draw the cursor to the screen
+-			io.MouseDrawCursor = true;
+-			//
+-
+-			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+-
+-			// This toggles ImGui!!
+-			// Now to figure out how to add a keyboard shortcut to it.
+-			// Also to figure out
+-			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+-
+-			// if(io.MouseDown[1]) { ImGuiFunctions::ImGuiDone = true; }
+-
+-			// Moved this into its own method
+-			ImGuiMenus::Menu::MainMenu(false, false, clear_color);
+-
+-			// Save device state
+-			IDirect3DStateBlock9 *pStateBlock = NULL;
+-			rw::d3d::d3ddevice->CreateStateBlock(D3DSBT_ALL, &pStateBlock);
+-			pStateBlock->Capture();
+-
+-			//
+-
+-			// ImGui Rendering
+-			ImGui::EndFrame();
+-			ImGui::Render();
+-			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+-
+-			// Restore device state
+-			pStateBlock->Apply();
+-			pStateBlock->Release();
+-			//
+-		}
+-		rw::d3d::d3ddevice->Present(NULL, NULL, NULL, NULL);
+-	}
+-}
+-
+-
+-#endif //_MOVE_CODE
+-
+ //---------- Begin ReVC Color stuff ----------//
+ 
+ // Convert ImVec4 to RGBA
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index 6dac9cc9..f5295286 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -200,7 +200,6 @@ ImGuiSetup::DisableImGuiOnGamePause()
+ 
+ 	// First, check if the game is paused, if so disable the menu.
+ 	// This works right here.
+-	// TODO Implement this into ReVC, and Re3.
+ 	if(imGuiFunctions.ImGuiActive && CTimer::GetIsPaused()) { imGuiFunctions.ImGuiActive = false; }
+ }
+ 
+@@ -382,14 +381,14 @@ ImGuiSetup::HandleControllerInput()
+ /// <summary>
+ /// Gets the current window for GLFW, useful for librw.
+ /// Not in use
+-/// 
+ /// </summary>
+-
++#ifdef RW_GL3
+ GLFWwindow*
+ ImGuiSetup::GetGlfwWindow()
+ {
+ 	return PSGLOBAL(window);
+ }
++#endif // RW_GL3
+ 
+ /// <summary>
+ /// This runs the loop for ImGui under GS_PLAYING_GAME
+@@ -428,7 +427,7 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 
+ 		// Resize check
+ 		// TODO Figure out how to get this.
+-		// This should fix the resize being buggy but other then that this menu seems to work.
++		// This should fix the resize being buggy in D3D9 but other then that this menu seems to work.
+ 		// if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
+ 		//         rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
+ 		//         g_d3dpp.BackBufferHeight = g_ResizeHeight;
+@@ -438,12 +437,8 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 		
+ 		// First, check if the game is paused, if so disable the menu.
+ 		// This works right here.
+-		// TODO Implement this into Re3.
+-		// TODO Add a config option for this in the ini or something.
+-		// 
+ 		this->DisableImGuiOnGamePause();
+ 
+-		// TODO Fix to work with D3D9 and OpenGL.
+ 		this->HandleControllerInput();
+ 		if(imGuiFunctions.ImGuiActive) {
+ 
+diff --git a/src/extras/functions/imgui_setup.h b/src/extras/functions/imgui_setup.h
+index 23400379..b425d041 100644
+--- a/src/extras/functions/imgui_setup.h
++++ b/src/extras/functions/imgui_setup.h
+@@ -14,8 +14,10 @@ public:
+ 	// This is what allows my menu to be used with a controller.
+ 	void HandleControllerInput();
+ 
++#ifdef RW_GL3
+ 	// Get the Glfw window, not in use.
+ 	GLFWwindow *GetGlfwWindow();
++#endif // RW_GL3
+ 
+ 	// Run the main loop for ImGui keyboard/mouse input handling, toggling the menu,
+ 	// disabling camera movement, and running controller input handling.
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index a3b90c48..15231333 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -123,28 +123,9 @@ ImGuiMenus::MainMenu()
+ 	GameMenu gameMenu = GameMenu();
+ 	AnimMenu animMenu = AnimMenu();
+ 
+-	CVector playerCoords = FindPlayerPed()->GetPosition();
+-	float playerX = playerCoords.x;
+-	float playerY = playerCoords.y;
+-	float playerZ = playerCoords.z;
+-	
+-	// https://stackoverflow.com/questions/16691617/removing-some-digits-after-decimal-point-in-c
+-	// Well this removes all the numbers
+-	// TODO Make this only remove 3 numbers after the decimal.
+-	//playerX = (double)((int)playerX * 100) / 100;
+-
+-
+-	// This will fix the window movement being glitchy for now, but it cannot be moved around anymore.
+-
+-	// Test for setting menu position
+-	// Set the initial position of the window (e.g., 100 pixels from the left, 200 pixels from the top)
+-	//ImGui::SetNextWindowPos(ImVec2(600, 400), ImGuiCond_FirstUseEver);
+-	// Set the position every frame
+-	// This works
+-	//ImGui::SetNextWindowPos(ImVec2(200, 175), ImGuiCond_Always);
+-
+-
+ 	// I added a toggle to enable/disable moving of the window.
++	// It works on GLFW, so I disable this in D3D9, 
++	//  this doesn't even build for D3D9 and I probably won't work on support for D3D9.
+ 	if (menuMovingEnabled)
+ 	{ 
+ 		ImGui::Begin(Defines::imGuiMenuName.c_str(), nullptr);
+@@ -152,9 +133,6 @@ ImGuiMenus::MainMenu()
+ 	{
+ 		ImGui::Begin(Defines::imGuiMenuName.c_str(), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
+ 	}
+-	//
+-	// TODO Fix ImGui window movement, then I'll enable this.
+-	
+ 
+ 	if (ImGui::BeginTabBar("Functions")) {
+ 
+diff --git a/src/extras/menus/imgui_main_menu.h b/src/extras/menus/imgui_main_menu.h
+index 7b3c0d37..4a9973fe 100644
+--- a/src/extras/menus/imgui_main_menu.h
++++ b/src/extras/menus/imgui_main_menu.h
+@@ -3,20 +3,6 @@
+ #ifdef _IMGUI_TEST
+ #include "imgui.h"
+ 
+-//namespace ImGuiMenus
+-//{
+-//	// TODO Setup toggle for demo window
+-//	
+-//
+-//	namespace Menu
+-//	{
+-//	void
+-//	MainMenu(ImVec4 clear_color);
+-//
+-//	
+-//	}
+-//}
+-
+ class ImGuiMenus
+ {
+ public:
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 417a6ec1..6e5787f5 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -215,12 +215,16 @@ WarpMenu::WarpTab()
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	//CGame cGame;
+ 
+-
+ 	float playerX = playerCoords.x;
+ 	float playerY = playerCoords.y;
+ 	float playerZ = playerCoords.z;
+ 	float playerHeading = FindPlayerHeading();
+ 
++	// https://stackoverflow.com/questions/16691617/removing-some-digits-after-decimal-point-in-c
++	// Well this removes all the numbers
++	// TODO Make this only remove 3 numbers after the decimal.
++	// playerX = (double)((int)playerX * 100) / 100;
++
+ 	
+ 	// New for warp saving
+ 	static int interiorId = 0;
+-- 
+2.49.0.windows.1
+

@@ -1,0 +1,623 @@
+From a9063b00e503e8916f026dd617c396977829f5b6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 00:21:53 -0500
+Subject: [PATCH 03/58] feat: Add partial working fast loader
+
+* Added fast loader code to win.cpp and glfw.cpp.
+* Add fast loader code to other files.
+* Disable extra cheats in debug functions with DEBUG_EXTRA_CHEATS preprocessor for now.
+
+* Add pch.cpp/.h for a central list of headers.
+
+* Update premake.
+* Update cpp properties and settings.json for vscode.
+---
+ .vscode/c_cpp_properties.json        | 22 +++++--
+ .vscode/settings.json                | 50 ++++++++++++++-
+ premake5.lua                         |  4 ++
+ src/core/Frontend.cpp                |  9 +++
+ src/core/Frontend.h                  |  7 ++-
+ src/core/config.h                    | 30 +++++++++
+ src/core/main.cpp                    |  8 +++
+ src/core/main.h                      |  8 +++
+ src/extras/debug/debug_functions.cpp | 12 ++--
+ src/extras/kcnet/pch.cpp             |  1 +
+ src/extras/kcnet/pch.h               | 24 ++++++++
+ src/extras/utils/fast_loader.cpp     | 91 ++++++++++++++++++++++++++++
+ src/extras/utils/fast_loader.h       |  6 ++
+ src/skel/glfw/glfw.cpp               | 32 ++++++++++
+ src/skel/win/win.cpp                 | 37 +++++++++++
+ 15 files changed, 328 insertions(+), 13 deletions(-)
+ create mode 100644 src/extras/kcnet/pch.cpp
+ create mode 100644 src/extras/kcnet/pch.h
+ create mode 100644 src/extras/utils/fast_loader.cpp
+ create mode 100644 src/extras/utils/fast_loader.h
+
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+index 2ce82727..aaaff995 100644
+--- a/.vscode/c_cpp_properties.json
++++ b/.vscode/c_cpp_properties.json
+@@ -38,12 +38,24 @@
+       "intelliSenseMode": "gcc-arm64",
+       "cStandard": "gnu11",
+       "cppStandard": "gnu++11",
++      "defines": ["__SWITCH__", "LIBRW", "RW_GL3", "AUDIO_OAL"]
++    },
++
++    {
++      "name": "Win32",
++      "includePath": [
++        "${workspaceFolder}/**"
++      ],
+       "defines": [
+-        "__SWITCH__",
+-        "LIBRW",
+-        "RW_GL3",
+-        "AUDIO_OAL"
+-      ]
++        "DEBUGMODE",
++        "RW_GL3"
++      ],
++      "windowsSdkVersion": "10.0.22621.0",
++      "compilerPath": "cl.exe",
++      "cStandard": "c17",
++      "cppStandard": "c++17",
++      "intelliSenseMode": "windows-msvc-x64",
++      "configurationProvider": "ms-vscode.makefile-tools"
+     }
+   ],
+   "version": 4
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index 624e08d9..ebf50d03 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -2,6 +2,8 @@
+   "C_Cpp.default.cStandard": "gnu11",
+   "C_Cpp.default.cppStandard": "gnu++14",
+   "C_Cpp.default.includePath": [
++    "lib/imgui/",
++    "lib/imgui/backends",
+     "src",
+     "src/animation",
+     "src/audio",
+@@ -13,6 +15,15 @@
+     "src/core",
+     "src/entities",
+     "src/extras",
++    "src/extras/cheats",
++    "src/extras/debug",
++    "src/extras/functions",
++    "src/extras/kcnet",
++    "src/extras/lua",
++    "src/extras/menus",
++    "src/extras/plugin_sdk_test",
++    "src/extras/test",
++    "src/extras/utils",
+     "src/fakerw",
+     "src/math",
+     "src/modelinfo",
+@@ -32,5 +43,42 @@
+   "C_Cpp.vcFormat.space.pointerReferenceAlignment": "right",
+   "cSpell.enabled": false,
+   "files.trimFinalNewlines": false,
+-  "files.trimTrailingWhitespace": false
++  "files.trimTrailingWhitespace": false,
++  "files.associations": {
++    "*.rh": "cpp",
++    "system_error": "cpp",
++    "any": "cpp",
++    "array": "cpp",
++    "compare": "cpp",
++    "filesystem": "cpp",
++    "functional": "cpp",
++    "future": "cpp",
++    "memory": "cpp",
++    "ratio": "cpp",
++    "tuple": "cpp",
++    "type_traits": "cpp",
++    "utility": "cpp",
++    "variant": "cpp",
++    "xmemory": "cpp",
++    "xtr1common": "cpp",
++    "xutility": "cpp",
++    "bitset": "cpp",
++    "deque": "cpp",
++    "format": "cpp",
++    "initializer_list": "cpp",
++    "list": "cpp",
++    "queue": "cpp",
++    "random": "cpp",
++    "regex": "cpp",
++    "stack": "cpp",
++    "valarray": "cpp",
++    "vector": "cpp",
++    "xhash": "cpp",
++    "xstring": "cpp",
++    "xtree": "cpp",
++    "algorithm": "cpp",
++    "chrono": "cpp",
++    "optional": "cpp",
++    "xlocmon": "cpp"
++  }
+ }
+diff --git a/premake5.lua b/premake5.lua
+index eedc3893..bc169b4d 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -261,6 +261,8 @@ project "reVC"
+ 	-- New
+ 	files { addSrcFiles("vendor/TExtender/src/textender") }
+ 	files { addSrcFiles("src/extras/debug") }
++	files { addSrcFiles("src/extras/kcnet") }
++	files { addSrcFiles("src/extras/utils") }
+ 	--
+ 
+ 	files { addSrcFiles("src") }
+@@ -297,6 +299,8 @@ project "reVC"
+ 	includedirs { ("vendor/d3d9") }
+ 	
+ 	includedirs { ("src/extras/debug") }
++	includedirs { ("src/extras/kcnet") }
++	includedirs { ("src/extras/utils") }
+ 	
+ 	libdirs { "vendor/d3d9/lib" }
+ 	links { "d3dx9.lib" }
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 875bb76b..dde51395 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -1132,6 +1132,15 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 				}
+ 
+ 				switch (aScreens[m_nCurrScreen].m_aEntries[i].m_Action) {
++#ifdef _FAST_LOADER
++				// Ohh, this is where the texts go.
++					// New test
++					// It does toggle in the reVC.ini though.
++				case MENUACTION_FASTLOADER:
++					rightText = TheText.Get(gbFastLoader ? "FEM_ON" : "FEM_OFF");
++					break;
++#endif
++
+ #ifdef GAMEPAD_MENU
+ 				case MENUACTION_CTRLVIBRATION:
+ 					if (m_PrefsUseVibration)
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index b9be5a82..52ba9fa0 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -305,7 +305,12 @@ enum eMenuAction
+ #endif
+ #ifdef MISSION_REPLAY
+ 	MENUACTION_REJECT_RETRY,
+-	MENUACTION_UNK114
++	MENUACTION_UNK114,
++#endif
++
++#ifdef _FAST_LOADER
++	// Fast loader menu option in Frontend.cpp
++	MENUACTION_FASTLOADER,
+ #endif
+ };
+ 
+diff --git a/src/core/config.h b/src/core/config.h
+index 8943223b..ccf13769 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -5,6 +5,36 @@
+ #define VANILLA_DEFINES
+ #endif
+ 
++// Custom code
++#define CUSTOM_CODE
++
++#ifdef CUSTOM_CODE
++
++
++
++// Define game as GTAVC, going to make my ImGui menu work between GTA 3 and Vice City (Re3, ReVC)
++// ImGui not implemented in this branch.
++#define GTAVC
++
++// I added a toggle for the no pause on focus loss
++// If this is disabled on Re3 and you press the Windows key without pausing,
++// the mouse gets locked to the top left side and you have to taskkill the Re3 process.
++// Well this is different with GLFW, so I will have to come up with another solution for this.
++// #define DISABLE_PAUSE_FOCUS_LOSS
++
++// Toggle the fast loader, not implemented yet
++#define _FAST_LOADER
++
++#ifdef _FAST_LOADER
++// Part of fast loader
++#define EX_LOADING_GAME_SAVE_ON_STARTUP
++#endif // _FAST_LOADER
++
++// Enable the new cheats in debug_functions.cpp, this needs copied in from my miami branch.
++//#define DEBUG_EXTRA_CHEATS
++
++#endif // CUSTOM_CODE
++
+ enum Config {
+ 	NUMPLAYERS = 1,
+ 
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e84c6eeb..95eb993c 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -101,6 +101,14 @@ bool gbDrawVersionText; // Our addition, we think it was always enabled on !MAST
+ bool gbNoMovies;
+ #endif
+ 
++#ifdef _FAST_LOADER
++bool gbFastLoader;
++#endif
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++uint8 gbGameSaveOnStartup = 0;
++#endif
++
+ volatile int32 frameCount;
+ 
+ RwRGBA gColourTop;
+diff --git a/src/core/main.h b/src/core/main.h
+index 803afb14..24163f8a 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -74,3 +74,11 @@ extern bool gbDrawVersionText;
+ #ifdef NO_MOVIES
+ extern bool gbNoMovies;
+ #endif
++
++#ifdef _FAST_LOADER
++extern bool gbFastLoader;
++#endif //_FAST_LOADER
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++extern uint8 gbGameSaveOnStartup;
++#endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index f8d67459..9a037cad 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -506,7 +506,7 @@ DebugMenuPopulate(void)
+ 		//*****************
+ 
+ // Extras from kelson8
+-#ifdef CUSTOM_CODE
++#ifdef DEBUG_EXTRA_CHEATS
+ #define _TEST1
+ // Custom added by kelson8, these can be disabled by commenting out CUSTOM_CODE in config.h
+ #ifdef _TEST1
+@@ -560,7 +560,7 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Cheats", "ImGui Test", ImGuiVCTest::CreateImGuiWindow);
+ #endif // IMGUI_TEST
+ // End custom added
+-#endif // CUSTOM_CODE
++#endif // DEBUG_EXTRA_CHEATS
+ 
+ 		// End extras from kelson8
+ 
+@@ -578,11 +578,11 @@ DebugMenuPopulate(void)
+ 		DebugMenuAddCmd("Cheats", "Tank", []() { VehicleCheat(MI_TAXI); });
+ #endif // CUSTOM_CODE
+ 
+-#ifdef CUSTOM_CODE
++#ifdef DEBUG_EXTRA_CHEATS
+ 		DebugMenuAddCmd("Cheats", "Blow up cars", CustomCheats::BlowUpAllCars);
+ #else
+ 		DebugMenuAddCmd("Cheats", "Blow up cars", BlowUpCarsCheat);
+-#endif
++#endif // DEBUG_EXTRA_CHEATS
+ 		DebugMenuAddCmd("Cheats", "Change player", ChangePlayerCheat);
+ 		DebugMenuAddCmd("Cheats", "Mayhem", MayhemCheat);
+ 		DebugMenuAddCmd("Cheats", "Everybody attacks player", EverybodyAttacksPlayerCheat);
+@@ -952,7 +952,7 @@ DebugMenuPopulate(void)
+ 		// End Cam functions
+ 		//*****************
+ 
+-#ifdef CUSTOM_CODE
++#ifdef DEBUG_EXTRA_CHEATS
+ 
+ 		//*****************
+ 		// Begin Custom Vehicle functions
+@@ -1048,7 +1048,7 @@ DebugMenuPopulate(void)
+ 		// });
+ #endif // EX_COP_FUNCTIONS
+ 
+-#endif // CUSTOM_CODE
++#endif // DEBUG_EXTRA_CHEATS
+ 
+ 		//*****************
+ 		// End test functions
+diff --git a/src/extras/kcnet/pch.cpp b/src/extras/kcnet/pch.cpp
+new file mode 100644
+index 00000000..17305716
+--- /dev/null
++++ b/src/extras/kcnet/pch.cpp
+@@ -0,0 +1 @@
++#include "pch.h"
+\ No newline at end of file
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+new file mode 100644
+index 00000000..4c22aead
+--- /dev/null
++++ b/src/extras/kcnet/pch.h
+@@ -0,0 +1,24 @@
++#pragma once
++
++#include <vector>
++#include <string>
++#include <sstream>
++
++// ReVC
++#ifdef _WIN32
++// TODO Is this needed? Seems to be auto disabled in common.h if it's active.
++#define WITHDINPUT
++    #ifdef RW_D3D9
++        #define WITHD3D
++    #endif // RW_D3D9
++#endif // _WIN32
++
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++//
++
++#include <functional>
+\ No newline at end of file
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+new file mode 100644
+index 00000000..3b73b09f
+--- /dev/null
++++ b/src/extras/utils/fast_loader.cpp
+@@ -0,0 +1,91 @@
++#include "pch.h"
++
++#include "fast_loader.h"
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++#include "GenericGameStorage.h"
++#include "Script.h"
++#endif
++
++#include "Frontend.h"
++#include "Game.h"
++#include "PCSave.h"
++
++#include "config.h"
++
++#include "ControllerConfig.h"
++#include "Pad.h"
++
++// Keybinds
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                      \
++	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++//
++
++void
++FastLoader::FastLoad()
++{
++	// TODO Move into misc_utils file or something outside of win.cpp
++	//************
++	// Begin Fast Loader
++	// ************/
++	// This seems to work as a fast loader, copied from Extended Vice project.
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++
++	// Only run if fastLoader is also enabled too with my ini settings, I can disable this for testing or if needed.
++	// I'm quite sure this breaks my menu option on the main menu, it automatically launches a game,
++	// as soon as I press the toggle for it to turn it on.
++	// TODO Fix this to work right on the main menu, check if user is on the main menu somewhere
++
++	// I am now able to cancel my fast loader with left control now.
++	// This works! When the game starts if you hold left control this disables the fast loader
++	// and puts the user on the main menu! This is perfect for testing.
++	// TODO Copy changes into Re3 and ReLCS.
++	if (KEYJUSTDOWN(rsLCTRL) && gbFastLoader) 
++	{
++		gbFastLoader = false;
++		return;
++	}
++	//
++
++	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader
++	   // TODO Test this, I should be able to cancel the fast load with a keybind.
++	   // Well it disables it until the key is unpressed..
++	   //&& !KEYDOWN(rsF2)
++	   //&& !CTRLDOWN(rsF1)
++	) {
++		// TODO Test
++		// This doesn't work.
++		//     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
++		//        cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS &&
++		// cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
++
++		FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
++
++		FrontEndMenuManager.m_bWantToLoad = true;
++
++#ifdef USE_DEBUG_SCRIPT_LOADER
++		CTheScripts::ScriptToLoad = 0;
++#endif
++
++#ifdef XBOX_MESSAGE_SCREEN
++		SetDialogText("FELD_WR");
++		ToggleDialog(true);
++#else
++#if defined(GTAVC) || defined(GTALCS)
++		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++#elif defined(GTA3)
++		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR");
++#endif
++
++#endif
++		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++		//}
++	}
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++       //*****************
++       // End Fast Loader
++       // ************/
++}
+diff --git a/src/extras/utils/fast_loader.h b/src/extras/utils/fast_loader.h
+new file mode 100644
+index 00000000..63b581f0
+--- /dev/null
++++ b/src/extras/utils/fast_loader.h
+@@ -0,0 +1,6 @@
++#pragma once
++class FastLoader
++{
++public:
++	void FastLoad();
++};
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index f1f97ee3..39b5a19c 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -67,6 +67,21 @@ long _dwOperatingSystemVersion;
+ 
+ #define MAX_SUBSYSTEMS		(16)
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++#include "Script.h"
++#include "GenericGameStorage.h"
++
++// My fast loader code, moved into here.
++#include "fast_loader.h"
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++
++#ifdef DISABLE_PAUSE_FOCUS_LOSS
++// Boolean to keep track of the pause on focus loss value.
++bool isGameFocused = true; // Initially focused
++
++#endif // DISABLE_PAUSE_FOCUS_LOSS
++
++
+ rw::EngineOpenParams openParams;
+ 
+ static RwBool		  ForegroundApp = TRUE;
+@@ -276,6 +291,16 @@ psTimer(void)
+ void
+ psMouseSetPos(RwV2d *pos)
+ {
++#ifdef DISABLE_PAUSE_FOCUS_LOSS
++	// Proper fix for focus loss, with this enabled and the CGame::InitAfterFocusLoss disabled in WM_KILLFOCUS
++	// It seems to work well.
++	// Checking for focus loss in WM_ACTIVATEAPP
++	// Doesn't work with GLFW.
++	if (!isGameFocused) 
++	{ 
++		return;
++	}
++#endif
+ 	glfwSetCursorPos(PSGLOBAL(window), pos->x, pos->y);
+ 	
+ 	PSGLOBAL(lastMousePos.x) = (RwInt32)pos->x;
+@@ -2058,6 +2083,10 @@ main(int argc, char *argv[])
+ 	SetErrorMode(SEM_FAILCRITICALERRORS);
+ #endif
+ 
++#ifdef _FAST_LOADER
++	FastLoader fastLoader = FastLoader();
++#endif
++
+ #ifdef PS2_MENU
+ 	int32 r = TheMemoryCard.CheckCardStateAtGameStartUp(CARD_ONE);
+ 	if (   r == CMemoryCard::ERR_DIRNOENTRY  || r == CMemoryCard::ERR_NOFORMAT
+@@ -2262,6 +2291,9 @@ main(int argc, char *argv[])
+ 						if(!WindowIconified)
+ 							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++						fastLoader.FastLoad();
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+ #ifdef PS2_MENU
+ 						if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+ #else
+diff --git a/src/skel/win/win.cpp b/src/skel/win/win.cpp
+index 7582759f..cb344e03 100644
+--- a/src/skel/win/win.cpp
++++ b/src/skel/win/win.cpp
+@@ -55,6 +55,21 @@
+ 
+ #define MAX_SUBSYSTEMS		(16)
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++#include "Script.h"
++#include "GenericGameStorage.h"
++
++// My fast loader code, moved into here.
++#include "fast_loader.h"
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++
++#ifdef DISABLE_PAUSE_FOCUS_LOSS
++// Boolean to keep track of the pause on focus loss value.
++bool isGameFocused = true; // Initially focused
++
++#endif // DISABLE_PAUSE_FOCUS_LOSS
++
++
+ static RwBool		  ForegroundApp = TRUE;
+ 
+ static RwBool		  RwInitialised = FALSE;
+@@ -298,6 +313,15 @@ psTimer(void)
+ void
+ psMouseSetPos(RwV2d *pos)
+ {
++#ifdef DISABLE_PAUSE_FOCUS_LOSS
++	// Proper fix for focus loss, with this enabled and the CGame::InitAfterFocusLoss disabled in WM_KILLFOCUS
++	// It seems to work well.
++	// Checking for focus loss in WM_ACTIVATEAPP
++	if (!isGameFocused) 
++	{ 
++		return;
++	}
++#endif
+ 	POINT point;
+ 
+ 	point.x = (RwInt32) pos->x;
+@@ -1173,6 +1197,12 @@ MainWndProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+ 
+ 		case WM_ACTIVATEAPP:
+ 		{
++#ifdef DISABLE_PAUSE_FOCUS_LOSS
++			// This works, disables focus loss when paused.
++		        BOOL fActive = (BOOL)wParam;
++		        isGameFocused = fActive; // Update focus flag
++#endif // DISABLE_PAUSE_FOCUS_LOSS
++
+ 			switch ( gGameState )
+ 			{
+ 				case GS_LOGO_MPEG:
+@@ -2194,6 +2224,9 @@ WinMain(HINSTANCE instance,
+ 	
+ 	SetErrorMode(SEM_FAILCRITICALERRORS);
+ 
++#ifdef _FAST_LOADER
++	FastLoader fastLoader = FastLoader();
++#endif
+ 			
+ #ifdef PS2_MENU
+ 	int32 r = TheMemoryCard.CheckCardStateAtGameStartUp(CARD_ONE);
+@@ -2428,6 +2461,10 @@ WinMain(HINSTANCE instance,
+ 						if (wp.showCmd != SW_SHOWMINIMIZED)
+ 							RsEventHandler(rsFRONTENDIDLE, nil);
+ 
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++						fastLoader.FastLoad();
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++
+ #ifdef PS2_MENU
+ 						if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+ #else
+-- 
+2.49.0.windows.1
+

@@ -1,0 +1,82 @@
+From 1183ba5aa9598e84e86aec48adab914c45e9769b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 14:55:44 -0500
+Subject: [PATCH 15/58] feat: Disable install dependencies * Make build list
+ files in the build folder * Move build type into secrets
+
+---
+ .gitea/workflows/build.yml | 47 +++++++++++++++++++-------------------
+ 1 file changed, 24 insertions(+), 23 deletions(-)
+
+diff --git a/.gitea/workflows/build.yml b/.gitea/workflows/build.yml
+index ad0882a9..9ce261a1 100644
+--- a/.gitea/workflows/build.yml
++++ b/.gitea/workflows/build.yml
+@@ -20,27 +20,28 @@ jobs:
+         docker login registry.internal.kelsoncraft.net -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+ 
+   # Try to make this install the dependencies if required.
+-  install-dependencies:
+-    runs-on: revc-dev-1.2a
+-    steps:
+-    - name: Install dependencies
+-      image: registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
+-      run: |
+-        apt-get update
+-        apt-get install -y --no-install-recommends \
+-        libopenal-dev \
+-        libglew-dev \
+-        libglfw3-dev \
+-        libsndfile1 \
+-        libsndfile1-dev \
+-        libmpg123-dev \
+-        premake4 \
+-        make \
+-        libxrandr-dev \
+-        gcc \
+-        g++
+-        apt-get clean
+-        rm -rf /var/lib/apt/lists/*
++  # Well this wasn't needed, why doesn't this build with the workflow though?
++  # install-dependencies:
++  #   runs-on: revc-dev-1.2a
++  #   steps:
++  #   - name: Install dependencies
++  #     image: registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
++  #     run: |
++  #       apt-get update
++  #       apt-get install -y --no-install-recommends \
++  #       libopenal-dev \
++  #       libglew-dev \
++  #       libglfw3-dev \
++  #       libsndfile1 \
++  #       libsndfile1-dev \
++  #       libmpg123-dev \
++  #       premake4 \
++  #       make \
++  #       libxrandr-dev \
++  #       gcc \
++  #       g++
++  #       apt-get clean
++  #       rm -rf /var/lib/apt/lists/*
+ 
+   build:
+     # runs-on: ubuntu-24.04
+@@ -51,11 +52,11 @@ jobs:
+       image: registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
+       # This should build the files.
+       # I'm quite sure this is cached or something.
+-      # TODO Make this get the build from the gitea secrets
+       run: |
+         cd /reVC
+         ./premake5Linux --no-git-hash=1 --with-librw gmake2
+         cd ./build
+-        make config=debug_linux-amd64-librw_gl3_glfw-oal -j$(nproc)
++        make config=${{ secrets.LINUX_BUILD_TYPE }} -j$(nproc)
++        ls /reVC/bin/${{ secrets.LINUX_BUILD_TYPE }}
+         
+         
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

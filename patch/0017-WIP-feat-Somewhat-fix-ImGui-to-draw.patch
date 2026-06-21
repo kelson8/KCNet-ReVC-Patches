@@ -1,0 +1,401 @@
+From e2ce2d2043a0eba55cd0e290e5ccbaff5f80b27c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 23:25:10 -0500
+Subject: [PATCH 17/58] WIP: feat: Somewhat fix ImGui to draw
+
+* This somewhat works, but the mouse is glitchy and you can't select anything.
+* Tested on OpenGL with Windows.
+* Now ImGui shuts down and cleanups up when the game is exiting.
+---
+ premake5.lua                             |   4 +
+ src/core/config.h                        |   4 +-
+ src/extras/functions/imgui_commands.cpp  |   2 +
+ src/extras/functions/imgui_functions.cpp |  33 ++++--
+ src/extras/functions/imgui_setup.cpp     | 132 +++++++++++++++++------
+ src/extras/functions/imgui_setup.h       |   3 +-
+ src/skel/glfw/glfw.cpp                   |  13 ++-
+ 7 files changed, 143 insertions(+), 48 deletions(-)
+
+diff --git a/premake5.lua b/premake5.lua
+index 72065d2a..3231cba4 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -392,6 +392,8 @@ project "reVC"
+ 		if(_OPTIONS["imgui-opengl"]) then
+ 			files {
+ 			"lib/imgui/backends/imgui_impl_opengl3.cpp",
++			"lib/imgui/backends/imgui_impl_glfw.cpp",
++			"lib/imgui/backends/imgui_impl_glfw.h",
+ 		}
+ 		-- DirectX9
+ 		else
+@@ -449,6 +451,8 @@ project "reVC"
+ 	filter "platforms:not win*"
+ 		files {
+ 		"lib/imgui/backends/imgui_impl_opengl3.cpp",
++		"lib/imgui/backends/imgui_impl_glfw.cpp",
++		"lib/imgui/backends/imgui_impl_glfw.h",
+ 		}
+ 
+ 		if(not _OPTIONS["no-git-hash"]) then
+diff --git a/src/core/config.h b/src/core/config.h
+index 81a1ce9c..28773a52 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -57,7 +57,9 @@
+ 
+ // Toggle ImGui on/off, this won't work yet, I need to work on getting ImGui working with OpenGL,
+ // and I have to change some Windows specific items such as HWND.
+-//#define _IMGUI_TEST
++// TODO Fix this on Windows, I have it showing up but it's very buggy and the mouse doesn't work right.
++// Linux support will come later.
++#define _IMGUI_TEST
+ 
+ #endif // CUSTOM_CODE
+ 
+diff --git a/src/extras/functions/imgui_commands.cpp b/src/extras/functions/imgui_commands.cpp
+index 8b4dd2bf..66d294a8 100644
+--- a/src/extras/functions/imgui_commands.cpp
++++ b/src/extras/functions/imgui_commands.cpp
+@@ -1,3 +1,5 @@
++
++#include "config.h"
+ #ifdef _IMGUI_TEST
+ 
+ #include "imgui_commands.h"
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index 2c27d88b..2c188ff7 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -1,3 +1,5 @@
++
++#include "config.h"
+ #ifdef _IMGUI_TEST
+ 
+ // https://stackoverflow.com/questions/22744262/cant-call-stdmax-because-minwindef-h-defines-max
+@@ -10,8 +12,17 @@
+ 
+ // ImGui
+ #include "imgui.h"
++
++#if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_dx9.h"
++#else
++#include "imgui_impl_glfw.h"
++#include "imgui_impl_opengl3.h"
++#endif // _WIN32 && RW_D3D9
++
++#if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_win32.h"
++#endif // _WIN32 && RW_D3D9
+ 
+ #include "imgui_main_menu.h"
+ 
+@@ -152,10 +163,11 @@ ImGuiFunctions::PrintToOutput(const char* text)
+ void
+ ImGuiFunctions::SetupFonts(ImGuiIO &io)
+ {
+-
+-	std::string viceExtendedPath = "ViceExtended\\";
++	//std::string viceExtendedPath = "ViceExtended\\";
+ 	// Add fonts to the path.
+-	std::string fontsPath = viceExtendedPath + "fonts\\";
++	//std::string fontsPath = viceExtendedPath + "fonts\\";
++	std::string fontsPath = "fonts\\";
++
+ 
+ 	Defines defines = Defines();
+ 
+@@ -203,16 +215,21 @@ ImGuiFunctions::ShutdownImGui()
+ 	// Shutdown DX9 for this and cleanup
+ 
+ 	// Copied in changes from OpenGL testing.
+-#ifdef _WIN32
++#if defined(_WIN32) && defined(RW_D3D9)
+ 	ImGui_ImplWin32_Shutdown();
+-#else
++#elif defined(_WIN32) || defined(__linux__) && defined(RW_GL3)
+ 	// TODO Implement imgui shutdown with OpenGL.
+-#endif // _WIN32
+ 
+-#if defined(_WIN32) && defined(RW_D3D9)
++    // Cleanup
++	ImGui_ImplOpenGL3_Shutdown();
++	ImGui_ImplGlfw_Shutdown();
++	
+ 
+-	ImGui_ImplDX9_Shutdown();
++	//glfwDestroyWindow(PSGLOBAL);
++	//glfwTerminate();
+ #endif // _WIN32 && RW_D3D9
++
++	ImGui::DestroyContext();
+ }
+ 
+ // Credit to user-grinch on github for the style code here.
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index e02fb438..a5f48164 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -12,10 +12,17 @@
+ 
+ #include "imgui.h"
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_dx9.h"
++#else
++#include "imgui_impl_opengl3.h"
++#include "imgui_impl_glfw.h"
++#endif // _WIN32 && RW_D3D9
++
++
++#if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_win32.h"
+-#endif
++#endif // _WIN32 && RW_D3D9
+ 
+ #include "imgui_main_menu.h"
+ 
+@@ -204,9 +211,14 @@ ImGuiSetup::DisableImGuiOnGamePause()
+ /// Run my imgui DirectX9 init with Win32
+ /// </summary>
+ /// <param name="window">The HWND for the program.</param>
+-void 
++/// 
++// TODO Test
++const char *glsl_version = nullptr;
++
++void
+ #ifdef _WIN32
+-ImGuiSetup::InitImGui(HWND window)
++//ImGuiSetup::InitImGui(HWND window)
++ImGuiSetup::InitImGui()
+ #else
+ ImGuiSetup::InitImGui(std::string window)
+ #endif // _WIN32
+@@ -214,8 +226,24 @@ ImGuiSetup::InitImGui(std::string window)
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 	Defines defines = Defines();
++
++	// Setup ImGui Context, and setup fonts.
++	imGuiFunctions.SetupContext();
++
+ 	// Check if the DirectX9 device is valid
+ 
++	    if(glsl_version == nullptr) {
++#if defined(IMGUI_IMPL_OPENGL_ES2)
++		glsl_version = "#version 100";
++#elif defined(IMGUI_IMPL_OPENGL_ES3)
++		glsl_version = "#version 300 es";
++#elif defined(__APPLE__)
++		glsl_version = "#version 150";
++#else
++		glsl_version = "#version 130";
++#endif
++	}
++
+ #ifdef RW_D3D9
+ 	if(rw::d3d::d3ddevice == nullptr) {
+ 		// Handle the error, return
+@@ -226,14 +254,11 @@ ImGuiSetup::InitImGui(std::string window)
+ 	// TODO Figure out ImGui init for OpenGL.
+ 	if(!glfwInit()) return;
+ 
+-	ImGui_ImplGlfw_InitForOpenGL(window, true);
+-	ImGui_ImplOpenGL3_Init(glsl_version);
++	// I think I figured this out almost!
++	ImGui_ImplGlfw_InitForOpenGL(PSGLOBAL(window), true);
+ 
+ #endif
+ 
+-	// Setup ImGui Context, and setup fonts.
+-	imGuiFunctions.SetupContext();
+-
+ 	// Setup Dear ImGui style
+ 	ImGui::StyleColorsDark();
+ 
+@@ -247,38 +272,20 @@ ImGuiSetup::InitImGui(std::string window)
+ 	//
+ 
+ 	// Setup Platform/Renderer backends
+-#if defined(_WIN32)
+-	ImGui_ImplWin32_Init(window);
++#if defined(_WIN32) && defined(RW_D3D9)
++	// Windows only
++	ImGui_ImplWin32_Init(PSGLOBAL(window));
+ #endif // _WIN32
+ 
++// Windows and D3D9, currently broken on this branch.
+ #if defined(_WIN32) && defined(RW_D3D9)
+ 	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
+ #else
++	// OpenGL
++	ImGui_ImplOpenGL3_Init(glsl_version);
+ #endif
+ }
+ 
+-/// <summary>
+-/// This doesn't seem to be in use in here.
+-/// </summary>
+-void
+-ImGuiSetup::ShutDownImGui()
+-{
+-	// Shutdown Imgui, was I forgetting that?
+-	// Shutdown DX9 for this and cleanup
+-#ifdef _WIN32
+-	ImGui_ImplWin32_Shutdown();
+-#else
+-	// TODO Implement imgui shutdown with OpenGL.
+-#endif // _WIN32
+-
+-#if defined(_WIN32) && defined(RW_D3D9)
+-
+-	ImGui_ImplDX9_Shutdown();
+-#endif // _WIN32 && RW_D3D9
+-	
+-	ImGui::DestroyContext();
+-}
+-
+ // Function to poll XInput and toggle ImGui window
+ /// <summary>
+ /// This works, TODO Move this and other imgui functions into ImGuiFunctions out of this file.
+@@ -347,10 +354,69 @@ ImGuiSetup::HandleControllerInput()
+ void ImGuiSetup::ImGuiPlayingGameLoop()
+ {
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	ImGuiMenus imGuiMenus = ImGuiMenus();
+ 	CPad cpad = CPad();
+ 
+ 	CPad *pad = CPad::GetPad(0);
+ 
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++
++	// TODO Implement for D3D9 support.
++#if defined(RW_GL3) && defined(_IMGUI_TEST)
++	glfwPollEvents();
++
++	if (glfwGetWindowAttrib(PSGLOBAL(window), GLFW_ICONIFIED) != 0)
++    {
++		ImGui_ImplGlfw_Sleep(10);
++    }
++		
++	if(imGuiFunctions.ImGuiActive) {
++	// Frames
++	ImGui_ImplOpenGL3_NewFrame();
++    ImGui_ImplGlfw_NewFrame();
++    ImGui::NewFrame();
++
++	ImGuiIO &io = ImGui::GetIO();
++	// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
++	// Update mouse position
++	POINT p;
++	GetCursorPos(&p);
++	// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
++	// Idk what I did to break this...
++	//ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
++	io.MousePos = ImVec2(p.x, p.y);
++	
++	// Update mouse button state
++	//io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++	//io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++	// Draw the cursor to the screen
++	io.MouseDrawCursor = true;
++	//
++	// This toggles ImGui!!
++	// Moved this into its own method
++	//ImGuiMenus::Menu::MainMenu(false, ImGuiFunctions::ShowSecondWindow, clear_color);
++	//ImGuiMenus::Menu::MainMenu(clear_color);
++	imGuiMenus.MainMenu(clear_color);
++
++	// ImGui Rendering, end frames.
++	ImGui::EndFrame();
++
++	//
++
++	// Rendering
++    ImGui::Render();
++
++	int display_w, display_h;
++    glfwGetFramebufferSize(PSGLOBAL(window), &display_w, &display_h);
++    glViewport(0, 0, display_w, display_h);
++	// This will probably break the game.
++    //glClearColor(clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w);
++    //glClear(GL_COLOR_BUFFER_BIT);
++    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
++	glfwSwapBuffers(PSGLOBAL(window));
++	}
++#endif //
++
+ 	// This works without lua
+ 	static int newTime = 0;
+ 
+diff --git a/src/extras/functions/imgui_setup.h b/src/extras/functions/imgui_setup.h
+index ea2c0b3a..d3cac431 100644
+--- a/src/extras/functions/imgui_setup.h
++++ b/src/extras/functions/imgui_setup.h
+@@ -11,7 +11,8 @@ class ImGuiSetup
+ public:
+ 	// Init ImGui, this runs in win.cpp.
+ #ifdef _WIN32
+-	void InitImGui(HWND window);
++	//void InitImGui(HWND window);
++	void InitImGui();
+ #else
+ 	// TODO Fix this for other platforms.
+ 	void InitImGui(std::string window);
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 4ea9d11d..ccb29b42 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -2235,7 +2235,7 @@ main(int argc, char *argv[])
+ 					        // Check if ImGui bool above is enabled in the ini.
+ 					        // This fixes the mouse showing up on game start when I have this toggled off
+ 					        // TODO Make the ImGui test not always show a mouse until it's hidden.
+-					        if(gbImGuiToggle) {
++					        //if(gbImGuiToggle) {
+ 
+ 						        // Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
+ 						        // This shows up!!
+@@ -2245,11 +2245,11 @@ main(int argc, char *argv[])
+ 
+ 									// TODO Fix this
+ #ifdef _WIN32
+-							        imGuiSetup.InitImGui(mainWindow);
++							        imGuiSetup.InitImGui();
+ #else
+ #endif // _WINew
+ 						        }
+-					        }
++					        //}
+ 
+ #endif
+ 
+@@ -2468,11 +2468,9 @@ main(int argc, char *argv[])
+ 					ForegroundApp = TRUE;
+ 					RsEventHandler(rsACTIVATE, (void *)TRUE);
+ 				}
+-				
+ 			}
+ 		}
+ 
+-		
+ 		/* 
+ 		* About to shut down - block resize events again...
+ 		*/
+@@ -2556,6 +2554,11 @@ main(int argc, char *argv[])
+ #endif
+ 	}
+ 	
++#ifdef _IMGUI_TEST
++	// Shut down and cleanup ImGui
++	ImGuiFunctions::ShutdownImGui();
++#endif // _IMGUI_TEST
++
+ #ifndef MASTER
+ 	if ( gbModelViewer )
+ 		CAnimViewer::Shutdown();
+-- 
+2.49.0.windows.1
+

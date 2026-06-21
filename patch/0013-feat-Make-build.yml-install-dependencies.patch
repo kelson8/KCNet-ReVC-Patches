@@ -1,0 +1,46 @@
+From 35c2099a8edd50455deca682d7d0cc8f5a701de6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 14:45:40 -0500
+Subject: [PATCH 13/58] feat: Make build.yml install dependencies
+
+---
+ .gitea/workflows/build.yml | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/.gitea/workflows/build.yml b/.gitea/workflows/build.yml
+index 8ded3097..67452af9 100644
+--- a/.gitea/workflows/build.yml
++++ b/.gitea/workflows/build.yml
+@@ -19,6 +19,29 @@ jobs:
+       run: |
+         docker login registry.internal.kelsoncraft.net -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+ 
++  # Try to make this install the dependencies if required.
++  install-dependencies:
++    runs-on: revc-dev-1.2a
++    steps:
++    - name: Install dependencies
++      image: registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
++      run: |
++        apt-get update
++        apt-get install -y --no-install-recommends
++        libopenal-dev \
++        libglew-dev \
++        libglfw3-dev \
++        libsndfile1 \
++        libsndfile1-dev \
++        libmpg123-dev \
++        premake4 \
++        make \
++        libxrandr-dev \
++        gcc \
++        g++
++        apt-get clean
++        rm -rf /var/lib/apt/lists/*
++
+   build:
+     # runs-on: ubuntu-24.04
+     runs-on: revc-dev-1.2a
+-- 
+2.49.0.windows.1
+

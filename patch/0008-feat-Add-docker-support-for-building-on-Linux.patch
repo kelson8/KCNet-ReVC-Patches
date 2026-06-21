@@ -1,0 +1,106 @@
+From c41ddc28b7a188bdb92eb71a62fb7d1e5d3b531b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 12:46:42 -0500
+Subject: [PATCH 08/58] feat: Add docker support for building on Linux
+
+---
+ .dockerignore |  9 +++++++
+ Dockerfile    | 69 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 78 insertions(+)
+ create mode 100644 .dockerignore
+ create mode 100644 Dockerfile
+
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 00000000..26756a54
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,9 @@
++.git/
++build/
++bin/
++
++logs/
++.git/
++.gitignore
++
++.vscode/
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 00000000..20327ae5
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,69 @@
++FROM ubuntu:24.04
++
++# Basic docker file for building my new reVC-dev on Linux.
++# This is being tested on WSL.
++# Now this works! I had to modify it to set the version to build, and add a few more dependencies.
++
++# Building this container:
++# docker build -t revc-dev .
++
++# Running this container for testing:
++# docker run --rm -it revc-dev:latest /bin/bash
++
++# Set the compilers and versions here
++ARG C_COMPILER=gcc
++ARG CXX_COMPILER=g++
++# https://documentation.ubuntu.com/ubuntu-for-developers/reference/availability/gcc/
++ARG COMPILER_VERSION=14
++ARG BUILD_TYPE=Release
++
++# Set the version of reVC to build
++ARG BUILD_VERSION=debug_linux-amd64-librw_gl3_glfw-oal
++
++# Linux configs for versions to build:
++#   debug_linux-x86-librw_gl3_glfw-oal
++#   debug_linux-amd64-librw_gl3_glfw-oal
++#   debug_linux-arm-librw_gl3_glfw-oal
++#   debug_linux-arm64-librw_gl3_glfw-oal
++#   release_linux-x86-librw_gl3_glfw-oal
++#   release_linux-amd64-librw_gl3_glfw-oal
++#   release_linux-arm-librw_gl3_glfw-oal
++#   release_linux-arm64-librw_gl3_glfw-oal
++
++# Moved out of apt install, this can be used if the default gcc/g++ version is fine, I set it to use 
++# the version specified in COMPILER_VERSION.
++#     gcc g++
++
++# Install dependencies
++# This now installs g++ and the version for it, I don't know if that'll effect anything.
++RUN apt-get update && \
++    apt-get install -y --no-install-recommends \
++    libopenal-dev \
++    libglew-dev \
++    libglfw3-dev \
++    libsndfile1 \
++    libsndfile1-dev \
++    libmpg123-dev \
++    premake4 \
++    make \
++    libxrandr-dev \
++    ${C_COMPILER}-${COMPILER_VERSION} \
++    ${CXX_COMPILER}-${COMPILER_VERSION} && \
++    apt-get clean && \
++    rm -rf /var/lib/apt/lists/*
++
++# Well, now I see why this wasn't setting the GCC and G++ variables, I forgot this here
++ENV CC=${C_COMPILER}-${COMPILER_VERSION}
++ENV CXX=${CXX_COMPILER}-${COMPILER_VERSION}
++
++WORKDIR /reVC
++
++# Copy files into container
++COPY . .
++
++# Run premake
++RUN ./premake5Linux --with-librw gmake2
++
++# Build the project
++RUN cd ./build && \
++    make config=${BUILD_VERSION} -j$(nproc)
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

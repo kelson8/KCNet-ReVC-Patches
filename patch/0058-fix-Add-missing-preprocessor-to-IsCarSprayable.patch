@@ -1,0 +1,29 @@
+From acfe23f5a5de40989e007a92fdf2572b5cf497e1 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 3 Mar 2026 18:06:46 -0500
+Subject: [PATCH 58/58] fix: Add missing preprocessor to IsCarSprayable
+
+---
+ src/control/Garages.cpp | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index 9ac3e5b3..3ef1cd1f 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -1468,10 +1468,12 @@ CGarages::ToggleRespray()
+ bool
+ CGarages::IsCarSprayable(CVehicle *pVehicle)
+ {
++#ifdef CUSTOM_CODE
+ 	// Allow all vehicles to be resprayed such as cop cars.
+ 	if(CGarage::m_allowAllVehiclesRespray) { 
+ 		return true; 
+ 	}
++#endif // CUSTOM_CODE
+ 
+ 	switch (pVehicle->GetModelIndex()) {
+ 	case MI_FIRETRUCK:
+-- 
+2.49.0.windows.1
+

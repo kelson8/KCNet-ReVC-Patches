@@ -1,0 +1,53 @@
+From d3b72454e926f50b1a1146648bc79586bbe9cf74 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 13:41:56 -0500
+Subject: [PATCH 10/58] chore: Add build.yml for Linux build on commit
+
+---
+ .github/build.yml | 34 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+ create mode 100644 .github/build.yml
+
+diff --git a/.github/build.yml b/.github/build.yml
+new file mode 100644
+index 00000000..c002e836
+--- /dev/null
++++ b/.github/build.yml
+@@ -0,0 +1,34 @@
++version: '1.0'
++
++# Workflow for building for Linux on git push.
++# Adapted from here https://git.internal.kelsoncraft.net/kelson8/KCNet-Linux-Coding/src/branch/main/.gitea/workflows/build.yml
++
++on:
++  push:
++    branches:
++      - main
++
++jobs:
++  build:
++    runs-on: ubuntu-24.04
++    steps:
++    # Setup the local container for building. 
++    - name: Setup container
++      image:  registry.internal.kelsoncraft.net/kelson8/revc-dev:1.2a
++      # This should just change to the bin folder and list files.
++      run: |
++        cd bin && ls -lah 
++
++      # This can be used if I cannot my Docker image directly.
++      # - name: Install Dependencies
++      #   # image: docker.gitea.com/runner-images:ubuntu-latest
++      #   image: docker.gitea.com/runner-images:ubuntu-24.04
++      #   run: |
++      #     apt-get update && apt-get install -y cmake make g++ libncurses-dev
++
++      # - name: Build
++      #   image: docker.gitea.com/runner-images:ubuntu-latest
++      #   run: |
++      #     mkdir -p build && cd build  # Create and change to the build directory
++      #     cmake ..
++      #     make
+-- 
+2.49.0.windows.1
+

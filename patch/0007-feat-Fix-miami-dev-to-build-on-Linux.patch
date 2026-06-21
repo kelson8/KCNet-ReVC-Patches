@@ -1,0 +1,219 @@
+From 77110d9d4dc526107c58b7c3e5f126d076551768 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 04:37:27 -0500
+Subject: [PATCH 07/58] feat: Fix miami-dev to build on Linux
+
+---
+ premake5.lua                                     | 9 ++++++---
+ src/extras/functions/misc_functions.cpp          | 2 ++
+ src/extras/utils/misc_util.cpp                   | 5 +----
+ src/extras/utils/misc_util.h                     | 2 ++
+ src/extras/utils/player_util.cpp                 | 2 ++
+ vendor/TExtender/src/textender/NewTextLoader.cpp | 6 +++++-
+ vendor/TExtender/src/textender/NewTextLoader.h   | 6 +++++-
+ vendor/TExtender/src/textender/TExtender.h       | 2 ++
+ vendor/TExtender/src/textender/Utils.cpp         | 6 +++++-
+ vendor/TExtender/src/textender/Utils.h           | 5 ++++-
+ 10 files changed, 34 insertions(+), 11 deletions(-)
+
+diff --git a/premake5.lua b/premake5.lua
+index a1c943ef..579117b9 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -310,9 +310,6 @@ project "reVC"
+ 	includedirs { ("src/extras/functions") }
+ 	includedirs { ("src/extras/kcnet") }
+ 	includedirs { ("src/extras/utils") }
+-	
+-	libdirs { "vendor/d3d9/lib" }
+-	links { "d3dx9.lib" }
+ 	--
+ 
+ 	includedirs { "src" }
+@@ -349,6 +346,12 @@ project "reVC"
+ 		includedirs { "vendor/opusfile/include" }
+ 	end
+ 
++	-- New, only enable d3dx9 lib on Windows..
++	filter "platforms:win*"
++		libdirs { "vendor/d3d9/lib" }
++		links { "d3dx9.lib" }
++	--
++
+ 	filter "configurations:Vanilla"
+ 		defines { "VANILLA_DEFINES" }
+ 
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 2d04bb8f..07224655 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -101,7 +101,9 @@
+ #include "misc_util.h"
+ 
+ // TODO Move into a utilites file
++#ifdef _WIN32
+ #include <direct.h>
++#endif // _WIN32
+ 
+ 
+ //---------- Booleans for misc functions ----------//
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 11764c40..d3016afd 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -725,7 +725,7 @@ MiscUtil::TestHealthOffset()
+ }
+ //
+ 
+-#if defined(GTAVC) || defined(GTALCS) || defined(GTA3)
++#ifdef _WIN32
+ 
+ /// <summary>
+ /// This works for displaying the players health memory address and offset
+@@ -824,9 +824,6 @@ MiscUtil::DisplayPlayerHealthMemAddress()
+ 		std::cout << Defines::KcLogString << "Could not find player." << std::endl;
+ 	}
+ }
+-#endif
+-
+-#ifdef _WIN32
+ 
+ /// <summary>
+ /// Get the base address, and display it in the console.
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index a0d2798e..9404088c 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -33,7 +33,9 @@ public:
+ 	// Going to attempt to recreate parts of the plugin-sdk with this
+ 
+ 	// Get the player health memory address
++#ifdef _WIN32
+ 	void DisplayPlayerHealthMemAddress();
++#endif // _WIN32
+ 
+ 	// Display the offset and the possible health address value
+ 	void TestHealthOffset();
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 14944c8e..942f0202 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -239,7 +239,9 @@ PlayerUtil::ChangeClothes(const char* clothingSetName)
+ 		CStreaming::LoadAllRequestedModels(false);
+ 		pPlayerPed->Dress();
+ 	} else {
++#ifdef _WIN32
+ 		OutputDebugStringA(("Invalid display name: " + std::string(clothingSetName)).c_str());
++#endif // _WIN32
+ 		//TRACE("Clothes not valid.");
+ 	}
+ }
+diff --git a/vendor/TExtender/src/textender/NewTextLoader.cpp b/vendor/TExtender/src/textender/NewTextLoader.cpp
+index 72756a8d..95dcf38b 100644
+--- a/vendor/TExtender/src/textender/NewTextLoader.cpp
++++ b/vendor/TExtender/src/textender/NewTextLoader.cpp
+@@ -13,7 +13,9 @@
+ #include <iostream>
+ #include <fstream>
+ 
++#ifdef _WIN32
+ #include "Search.h"
++
+ #include "Utils.h"
+ 
+ #include "common.h"
+@@ -219,4 +221,6 @@ namespace TExtender {
+ 		stringMap.clear();
+ 	}
+ 
+-}
+\ No newline at end of file
++}
++
++#endif // _WIN32
+\ No newline at end of file
+diff --git a/vendor/TExtender/src/textender/NewTextLoader.h b/vendor/TExtender/src/textender/NewTextLoader.h
+index 7b4f28f5..8f58932c 100644
+--- a/vendor/TExtender/src/textender/NewTextLoader.h
++++ b/vendor/TExtender/src/textender/NewTextLoader.h
+@@ -11,6 +11,8 @@
+ #include <map>
+ #include "common.h"
+ 
++#ifdef _WIN32
++
+ namespace TExtender {
+ 	class CNewTextLoader {
+ 	public:
+@@ -22,4 +24,6 @@ namespace TExtender {
+ 
+ 		static wchar* Get(const char* key); // Get() must be called in CText::Get()
+ 	};
+-}
+\ No newline at end of file
++}
++
++#endif // _WIN32
+\ No newline at end of file
+diff --git a/vendor/TExtender/src/textender/TExtender.h b/vendor/TExtender/src/textender/TExtender.h
+index 10cfdf95..781ceb9c 100644
+--- a/vendor/TExtender/src/textender/TExtender.h
++++ b/vendor/TExtender/src/textender/TExtender.h
+@@ -11,7 +11,9 @@
+ #include "Pad.h"
+ 
+ #include <vector>
++#ifdef _WIN32
+ #include <d3dx9.h>
++#endif // _WIN32
+ 
+ #include <string>
+ #include <unordered_map>
+diff --git a/vendor/TExtender/src/textender/Utils.cpp b/vendor/TExtender/src/textender/Utils.cpp
+index f7566358..8279531e 100644
+--- a/vendor/TExtender/src/textender/Utils.cpp
++++ b/vendor/TExtender/src/textender/Utils.cpp
+@@ -1,6 +1,8 @@
+ #include "Utils.h"
+ 
++#ifdef _WIN32
+ #include <Windows.h>
++
+ #include <stdio.h>
+ 
+ #include <string>
+@@ -97,4 +99,6 @@ namespace TExtender {
+ 			FindClose(hFind);
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
++
++#endif // _WIN32
+\ No newline at end of file
+diff --git a/vendor/TExtender/src/textender/Utils.h b/vendor/TExtender/src/textender/Utils.h
+index 9f917e14..9b8a5391 100644
+--- a/vendor/TExtender/src/textender/Utils.h
++++ b/vendor/TExtender/src/textender/Utils.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ #include "common.h"
+ #include <string>
++#ifdef _WIN32
+ 
+ namespace TExtender {
+ 	class Utils {
+@@ -19,4 +20,6 @@ namespace TExtender {
+ 		// https://github.com/DK22Pac/effects-loader/blob/master/EffectsLoader/Search.h
+ 		static void ForAllFiles(char* folderpath, char* extension, void(*callback)(char*, void*), void* data);
+ 	};
+-}
+\ No newline at end of file
++}
++
++#endif // _WIN32
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

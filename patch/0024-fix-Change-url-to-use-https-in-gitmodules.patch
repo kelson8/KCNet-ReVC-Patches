@@ -1,0 +1,25 @@
+From 38365d6b5302002807c553621095350d451b957f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 06:09:30 -0500
+Subject: [PATCH 24/58] fix: Change url to use https in gitmodules
+
+---
+ .gitmodules | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/.gitmodules b/.gitmodules
+index 8a53f23a..acf7006a 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -12,7 +12,7 @@
+ 	branch = master
+ [submodule "vendor/librw"]
+ 	path = vendor/librw
+-	url = git@git.internal.kelsoncraft.net:kelson8/librw.git
++	url = https://git.internal.kelsoncraft.net/kelson8/librw.git
+ 	branch = master
+ [submodule "lib/imgui"]
+ 	path = lib/imgui
+-- 
+2.49.0.windows.1
+

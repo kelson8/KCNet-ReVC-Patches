@@ -1,0 +1,323 @@
+From 0896081da7bbe4f1edd61f71a5528f11a0b4093d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 04:31:22 -0500
+Subject: [PATCH 06/58] feat: Add some more changes from miami branch
+
+* Add allow all vehicles respray.
+* Enable debug extra cheats preprocessor.
+* Update gitignore
+---
+ .gitignore                             |  2 ++
+ src/control/Garages.cpp                | 33 ++++++++++++++++++++++++++
+ src/control/Garages.h                  |  8 +++++++
+ src/core/config.h                      | 14 +++++++++--
+ src/core/main.cpp                      | 32 +++++++++++++++++++++++--
+ src/extras/debug/debug_functions.cpp   | 17 ++++---------
+ src/extras/functions/ini_functions.cpp | 22 ++++++++++-------
+ 7 files changed, 104 insertions(+), 24 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index 7c6f8ce1..55fd5da4 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -9,6 +9,8 @@
+ vendor/glfw-3.4.bin.WIN64/docs
+ vendor/glfw-3.4.bin.WIN32/docs
+ 
++*.bak
++
+ # Remove files with "- Copy" in the name
+ *- Copy*
+ 
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index b24c9122..64392c2d 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -1426,6 +1426,39 @@ void CGarages::PrintMessages()
+ 	}
+ }
+ 
++/// <summary>
++/// This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
++/// </summary>
++/// TODO Setup preprocessor for this and ToggleRespray if it's not in original code.
++#ifdef CUSTOM_CODE
++bool CGarage::m_allowAllVehiclesRespray = false;
++
++void
++CGarages::ToggleRespray()
++{
++	//wchar enabledMessage = L'Enabled';
++	//wchar disabledMessage = L'Disabled';
++
++	CGarage::m_allowAllVehiclesRespray != CGarage::m_allowAllVehiclesRespray;
++	 if(!CGarage::m_allowAllVehiclesRespray) {
++		 // These messages don't work, I don't know how to use them yet.
++		 //CMessages::AddMessage(&enabledMessage, 1000, 0);
++		 // This prints off
++		 CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++		 CGarage::m_allowAllVehiclesRespray = true;
++	}
++	 else
++	{
++		 // These messages don't work, I don't know how to use them yet.
++		 //CMessages::AddMessage(&disabledMessage, 1000, 0);
++		 // This prints off
++		 CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++		 CGarage::m_allowAllVehiclesRespray = false;
++	}
++}
++
++#endif // CUSTOM_CODE
++
+ bool CGarages::IsCarSprayable(CVehicle * pVehicle)
+ {
+ 	switch (pVehicle->GetModelIndex()) {
+diff --git a/src/control/Garages.h b/src/control/Garages.h
+index 358d404d..1b0970fc 100644
+--- a/src/control/Garages.h
++++ b/src/control/Garages.h
+@@ -137,6 +137,10 @@ public:
+ 	CVehicle *m_pTarget;
+ 	CStoredCar m_sStoredCar; // not needed
+ 
++#ifdef CUSTOM_CODE
++	static bool m_allowAllVehiclesRespray;
++#endif //CUSTOM_CODE
++
+ 	void OpenThisGarage();
+ 	void CloseThisGarage();
+ 	bool IsOpen() { return m_eGarageState == GS_OPENED || m_eGarageState == GS_OPENEDCONTAINSCAR; }
+@@ -204,6 +208,10 @@ class CGarages
+ 		MESSAGE_LENGTH = 8,
+ 	};
+ public:
++#ifdef CUSTOM_CODE
++	static void ToggleRespray();
++#endif // CUSTOM_CODE
++
+ 	static int32 BankVansCollected;
+ 	static bool BombsAreFree;
+ 	static bool RespraysAreFree;
+diff --git a/src/core/config.h b/src/core/config.h
+index 86117678..59c5e762 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -27,9 +27,9 @@
+ #define EX_LOADING_GAME_SAVE_ON_STARTUP
+ #endif // _FAST_LOADER
+ 
+-// Enable the new cheats in debug_functions.cpp, this needs copied in from my miami branch.
++// Enable the new cheats in debug_functions.cpp.
+ // Also located in ini_functions, and a few other places.
+-//#define DEBUG_EXTRA_CHEATS
++#define DEBUG_EXTRA_CHEATS
+ 
+ // Adds support for GPS marker like in Extended Vice project.
+ // Will display a marker that will lead you to your destination like
+@@ -45,6 +45,16 @@
+ // Enable the invincibility cheat
+ #define INVINCIBLE_CHEAT
+ 
++// This adds a toggle into CCopPed that allows the police weapons to be changed.
++// Once I figure it out, I'll add all the weapon options to the debug menu.
++// Needs copied from miami branch
++//#define CHANGE_POLICE_WEAPONS
++
++// This will add more features to the cop ped, mostly with the debug menu.
++// So far I have a test for enabling/disabling the spike strips.
++// Needs copied from miami branch
++//#define EX_COP_FUNCTIONS
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 0bdda2e1..0856f234 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -79,6 +79,23 @@
+ #include "GitSHA1.h"
+ #endif
+ 
++#ifdef CUSTOM_CODE
++// Set Text test.
++#include "custom_cheats.h"
++
++// Grab test text from menu
++//#include "misc_menu.h"
++
++// New - Grab test text from here
++#include "misc_functions.h"
++
++// Setup program version and name
++#include "defines.h"
++
++// Random number generator
++#include "misc_util.h"
++#endif
++
+ GlobalScene Scene;
+ 
+ uint8 work_buff[55000];
+@@ -1117,8 +1134,19 @@ DisplayGameDebugText()
+ #if defined _DEBUG || defined DEBUG
+ 		    "DEBUG "
+ #endif
+-		    "%.8s",
+-		    g_GIT_SHA1);
++	// I don't really care too much about the git sha1 hash.
++	// Replaced this text with my own.
++	// TODO Fix this to work on my miami-dev branch.
++#ifdef CUSTOM_CODE
++		"%s V: %s",
++		Defines::modificationName.c_str(), 
++		Defines::programVersion.c_str()
++#else
++		"%.8s",
++		g_GIT_SHA1
++#endif	
++	
++	);
+ 	AsciiToUnicode(verA, ver);
+ 	CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.7f));
+ #else
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index f2b441bb..82d23e42 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -436,8 +436,8 @@ switchWeather(void)
+ void
+ DebugMenuPopulate(void)
+ {
+-	//CustomCheats *customCheats = new CustomCheats();
+-	//VehicleCheats *vehicleCheats = new VehicleCheats();
++	CustomCheats *customCheats = new CustomCheats();
++	VehicleCheats *vehicleCheats = new VehicleCheats();
+ 	//ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 	if(1) {
+@@ -511,7 +511,7 @@ DebugMenuPopulate(void)
+ // Extras from kelson8
+ #ifdef DEBUG_EXTRA_CHEATS
+ #define _TEST1
+-// Custom added by kelson8, these can be disabled by commenting out CUSTOM_CODE in config.h
++// Custom added by kelson8
+ #ifdef _TEST1
+ 		// DebugMenuAddCmd("Cheats", "Infinite Health", CustomCheats::InfiniteHealthCheat);
+ 		// DebugMenuAddCmd("Cheats", "Never wanted", CustomCheats::NeverWantedCheat);
+@@ -558,10 +558,6 @@ DebugMenuPopulate(void)
+ //  So no cars will catch fire when upside down.
+ // DebugMenuAddCmd("Cheats", "No burn on flip", NoUpsideDownBlowUpCheat);
+ 
+-// This almost works, it fully freezes the game though.
+-#ifdef IMGUI_TEST
+-		DebugMenuAddCmd("Cheats", "ImGui Test", ImGuiVCTest::CreateImGuiWindow);
+-#endif // IMGUI_TEST
+ // End custom added
+ #endif // DEBUG_EXTRA_CHEATS
+ 
+@@ -996,15 +992,12 @@ DebugMenuPopulate(void)
+ 		// Begin test functions
+ 		//*****************
+ 
++#ifdef CHANGE_POLICE_WEAPONS
+ 		// TODO Take idea from Infinite Health Cheat, combine toggles into one function..
+ 		// Oops.
+ 		DebugMenuAddCmd("Test", "Enable alt police wpns", CustomCheats::EnableChangePoliceWeapons);
+ 		DebugMenuAddCmd("Test", "Disable alt police wpns", CustomCheats::DisableChangePoliceWeapons);
+-
+-// This now crashes to the error under Read2BytesFromScript in Script.h
+-#ifdef PLUGIN_SDK_TEST
+-		//DebugMenuAddCmd("Test", "Plugin sdk command test", CustomCheats::CommandTest1);
+-#endif // PLUGIN_SDK_TEST
++#endif // CHANGE_POLICE_WEAPONS
+ 
+ 		// TODO Setup this
+ #ifdef EX_COP_FUNCTIONS
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 7975ef71..05df1956 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -60,7 +60,7 @@
+ // Extra
+ #include "Garages.h"
+ 
+-//#include "custom_cheats.h"
++#include "custom_cheats.h"
+ 
+ #include "ini_functions.h"
+ 
+@@ -74,11 +74,11 @@
+ //#include "misc_util.h"
+ 
+ 
+-//#include "player_cheats.h"
+-#include "imgui.h"
++#include "player_cheats.h"
++//#include "imgui.h"
+ 
+-//#include "vehicle_cheats.h"
+-//#include "vehicle_functions.h"
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
+ 
+ #include <map>
+ #include <optional>
+@@ -106,7 +106,7 @@ mINI::INIFile ini("reVC.ini");
+ 
+ mINI::INIStructure cfg;
+ 
+-
++#ifdef _IMGUI_TEST
+ // Well I checked again and this breaks the controller imgui button
+ // So it'll open properly but close if any DPad button is pressed, its only supposed to close
+ // if the Right DPad and RB is pressed so I disabled it in win.cpp again.
+@@ -230,7 +230,7 @@ IniFunctions::LoadVehiclesFromIni(const std::string &filename)
+ /// </summary>
+ /// <param name="categories"></param>
+ /// 
+-#ifdef DEBUG_EXTRA_CHEATS
++#ifdef _IMGUI_TEST
+ bool spawnPlayerInVehicle = false;
+ void
+ IniFunctions::DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &categories)
+@@ -285,6 +285,8 @@ IniFunctions::DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &
+ 
+ }
+ 
++#endif // _IMGUI_TEST
++
+ 
+ 
+ //------------------
+@@ -425,7 +427,7 @@ IniFunctions::AppendWarpWithInput(const std::string &filename, std::string &cate
+ /// TODO Detect if the player is in an interior, if so teleport them to interior 0 (Main Map)
+ /// </summary>
+ /// <param name="categories"></param>
+-
++#ifdef _IMGUI_TEST
+ void
+ IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &categories)
+ {
+@@ -583,6 +585,8 @@ ReadAndGetWarpsConfig(const char *sectionName, const char *key, const mINI::INIS
+ }
+ 
+ 
++
++
+ //------------------
+ // End new tests
+ //------------------
+@@ -750,6 +754,8 @@ readMultipleSections(const std::string &filename, const std::vector<std::string>
+ 
+ #endif // DEBUG_EXTRA_CHEATS
+ 
++#endif // _IMGUI_TEST
++
+ ////////////////////
+ // Public definitions
+ ///////////////////
+-- 
+2.49.0.windows.1
+

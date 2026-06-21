@@ -1,0 +1,936 @@
+From c42b6a83364a6c4b6187d02af917aafafa306546 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 1 Mar 2026 18:20:36 -0500
+Subject: [PATCH 56/58] refactor: Add some documentation
+
+* I added some more documentation and comments from this commit
+https://git.internal.kelsoncraft.net/kelson8/re3/commit/1db6ebe5b195b109ac742556bd470187bbe1e4c4
+---
+ src/control/CarCtrl.cpp        |  9 ++++++
+ src/control/Script.cpp         |  3 ++
+ src/core/Cam.cpp               | 16 ++++++++++
+ src/core/Camera.cpp            | 52 ++++++++++++++++++++++++++++--
+ src/core/ControllerConfig.cpp  | 15 +++++++++
+ src/core/Debug.cpp             |  1 +
+ src/core/Game.cpp              |  6 ++--
+ src/core/main.cpp              | 48 ++++++++++++++++++++++++++++
+ src/entities/Entity.cpp        | 13 ++++++++
+ src/peds/Ped.cpp               |  6 ++++
+ src/peds/PedType.cpp           | 40 +++++++++++++++++++++++
+ src/renderer/Fluff.cpp         | 42 ++++++++++++++++++++++++
+ src/renderer/Hud.cpp           |  4 +++
+ src/vehicles/Automobile.cpp    |  7 ++++
+ src/vehicles/DamageManager.cpp | 58 ++++++++++++++++++++++++++++++++++
+ src/vehicles/HandlingMgr.cpp   |  3 ++
+ src/vehicles/Heli.cpp          | 12 +++++++
+ 17 files changed, 329 insertions(+), 6 deletions(-)
+
+diff --git a/src/control/CarCtrl.cpp b/src/control/CarCtrl.cpp
+index 6742ccfe..cfbb2d73 100644
+--- a/src/control/CarCtrl.cpp
++++ b/src/control/CarCtrl.cpp
+@@ -2535,6 +2535,15 @@ void CCarCtrl::SteerAICarWithPhysics_OnlyMission(CVehicle* pVehicle, float* pSwe
+ 	}
+ }
+ 
++/**
++ * @brief Unsure of what this is doing
++ * 
++ * @param pVehicle
++ * @param pSwerve
++ * @param pAccel
++ * @param pBrake
++ * @param pHandbrake
++ */
+ void CCarCtrl::SteerAICarBlockingPlayerForwardAndBack(CVehicle* pVehicle, float* pSwerve, float* pAccel, float* pBrake, bool* pHandbrake)
+ {
+ 	*pSwerve = 0.0f;
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index a2dd8512..92b18d9d 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -754,6 +754,9 @@ void CTheScripts::Init()
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ 	// glfwGetKey doesn't work because of CGame::Initialise is blocking
+ 	CPad::UpdatePads();
++
++	// I'm not sure how to change these, holding 'D' doesn't load in debug but holding 'R' loads in freeroam_miami.scm
++
+ 	if(CPad::GetPad(0)->GetChar('G')) ScriptToLoad = 0;
+ 	if(CPad::GetPad(0)->GetChar('R')) ScriptToLoad = 1;
+ 	if(CPad::GetPad(0)->GetChar('D')) ScriptToLoad = 2;
+diff --git a/src/core/Cam.cpp b/src/core/Cam.cpp
+index cd6e38f4..7ab9778e 100644
+--- a/src/core/Cam.cpp
++++ b/src/core/Cam.cpp
+@@ -41,6 +41,9 @@ bool CCamera::bFreeCam = false;
+ int nPreviousMode = -1;
+ #endif
+ 
++/**
++ * @brief Initialization of CCam
++ */
+ void
+ CCam::Init(void)
+ {
+@@ -93,6 +96,10 @@ CCam::Init(void)
+ float PLAYERPED_LEVEL_SMOOTHING_CONST_INV = 0.6f;
+ float PLAYERPED_TREND_SMOOTHING_CONST_INV = 0.8f;
+ 
++/// <summary>
++/// Camera processing
++/// </summary>
++/// <param name=""></param>
+ void
+ CCam::Process(void)
+ {
+@@ -574,6 +581,9 @@ CCam::GetBoatLook_L_R_HeightOffset(float &Offset)
+ 	return false;	// can't happen, we always get a boat pointer back
+ }
+ 
++/**
++ * @brief Look behind camera function
++ */
+ void
+ CCam::LookBehind(void)
+ {
+@@ -645,6 +655,9 @@ float BOAT_1STPERSON_L_OFFSETX = 0.7f;
+ float BOAT_1STPERSON_R_OFFSETX = 0.3f;
+ float BOAT_1STPERSON_LR_OFFSETZ = 0.2f;
+ 
++/**
++ * @brief Look left camera function, this is for when you use 'Q' to look left
++ */
+ void
+ CCam::LookLeft(void)
+ {
+@@ -716,6 +729,9 @@ CCam::LookLeft(void)
+ 	}
+ }
+ 
++/**
++ * @brief Look right camera function, this is for when you use 'E' to look right
++ */
+ void
+ CCam::LookRight(void)
+ {
+diff --git a/src/core/Camera.cpp b/src/core/Camera.cpp
+index e7cd65a0..065d36a9 100644
+--- a/src/core/Camera.cpp
++++ b/src/core/Camera.cpp
+@@ -105,6 +105,9 @@ CCamera::CCamera(void)
+ 	Init();
+ }
+ 
++/**
++ * Camera init
++ */
+ void
+ CCamera::Init(void)
+ {
+@@ -247,6 +250,9 @@ CCamera::Init(void)
+ 	m_nAvoidTheGeometryProbsDirn = 0;
+ }
+ 
++/**
++ * @brief Process camera functions
++ */
+ void
+ CCamera::Process(void)
+ {
+@@ -668,6 +674,9 @@ CCamera::Process(void)
+ 	m_bMoveCamToAvoidGeom = false;
+ }
+ 
++/**
++ * @brief Setup for the camera control.
++ */
+ void
+ CCamera::CamControl(void)
+ {
+@@ -1888,6 +1897,10 @@ CCamera::UpdateSoundDistances(void)
+ 	SoundDistUp = (1.0f-f)*SoundDistUpAsReadOld + f*SoundDistUpAsRead;
+ }
+ 
++/**
++ * @brief Setup the camera for some type of debug mode? 
++ * TODO Figure out what this does.
++ */
+ void
+ CCamera::InitialiseCameraForDebugMode(void)
+ {
+@@ -2072,7 +2085,16 @@ CCamera::GetScreenRect(CRect &rect)
+ 	}
+ }
+ 
+-
++/**
++ * @brief Unknown purpose, I need to document this function.
++ * 
++ * TODO What exactly is this doing?
++ * 
++ * @param target
++ * @param mode
++ * @param typeOfSwitch
++ * @param controller
++ */
+ void
+ CCamera::TakeControl(CEntity *target, int16 mode, int16 typeOfSwitch, int32 controller)
+ {
+@@ -2131,6 +2153,9 @@ CCamera::TakeControlWithSpline(int16 typeOfSwitch)
+ 	m_bStartInterScript = true;
+ };
+ 
++/**
++ * @brief Restore method for the camera
++ */
+ void
+ CCamera::Restore(void)
+ {
+@@ -2220,7 +2245,12 @@ CCamera::SetCamPositionForFixedMode(const CVector &Source, const CVector &UpOffS
+ 	m_bGarageFixedCamPositionSet = false;
+ }
+ 
+-
++/**
++ * @brief Set the transition for using the RPG, Minigun and other stuff that modifies the camera.
++ * These can be values from the CCam enum, ex: CCam::MODE_FOLLOWPED
++ * 
++ * @param newMode The new mode for the camera
++ */
+ void
+ CCamera::StartTransition(int16 newMode)
+ {
+@@ -3639,6 +3669,10 @@ CCamera::LoadPathSplines(int file)
+ 	}
+ }
+ 
++//********************
++// Begin Cutscene functions
++//********************
++
+ void
+ CCamera::DeleteCutSceneCamDataMemory(void)
+ {
+@@ -3650,6 +3684,9 @@ CCamera::DeleteCutSceneCamDataMemory(void)
+ 		}
+ }
+ 
++/**
++ * @brief Mark the cutscene as ended.
++ */
+ void
+ CCamera::FinishCutscene(void)
+ {
+@@ -3686,6 +3723,10 @@ CCamera::SetPercentAlongCutScene(float percent)
+ 		Cams[(ActiveCam+1)%2].m_fTimeElapsedFloat = percent/100.0f * Cams[(ActiveCam+1)%2].m_uiFinishTime;
+ }
+ 
++//********************
++// End Cutscene functions
++//********************
++
+ void
+ CCamera::SetParametersForScriptInterpolation(float stopMoving, float catchUp, int32 time)
+ {
+@@ -3757,6 +3798,9 @@ CCamera::SetNearClipScript(float clip)
+ }
+ 
+ 
++//********************
++// Begin Fade functions
++//********************
+ 
+ void
+ CCamera::ProcessFade(void)
+@@ -3862,7 +3906,9 @@ CCamera::GetScreenFadeStatus(void)
+ 	return FADE_1;
+ }
+ 
+-
++//********************
++// End Fade functions
++//********************
+ 
+ void
+ CCamera::RenderMotionBlur(void)
+diff --git a/src/core/ControllerConfig.cpp b/src/core/ControllerConfig.cpp
+index dbb0bd87..1ec98c0a 100644
+--- a/src/core/ControllerConfig.cpp
++++ b/src/core/ControllerConfig.cpp
+@@ -85,6 +85,10 @@ int MapIdToButtonId(int mapId) {
+ }
+ #endif
+ 
++/**
++ * @brief Get the buttons down on the controller.
++ * I need to look into how this is working.
++ */
+ int32 CControllerConfigManager::GetJoyButtonJustDown()
+ {
+ #ifdef __DINPUT_INCLUDED__
+@@ -127,6 +131,10 @@ void CControllerConfigManager::SaveSettings(int32 file)
+ 	}
+ }
+ 
++/**
++ * @brief Load controller config settings
++ * @param file
++ */
+ void CControllerConfigManager::LoadSettings(int32 file)
+ {
+ 	bool bValid = true;
+@@ -1204,6 +1212,13 @@ void CControllerConfigManager::ClearSimButtonPressCheckers()
+ 	}
+ }
+ 
++/**
++ * @brief Get if a specific keyboard key is pressed.
++ * Usually starts with rs such as 'rsf9'
++ * 
++ * @param keyCode The keycode to check if it's down
++ * @return If the key is down.
++ */
+ bool CControllerConfigManager::GetIsKeyboardKeyDown(RsKeyCodes keycode)
+ {
+ 	if (keycode < 255)
+diff --git a/src/core/Debug.cpp b/src/core/Debug.cpp
+index e319388c..40c64945 100644
+--- a/src/core/Debug.cpp
++++ b/src/core/Debug.cpp
+@@ -68,6 +68,7 @@ CDebug::DebugDisplayTextBuffer()
+ 		CFont::SetFontStyle(FONT_STANDARD);
+ 		CFont::SetPropOff();
+ #endif
++		// I wonder what exactly this part is doing.
+ 		do {
+ 			char *line;
+ 			while (true) {
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index ade9d9d1..1205b991 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -895,9 +895,9 @@ void CGame::InitialiseWhenRestarting(void)
+ #endif
+ }
+ 
+-/// <summary>
+-/// Process everything for the game such as events.
+-/// </summary>
++/**
++ * @brief Process everything for the game such as events.
++ */
+ void CGame::Process(void)
+ {
+ #if defined(RW_D3D9) && defined(_WIN32)
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 3bd59055..d5f8d829 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -603,6 +603,9 @@ Terminate3D(void)
+ CSprite2d splash;
+ int splashTxdId = -1;
+ 
++/**
++ * @brief Load the splash screen for the game
++ */
+ CSprite2d*
+ LoadSplash(const char *name)
+ {
+@@ -639,6 +642,9 @@ LoadSplash(const char *name)
+ 	return &splash;
+ }
+ 
++/**
++ * @brief Destroy current splash screen
++ */
+ void
+ DestroySplashScreen(void)
+ {
+@@ -648,6 +654,11 @@ DestroySplashScreen(void)
+ 	splashTxdId = -1;
+ }
+ 
++/**
++ * @brief Get a random splash screen
++ * 
++ * @return The random splash screen name
++ */
+ Const char*
+ GetRandomSplashScreen(void)
+ {
+@@ -671,6 +682,12 @@ GetRandomSplashScreen(void)
+ 	return splashName;
+ }
+ 
++/**
++ * @brief Get the level splash screen.
++ * 
++ * @param level The level to get the splash screen for.
++ * @return The level of the splash screen.
++ */
+ Const char*
+ GetLevelSplashScreen(int level)
+ {
+@@ -684,12 +701,23 @@ GetLevelSplashScreen(int level)
+ 	return splashScreens[level];
+ }
+ 
++/**
++ * @brief Resets the loading screen bar.
++ * 
++ */
+ void
+ ResetLoadingScreenBar()
+ {
+ 	NumberOfChunksLoaded = 0.0f;
+ }
+ 
++/**
++ * @brief Loading screens, possibly for when the game is started up and switching between islands.
++ * 
++ * @param str1 Looks like these texts: "Loading the Game", "Loading the ModelViewer".
++ * @param str2 What we are loading.
++ * @param splashscreen The splash screen to attempt to load.
++ */
+ void
+ LoadingScreen(const char *str1, const char *str2, const char *splashscreen)
+ {
+@@ -776,6 +804,11 @@ LoadingScreen(const char *str1, const char *str2, const char *splashscreen)
+ 	}
+ }
+ 
++/**
++ * @brief This is the island loading screen.
++ * 
++ * @param levelName The level to load up.
++ */
+ void
+ LoadingIslandScreen(const char *levelName)
+ {
+@@ -797,6 +830,10 @@ LoadingIslandScreen(const char *levelName)
+ 	DoRWStuffEndOfFrame();
+ }
+ 
++/**
++ * @brief Slow mode processing
++ * 
++ */
+ void
+ ProcessSlowMode(void)
+ {  
+@@ -898,6 +935,9 @@ struct tZonePrint
+ 	CRect rect;
+ };
+ 
++/**
++ * @brief List of zones
++ */
+ tZonePrint ZonePrint[] =
+ {
+ 	{ "DOWNTOWN", "GM", CRect(-1500.0f, 1500.0f, -300.0f, 980.0f)},
+@@ -921,6 +961,10 @@ tZonePrint ZonePrint[] =
+ 	{ "WASHINBTM", "AC", CRect(-255.0f, -1200.0f,  500.0f, -1690.0f)}
+ };
+ 
++/**
++ * @brief Prints memory usage to the screen up in the top left.
++ * 
++ */
+ void
+ PrintMemoryUsage(void)
+ {
+@@ -1099,6 +1143,10 @@ return;
+ 	y += 12.0f;
+ }
+ 
++/**
++ * @brief Displays the debug text.
++ * 
++ */
+ void
+ DisplayGameDebugText()
+ {
+diff --git a/src/entities/Entity.cpp b/src/entities/Entity.cpp
+index b2fcfbc7..485cc17f 100644
+--- a/src/entities/Entity.cpp
++++ b/src/entities/Entity.cpp
+@@ -288,6 +288,11 @@ CEntity::UpdateRpHAnim(void)
+ 	}
+ }
+ 
++/**
++ * @brief Check if entity has pre render effects, whatever those are
++ * 
++ * @return If the entity has pre render effects
++ */
+ bool
+ CEntity::HasPreRenderEffects(void)
+ {
+@@ -306,6 +311,10 @@ CEntity::HasPreRenderEffects(void)
+ 	   IsLightWithPreRenderEffects(GetModelIndex());
+ }
+ 
++/**
++ * @brief Pre render an entity
++ * 
++ */
+ void
+ CEntity::PreRender(void)
+ {
+@@ -412,6 +421,10 @@ CEntity::PreRender(void)
+ 	}
+ }
+ 
++/**
++ * @brief Render an entity, I wonder how exactly I could use this?
++ * 
++ */
+ void
+ CEntity::Render(void)
+ {
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index aeba430d..9d5c0053 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -1687,6 +1687,8 @@ CPed::ProcessBuoyancy(void)
+ 			m_vecMoveSpeed.z *= speedMult;
+ 			bIsStanding = false;
+ 			bIsDrowning = true;
++
++			// Well without this the player just sits in the water with the animation and never dies.
+ 			InflictDamage(nil, WEAPONTYPE_DROWNING, 3.0f * CTimer::GetTimeStep(), PEDPIECE_TORSO, 0);
+ 		}
+ 		if (buoyancyImpulse.z / m_fMass > GRAVITY * 0.25f * CTimer::GetTimeStep()) {
+@@ -5841,6 +5843,10 @@ CPed::ClearFlee(void)
+ 	m_fleeTimer = 0;
+ }
+ 
++/**
++ * @brief Make the ped flee.
++ * TODO Mess around with this later.
++ */
+ void
+ CPed::Flee(void)
+ {
+diff --git a/src/peds/PedType.cpp b/src/peds/PedType.cpp
+index dcd4c717..736c5f85 100644
+--- a/src/peds/PedType.cpp
++++ b/src/peds/PedType.cpp
+@@ -8,6 +8,9 @@
+ CPedType *CPedType::ms_apPedType[NUM_PEDTYPES];
+ CPedStats *CPedStats::ms_apPedStats[NUM_PEDSTATS];
+ 
++/**
++ * @brief Initialise ped data
++ */
+ void
+ CPedType::Initialise(void)
+ {
+@@ -30,6 +33,10 @@ CPedType::Initialise(void)
+ 	debug("CPedType ready\n");
+ }
+ 
++/**
++ * @brief Shut down CPedType
++ * 
++ */
+ void
+ CPedType::Shutdown(void)
+ {
+@@ -40,6 +47,9 @@ CPedType::Shutdown(void)
+ 	debug("CPedType shut down\n");
+ }
+ 
++/**
++ * @brief Load ped data from PED.DAT
++ */
+ void
+ CPedType::LoadPedData(void)
+ {
+@@ -123,6 +133,13 @@ CPedType::LoadPedData(void)
+ 	delete[] buf;
+ }
+ 
++/**
++ * @brief Find the ped type
++ * Can be set to values such as 'PLAYER1'
++ * 
++ * @param type The ped type to check
++ * @return ePedType The ped specified from the type param.
++ */
+ ePedType
+ CPedType::FindPedType(char *type)
+ {
+@@ -151,6 +168,13 @@ CPedType::FindPedType(char *type)
+ 	return NUM_PEDTYPES;
+ }
+ 
++/**
++ * @brief Find the ped flag
++ * Can be set to values such as 'PLAYER1'
++ * 
++ * @param type The ped type to check
++ * @return pedType The ped flag specified from the type param.
++ */
+ uint32
+ CPedType::FindPedFlag(char *type)
+ {
+@@ -206,6 +230,10 @@ INITSAVEBUF
+ VALIDATESAVEBUF(size)
+ }
+ 
++/**
++ * @brief CPedStats initialise
++ * TODO Possibly modify some of these values, such as m_fear
++ */
+ void
+ CPedStats::Initialise(void)
+ {
+@@ -231,6 +259,9 @@ CPedStats::Initialise(void)
+ 	debug("CPedStats ready\n");
+ }
+ 
++/**
++ * @brief Shut down CPedStats
++ */
+ void
+ CPedStats::Shutdown(void)
+ {
+@@ -241,6 +272,9 @@ CPedStats::Shutdown(void)
+ 	debug("CPedStats shut down\n");
+ }
+ 
++/**
++ * @brief Load ped stats from PEDSTATS.DAT
++ */
+ void
+ CPedStats::LoadPedStats(void)
+ {
+@@ -306,6 +340,12 @@ CPedStats::LoadPedStats(void)
+ 	delete[] buf;
+ }
+ 
++/**
++ * @brief Get the type of the ped stat
++ * 
++ * @param name 
++ * @return ePedStats 
++ */
+ ePedStats
+ CPedStats::GetPedStatType(char *name)
+ {
+diff --git a/src/renderer/Fluff.cpp b/src/renderer/Fluff.cpp
+index 59d3668d..b4234359 100644
+--- a/src/renderer/Fluff.cpp
++++ b/src/renderer/Fluff.cpp
+@@ -910,6 +910,12 @@ CSmokeTrails::Update(void) {
+ 	}
+ }
+ 
++//********************
++// Begin Escalator functions
++//********************
++	
++// TODO Try to mess with these.
++
+ CEscalator CEscalators::aEscalators[NUM_ESCALATORS];
+ int32 CEscalators::NumEscalators;
+ 
+@@ -921,6 +927,20 @@ CEscalator::CEscalator() {
+ 	}
+ }
+ 
++/**
++ * @brief Add an esclator, main function
++ * 
++ * TODO Document this a bit more.
++ * 
++ * Sets the position, step height,
++ * steps count, direction, the position, if it's moving down, and the radius.
++ * 
++ * @param pos0 
++ * @param pos1 
++ * @param pos2 
++ * @param pos3 
++ * @param b_isMovingDown 
++ */
+ void
+ CEscalator::AddThisOne(CVector pos0, CVector pos1, CVector pos2, CVector pos3, bool b_isMovingDown) {
+ 	m_pos0 = pos0;
+@@ -961,6 +981,9 @@ CEscalator::AddThisOne(CVector pos0, CVector pos1, CVector pos2, CVector pos3, b
+ 	m_radius = (m_pos0 - m_midPoint).Magnitude();
+ }
+ 
++/**
++ * @brief Update the escalators
++ */
+ void
+ CEscalator::Update(void) {
+ 	if (!m_bIsActive) {
+@@ -1021,6 +1044,9 @@ CEscalator::Update(void) {
+ 
+ bool deletingEscalator;
+ 
++/**
++ * @brief Turn off the escalators.
++ */
+ void
+ CEscalator::SwitchOff(void) {
+ 	if (m_bIsActive) {
+@@ -1037,11 +1063,23 @@ CEscalator::SwitchOff(void) {
+ 	}
+ }
+ 
++/**
++ * @brief Add an escalator
++ * 
++ * @param pos0 
++ * @param pos1 
++ * @param pos2 
++ * @param pos3 
++ * @param b_isMovingDown 
++ */
+ void
+ CEscalators::AddOne(CVector pos0, CVector pos1, CVector pos2, CVector pos3, bool b_isMovingDown) {
+ 	aEscalators[NumEscalators++].AddThisOne(pos0, pos1, pos2, pos3, b_isMovingDown);
+ }
+ 
++/**
++ * @brief Set all the escalators positions and if they are moving down.
++ */
+ void
+ CEscalators::Init(void) {
+ 	Shutdown();
+@@ -1137,6 +1175,10 @@ CEscalators::Shutdown(void) {
+ }
+ 
+ 
++//********************
++// End Escalator functions
++//********************
++
+ CScriptPath CScriptPaths::aArray[3];
+ 
+ void CScriptPath::FindCoorsFromDistanceOnPath(float t, float *pX, float *pY, float *pZ)
+diff --git a/src/renderer/Hud.cpp b/src/renderer/Hud.cpp
+index bc66e1c7..268c0330 100644
+--- a/src/renderer/Hud.cpp
++++ b/src/renderer/Hud.cpp
+@@ -1712,6 +1712,10 @@ void CHud::ReloadTXD()
+ }
+ #endif
+ 
++/**
++ * @brief Initialise hud from MODELS/HUD.TXD.
++ * 
++ */
+ void CHud::Initialise()
+ {
+ 	m_Wants_To_Draw_Hud = true;
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index 0e17c3d4..b6edf06e 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -3295,6 +3295,10 @@ CAutomobile::FireTruckControl(void)
+ 	}
+ }
+ 
++/**
++ * @brief Tank control, controls the tank firing and most features for the tank.
++ * Possibly move this into a Rhino specific file later.
++ */
+ void
+ CAutomobile::TankControl(void)
+ {
+@@ -5108,6 +5112,9 @@ CAutomobile::ScanForCrimes(void)
+ 				CWorld::Players[CWorld::PlayerInFocus].m_pPed->SetWantedLevelNoDrop(1);
+ }
+ 
++/**
++ * @brief Blows up the cars in the path of the Rhino.
++ */
+ void
+ CAutomobile::BlowUpCarsInPath(void)
+ {
+diff --git a/src/vehicles/DamageManager.cpp b/src/vehicles/DamageManager.cpp
+index 8ba235b7..b7231b70 100644
+--- a/src/vehicles/DamageManager.cpp
++++ b/src/vehicles/DamageManager.cpp
+@@ -26,6 +26,9 @@ CDamageManager::ResetDamageStatus(void)
+ 	m_panelStatus = 0;
+ }
+ 
++/**
++ * @brief Destroy the vehicle so it can no longer be driven.
++ */
+ void
+ CDamageManager::FuckCarCompletely(void)
+ {
+@@ -55,6 +58,14 @@ CDamageManager::FuckCarCompletely(void)
+ 	SetEngineStatus(250);
+ }
+ 
++/**
++ * @brief Apply damage to vehicles
++ * 
++ * @param component The component to damage.
++ * @param damage The amount of damage.
++ * @param unused Not used param.
++ * @return If damage has been applied
++ */
+ bool
+ CDamageManager::ApplyDamage(tComponent component, float damage, float unused)
+ {
+@@ -132,18 +143,36 @@ CDamageManager::GetComponentGroup(tComponent component, tComponentGroup *compone
+ 		return false;
+ }
+ 
++/**
++ * @brief Set the vehicle door status.
++ * 
++ * @param door The door to set.
++ * @param status The status of the door.
++ */
+ void
+ CDamageManager::SetDoorStatus(int32 door, uint32 status)
+ {
+ 	m_doorStatus[door] = status;
+ }
+ 
++/**
++ * @brief Get the vehicle door status.
++ * 
++ * @param door The door to get.
++ * @return The status of the door.
++ */
+ int32
+ CDamageManager::GetDoorStatus(int32 door)
+ {
+ 	return m_doorStatus[door];
+ }
+ 
++/**
++ * @brief Damages vehicle doors.
++ * 
++ * @param door The door to damage.
++ * @return True if the panel wasn't missing.
++ */
+ bool
+ CDamageManager::ProgressDoorDamage(uint8 door)
+ {
+@@ -154,18 +183,35 @@ CDamageManager::ProgressDoorDamage(uint8 door)
+ 	return true;
+ }
+ 
++/**
++ * @brief Set the status of the panel.
++ * 
++ * @param panel The panel to set the status to.
++ * @param status The status to set the panel to.
++ */
+ void
+ CDamageManager::SetPanelStatus(int32 panel, uint32 status)
+ {
+ 	m_panelStatus = dpb(status, panel*4, 4, m_panelStatus);
+ }
+ 
++/**
++ * @brief Get the vehicle panels status.
++ * 
++ * @param panel The panel to get.
++ * @return The status of the vehicle panels.
++ */
+ int32
+ CDamageManager::GetPanelStatus(int32 panel)
+ {
+ 	return ldb(panel*4, 4, m_panelStatus);
+ }
+ 
++/**
++ * @brief Process damages to vehicle panels.
++ * 
++ * @param door The panel to damage.
++ */
+ bool
+ CDamageManager::ProgressPanelDamage(uint8 panel)
+ {
+@@ -188,12 +234,24 @@ CDamageManager::GetLightStatus(eLights light)
+ 	return ldb(light*2, 2, m_lightStatus);
+ }
+ 
++/**
++ * @brief Set if the tires are busted or not.
++ * 
++ * @param wheel The wheel to set.
++ * @param status The status of the wheel.
++ */
+ void
+ CDamageManager::SetWheelStatus(int32 wheel, uint32 status)
+ {
+ 	m_wheelStatus[wheel] = status;
+ }
+ 
++/**
++ * @brief Check if the tires are busted or not.
++ * 
++ * @param wheel The wheel to check.
++ * @return The status of the wheel.
++ */
+ int32
+ CDamageManager::GetWheelStatus(int32 wheel)
+ {
+diff --git a/src/vehicles/HandlingMgr.cpp b/src/vehicles/HandlingMgr.cpp
+index 8438c5c9..39be307a 100644
+--- a/src/vehicles/HandlingMgr.cpp
++++ b/src/vehicles/HandlingMgr.cpp
+@@ -134,6 +134,9 @@ cHandlingDataMgr::Initialise(void)
+ 	field_10 = 0.98f;
+ }
+ 
++/**
++ * @brief Load handling data from HANDLING.CFG file
++ */
+ void
+ cHandlingDataMgr::LoadHandlingData(void)
+ {
+diff --git a/src/vehicles/Heli.cpp b/src/vehicles/Heli.cpp
+index f51c8481..4d311dfe 100644
+--- a/src/vehicles/Heli.cpp
++++ b/src/vehicles/Heli.cpp
+@@ -120,6 +120,9 @@ static float LongPathZ[7] = { 57.0, 90.0, 105.0, 100.0, 81.0, 79.0, 70.0 };
+ 
+ static int PathPoint;
+ 
++/**
++ * @brief Process helicopter controls
++ */
+ void
+ CHeli::ProcessControl(void)
+ {
+@@ -558,6 +561,10 @@ CHeli::PreRender(void)
+ 	CShadows::StoreShadowForVehicle(this, VEH_SHD_TYPE_HELI);
+ }
+ 
++/**
++ * @brief Render helicopter
++ * 
++ */
+ void
+ CHeli::Render(void)
+ {
+@@ -718,6 +725,11 @@ CHeli::FindSwatPositionRelativeToHeli(int n)
+ 	}
+ }
+ 
++/**
++ * @brief Send the swat team to the player.
++ * 
++ * @return If the swat team can be dispatched.
++ */
+ bool
+ CHeli::SendDownSwat(void)
+ {
+-- 
+2.49.0.windows.1
+

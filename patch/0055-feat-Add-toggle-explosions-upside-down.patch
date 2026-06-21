@@ -1,0 +1,285 @@
+From 6a785c19c09bba89d0b1794a2e1f1c4480fb6934 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 1 Mar 2026 01:12:38 -0500
+Subject: [PATCH 55/58] feat: Add toggle explosions upside down
+
+* This doesn't work yet, but once it does it will be able to toggle explosions when upside down.
+
+* Switch vehicle spawn cheat to using the players position instead of the nodes.
+---
+ gamefiles/ViceExtended/features.ini        | 24 ++++++++++++
+ src/core/PlayerInfo.cpp                    | 44 ++++++++++++++--------
+ src/core/common.h                          |  4 ++
+ src/core/config.h                          |  8 ++++
+ src/extras/functions/ini_functions.cpp     | 19 ++++++++++
+ src/extras/functions/vehicle_functions.cpp |  8 ++--
+ src/vehicles/Automobile.cpp                | 18 ++-------
+ src/vehicles/Automobile.h                  |  5 +++
+ 8 files changed, 97 insertions(+), 33 deletions(-)
+ create mode 100644 gamefiles/ViceExtended/features.ini
+
+diff --git a/gamefiles/ViceExtended/features.ini b/gamefiles/ViceExtended/features.ini
+new file mode 100644
+index 00000000..c65ddf5d
+--- /dev/null
++++ b/gamefiles/ViceExtended/features.ini
+@@ -0,0 +1,24 @@
++; 0 - false, 1 - true
++[Features]
++;;;;;;;;;;
++
++; TODO Test in this build
++; TODO Make this also be able to be changed in game with ImGui.
++VehiclesDontCatchFireWhenTurningOver = 0
++
++; Options not implemented yet, I probably won't copy these in.:
++
++HealthRegenerationUpToHalf = 0
++WantedStarsHideOnScreenWhenThereIsNoSearch = 0
++
++PlayerDoesntBounceAwayFromMovingCar = 0
++StandardCarsUseTurnSignals = 0
++CameraShakeInVehicleAtHighSpeed = 0
++MilitaryFiringFromTankAtPlayer = 0
++
++WaypointColorRGB = 180, 24, 24
++;;;;;;;;;;;;
++; I added this option, disables the tracers for the bullets.
++DisableBulletTraces = 0
++
++
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index fc1170f1..a3e64386 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -442,7 +442,11 @@ CPlayerInfo::Process(void)
+ 			}
+ 		}
+ 	}
+-	if (!(CTimer::GetFrameCounter() & 31)) {
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	if(!bVehiclesDontCatchFireWhenTurningOver && !(CTimer::GetFrameCounter() & 31)) {
++#else
++	if(!(CTimer::GetFrameCounter() & 31)) {
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 		CVehicle *veh = FindPlayerVehicle();
+ 		if (veh && m_pPed->bInVehicle && veh->GetUp().z < 0.0f
+ 			&& veh->m_vecMoveSpeed.Magnitude() < 0.05f && (veh->IsCar() || veh->IsBoat()) && !veh->bIsInWater) {
+@@ -454,28 +458,38 @@ CPlayerInfo::Process(void)
+ 			// This seems to work with a toggle, now to figure out how to add this in as a cheat.
+ 			// The boolean would need to be public somewhere
+ 			// 5-15-2024 @ 11:26PM
+-#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-			//bool vehUpsidedownExplode = true;
++
++			// TODO Remove this extra define later, this is already taken care of by the check above.
++// #ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++// 			//bool vehUpsidedownExplode = true;
+ 			
+-			CPlayerInfo *cPlayerInfo = new CPlayerInfo();
++// 			CPlayerInfo *cPlayerInfo = new CPlayerInfo();
++
++// 			// This seems like it'll work once I figure out how to add it to the debug menu.
++// 			//if (cPlayerInfo->vehUpsidedownExplode) {
++// 			if(vehUpsidedownExplode) {
++// 				if(veh->GetUp().z < -0.5f) {
++// 					m_nUpsideDownCounter += 2;
++// 				} else {
++// 					m_nUpsideDownCounter++;
++// 				}
++// 		}
++// #else
++// 			// Original code
++// 			if (veh->GetUp().z < -0.5f) {
++// 				m_nUpsideDownCounter += 2;
++// 			} else {
++// 				m_nUpsideDownCounter++;
++// 			}
++// #endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 
+-			// This seems like it'll work once I figure out how to add it to the debug menu.
+-			//if (cPlayerInfo->vehUpsidedownExplode) {
+-			if(vehUpsidedownExplode) {
+-				if(veh->GetUp().z < -0.5f) {
+-					m_nUpsideDownCounter += 2;
+-				} else {
+-					m_nUpsideDownCounter++;
+-				}
+-		}
+-#else
+ 			// Original code
+ 			if (veh->GetUp().z < -0.5f) {
+ 				m_nUpsideDownCounter += 2;
+ 			} else {
+ 				m_nUpsideDownCounter++;
+ 			}
+-#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ 		} else {
+ 			m_nUpsideDownCounter = 0;
+ 		}
+diff --git a/src/core/common.h b/src/core/common.h
+index ead04f3b..f92c47b6 100644
+--- a/src/core/common.h
++++ b/src/core/common.h
+@@ -337,6 +337,10 @@ void re3_trace(const char *filename, unsigned int lineno, const char *func, cons
+ void re3_assert(const char *expr, const char *filename, unsigned int lineno, const char *func);
+ void re3_usererror(const char *format, ...);
+ 
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++extern bool bVehiclesDontCatchFireWhenTurningOver;
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ #ifdef EX_GPS
+ extern CRGBA WaypointColor;
+ #endif // EX_GPS
+diff --git a/src/core/config.h b/src/core/config.h
+index 51e33be2..9e0c3ce1 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -79,6 +79,14 @@
+ // Also, there is an option to toggle this under display settings.
+ #define EX_GPS
+ 
++// Toggle vehicle upside down explosion option, can be toggled in the features.ini 
++// and later in the ImGui menu.
++#define TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
++// Toggle the new vehicle spawn cheat, mostly for use in vehicle_functions.cpp.
++// Places the vehicle near the player instead of on a node.
++#define NEW_VEHICLE_SPAWN_CHEAT
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index b6937f8e..58f4e6cd 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -752,6 +752,21 @@ readMultipleSections(const std::string &filename, const std::vector<std::string>
+ 
+ #endif // _IMGUI_TEST
+ 
++mINI::INIFile featuresIni(Defines::featuresIniFile);
++mINI::INIStructure featuresCfg;
++
++uint8 bInitFeaturesIni = featuresIni.read(featuresCfg);
++
++uint16 ReadAndGetFeature(const char* key)
++{
++	mINI::INIMap<std::string> section = featuresCfg.get("Features");
++	if (section.has(key)) {
++		char* endPtr;
++		return strtol(section.get(key).c_str(), &endPtr, 0);
++	}
++	return 0;
++}
++
+ ////////////////////
+ // Public definitions
+ ///////////////////
+@@ -781,6 +796,10 @@ IniFunctions::ReadIniIfExists(const char *cat, const char *key, uint8 *out)
+ }
+ #endif //_TEST1
+ 
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++extern bool bVehiclesDontCatchFireWhenTurningOver = ReadAndGetFeature("VehiclesDontCatchFireWhenTurningOver");
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ ////////////////////
+ // Private definitions
+ ///////////////////
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index e20eae5e..493d4c9d 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -551,14 +551,14 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		CVector pPedCoords = FindPlayerCoors();
+ 
+ 
+-#ifndef IMPROVED_TECH_PART // spawn vehicle via cheat codes
++#ifndef NEW_VEHICLE_SPAWN_CHEAT
+ 		int node;
+ 		if(!CModelInfo::IsBoatModel(id)) {
+ 			node = ThePaths.FindNodeClosestToCoors(pPedCoords, 0, 100.0f, false, false);
+ 			if(node < 0) 
+ 				return;
+ 		}
+-#endif
++#endif // NEW_VEHICLE_SPAWN_CHEAT
+ 
+ 		// Check if the vehicle is a boat, bike or car.
+ 		CVehicle *v;
+@@ -578,7 +578,7 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		// New vehicle spawning.
+ 		// This places the vehicle near the player, instead of on a node.
+ 		// TODO Make this check if player is in a vehicle, if so don't set an offset too far.
+-#ifdef IMPROVED_TECH_PART // spawn vehicle via cheat codes
++#ifdef NEW_VEHICLE_SPAWN_CHEAT
+ 		v->SetPosition(FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f);
+ 		CVector leftVector = -FindPlayerPed()->GetRight();
+ 		v->SetOrientation(0.0f, 0.0f, leftVector.Heading());
+@@ -593,7 +593,7 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		// v->GetMatrix().GetPosition().z += 4.0f;
+ 		v->GetMatrix().GetPosition().z += 1.0f;
+ 		v->SetOrientation(0.0f, 0.0f, 3.49f);
+-#endif
++#endif // NEW_VEHICLE_SPAWN_CHEAT
+ 		//
+ 		v->SetStatus(STATUS_ABANDONED);
+ 		v->m_nDoorLock = CARLOCK_UNLOCKED;
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index 7557b6ca..0e17c3d4 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -4110,27 +4110,17 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 			impulse = Max(impulse + ((CPed*)m_pDamageEntity)->m_fMass * speed, 0.0f);
+ 	}
+ 
++	// damage flipped over car
+ #ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-	//bool vehUpsidedownExplode = false;
+-
+-	// This seems like it'll work once I figure out how to add it to the debug menu.
+-	if(CAutomobile::vehUpsidedownExplode) {
+-		if(GetUp().z < 0.0f && this != FindPlayerVehicle()) {
+-			if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater) return;
+-			if(GetStatus() != STATUS_WRECKED) m_fHealth = Max(m_fHealth - 4.0f * CTimer::GetTimeStep(), 0.0f);
+-		}
+-	}
+-
+-
++	if(!bVehiclesDontCatchFireWhenTurningOver && GetUp().z < 0.0f && this != FindPlayerVehicle()) {
+ #else
+-	// damage flipped over car
+-	if(GetUp().z < 0.0f && this != FindPlayerVehicle()){
++	if(GetUp().z < 0.0f && this != FindPlayerVehicle()) {
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 		if(bNotDamagedUpsideDown || GetStatus() == STATUS_PLAYER_REMOTE || bIsInWater)
+ 			return;
+ 		if(GetStatus() != STATUS_WRECKED)
+ 			m_fHealth = Max(m_fHealth - 4.0f*CTimer::GetTimeStep(), 0.0f);
+ 	}
+-#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 
+ 	float minImpulse = GetModelIndex() == MI_RCRAIDER || GetModelIndex() == MI_RCGOBLIN ? 1.0f : 25.0f;
+ 	if(impulse > minImpulse && GetStatus() != STATUS_WRECKED){
+diff --git a/src/vehicles/Automobile.h b/src/vehicles/Automobile.h
+index f4046e9e..377d3da0 100644
+--- a/src/vehicles/Automobile.h
++++ b/src/vehicles/Automobile.h
+@@ -169,6 +169,11 @@ public:
+ 	static const uint32 nSaveStructSize;
+ 
+ 	static void SetAllTaxiLights(bool set);
++
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	// Toggle the vehicles blowing up when flipping over
++	static bool vehUpsidedownExplode;
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ };
+ 
+ extern CVector vecHunterGunPos;
+-- 
+2.49.0.windows.1
+

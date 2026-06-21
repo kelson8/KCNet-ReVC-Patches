@@ -1,0 +1,28 @@
+From 963798331b8c2373655bb7c2519ff75af1633397 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 00:36:40 -0500
+Subject: [PATCH 44/58] fix: Disable build.yml workflow for now
+
+---
+ .gitea/workflows/{build.yml => build.yml.old} | 2 ++
+ 1 file changed, 2 insertions(+)
+ rename .gitea/workflows/{build.yml => build.yml.old} (96%)
+
+diff --git a/.gitea/workflows/build.yml b/.gitea/workflows/build.yml.old
+similarity index 96%
+rename from .gitea/workflows/build.yml
+rename to .gitea/workflows/build.yml.old
+index 0cbf55a8..ecc15737 100644
+--- a/.gitea/workflows/build.yml
++++ b/.gitea/workflows/build.yml.old
+@@ -1,5 +1,7 @@
+ version: '1.0'
+ 
++# TODO Fix this to work, it doesn't work for some reason.
++
+ # Workflow for building for Linux on git push.
+ # Adapted from here https://git.internal.kelsoncraft.net/kelson8/KCNet-Linux-Coding/src/branch/main/.gitea/workflows/build.yml
+ 
+-- 
+2.49.0.windows.1
+

@@ -1,0 +1,148 @@
+From 75860044a19f1cd6395a75ba3089ee5a1c2326b5 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 28 Feb 2026 01:38:52 -0500
+Subject: [PATCH 46/58] feat: Add some changes from miami branch
+
+* Label helper texts in Frontend.
+* Fix allow all vehicles to be resprayed again.
+---
+ src/control/Garages.cpp | 14 +++++++++-
+ src/core/Frontend.cpp   | 62 +++++++++++++++++++++++++++++++----------
+ src/core/Frontend.h     | 15 ++++++++++
+ 3 files changed, 75 insertions(+), 16 deletions(-)
+
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index 64392c2d..9ac3e5b3 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -1459,8 +1459,20 @@ CGarages::ToggleRespray()
+ 
+ #endif // CUSTOM_CODE
+ 
+-bool CGarages::IsCarSprayable(CVehicle * pVehicle)
++/// <summary>
++/// Code customized to allow repairing all vehicles.
++/// I have a toggle for this in the debug menu and my Cleo Redux menu.
++/// </summary>
++/// <param name="pVehicle">The vehicle to check for.</param>
++/// <returns>If the car is resprayable at a Pay N Spray</returns>
++bool
++CGarages::IsCarSprayable(CVehicle *pVehicle)
+ {
++	// Allow all vehicles to be resprayed such as cop cars.
++	if(CGarage::m_allowAllVehiclesRespray) { 
++		return true; 
++	}
++
+ 	switch (pVehicle->GetModelIndex()) {
+ 	case MI_FIRETRUCK:
+ 	case MI_AMBULAN:
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 3438a5fa..46e20726 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -823,21 +823,53 @@ CMenuManager::DisplayHelperText(char *text)
+ 	CFont::SetColor(CRGBA(255, 255, 255, alpha));
+ 	// TODO: name this cases?
+ 	switch (m_nHelperTextMsgId) {
+-		case 1:
+-			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_APP"));
+-			break;
+-		case 2:
+-			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_HRD"));
+-			break;
+-		case 3:
+-			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_RSO"));
+-			break;
+-		case 4:
+-			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_STS"));
+-			break;
+-		case 5:
+-			CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN), TheText.Get("FET_RSC"));
+-			break;
++#ifdef CUSTOM_CODE
++	// TODO Fix these switch statements, make them look nicer
++	// This new switch with enums seems to work.
++	case static_cast<int32>(HelperTextList::APPLY):
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_APP"));
++		break;
++	case static_cast<int32>(HelperTextList::DEFAULT_SETTINGS_RESTORED):
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_HRD"));
++		break;
++	case static_cast<int32>(HelperTextList::ORIGINAL_SETTING_RESTORED):
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_RSO"));
++		break;
++	case static_cast<int32>(HelperTextList::STATS_SAVED):
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_STS"));
++		break;
++	case static_cast<int32>(HelperTextList::HARDWARE_NOT_AVAILABLE):
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_RSC"));
++		break;
++#else
++	case 1:
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_APP"));
++		break;
++	case 2:
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_HRD"));
++		break;
++	case 3:
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_RSO"));
++		break;
++	case 4:
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_STS"));
++		break;
++	case 5:
++		CFont::PrintString(SCREEN_STRETCH_FROM_RIGHT(HELPER_TEXT_RIGHT_MARGIN), SCREEN_SCALE_FROM_BOTTOM(HELPER_TEXT_BOTTOM_MARGIN),
++		                   TheText.Get("FET_RSC"));
++		break;
++#endif
++
++
+ 		default:
+ 			if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_Action == MENUACTION_NO)
+ 				return;
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 5502f7e3..1c9ae793 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -3,6 +3,9 @@
+ #include "Frontend_PS2.h"
+ #else
+ 
++// Gets rid of errors in VS2022
++#include "common.h"
++
+ #include "Sprite2d.h"
+ #include "Timer.h"
+ 
+@@ -392,6 +395,18 @@ enum ControllerSetupColumn
+ 	CONTSETUP_VEHICLE_COLUMN = 16,
+ };
+ 
++#ifdef CUSTOM_CODE // Enum for DisplayHelperText
++// TODO Remove class from this, rename enum values to have HELPER_TEXT_
++// Make it more in line with the other enums above.
++// So I don't have to deal with the static casting to int32
++enum class HelperTextList { 
++	APPLY = 1, 
++	DEFAULT_SETTINGS_RESTORED = 2, 
++	ORIGINAL_SETTING_RESTORED = 3, 
++	STATS_SAVED = 4, 
++	HARDWARE_NOT_AVAILABLE = 5 };
++#endif
++
+ struct tSkinInfo
+ {
+ 	int32 skinId;
+-- 
+2.49.0.windows.1
+

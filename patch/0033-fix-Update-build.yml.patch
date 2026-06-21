@@ -1,0 +1,30 @@
+From 9f05395c8341a2e8836fb41582150814cbc9e9ab Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 14:36:23 -0500
+Subject: [PATCH 33/58] fix: Update build.yml
+
+---
+ .gitea/workflows/build.yml | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/.gitea/workflows/build.yml b/.gitea/workflows/build.yml
+index 4caf0b41..0cbf55a8 100644
+--- a/.gitea/workflows/build.yml
++++ b/.gitea/workflows/build.yml
+@@ -54,9 +54,10 @@ jobs:
+       # I'm quite sure this is cached or something.
+       # # cd /reVC
+       run: |
+-        ./premake5Linux --no-git-hash=1 --with-librw gmake2
++        ./reVC/premake5Linux --no-git-hash=1 --with-librw gmake2
+         cd ./build
+         make config=${{ secrets.LINUX_BUILD_TYPE }} -j$(nproc)
+-        ls ./bin/${{ secrets.LINUX_BUILD_TYPE }}
++        cd ..
++        ls ./reVC/bin/${{ secrets.LINUX_BUILD_TYPE }}
+         
+         
+\ No newline at end of file
+-- 
+2.49.0.windows.1
+

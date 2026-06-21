@@ -1,0 +1,91 @@
+From 0c71cd4c643bb93eb22286ecfb2c94115d9ec5b6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 13:20:37 -0500
+Subject: [PATCH 09/58] feat: Fix build on some Linux systems
+
+* Specify ubuntu version in argument, switch to multi stage docker file.
+* Update readme.
+---
+ .dockerignore |  1 -
+ Dockerfile    | 15 ++++++++++-----
+ README.md     | 12 ++++++++++++
+ 3 files changed, 22 insertions(+), 6 deletions(-)
+
+diff --git a/.dockerignore b/.dockerignore
+index 26756a54..716f5653 100644
+--- a/.dockerignore
++++ b/.dockerignore
+@@ -3,7 +3,6 @@ build/
+ bin/
+ 
+ logs/
+-.git/
+ .gitignore
+ 
+ .vscode/
+diff --git a/Dockerfile b/Dockerfile
+index 20327ae5..defd7e26 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,11 +1,13 @@
+-FROM ubuntu:24.04
++ARG UBUNTU_VERSION=24.04
++# FROM ubuntu:24.04 AS base
++FROM ubuntu:${UBUNTU_VERSION} AS base
+ 
+ # Basic docker file for building my new reVC-dev on Linux.
+ # This is being tested on WSL.
+ # Now this works! I had to modify it to set the version to build, and add a few more dependencies.
+ 
+-# Building this container:
+-# docker build -t revc-dev .
++# Building this container (Specify the version for this to build, such as 1.2a):
++# docker build -t revc-dev:version .
+ 
+ # Running this container for testing:
+ # docker run --rm -it revc-dev:latest /bin/bash
+@@ -56,13 +58,16 @@ RUN apt-get update && \
+ ENV CC=${C_COMPILER}-${COMPILER_VERSION}
+ ENV CXX=${CXX_COMPILER}-${COMPILER_VERSION}
+ 
++FROM base AS build
++
+ WORKDIR /reVC
+ 
+ # Copy files into container
+ COPY . .
+ 
+-# Run premake
+-RUN ./premake5Linux --with-librw gmake2
++# Run premake, disable the git hash file or it breaks the build on some systems.
++# Possibly because I add .git and some files to the dockerignore.
++RUN ./premake5Linux --no-git-hash=1 --with-librw gmake2
+ 
+ # Build the project
+ RUN cd ./build && \
+diff --git a/README.md b/README.md
+index 2c3bb48c..625acc1b 100644
+--- a/README.md
++++ b/README.md
+@@ -31,6 +31,18 @@ Added glfw-3.4.bin.WIN64 to the vendor folder for OpenGL building to work.
+ I may rework my code and bring some of the more used parts into this branch, the audio glitches out quite a bit
+ on the main build that I have for ReVC.
+ 
++## Docker support
++This branch now has support for building with Docker on Linux, tested on WSL with Ubuntu 24.04 and a Debian 13 server.
++
++To build reVC with docker (Set version to the version you want to save this as, such as 1.2a):
++* docker build -t revc-dev:version .
++
++Currently, this doesn't give you a way to view the built files in a volume outside the container, 
++ I may add support for that later.
++
++To view the files in the container (Specify version instead of writing version):
++* docker run --rm -it revc-dev:version /bin/bash
++
+ ## Installation
+ 
+ - reVC requires game assets to work, so you **must** own [a copy of GTA Vice City](https://store.steampowered.com/app/12110/Grand_Theft_Auto_Vice_City/).
+-- 
+2.49.0.windows.1
+

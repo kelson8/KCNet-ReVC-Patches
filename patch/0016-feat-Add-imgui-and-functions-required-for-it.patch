@@ -1,0 +1,6003 @@
+From 15a94f9db1c8b0ff95510b22c236231f1bbdc7b7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 24 Feb 2026 20:28:37 -0500
+Subject: [PATCH 16/58] feat: Add imgui and functions required for it
+
+* I added in the menus, imgui functions, and some changes to the code that this required.
+* This doesn't build yet on Windows and needs worked on for Linux.
+---
+ .gitmodules                              |   3 +
+ premake5.lua                             |  56 +-
+ src/core/Clock.h                         |   4 +
+ src/core/Placeable.h                     |  18 +
+ src/core/config.h                        |   4 +
+ src/core/main.cpp                        |  20 +
+ src/core/main.h                          |  16 +
+ src/extras/functions/imgui_commands.cpp  | 243 +++++++
+ src/extras/functions/imgui_commands.h    |  11 +
+ src/extras/functions/imgui_functions.cpp | 559 +++++++++++++++
+ src/extras/functions/imgui_functions.h   | 159 +++++
+ src/extras/functions/imgui_setup.cpp     | 417 +++++++++++
+ src/extras/functions/imgui_setup.h       |  34 +
+ src/extras/functions/ini_functions.cpp   |  14 +-
+ src/extras/functions/misc_functions.cpp  |   2 +
+ src/extras/menus/about_menu.cpp          |  60 ++
+ src/extras/menus/about_menu.h            |  11 +
+ src/extras/menus/animation_menu.cpp      | 240 +++++++
+ src/extras/menus/animation_menu.h        |  10 +
+ src/extras/menus/cheat_menu.cpp          | 270 +++++++
+ src/extras/menus/cheat_menu.h            |  11 +
+ src/extras/menus/game_menu.cpp           | 251 +++++++
+ src/extras/menus/game_menu.h             |  20 +
+ src/extras/menus/imgui_main_menu.cpp     | 302 ++++++++
+ src/extras/menus/imgui_main_menu.h       |  28 +
+ src/extras/menus/misc_menu.cpp           | 865 +++++++++++++++++++++++
+ src/extras/menus/misc_menu.h             |  24 +
+ src/extras/menus/ped_menu.cpp            |  62 ++
+ src/extras/menus/ped_menu.h              |  11 +
+ src/extras/menus/player_menu.cpp         | 313 ++++++++
+ src/extras/menus/player_menu.h           |  26 +
+ src/extras/menus/vehicle_menu.cpp        | 406 +++++++++++
+ src/extras/menus/vehicle_menu.h          |  16 +
+ src/extras/menus/vehicle_spawn_menu.cpp  | 249 +++++++
+ src/extras/menus/vehicle_spawn_menu.h    |  18 +
+ src/extras/menus/warp_menu.cpp           | 408 +++++++++++
+ src/extras/menus/warp_menu.h             |  36 +
+ src/extras/utils/imgui_defines.h         |  83 +++
+ src/extras/utils/log_util.cpp            |  25 +
+ src/extras/utils/log_util.h              |   6 +
+ src/extras/utils/message_util.cpp        |  49 ++
+ src/extras/utils/message_util.h          |  15 +
+ src/skel/glfw/glfw.cpp                   |  95 +++
+ src/vehicles/Bike.cpp                    |  26 +
+ 44 files changed, 5494 insertions(+), 2 deletions(-)
+ create mode 100644 src/extras/functions/imgui_commands.cpp
+ create mode 100644 src/extras/functions/imgui_commands.h
+ create mode 100644 src/extras/functions/imgui_functions.cpp
+ create mode 100644 src/extras/functions/imgui_functions.h
+ create mode 100644 src/extras/functions/imgui_setup.cpp
+ create mode 100644 src/extras/functions/imgui_setup.h
+ create mode 100644 src/extras/menus/about_menu.cpp
+ create mode 100644 src/extras/menus/about_menu.h
+ create mode 100644 src/extras/menus/animation_menu.cpp
+ create mode 100644 src/extras/menus/animation_menu.h
+ create mode 100644 src/extras/menus/cheat_menu.cpp
+ create mode 100644 src/extras/menus/cheat_menu.h
+ create mode 100644 src/extras/menus/game_menu.cpp
+ create mode 100644 src/extras/menus/game_menu.h
+ create mode 100644 src/extras/menus/imgui_main_menu.cpp
+ create mode 100644 src/extras/menus/imgui_main_menu.h
+ create mode 100644 src/extras/menus/misc_menu.cpp
+ create mode 100644 src/extras/menus/misc_menu.h
+ create mode 100644 src/extras/menus/ped_menu.cpp
+ create mode 100644 src/extras/menus/ped_menu.h
+ create mode 100644 src/extras/menus/player_menu.cpp
+ create mode 100644 src/extras/menus/player_menu.h
+ create mode 100644 src/extras/menus/vehicle_menu.cpp
+ create mode 100644 src/extras/menus/vehicle_menu.h
+ create mode 100644 src/extras/menus/vehicle_spawn_menu.cpp
+ create mode 100644 src/extras/menus/vehicle_spawn_menu.h
+ create mode 100644 src/extras/menus/warp_menu.cpp
+ create mode 100644 src/extras/menus/warp_menu.h
+ create mode 100644 src/extras/utils/imgui_defines.h
+ create mode 100644 src/extras/utils/log_util.cpp
+ create mode 100644 src/extras/utils/log_util.h
+ create mode 100644 src/extras/utils/message_util.cpp
+ create mode 100644 src/extras/utils/message_util.h
+
+diff --git a/.gitmodules b/.gitmodules
+index c9a30c95..c02cd303 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -14,3 +14,6 @@
+ 	path = vendor/librw
+ 	url = https://github.com/aap/librw.git
+ 	branch = master
++[submodule "lib/imgui"]
++	path = lib/imgui
++	url = https://github.com/ocornut/imgui.git
+diff --git a/premake5.lua b/premake5.lua
+index 579117b9..72065d2a 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -47,6 +47,21 @@ newoption {
+ 	description = "Don't print full paths into binary"
+ }
+ 
++-- TODO Test Try to see if imgui-opengl works later on Windows.
++-- TODO Add toggle option to disable ImGui when building, I'll do that later on.
++-- TODO Try to make this work with the D3d9 build, if using d3d9 it breaks the build with an error.
++newoption {
++	trigger     = "imgui-opengl",
++	description = "Use OpenGL for ImGui"
++}
++
++newoption {
++	trigger     = "imgui-directx",
++	description = "Use D3d9 for ImGui"
++}
++
++--
++
+ require("autoconf")
+ 
+ if(_OPTIONS["with-librw"]) then
+@@ -267,7 +282,12 @@ project "reVC"
+ 	files { addSrcFiles("src/extras/functions") }
+ 	files { addSrcFiles("src/extras/kcnet") }
+ 	files { addSrcFiles("src/extras/utils") }
+-	
++
++	-- Imgui
++	-- Adds imgui.cpp, and other required files.
++	files { addSrcFiles("lib/imgui/") }
++	-- Menus for ImGui
++	files { addSrcFiles("src/extras/menus") }
+ 	--
+ 
+ 	files { addSrcFiles("src") }
+@@ -336,6 +356,15 @@ project "reVC"
+ 	includedirs { "src/weapons" }
+ 	includedirs { "src/extras" }
+ 
++	-- Lib folders - ImGui and Lua
++	includedirs { "lib/" }
++	includedirs { "lib/imgui" }
++	includedirs { "lib/imgui/backends" }
++	
++	-- ImGui menus
++	includedirs { "src/extras/menus" }
++	-- includedirs { "lib/lua" }
++
+ 	if(not _OPTIONS["no-git-hash"]) then
+ 		defines { "USE_OUR_VERSIONING" }
+ 	end
+@@ -350,6 +379,26 @@ project "reVC"
+ 	filter "platforms:win*"
+ 		libdirs { "vendor/d3d9/lib" }
+ 		links { "d3dx9.lib" }
++
++		-- Add imgui files for Windows
++
++		-- These are most likely required for all Windows operations
++		files {
++			"lib/imgui/backends/imgui_impl_win32.cpp",
++			"lib/imgui/backends/imgui_impl_win32.h"
++		}
++
++		-- OpenGL
++		if(_OPTIONS["imgui-opengl"]) then
++			files {
++			"lib/imgui/backends/imgui_impl_opengl3.cpp",
++		}
++		-- DirectX9
++		else
++			files {
++				"lib/imgui/backends/imgui_impl_dx9.cpp",
++			}
++		end
+ 	--
+ 
+ 	filter "configurations:Vanilla"
+@@ -396,7 +445,12 @@ project "reVC"
+ 			prebuildcommands { '"%{prj.location}..\\printHash.bat" "%{prj.location}..\\src\\extras\\GitSHA1.cpp"' }
+ 		end
+ 
++		-- TODO Try to make this build opengl version on Windows and Linux if opengl is specified somewhere in the premake.
+ 	filter "platforms:not win*"
++		files {
++		"lib/imgui/backends/imgui_impl_opengl3.cpp",
++		}
++
+ 		if(not _OPTIONS["no-git-hash"]) then
+ 			prebuildcommands { '"%{prj.location}/../printHash.sh" "%{prj.location}/../src/extras/GitSHA1.cpp"' }
+ 		end
+diff --git a/src/core/Clock.h b/src/core/Clock.h
+index a611cd50..232b3086 100644
+--- a/src/core/Clock.h
++++ b/src/core/Clock.h
+@@ -1,5 +1,9 @@
+ #pragma once
+ 
++#ifdef CUSTOM_CODE
++extern bool gbFreezeTime;
++#endif // CUSTOM_CODE
++
+ class CClock
+ {
+ public:
+diff --git a/src/core/Placeable.h b/src/core/Placeable.h
+index 94be3211..b0413753 100644
+--- a/src/core/Placeable.h
++++ b/src/core/Placeable.h
+@@ -29,6 +29,24 @@ public:
+ 		m_matrix.SetRotate(x, y, z);
+ 		m_matrix.Translate(pos);
+ 	}
++
++#ifdef CUSTOM_CODE
++	// From plugin-sdk
++	// TODO Figure out what this->at was
++	void GetOrientation(float &x, float &y, float &z)
++	{
++		x = asinf(this->GetUp().z);
++		float cosx = cosf(x);
++
++		// float cosy = this->at.z / cosx;
++		// float cosy = this->GetUp().z / cosx;
++		// y = acosf(cosy);
++
++		float cosz = this->GetUp().y / cosx;
++		z = acosf(cosz);
++	}
++#endif // CUSTOM_CODE
++
+ 	bool IsWithinArea(float x1, float y1, float x2, float y2);
+ 	bool IsWithinArea(float x1, float y1, float z1, float x2, float y2, float z2);
+ };
+diff --git a/src/core/config.h b/src/core/config.h
+index 59c5e762..81a1ce9c 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -55,6 +55,10 @@
+ // Needs copied from miami branch
+ //#define EX_COP_FUNCTIONS
+ 
++// Toggle ImGui on/off, this won't work yet, I need to work on getting ImGui working with OpenGL,
++// and I have to change some Windows specific items such as HWND.
++//#define _IMGUI_TEST
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 0856f234..aee6f5d6 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -122,6 +122,26 @@ bool gbNoMovies;
+ bool gbFastLoader;
+ #endif
+ 
++#ifdef LUA_TEST
++bool gbLuaTest;
++#endif //LUA_TEST
++
++#ifdef _IMGUI_TEST
++bool gbImGuiToggle;
++#endif
++
++#ifdef CUSTOM_CODE 
++// Ped speech toggle
++bool gbPedSpeech = true;
++// Toggle for peds with the constant beeping.
++bool gbPedHorns = true;
++#endif
++
++#if defined(CUSTOM_CODE) && defined (GTAVC) || defined (GTALCS) // Bike fall off toggle
++// Set to true by default, so the player can always fall off the bike unless turned off.
++bool gbFalloffBike = true;
++#endif // CUSTOM_CODE
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ uint8 gbGameSaveOnStartup = 0;
+ #endif
+diff --git a/src/core/main.h b/src/core/main.h
+index fd36299d..6678b378 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -83,6 +83,22 @@ extern bool gbFastLoader;
+ extern uint8 gbGameSaveOnStartup;
+ #endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
++#ifdef LUA_TEST
++extern bool gbLuaTest;
++#endif
++
++#ifdef _IMGUI_TEST
++extern bool gbImGuiToggle;
++#endif
++
+ #ifdef CUSTOM_CODE
+ extern bool gbDisplayPosn;
++#endif
++
++#ifdef CUSTOM_CODE
++extern bool gbPedSpeech;
++#endif
++
++#ifdef CUSTOM_CODE // Bike fall off toggle
++extern bool gbFalloffBike;
+ #endif
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_commands.cpp b/src/extras/functions/imgui_commands.cpp
+new file mode 100644
+index 00000000..8b4dd2bf
+--- /dev/null
++++ b/src/extras/functions/imgui_commands.cpp
+@@ -0,0 +1,243 @@
++#ifdef _IMGUI_TEST
++
++#include "imgui_commands.h"
++#include "imgui.h"
++
++#define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#include "main.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++
++#include <map>
++#include <functional> // For std::function
++#include <vector>
++
++
++
++#include <sstream>
++#include <iostream>
++
++#ifdef LUA_TEST
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++#include "lua_test.h"
++#endif // LUA_TEST
++
++// Removed static from the void in debug_functions using a preprocessor.
++// This works.
++void
++TeleportToWaypoint(void);
++
++/// <summary>
++/// This works as a teleport command in ImGui, I can use the input box and make a command system like in Minecraft.
++/// </summary>
++/// <param name="args"></param>
++void
++command_teleport(const std::vector<std::string>& args)
++{
++	Defines defines = Defines();
++	// Check if the args is 3
++	if(args.size() == 3) {
++		try {
++			// Convert the values from strings to floats
++			float x = std::stof(args[0]);
++			float y = std::stof(args[1]);
++			float z = std::stof(args[2]);
++
++			std::string playerCoordsStr = "Player teleported to: X: " + std::to_string(x)
++				+" Y: " + std::to_string(y) 
++				+ " Z: " + std::to_string(z);
++
++			PlayerCheats::SetPlayerPosition(x, y, z);
++
++
++			LogFunctions::LogInfo(defines.logFile, playerCoordsStr);
++
++		}
++		// Catch the error if the values are not floats.
++		catch (const std::invalid_argument& e)
++		{
++			LogFunctions::LogError(defines.logFile, "Invalid arguments for teleport.");
++		}
++	} else {
++		LogFunctions::LogInfo(defines.logFile, "Usage: teleport <x> <y> <z>");
++	}
++}
++
++/// <summary>
++/// Blow up vehicles cheat
++/// </summary>
++/// <param name="args"></param>
++void
++command_blowup(const std::vector<std::string> &args)
++{
++	Defines defines = Defines();
++	// Check if the args is 0
++	if(args.size() == 0) 
++	{ 
++		CustomCheats::BlowUpAllCars();
++	}
++}
++
++/// <summary>
++/// Teleport to marker
++/// </summary>
++/// <param name="args"></param>
++void
++command_tpmarker(const std::vector<std::string>& args)
++{
++	if (args.size() == 0) { 
++		TeleportToWaypoint();
++	}
++
++}
++
++// Command map
++std::map<std::string, std::function<void(const std::vector<std::string> &)>> commands = {
++    {"teleport", command_teleport}, 
++	{"blowup", command_blowup},
++	{"tpmarker", command_tpmarker}
++	//{"heal", command_heal}
++};
++
++void
++ImGuiCommands::ImGuiCommandSystem()
++{
++	ImGui::Separator();
++
++	ImGui::Text("Command System");
++	
++	if(ImGui::CollapsingHeader("Commands")) {
++
++		ImGui::BulletText("blowup - Blow up vehicles");
++
++		ImGui::BulletText("teleport <x> <y> <z> - Teleport to set coords");
++
++		ImGui::BulletText("tpmarker - Teleport to the marker");
++	}
++
++
++	static char commandInput[256] = "";
++	static std::string commandOutput = "";
++
++	//ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput));
++
++	bool enterPressed = false;
++
++	// Moved this into an if statement, to check if enter is pressed.
++	if (ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput), ImGuiInputTextFlags_EnterReturnsTrue)) 
++	{ 
++		enterPressed = true;
++	}
++
++	// This works for when the enter button is pressed for the commands.
++	if (enterPressed)
++	{
++		std::stringstream ss(commandInput);
++		std::string commandName;
++		std::vector<std::string> args;
++
++		ss >> commandName;
++		std::string arg;
++		while(ss >> arg) { args.push_back(arg); }
++
++		if(commands.count(commandName) > 0) {
++			commands[commandName](args);
++			commandOutput = "Command executed.";
++		} else {
++			commandOutput = "Unknown command.";
++		}
++
++		enterPressed = false;
++	}
++	
++
++	if(ImGui::Button("Execute")) {
++		std::stringstream ss(commandInput);
++		std::string commandName;
++		std::vector<std::string> args;
++
++		ss >> commandName;
++		std::string arg;
++		while(ss >> arg) { args.push_back(arg); }
++
++		if(commands.count(commandName) > 0) {
++			commands[commandName](args);
++			commandOutput = "Command executed.";
++		} else {
++			commandOutput = "Unknown command.";
++		}
++		//std::cout << commandOutput << std::endl; // Output to console as well.
++	}
++
++	ImGui::TextWrapped("%s", commandOutput.c_str());
++}
++
++#ifdef LUA_TEST
++
++// Lua test
++void
++ImGuiCommands::ImGuiCommandSystemLua()
++{
++	ImGui::Separator();
++
++	ImGui::Text("Command System Lua");
++	ImGui::Text("This can run a list of custom lua functions");
++	ImGui::Text("For now I just have 'set_position(X, Y, Z)");
++
++	static char commandInput[256] = "";
++	static std::string commandOutput = "";
++
++	ImGui::InputText("Command", commandInput, IM_ARRAYSIZE(commandInput));
++
++	if(ImGui::Button("Execute")) {
++		// Build the Lua command string
++		std::string luaCommand = commandInput;
++
++		lua_State *L = LuaTest::GetInstance().GetLuaState();
++
++		// Run the Lua command
++		//int error = luaL_dostring(L, luaCommand.c_str());
++		int error = luaL_dostring(L, luaCommand.c_str());
++
++		if(error) {
++			std::cerr << "Lua error: " << lua_tostring(L, -1) << std::endl;
++			commandOutput = "Lua error: " + std::string(lua_tostring(L, -1));
++			lua_pop(L, 1); // Pop the error message from the stack
++		} else {
++			commandOutput = "Command executed.";
++		}
++	}
++
++	ImGui::TextWrapped("%s", commandOutput.c_str());
++
++	ImGui::Separator();
++}
++
++#endif
++
++//
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_commands.h b/src/extras/functions/imgui_commands.h
+new file mode 100644
+index 00000000..6c7c9ca7
+--- /dev/null
++++ b/src/extras/functions/imgui_commands.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++class ImGuiCommands
++{
++public:
++	void ImGuiCommandSystem();
++	void ImGuiCommandSystemLua();
++};
++
++#endif // _IMGUI_TEST
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+new file mode 100644
+index 00000000..2c27d88b
+--- /dev/null
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -0,0 +1,559 @@
++#ifdef _IMGUI_TEST
++
++// https://stackoverflow.com/questions/22744262/cant-call-stdmax-because-minwindef-h-defines-max
++// Fix for std::min and std::max
++#define NOMINMAX
++
++#include "imgui_functions.h"
++
++#include <algorithm> // For std::min
++
++// ImGui
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++#include "imgui_main_menu.h"
++
++#include <string>
++#include <iostream>
++
++#include "defines.h"
++
++#include <vector>
++#include <sstream>
++
++#include "log_functions.h"
++
++#include <direct.h>
++
++// Well adding this I can move my functions out of ini functions into the warp menu and vehicle menu.
++//#include "ini.h"
++
++// I pretty much developing a menu like the Cheat Menu from scratch, most of this code I have come up with myself.
++
++// https://stackoverflow.com/questions/61853584/how-can-i-change-text-color-of-my-inputtext-in-imgui
++/* This is how to set some colors on a specific part of text in ImGui:
++* The IM_COL32 values are RGBA so they can be obtained from a tool online like this:
++* https://rgbacolorpicker.com/
++* 
++	// Set the custom color
++    // This works for changing the colors
++    // Set to red, push the style to the elements before PopStyleColor is called.
++    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 0, 0, 255));
++    ImGui::Text("Red text");
++    // Remove the custom color
++    ImGui::PopStyleColor();
++*/
++
++///// <summary>
++///// Add a help marker
++///// </summary>
++///// <param name="desc"></param>
++//static void ImGuiFunctions::Main::HelpMarker(const char* desc)
++//{
++//	ImGui::TextDisabled("(?)");
++//	if (ImGui::BeginItemTooltip())
++//	{
++//		ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
++//		ImGui::TextUnformatted(desc);
++//		ImGui::PopTextWrapPos();
++//		ImGui::EndTooltip();
++//	}
++//}
++//
++
++void
++ImGuiFunctions::InputIntMax(const char *label, int *v, int step, int step_fast, int max_value)
++{
++	if(ImGui::InputInt(label, v, step, step_fast)) {
++		*v = std::min(*v, max_value);
++		//return true; // Value changed
++	}
++	//return false; // Value unchanged
++}
++
++// If you also need to set a min value, use this function instead:
++void
++ImGuiFunctions::InputIntClamp(const char *label, int *v, int step, int step_fast, int min_value, int max_value)
++{
++	if(ImGui::InputInt(label, v, step, step_fast)) {
++		*v = std::max(min_value, std::min(*v, max_value));
++		//return true; // Value changed
++	}
++	//return false; // Value unchanged
++}
++
++/// <summary>
++/// Well I was going to replicate the re3 function but
++/// I found this which outputs to the Debug Output in VS 2022
++/// https://stackoverflow.com/questions/14858262/stdcout-wont-print#comment114525319_53813283
++/// </summary>
++/// <param name="text">The text to output to VS 2022 or debugger.</param>
++void
++ImGuiFunctions::PrintToOutput(const char* text)
++{
++	OutputDebugString(text);
++}
++
++// Disabled, broken on my OpenGL build
++// TODO Learn exactly how this is working
++// This works for displaying a list of numbers which could be used for vehicle ids.
++//void
++//ImGuiFunctions::VehiclesListBox(int &selectedItem)
++//{
++//	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++//
++//	int minValue = 130;
++//	int maxValue = 250;
++//
++//	std::vector<std::string> items;
++//	for(int i = minValue; i <= maxValue; ++i) {
++//		std::stringstream ss;
++//		ss << i;
++//		items.push_back(ss.str());
++//	}
++//
++//	// I had no idea you could do all this with ImGui Listbox
++//	if(ImGui::ListBox(
++//	       "Vehicles Listbox", &selectedItem,
++//	       [](void *data, int idx, const char **out_text) {
++//		       std::vector<std::string> *items = static_cast<std::vector<std::string> *>(data);
++//		       if(idx >= 0 && idx < items->size()) {
++//			       *out_text = items->at(idx).c_str();
++//			       return true;
++//		       }
++//		       return false;
++//	       },
++//	       (void *)&items, items.size())) {
++//		// Listbox was changed, selectedItem now contains the index.
++//		// To get the selected value back into an int.
++//		int selectedValue = std::stoi(items[selectedItem]);
++//		// Do what you need with the selected value.
++//		//TRACE("Selected value %i", selectedValue);
++//		// TODO Test this, output the value somewhere else.
++//		
++//		imGuiFunctions.setSelectedVehicleId(selectedValue);
++//
++//		// 
++//		//imGuiFunctions.selectedVehicleId = selectedValue;
++//		// std::cout << "Selected value: " << selectedValue << std::endl;
++//	}
++//}
++
++
++//---------- Begin ImGui setup/shutdown functions ----------//
++
++/// <summary>
++/// Setup the imgui fonts
++/// TODO Make vice extended path public in defines and use that.
++/// </summary>
++/// <param name="io"></param>
++void
++ImGuiFunctions::SetupFonts(ImGuiIO &io)
++{
++
++	std::string viceExtendedPath = "ViceExtended\\";
++	// Add fonts to the path.
++	std::string fontsPath = viceExtendedPath + "fonts\\";
++
++	Defines defines = Defines();
++
++	// Load Fonts
++	// - If no fonts are loaded, dear imgui will use the default font. You can also load multiple fonts and use ImGui::PushFont()/PopFont() to select them.
++	// - AddFontFromFileTTF() will return the ImFont* so you can store it if you need to select the font among multiple.
++	// - If the file cannot be loaded, the function will return a nullptr. Please handle those errors in your application (e.g. use an assertion, or display
++	// an error and quit).
++	// - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(),
++	// which ImGui_ImplXXXX_NewFrame below will call.
++	// - Use '#define IMGUI_ENABLE_FREETYPE' in your imconfig file to use Freetype for higher quality font rendering.
++	// - Read 'docs/FONTS.md' for more instructions and details.
++	// - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
++
++	io.Fonts->AddFontDefault();
++	std::string fontFilePath = fontsPath + defines.fontFile;
++	io.Fonts->AddFontFromFileTTF(fontFilePath.c_str(), 1.15f);
++}
++
++/// <summary>
++/// Setup the ImGui context
++/// </summary>
++void
++ImGuiFunctions::SetupContext()
++{
++	IMGUI_CHECKVERSION();
++	ImGui::CreateContext();
++	ImGuiIO &io = ImGui::GetIO();
++	(void)io;
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
++	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
++
++	ImGuiFunctions::SetupFonts(io);
++}
++
++// TODO Why is this duplicated in imgui_setup.cpp and imgui_functions.cpp?
++void
++ImGuiFunctions::ShutdownImGui()
++{
++	// Shutdown Imgui, was I forgetting that?
++	// Shutdown DX9 for this and cleanup
++	// This fixes the crashes without the menu being open..
++	// I'm so close on getting this to finally work, it's been so long.
++	// Shutdown Imgui, was I forgetting that?
++	// Shutdown DX9 for this and cleanup
++
++	// Copied in changes from OpenGL testing.
++#ifdef _WIN32
++	ImGui_ImplWin32_Shutdown();
++#else
++	// TODO Implement imgui shutdown with OpenGL.
++#endif // _WIN32
++
++#if defined(_WIN32) && defined(RW_D3D9)
++
++	ImGui_ImplDX9_Shutdown();
++#endif // _WIN32 && RW_D3D9
++}
++
++// Credit to user-grinch on github for the style code here.
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/cheatmenu.cpp#L271-L335
++void ImGuiFunctions::ApplyStyle()
++{
++     ImGuiStyle* style = &ImGui::GetStyle();
++     ImVec4* colors = style->Colors;
++
++     style->WindowPadding = ImVec2(8, 8);
++     style->WindowRounding = 5.0f;
++     style->FramePadding = ImVec2(8, 8);
++     style->FrameRounding = 5.0f;
++     style->PopupRounding = 5.0f;
++     style->ItemSpacing = ImVec2(7, 7);
++     style->ItemInnerSpacing = ImVec2(7, 7);
++     style->IndentSpacing = 25.0f;
++     style->ScrollbarSize = 12.0f;
++     style->ScrollbarRounding = 10.0f;
++     style->GrabMinSize = 5.0f;
++     style->GrabRounding = 3.0f;
++
++     style->ChildBorderSize = 0;
++     style->WindowBorderSize = 0;
++     style->FrameBorderSize = 0;
++     style->TabBorderSize = 0;
++     style->PopupBorderSize = 0;
++
++     style->Colors[ImGuiCol_Text] = ImVec4(0.80f, 0.80f, 0.83f, 1.00f);
++     style->Colors[ImGuiCol_TextDisabled] = ImVec4(0.35f, 0.33f, 0.3f, 1.00f);
++     style->Colors[ImGuiCol_WindowBg] = ImVec4(0.06f, 0.05f, 0.06f, 0.95f);
++     style->Colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
++     style->Colors[ImGuiCol_PopupBg] = ImVec4(0.06f, 0.05f, 0.06f, 0.95f);
++     style->Colors[ImGuiCol_Border] = ImVec4(0.12f, 0.12f, 0.12f, 1.0f);
++     style->Colors[ImGuiCol_BorderShadow] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_FrameBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_FrameBgActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.12f, 0.12f, 0.94f);
++     style->Colors[ImGuiCol_TitleBgCollapsed] = ImVec4(1.00f, 0.98f, 0.95f, 0.75f);
++     style->Colors[ImGuiCol_TitleBgActive] = ImVec4(0.07f, 0.07f, 0.09f, 1.00f);
++     style->Colors[ImGuiCol_MenuBarBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_ScrollbarBg] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.5f, 0.5f, 0.5f, 0.3f);
++     style->Colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.7f, 0.7f, 0.7f, 0.3f);
++     style->Colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.9f, 0.9f, 0.9f, 0.3f);
++     style->Colors[ImGuiCol_CheckMark] = ImVec4(0.80f, 0.80f, 0.83f, 0.31f);
++     style->Colors[ImGuiCol_SliderGrab] = ImVec4(0.80f, 0.80f, 0.83f, 0.31f);
++     style->Colors[ImGuiCol_SliderGrabActive] = ImVec4(0.80f, 0.80f, 0.83f, 0.31f);
++     style->Colors[ImGuiCol_Separator] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_Button] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_ButtonActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_Tab] = ImVec4(0.15f, 0.15f, 0.15f, 0.95f);
++     style->Colors[ImGuiCol_TabHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_TabActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_Header] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
++     style->Colors[ImGuiCol_HeaderHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_HeaderActive] = ImVec4(0.06f, 0.05f, 0.07f, 1.00f);
++     style->Colors[ImGuiCol_ResizeGrip] = ImVec4(0.12f, 0.12f, 0.12f, 0.00f);
++     style->Colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
++     style->Colors[ImGuiCol_ResizeGripActive] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
++     style->Colors[ImGuiCol_PlotLines] = ImVec4(0.40f, 0.39f, 0.38f, 0.63f);
++     style->Colors[ImGuiCol_PlotLinesHovered] = ImVec4(0.25f, 1.00f, 0.00f, 1.00f);
++     style->Colors[ImGuiCol_PlotHistogram] = ImVec4(0.40f, 0.39f, 0.38f, 0.63f);
++     style->Colors[ImGuiCol_PlotHistogramHovered] = ImVec4(0.25f, 1.00f, 0.00f, 1.00f);
++     style->Colors[ImGuiCol_TextSelectedBg] = ImVec4(0.06f, 0.05f, 0.06f, 0.95f);
++     style->Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.20f, 0.20f, 0.20f, 0.6f);
++ }
++
++bool ImGuiFunctions::ShowSecondWindow = false;
++
++//---------- End ImGui setup/shutdown functions ----------//
++
++// Code moved out of d3ddevice.cpp in librw
++// TODO Make this work later.
++#ifdef _MOVE_CODE
++void
++ImGuiFunctions::RunImGui()
++{
++
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	bool show_demo_window = true;
++	bool show_another_window = false;
++	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
++
++	// d3ddevice->EndScene();
++	/*
++
++	        rw::d3d::d3ddevice->SetRenderState(D3DRS_ZENABLE, FALSE);
++	        rw::d3d::d3ddevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
++	        rw::d3d::d3ddevice->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
++	        D3DCOLOR clear_col_dx = D3DCOLOR_RGBA((int)(clear_color.x * clear_color.w * 255.0f), (int)(clear_color.y * clear_color.w * 255.0f),
++	                                              (int)(clear_color.z * clear_color.w * 255.0f), (int)(clear_color.w * 255.0f));
++	*/
++
++	// The while loop was crashing this
++	// while(!ImGuiFunctions::ImGuiDone) {
++	// Setup the new frames
++
++	// if (imGuiFunctions.ImGuiEnabled) {
++
++	//	}
++
++	if(!imGuiFunctions.ImGuiDone) {
++
++		ImGui_ImplDX9_NewFrame();
++		ImGui_ImplWin32_NewFrame();
++		ImGui::NewFrame();
++
++		// Test for mouse
++		ClipCursor(NULL);
++		// if (imGuiFunctions.ImGuiEnabled) {
++		//	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++		//
++		//} else {
++		//
++		//}
++
++		//
++		// 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
++		// if(show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
++
++		{
++			// https://www.unknowncheats.me/forum/general-programming-and-reversing/505033-imgui-mouse-interaction-video.html
++			ImGuiIO &io = ImGui::GetIO();
++			// https://www.unknowncheats.me/forum/direct3d/190472-imgui-mouse-cursor.html
++			// Hmm, with my new menu setup, the mouse shows up but cannot click on anything.
++			// Something in the code is overriding the mouse.. TODO Fix that.
++
++			// Update mouse position
++			POINT p;
++			GetCursorPos(&p);
++			// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
++			// Idk what I did to break this...
++			// ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
++			io.MousePos = ImVec2(p.x, p.y);
++
++			// Update mouse button state
++			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++
++			// Toggle ImGui with right mouse button
++			// if(io.MouseDown[1]) { ImGuiFunctions::ImGuiDone = true; }
++
++			// Draw the cursor to the screen
++			io.MouseDrawCursor = true;
++			//
++
++			// io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
++
++			// This toggles ImGui!!
++			// Now to figure out how to add a keyboard shortcut to it.
++			// Also to figure out
++			// io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
++
++			// if(io.MouseDown[1]) { ImGuiFunctions::ImGuiDone = true; }
++
++			// Moved this into its own method
++			ImGuiMenus::Menu::MainMenu(false, false, clear_color);
++
++			// Save device state
++			IDirect3DStateBlock9 *pStateBlock = NULL;
++			rw::d3d::d3ddevice->CreateStateBlock(D3DSBT_ALL, &pStateBlock);
++			pStateBlock->Capture();
++
++			//
++
++			// ImGui Rendering
++			ImGui::EndFrame();
++			ImGui::Render();
++			ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
++
++			// Restore device state
++			pStateBlock->Apply();
++			pStateBlock->Release();
++			//
++		}
++		rw::d3d::d3ddevice->Present(NULL, NULL, NULL, NULL);
++	}
++}
++
++
++#endif //_MOVE_CODE
++
++//---------- Begin ReVC Color stuff ----------//
++
++// Convert ImVec4 to RGBA
++
++// Reverse this function: https://github.com/ocornut/imgui/issues/5102
++
++float r_color = 0;
++float g_color = 0;
++float b_color = 0;
++float a_color = 0;
++
++// Well now, Google Gemini helps again, I can use the color variable, and multiply it by 255 to get the RGBA.
++void
++ImGuiFunctions::IV4toRGBA(ImVec4 color)
++{
++	Defines defines = Defines();
++	// ImVec4(color);
++	r_color = static_cast<float>(color.x * 255.0f);
++	g_color = static_cast<float>(color.y * 255.0f);
++	b_color = static_cast<float>(color.z * 255.0f);
++	a_color = static_cast<float>(color.w * 255.0f);
++
++	std::string colorString = "Colors (RGBA): R: " + std::to_string(r_color) + " G: " + std::to_string(g_color) + " B: " + std::to_string(b_color) +
++	                          " A: " + std::to_string(a_color);
++
++	LogFunctions::LogInfo(defines.logFile, colorString);
++}
++
++
++
++//------------
++// Vehicle colors
++//------------
++
++// Vice City Car Colours from https://www.grandtheftwiki.com/Car_Colours
++struct ReVCColor {
++	int r;
++	int g;
++	int b;
++	int index;
++};
++
++const ReVCColor viceCityColors[] = {
++    {0, 0, 0, 0},        // Black
++    {255, 255, 255, 1},  // White
++    {128, 128, 128, 2},  // Grey
++    {255, 0, 0, 3},      // Red
++    {0, 255, 0, 4},      // Green
++    {0, 0, 255, 5},      // Blue
++    {255, 255, 0, 6},    // Yellow
++    {255, 0, 255, 7},    // Magenta
++    {0, 255, 255, 8},    // Cyan
++    {128, 0, 0, 9},      // Maroon
++    {0, 128, 0, 10},     // Dark Green
++    {0, 0, 128, 11},     // Navy
++    {128, 128, 0, 12},   // Olive
++    {128, 0, 128, 13},   // Purple
++    {0, 128, 128, 14},   // Teal
++    {192, 192, 192, 15}, // Silver
++    {255, 128, 0, 16},   // Orange
++    {128, 64, 0, 17},    // Brown
++    {255, 128, 128, 18}, // Light Red
++    {128, 255, 128, 19}, // Light Green
++    {128, 128, 255, 20}, // Light Blue
++    {255, 255, 128, 21}, // Light Yellow
++    {255, 128, 255, 22}, // Light Magenta
++    {128, 255, 255, 23}, // Light Cyan
++};
++
++const int viceCityColorCount = sizeof(viceCityColors) / sizeof(viceCityColors[0]);
++
++// Convert ImVec4 to RGB
++struct RGBColor {
++	int r;
++	int g;
++	int b;
++};
++
++RGBColor
++imVec4ToRGB(const ImVec4 &color)
++{
++	return {static_cast<int>(color.x * 255.0f), static_cast<int>(color.y * 255.0f), static_cast<int>(color.z * 255.0f)};
++}
++
++// Find the closest color in ReVC
++int
++findClosestColorIndex(const RGBColor &rgb)
++{
++	int closestIndex = 0;
++	int closestDistance = INT_MAX;
++
++	for(int i = 0; i < viceCityColorCount; ++i) {
++		int dr = rgb.r - viceCityColors[i].r;
++		int dg = rgb.g - viceCityColors[i].g;
++		int db = rgb.b - viceCityColors[i].b;
++
++		int distance = dr * dr + dg * dg + db * db; // Squared distance for efficiency
++
++		if(distance < closestDistance) {
++			closestDistance = distance;
++			closestIndex = viceCityColors[i].index;
++		}
++	}
++	return closestIndex;
++}
++
++// Function to get ReVC color indices:
++std::pair<int, int>
++ImGuiFunctions::GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2)
++{
++	RGBColor rgb1 = imVec4ToRGB(color1);
++	RGBColor rgb2 = imVec4ToRGB(color2);
++
++	int index1 = findClosestColorIndex(rgb1);
++	int index2 = findClosestColorIndex(rgb2);
++
++	return {index1, index2};
++}
++
++//---------- End ReVC Color stuff ----------//
++
++
++//---------- Begin folder stuff ----------//
++
++// Moved out of misc_menu
++// TODO Move this into a utilities file, possible win_util.cpp or something.
++std::string
++ImGuiFunctions::GetCurrentWorkingDirectory()
++{
++	char buffer[MAX_PATH];
++	if(_getcwd(buffer, sizeof(buffer)) != nullptr) {
++		return std::string(buffer);
++	} else {
++		return ""; // Or handle the error appropriately
++	}
++}
++
++void
++ImGuiFunctions::OpenCurrentDirectoryButton(const char *buttonLabel)
++{
++	std::string currentDir = GetCurrentWorkingDirectory();
++	if(!currentDir.empty() && ImGui::Button(buttonLabel)) { ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
++}
++
++void
++ImGuiFunctions::OpenDirectoryButton(std::string folder, const char *buttonLabel)
++{
++	Defines defines = Defines();
++	// std::string currentDir = GetCurrentWorkingDirectory() + folder;
++	if(!folder.empty() && ImGui::Button(buttonLabel)) {
++		//LogFunctions::LogInfo(defines.logFile, "Folder path: " + folder);
++		// ShellExecuteA(nullptr, "explore", currentDir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
++		ShellExecuteA(nullptr, "explore", folder.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
++	}
++}
++
++//---------- End folder stuff ----------//
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_functions.h b/src/extras/functions/imgui_functions.h
+new file mode 100644
+index 00000000..c98bfd77
+--- /dev/null
++++ b/src/extras/functions/imgui_functions.h
+@@ -0,0 +1,159 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++#define NEW_IMGUI_TESTS
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif
++
++#include "imgui.h"
++//#include "common.h"
++
++#include <string>
++
++// Oops, I was missing this header.
++#include <cstdint>
++
++#include <map>
++#include <functional> // For std::function
++
++//#include "common.h"
++
++
++//namespace ImGuiFunctions {
++//	namespace Main {
++//		static void HelpMarker(const char* desc);
++//		// TODO What's this for? Seems like it's not needed
++//		//static void ShowWindow(bool* p_open);
++//		void SetupContext();
++//		void ShowWindow(HWND hwnd);
++//		void ShutDown();
++//		void DestroyWindow(HWND hwnd, WNDCLASSEXW wc);
++//		void ApplyStyle();
++//
++//		static bool done;
++//	}
++//}
++
++
++//#define TYPEDEF_EXTRA
++//
++//#ifdef TYPEDEF_EXTRA
++//typedef uint16_t uint16;
++//
++//#endif
++
++class ImGuiFunctions
++{
++private:
++	// Setup ImGui fonts, this isn't used outside of this class
++	static void SetupFonts(ImGuiIO &io);
++
++	int selectedVehicleId;
++
++	uint16_t toggleImGuiButton1;
++	uint16_t toggleImGuiButton2;
++
++public:
++	// Setup ImGui context.
++	static void SetupContext();
++
++	// Shutdown ImGui
++	static void ShutdownImGui();
++
++	static void ImGuiLoop();
++
++	static void ApplyStyle();
++
++	// This is a test I got from Google Gemini, I need to learn how it works.
++	// Show a vehicle list box, ids only for now.
++	static void VehiclesListBox(int &selectedItem);
++
++	void IV4toRGBA(ImVec4 color);
++	
++	std::pair<int, int> GetReVCColorIndices(const ImVec4 &color1, const ImVec4 &color2);
++
++	// Windows directory opening and buttons
++	std::string GetCurrentWorkingDirectory();
++	void OpenCurrentDirectoryButton(const char *buttonLabel);
++	void OpenDirectoryButton(std::string folder, const char *buttonLabel);
++	//
++
++
++	// ImGui Buttons, these work now
++
++	// TODO Rename these to ImGuiControllerButton1 and ImGuiControllerButton2
++	// TODO Make this get values for the keyboard input also.
++
++	void setImGuiButton1(uint16_t button1) 
++	{ 
++		toggleImGuiButton1 = button1; 
++	}
++
++	const uint16_t getImGuiButton1() const { 
++		return toggleImGuiButton1;
++	}
++
++	void setImGuiButton2(uint16_t button2) { 
++		toggleImGuiButton2 = button2; 
++	}
++
++	const uint16_t getImGuiButton2() const { 
++		return toggleImGuiButton2; 
++	}
++	//
++
++
++	// https://www.w3schools.com/cpp/cpp_encapsulation.asp
++	// This format seems nice to use.
++	// Why does this always show 0? I don't think I'm doing it right.
++	void setSelectedVehicleId(int id) 
++	{ 
++		selectedVehicleId = id;
++	}
++
++
++
++	int getSelectedVehicleId()
++	{ 
++		return selectedVehicleId;
++	}
++	//
++
++
++	static bool ShowSecondWindow;
++	//
++#ifdef NEW_IMGUI_TESTS
++	static bool ImGuiActive;
++#else
++	static bool ImGuiDone;
++#endif
++
++	// This prints to a VS 2022 debug output window.
++	// TODO Move this somewhere else
++	static void PrintToOutput(const char *text);
++
++	// For setting a min/max value on ImGui::InputInt
++	// Set it to just have a maximum value
++	static void InputIntMax(const char *label, int *v, int step = 1, int step_fast = 10, int max_value = 100);
++	// Set it to have a minimum and maximum value
++	static void InputIntClamp(const char *label, int *v, int step = 1, int step_fast = 10, int min_value = 0, int max_value = 100);
++
++		// Singleton test
++	static ImGuiFunctions &GetInstance()
++	{
++		static ImGuiFunctions instance; // Static instance created once
++		return instance;
++	}
++
++
++#ifdef _MOVE_CODE
++	static void RunImGui();
++
++#endif
++	
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+new file mode 100644
+index 00000000..e02fb438
+--- /dev/null
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -0,0 +1,417 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "imgui_setup.h"
++
++// TODO Figure out how to make this work on Linux.
++// It shouldn't be too hard if I can get this ImGui setup code migrated over
++// And also I need to switch from DirectX9 in skel/win.cpp, to using OpenGL or something in skel/glfw.cpp
++// I'm not too sure on how to use OpenGL just yet with ImGui.
++// I am currently loading ImGui by adding it into the d3ddevice.cpp file in librw.
++
++#include "imgui.h"
++
++#ifdef _WIN32
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++#endif
++
++#include "imgui_main_menu.h"
++
++#include <iostream>
++#include <string>
++
++#include "main.h"
++
++// Begin win.cpp headers
++#if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
++
++// Required for opening menu with Xbox controller.
++#include <Xinput.h>
++
++//#define _WIN32_WINDOWS 0x0500
++//#define WINVER 0x0500
++
++#include <mmsystem.h>
++#include <shellapi.h>
++#include <windows.h>
++#include <winerror.h>
++
++#include <basetsd.h>
++#include <windowsx.h>
++
++#include <regstr.h>
++#include <shlobj.h>
++
++#include <dbt.h>
++
++#include <DShow.h>
++#include <ddraw.h>
++
++#endif // defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
++
++#ifdef RW_GL3
++#include "imgui_impl_opengl3.h"
++
++#endif // RW_GL3
++
++#pragma warning(push)
++#pragma warning(disable : 4005)
++
++#pragma warning(pop)
++
++#define WM_GRAPHNOTIFY WM_USER + 13
++
++#if (defined(_MSC_VER))
++#include <tchar.h>
++#endif /* (defined(_MSC_VER)) */
++#include "resource.h"
++#include "rwcore.h"
++#include "skeleton.h"
++#include <stdio.h>
++
++// #include "platform.h"
++// #include "crossplatform.h"
++
++// End win.cpp headers
++
++// Lua test
++#ifdef LUA_TEST
++#include "lua_test.h"
++#endif // LUA_TEST
++
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++#endif
++
++// ReVC
++// Timer for the keybind
++#include "Pad.h"
++#include "Timer.h"
++
++// New for disabling menu on pause
++#include "Camera.h"
++
++#include "ControllerConfig.h"
++
++#include "defines.h"
++
++// TODO Why is this duplicated under CUSTOM_CODE
++// Fix this later
++#ifdef CUSTOM_CODE // CUSTOM_CODE - Lua
++
++#define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
++#define CTRLJUSTDOWN(key)                                                                                                                                      \
++	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++
++#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++
++// Test for disabling pause on focus loss
++// bool isGameFocused = true; // Initially focused
++
++#endif // CUSTOM_CODE - Lua
++
++bool imGuiInitalized = false;
++
++#ifdef NEW_IMGUI_TESTS
++// I have fixed the inverted boolean and renamed this to make it more clear
++// Now if its set to false the menu won't show up, instead of it being reversed
++bool ImGuiFunctions::ImGuiActive = false;
++#else
++// Set the boolean, this being set to true makes the menu hide, setting it to false will show the menu.
++bool ImGuiFunctions::ImGuiDone = true;
++#endif
++
++// TODO Move this in here, need to figure out how to get d3ddevice in here, works in win.cpp
++// rw::d3d::d3ddevice
++
++// I will have the ImGui init, shutdown, and controller handling for toggling the menu in this file.
++
++#ifdef RW_D3D9
++extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the device.
++#endif // RW_D3d9
++
++//--------------------
++// Disable/enable player control
++//--------------------
++
++/// <summary>
++/// Disable players control, the camera process code seems to be doing that when I have ImGui open.
++/// This runs just in case it isn't
++/// </summary>
++void
++ImGuiSetup::DisablePlayerControl()
++{
++#if defined(GTAVC)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
++
++	// I don't think these are needed
++	// pad->DisablePlayerControls = 1;
++
++	// pad->ClearMouseHistory();
++	// pad->NewState.DPadUp = 0;
++	// pad->OldState.DPadUp = 0;
++	// pad->NewState.DPadDown = 0;
++	// pad->OldState.DPadDown = 0;
++
++	// Old
++	// CPad::UpdatePads();
++
++	// Well this breaks the menu from being toggled.
++	// cpad.Clear(true);
++}
++
++/// <summary>
++/// Enable players control, the camera process code seems to be doing that when I have ImGui open.
++/// This runs just in case it isn't
++/// </summary>
++void
++ImGuiSetup::EnablePlayerControl()
++{
++#if defined(GTAVC)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_PHONE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
++}
++
++//--------------------
++// ImGui setup
++//--------------------
++
++// Disable ImGui on pause
++void
++ImGuiSetup::DisableImGuiOnGamePause()
++{
++	ImGuiFunctions imGuiFunctions;
++
++	// First, check if the game is paused, if so disable the menu.
++	// This works right here.
++	// TODO Implement this into ReVC, and Re3.
++	if(imGuiFunctions.ImGuiActive && CTimer::GetIsPaused()) { imGuiFunctions.ImGuiActive = false; }
++}
++
++/// <summary>
++/// Run my imgui DirectX9 init with Win32
++/// </summary>
++/// <param name="window">The HWND for the program.</param>
++void 
++#ifdef _WIN32
++ImGuiSetup::InitImGui(HWND window)
++#else
++ImGuiSetup::InitImGui(std::string window)
++#endif // _WIN32
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	Defines defines = Defines();
++	// Check if the DirectX9 device is valid
++
++#ifdef RW_D3D9
++	if(rw::d3d::d3ddevice == nullptr) {
++		// Handle the error, return
++		TRACE("\nError: DirectX 9 device is null. ImGui initialization failed.\n");
++		return;
++	}
++#elif RW_GL3
++	// TODO Figure out ImGui init for OpenGL.
++	if(!glfwInit()) return;
++
++	ImGui_ImplGlfw_InitForOpenGL(window, true);
++	ImGui_ImplOpenGL3_Init(glsl_version);
++
++#endif
++
++	// Setup ImGui Context, and setup fonts.
++	imGuiFunctions.SetupContext();
++
++	// Setup Dear ImGui style
++	ImGui::StyleColorsDark();
++
++	// Setup the style from the Cheat Menu
++	// https://github.com/user-grinch/Cheat-Menu
++	ImGuiFunctions::ApplyStyle();
++
++	// Fix for the mouse cursor showing on game start
++	ShowCursor(FALSE);
++	SetCursor(nil);
++	//
++
++	// Setup Platform/Renderer backends
++#if defined(_WIN32)
++	ImGui_ImplWin32_Init(window);
++#endif // _WIN32
++
++#if defined(_WIN32) && defined(RW_D3D9)
++	ImGui_ImplDX9_Init(rw::d3d::d3ddevice);
++#else
++#endif
++}
++
++/// <summary>
++/// This doesn't seem to be in use in here.
++/// </summary>
++void
++ImGuiSetup::ShutDownImGui()
++{
++	// Shutdown Imgui, was I forgetting that?
++	// Shutdown DX9 for this and cleanup
++#ifdef _WIN32
++	ImGui_ImplWin32_Shutdown();
++#else
++	// TODO Implement imgui shutdown with OpenGL.
++#endif // _WIN32
++
++#if defined(_WIN32) && defined(RW_D3D9)
++
++	ImGui_ImplDX9_Shutdown();
++#endif // _WIN32 && RW_D3D9
++	
++	ImGui::DestroyContext();
++}
++
++// Function to poll XInput and toggle ImGui window
++/// <summary>
++/// This works, TODO Move this and other imgui functions into ImGuiFunctions out of this file.
++/// TODO Make this work off of a config file, possibly another ini file.
++/// TODO Make this work with OpenGL and for Linux
++/// </summary>
++void
++ImGuiSetup::HandleControllerInput()
++{
++#if defined(_WIN32) && defined(RW_D3D9)
++	XINPUT_STATE state;
++	ZeroMemory(&state, sizeof(XINPUT_STATE));
++
++	// ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	// Well this works? I wasn't expecting it to work like this.
++	ImGuiFunctions imGuiFunctions;
++
++	uint16 button1 = imGuiFunctions.getImGuiButton1();
++	uint16 button2 = imGuiFunctions.getImGuiButton2();
++
++	DWORD result = XInputGetState(0, &state); // Get state of controller 0
++
++	static int newTime = 0;
++
++	if(result == ERROR_SUCCESS) {
++		// Check for button press (e.g., the 'A' button)
++		// if(state.Gamepad.wButtons & XINPUT_GAMEPAD_A
++		//
++		// New test with controller keybinds in 'ViceExtended/ImGui-Controls.ini'
++		// Oops I didn't fully test the menu with this, it somewhat shows up but goes away if I use any DPad button on the menu
++		// Instead of when both buttons are pressed.
++		//
++		// if(state.Gamepad.wButtons & button1
++		//&& state.Gamepad.wButtons & button2 &&
++		//  CTimer::GetTimeInMilliseconds() - newTime > 500) {
++		//
++
++		// Working code
++		if(state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER && state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT &&
++		   CTimer::GetTimeInMilliseconds() - newTime > 500) {
++			//
++			// Reset timer
++			newTime = CTimer::GetTimeInMilliseconds();
++
++			// Toggle ImGui window visibility
++#ifdef NEW_IMGUI_TESTS
++			imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++#else
++			imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++#endif }
++		} else {
++			// Handle controller not connected or error
++			// You might want to display a message or log an error
++		}
++	}
++#endif // #if _WIN32 && RW_D3D9
++}
++
++/// <summary>
++/// This runs the loop for ImGui under GS_PLAYING_GAME
++/// Moved this into its own function
++/// This checks for the keybind being pressed on the keyboard or controller.
++/// Disables the player controls while the menu is open.
++/// </summary>
++// clang-format off
++void ImGuiSetup::ImGuiPlayingGameLoop()
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
++
++	// This works without lua
++	static int newTime = 0;
++
++	// if(KEYDOWN(rsF8) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
++	// This removes the need for the timer, it only runs once per button press
++	// Toggle ImGui
++
++	// Check if this is enabled in the ini config, if so run the keybind.
++	if(gbImGuiToggle) {
++
++		if(KEYJUSTDOWN(rsF8)) {
++			// if(CTRLJUSTDOWN('N')) {
++			// newTime = CTimer::GetTimeInMilliseconds();
++			//  Toggle ImGui
++#ifdef NEW_IMGUI_TESTS
++				imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++#else
++				imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++#endif
++			}
++
++		// Resize check
++		// TODO Figure out how to get this.
++		// This should fix the resize being buggy but other then that this menu seems to work.
++		// if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
++		//         rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
++		//         g_d3dpp.BackBufferHeight = g_ResizeHeight;
++		//         g_ResizeWidth = g_ResizeHeight = 0;
++		//         ResetDevice();
++		//       }
++		
++		// First, check if the game is paused, if so disable the menu.
++		// This works right here.
++		// TODO Implement this into Re3.
++		// TODO Add a config option for this in the ini or something.
++		// 
++		this->DisableImGuiOnGamePause();
++
++		// This works! It toggles with the Xbox controller.
++		// TODO Add config in ini to disable/enable controller input for the menu.
++		this->HandleControllerInput();
++#ifdef NEW_IMGUI_TESTS
++		if(imGuiFunctions.ImGuiActive) {
++#else
++
++		if(!imGuiFunctions.ImGuiDone) {
++#endif
++
++			// Disable the players control and movement.
++			this->DisablePlayerControl();
++
++		} else {
++			// Enable the players control and movement.
++			this->EnablePlayerControl();
++		}
++	}
++}
++
++
++//#endif // CUSTOM_CODE
++
++// clang-format on
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_setup.h b/src/extras/functions/imgui_setup.h
+new file mode 100644
+index 00000000..ea2c0b3a
+--- /dev/null
++++ b/src/extras/functions/imgui_setup.h
+@@ -0,0 +1,34 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++#ifdef _WIN32
++#include <Windows.h>
++#endif // _WIN32
++
++class ImGuiSetup
++{
++public:
++	// Init ImGui, this runs in win.cpp.
++#ifdef _WIN32
++	void InitImGui(HWND window);
++#else
++	// TODO Fix this for other platforms.
++	void InitImGui(std::string window);
++#endif // _WIN32
++	void ShutDownImGui();
++	// This is what allows my menu to be used with a controller.
++	void HandleControllerInput();
++
++	// Run the main loop for ImGui keyboard/mouse input handling, toggling the menu,
++	// disabling camera movement, and running controller input handling.
++	void ImGuiPlayingGameLoop();
++	// Disable ImGui when paused
++	void DisableImGuiOnGamePause();
++
++	// Player control
++	void DisablePlayerControl();
++	void EnablePlayerControl();
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 05df1956..e4938075 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -65,7 +65,7 @@
+ #include "ini_functions.h"
+ 
+ // Needed for ImGui button, it's stored here.
+-//#include "imgui_functions.h"
++#include "imgui_functions.h"
+ 
+ // Needed for Logging the controller values
+ #include "log_functions.h"
+@@ -1277,6 +1277,18 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
+ #endif //_FAST_LOADER
+ 
++#ifdef EXTRA_LOGGING
++	ReadIniIfExists("KCNet", "ExtraLogging", &gbExtraLogging);
++#endif
++
++#ifdef LUA_TEST
++	ReadIniIfExists("KCNet", "LuaTest", &gbLuaTest);
++#endif
++
++#ifdef _IMGUI_TEST
++	ReadIniIfExists("KCNet", "ImGuiMenuToggle", &gbImGuiToggle);
++#endif
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ 	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 07224655..05caf06f 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -689,10 +689,12 @@ MiscFunctions::DisplayCounterImGui()
+ void
+ MiscFunctions::DisplayAreaCheckImGui()
+ {
++#ifdef _TEST
+ 	if(ImGui::Button("Area check test")) 
+ 	{ 
+ 		LogAreaTest(); 
+ 	}
++#endif // _TEST
+ }
+ #endif // _IMGUI_TEST
+ 
+diff --git a/src/extras/menus/about_menu.cpp b/src/extras/menus/about_menu.cpp
+new file mode 100644
+index 00000000..ce59dcc3
+--- /dev/null
++++ b/src/extras/menus/about_menu.cpp
+@@ -0,0 +1,60 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "about_menu.h"
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++#include "Pad.h"
++
++void
++AboutMenu::AboutTab()
++{
++	Defines defines = Defines();
++	std::string menuName = "Menu Name: " + defines.menuName;
++
++	std::string modificationAuthor = "Modification author: " + defines.modificationAuthor;
++	ImGui::Text(modificationAuthor.c_str());
++
++	std::string programVersion = "Program version: " + defines.programVersion;
++	ImGui::Text(programVersion.c_str());
++	
++	std::string logFileName = "Log File Name: " + defines.logFile;
++	ImGui::Text(logFileName.c_str());
++
++	//std::string luaLogFileName = "Lua Log File Name: " + defines.luaLogFile;
++	//ImGui::Text(luaLogFileName.c_str());
++
++	ImGui::Separator();
++	ImGui::Text("Credits");
++
++	std::string credits = "Credit to user-grinch on github for the style, fonts, and the idea for this new ImGui menu.";
++	ImGui::Text(credits.c_str());
++
++	std::string creditsUrl = "Here is a link to the original modification: https://github.com/user-grinch/Cheat-Menu";
++	ImGui::Text(creditsUrl.c_str());
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/about_menu.h b/src/extras/menus/about_menu.h
+new file mode 100644
+index 00000000..0ae6ea94
+--- /dev/null
++++ b/src/extras/menus/about_menu.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++class AboutMenu
++{
++public:
++	void AboutTab();
++};
++
++#endif // _IMGUI_TEST
+diff --git a/src/extras/menus/animation_menu.cpp b/src/extras/menus/animation_menu.cpp
+new file mode 100644
+index 00000000..07a36c5d
+--- /dev/null
++++ b/src/extras/menus/animation_menu.cpp
+@@ -0,0 +1,240 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "animation_menu.h"
++
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++//#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++
++
++// Extended Vice
++// For the animation ids, CPhotoMode::animList
++//#include "PhotoMode.h"
++
++// ReVC
++#include "AnimBlendAssocGroup.h"
++#include "AnimationId.h"
++
++// TODO Possibly use this for playing animations
++#include "AnimManager.h"
++#include "ClumpModelInfo.h"
++#include "RpAnimBlend.h"
++#include "AnimBlendAssociation.h"
++
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Streaming.h"
++
++
++// TODO Replicate animation menu from here:
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/animation.cpp
++
++// Comes from AnimationId enum
++//AnimationId animId = ANIM_ATTACK_1;
++
++
++/// <summary>
++/// I got this to pretty much work now
++/// TODO Test looping features
++/// </summary>
++void
++PlayAttackAnimation(bool loop)
++{
++	CPed *playerPed = FindPlayerPed();
++	if(!playerPed) {
++		return; // Handle error
++	}
++
++	// TODO Test these, from PhotoMode.cpp.
++	//int screwdrvBlock = CAnimManager::GetAnimationBlockIndex("screwdrv");
++	//int golfclubBlock = CAnimManager::GetAnimationBlockIndex("golfclub");
++	//int baseballBlock = CAnimManager::GetAnimationBlockIndex("baseball");
++	//int knifeBlock = CAnimManager::GetAnimationBlockIndex("knife");
++	//int chainsawBlock = CAnimManager::GetAnimationBlockIndex("chainsaw");
++	//int grenadeBlock = CAnimManager::GetAnimationBlockIndex("grenade");
++	//int colt45Block = CAnimManager::GetAnimationBlockIndex("colt45");
++	//int pythonBlock = CAnimManager::GetAnimationBlockIndex("python");
++	//int shotgunBlock = CAnimManager::GetAnimationBlockIndex("shotgun");
++	//int buddyBlock = CAnimManager::GetAnimationBlockIndex("buddy");
++	//int uziBlock = CAnimManager::GetAnimationBlockIndex("uzi");
++	//int rifleBlock = CAnimManager::GetAnimationBlockIndex("rifle");
++	//int flameBlock = CAnimManager::GetAnimationBlockIndex("flame");
++
++	//CStreaming::RequestAnim(flameBlock, STREAMFLAGS_DEPENDENCY);
++
++	//CAnimManager::AddAnimBlockRef(screwdrvBlock);
++	//CAnimManager::AddAnimBlockRef(golfclubBlock);
++	//CAnimManager::AddAnimBlockRef(baseballBlock);
++	//CAnimManager::AddAnimBlockRef(knifeBlock);
++	//CAnimManager::AddAnimBlockRef(chainsawBlock);
++	//CAnimManager::AddAnimBlockRef(grenadeBlock);
++	//CAnimManager::AddAnimBlockRef(colt45Block);
++	//CAnimManager::AddAnimBlockRef(pythonBlock);
++	//CAnimManager::AddAnimBlockRef(shotgunBlock);
++	//CAnimManager::AddAnimBlockRef(buddyBlock);
++	//CAnimManager::AddAnimBlockRef(uziBlock);
++	//CAnimManager::AddAnimBlockRef(rifleBlock);
++	//CAnimManager::AddAnimBlockRef(flameBlock);
++	//
++
++	//CClumpModelInfo *pClump = playerPed->GetClump();
++	RpClump *playerClump = playerPed->GetClump();
++	if(!playerClump) {
++		return; // Handle error
++	}
++
++	CAnimBlendAssociation *pAnimAssoc = RpAnimBlendClumpGetFirstAssociation(playerClump);
++
++	//AssocGroupId animGroup = ASSOCGRP_PLAYER;
++	AssocGroupId animGroup = ASSOCGRP_STD;
++	//eAnimationGroup animGroup = ANIM_GROUP_MOVE;
++	//AnimationId animId = ANIM_ATTACK_1; 
++	//AnimationId animId = ANIM_STD_RUNFAST;
++
++#if defined(GTA3)
++	AnimationId animId = ANIM_STD_RUNFAST;
++#elif defined(GTAVC) && defined(SWIMMING)
++	AnimationId animId = ANIM_STD_SWIM_BREAST; // Swimming animation
++#endif
++
++
++	// TODO See if I can get this to work, possibly recreate this with std::map and AnimationId instead of const int.
++	//AnimationId animId = CPhotoMode::animList[0][0];
++
++
++	// TODO Try this instead of blend animation:
++	// Well combining this and BlendAnimation seems to work.
++	//CAnimManager::AddAnimation(playerClump, animGroup, animId);
++
++	// Moved to below, for pAnimAssoc
++	//CAnimManager::BlendAnimation(playerClump, animGroup, animId, 1000.0f);
++
++	// TODO Figure out how to replicate the loop function from the Cheat Menu, this isn't working so far.
++
++	//pAnimAssoc = CAnimManager::BlendAnimation(playerClump, animGroup, animId, 1000.0f);
++	//pAnimAssoc->flags = ASSOC_RUNNING | ASSOC_MOVEMENT;
++
++	//if(loop) { pAnimAssoc->flags |= ASSOC_REPEAT; }
++}
++
++
++// I copied in the base for this but it would need a lot of work, I wonder if I can do this some other way.
++// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/animation.cpp
++
++#ifdef ANIMATION_TEST
++
++bool
++_LoadAnimationBlock(const char *szBlockName)
++{
++	CAnimBlock *pAnimBlock = CAnimManager::GetAnimationBlock(szBlockName);
++	if(pAnimBlock) {
++		if(!pAnimBlock->bLoaded) {
++			int animIndex = ((unsigned char *)pAnimBlock - (unsigned char *)CAnimManager::ms_aAnimBlocks) / 32;
++			CStreaming::RequestModel(7916 + animIndex, 0x20 | MISSION_REQUIRED | PRIORITY_REQUEST);
++			CStreaming::LoadAllRequestedModels(true);
++			if(pAnimBlock->bLoaded) { return true; }
++		} else {
++			return true;
++		}
++	}
++	return false;
++}
++
++void
++_PlayAnim(RpClump *pClump, int animGroup, int animID, float blend, bool loop, bool secondary)
++{
++	if(animGroup < CAnimManager::ms_numAnimAssocDefinitions) {
++		CAnimationStyleDescriptor *pAnimDef = &CAnimManager::ms_aAnimAssocDefinitions[animGroup];
++		if(pAnimDef) {
++			if(!_LoadAnimationBlock(pAnimDef->blockName)) { return; }
++		}
++	}
++
++	CAnimBlendAssociation *pAnimAssoc = RpAnimBlendClumpGetFirstAssociation(pClump);
++	while(pAnimAssoc) {
++		if(pAnimAssoc->m_nAnimId == animID && pAnimAssoc->m_nAnimGroup == animGroup) {
++			// Destroy the animation
++			pAnimAssoc->~CAnimBlendAssociation();
++			break;
++		}
++		pAnimAssoc = RpAnimBlendGetNextAssociation(pAnimAssoc);
++	}
++	pAnimAssoc = CAnimManager::BlendAnimation(pClump, animGroup, animID, blend);
++	pAnimAssoc->m_nFlags = ANIMATION_STARTED | ANIMATION_MOVEMENT;
++
++	if(loop) { pAnimAssoc->m_nFlags |= ANIMATION_LOOPED; }
++
++	if(secondary) { pAnimAssoc->m_nFlags |= ANIMATION_PARTIAL; }
++}
++
++void
++AnimationMgr::Play(std::string &cat, std::string &anim, std::string &ifp)
++{
++	CPed *pPed = m_bPedAnim ? m_pTarget : FindPlayerPed();
++	if(!pPed) { return; }
++
++	int groupID, animID;
++	sscanf(ifp.c_str(), "%d$%d,", &groupID, &animID);
++	_PlayAnim(pPed->m_pRwClump, groupID, animID, 4.0f, m_Loop, m_bSecondary);
++}
++
++bool
++AnimationMgr::IsTargetFound()
++{
++	return m_bPedAnim && !m_pTarget;
++}
++
++void
++AnimationMgr::StopImmediately(CPed *ped)
++{
++	if(!ped) 
++	{ 
++		return; 
++	}
++
++	_PlayAnim(ped->m_pRwClump, ANIM_GROUP_MAN, ANIM_MAN_IDLE_STANCE, 4.0f, false, false);
++}
++#endif //ANIMATION_TEST
++
++
++bool animLooping = false;
++
++void
++AnimMenu::AnimSubTab()
++{
++	ImGui::Text("Animation tab");
++	ImGui::Text("This somewhat works, it doesn't loop and I don't have a listbox for it yet.");
++
++	ImGui::Checkbox("Loop animation", &animLooping);
++
++	// I got this to somewhat working without crashing
++	// TODO Add a looping option
++	// TODO Add a cancel animation option, unsure of how to do it yet.
++	if (ImGui::Button("Play Test Anim")) 
++	{ 
++		PlayAttackAnimation(animLooping);
++	}
++
++	ImGui::Separator();
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/animation_menu.h b/src/extras/menus/animation_menu.h
+new file mode 100644
+index 00000000..222e7736
+--- /dev/null
++++ b/src/extras/menus/animation_menu.h
+@@ -0,0 +1,10 @@
++#pragma once
++#ifdef _IMGUI_TEST
++
++class AnimMenu
++{
++public:
++	void AnimSubTab();
++};
++
++#endif // _IMGUI_TEST
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+new file mode 100644
+index 00000000..b3a9ea95
+--- /dev/null
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -0,0 +1,270 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "cheat_menu.h"
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "World.h"
++
++
++#include "Pad.h"
++#include "Population.h"
++#include "CarCtrl.h"
++#include "Hud.h"
++#include "Text.h"
++
++// I didn't like the idea of collapsing headers being everywhere so I disabled them in here.
++
++// Booleans
++bool neverWanted = false;
++bool betterHandling = false;
++
++//----------- Pad.cpp items -----------//
++// Well I figured out how to use the built in cheats without copying them
++void
++FastTimeCheat();
++void
++SlowTimeCheat();
++
++// Test this, should be the perfect handling cheat.
++#if defined(GTAVC)
++void
++SpecialCarCheats();
++#endif
++
++//----------- Police -----------//
++
++void
++toggleNeverWanted()
++{
++	if(neverWanted) {
++		PlayerCheats::EnableNeverWanted();
++	} else {
++		PlayerCheats::DisableNeverWanted();
++	}
++}
++
++//----------- Ped Density -----------//
++// If these are false, it should turn off the peds and traffic.
++bool togglePeds = true;
++bool toggleTraffic = true;
++
++void
++togglePedsFunc()
++{
++	if(!togglePeds) 
++	{
++		CPopulation::PedDensityMultiplier = 0.0f;
++		// Peds Disabled
++		CHud::SetHelpMessage(TheText.Get("PED_DIS"), false, false);
++	} else {
++		CPopulation::PedDensityMultiplier = 1.0f;
++		// Peds Enabled
++		CHud::SetHelpMessage(TheText.Get("PED_EN"), false, false);
++	}
++}
++
++void
++toggleTrafficFunc()
++{
++	if (!toggleTraffic)
++	{
++		CCarCtrl::CarDensityMultiplier = 0.0f;
++		// Traffic Disabled
++		CHud::SetHelpMessage(TheText.Get("VEH_DIS"), false, false);
++	} else {
++		CCarCtrl::CarDensityMultiplier = 1.0f;
++		// Traffic Enabled
++		CHud::SetHelpMessage(TheText.Get("VEH_EN"), false, false);
++	}
++}
++
++//----------- Money cheats ----------//
++// Variables for money
++bool customAmount = false;
++
++int defaultMoneyValue = 250000;
++static char moneyBuffer[25] = "";
++
++static int moneyInt = 0;
++// If the players money is shown in the menu.
++bool showPlayerMoney = false;
++
++/// <summary>
++/// Idea obtained from GameLogic, this works well.
++/// </summary>
++/// <returns></returns>
++int32
++GetPlayerMoney()
++{
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	return pPlayerInfo.m_nMoney;
++}
++
++//----------- Ped speech enable/disable ----------//
++// I added this into PedChat - CPed::Say(uint16 audio)
++// TODO Is this needed? I'm doing this in the checkbox already.
++bool pedSpeech = true;
++void
++togglePedSpeech()
++{
++	if(!pedSpeech)
++	{
++		gbPedSpeech = false;
++		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
++	} else {
++		gbPedSpeech = true;
++		CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
++	}
++}
++
++
++//----------- Cheat tab ----------//
++void CheatMenu::CheatTab()
++{
++	//if(ImGui::CollapsingHeader("Weapons")) {
++
++#if defined(GTAVC)
++	ImGui::Text("Weapons");
++
++	if(ImGui::Button("Weapon1")) { CustomCheats::WeaponCheat1(); }
++
++	if(ImGui::Button("Weapon2")) { CustomCheats::WeaponCheat2(); }
++
++	if(ImGui::Button("Weapon3")) { CustomCheats::WeaponCheat3(); }
++#elif defined(GTA3)
++	ImGui::Text("Give weapons");
++	if(ImGui::Button("Weapons")) { CustomCheats::WeaponCheat(); }
++#endif
++
++		if (ImGui::Button("Clear Weapons")) { CustomCheats::RemovePlayerWeapons(); }
++	//}
++
++	// Money cheats
++
++	ImGui::Separator();
++	//if(ImGui::CollapsingHeader("Money")) {
++
++		ImGui::Text("Money");
++		// This input int works well, got the idea from imgui_demo.cpp.
++		ImGui::InputInt("Amount of Money", &moneyInt);
++		// ImGui::InputText("Amount of Money", moneyBuffer, IM_ARRAYSIZE(moneyBuffer));
++		//
++
++		ImGui::Text("If custom amount isn't set, it gives you the default cheat amount of $250,000");
++	    ImGui::Checkbox("Custom amount", &customAmount);
++		// if (ImGui::Checkbox("Custom amount", &customAmount)) {
++		//	toggleCustomAmount();
++		// }
++
++		if(ImGui::Button("Give Money")) {
++			if(customAmount) {
++				CustomCheats::MoneyCheat(moneyInt);
++			} else {
++				CustomCheats::MoneyCheat(defaultMoneyValue);
++			}
++		}
++	    ImGui::SameLine();
++
++		if(ImGui::Button("Take Money")) {
++			 CustomCheats::RemoveMoneyAmount(moneyInt); 
++		}
++	    
++		ImGui::SameLine();
++
++		if(ImGui::Button("Reset Money")) { 
++			CustomCheats::SetMoneyToZero(); 
++		}
++
++		// Show the players current money on the screen.
++		ImGui::Checkbox("Show money", &showPlayerMoney);
++
++		if(showPlayerMoney) {
++			std::string totalMoney = "$" + std::to_string(GetPlayerMoney());
++
++			ImGui::Text(totalMoney.c_str());
++		}
++	//}
++
++	ImGui::Separator();
++
++	// Police cheats
++	//if(ImGui::CollapsingHeader("Police")) {
++
++		ImGui::Text("Police");
++
++		if(ImGui::Button("Raise Wanted Level")) { PlayerCheats::RaiseWantedLevel(); }
++
++		if(ImGui::Button("Lower Wanted Level")) { PlayerCheats::LowerWantedLevel(); }
++
++		// ImGui::Checkbox("Never wanted", &neverWanted);
++		if(ImGui::Checkbox("Never wanted", &neverWanted)) { toggleNeverWanted(); }
++	//}
++
++	// Time cheats
++	ImGui::Separator();
++
++	//if(ImGui::CollapsingHeader("Time")) {
++
++		ImGui::Text("Time");
++
++		if(ImGui::Button("Faster time")) { FastTimeCheat(); }
++
++		if(ImGui::Button("Slower time")) { SlowTimeCheat(); }
++	//}
++
++	// Density cheats
++	ImGui::Separator();
++	
++	//if(ImGui::CollapsingHeader("Population density")) {
++		ImGui::Text("Population density");
++
++		if(ImGui::Checkbox("Toggle peds", &togglePeds)) { togglePedsFunc(); }
++
++		if(ImGui::Checkbox("Toggle traffic", &toggleTraffic)) { toggleTrafficFunc(); }
++	//}
++
++	//if (ImGui::CollapsingHeader("Misc"))
++	//{
++		// Ped speech
++		ImGui::Text("Ped talking toggle");
++
++		//if(ImGui::Checkbox("Toggle Ped Speech", &pedSpeech)) { togglePedSpeech(); }
++	    ImGui::Checkbox("Toggle Ped Speech", &gbPedSpeech);
++
++
++	    
++		// TODO Fix this to work, I can't turn it back off.
++		//if(ImGui::Checkbox("Toggle Better Handling", &betterHandling)) 
++		//{ 
++		//		SpecialCarCheats();
++		//}
++	//}
++
++
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/cheat_menu.h b/src/extras/menus/cheat_menu.h
+new file mode 100644
+index 00000000..5fe6f1f7
+--- /dev/null
++++ b/src/extras/menus/cheat_menu.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++class CheatMenu
++{
++public:
++	void CheatTab();
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/game_menu.cpp b/src/extras/menus/game_menu.cpp
+new file mode 100644
+index 00000000..e6c92244
+--- /dev/null
++++ b/src/extras/menus/game_menu.cpp
+@@ -0,0 +1,251 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "game_menu.h"
++
++// https://stackoverflow.com/questions/22744262/cant-call-stdmax-because-minwindef-h-defines-max
++// Fix for std::min and std::max
++#ifdef _WIN32
++#define NOMINMAX
++#endif // _WIN32
++
++#include "imgui.h"
++#include <algorithm> // For std::min
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "garage_functions.h"
++
++#include "player_cheats.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "World.h"
++
++
++#include "Pad.h"
++#include "Population.h"
++#include "CarCtrl.h"
++#include "Hud.h"
++#include "Text.h"
++
++#include "Weather.h"
++#include "Time.h"
++#include "Clock.h"
++
++#include "Garages.h"
++
++
++// Booleans
++// Set the time frozen status
++bool timeFrozen = false;
++
++void
++GameMenu::EnableFreezeTime()
++{
++	gbFreezeTime = true;
++}
++
++
++void
++GameMenu::DisableFreezeTime()
++{
++	gbFreezeTime = false;
++}
++
++void
++GameMenu::ToggleFreezeTime()
++{
++	if (timeFrozen) 
++	{ 
++		EnableFreezeTime();
++	} else 
++	{
++		DisableFreezeTime();
++	}
++
++}
++
++/// <summary>
++/// Set the game time
++/// TODO Move this into game_functions
++/// </summary>
++/// <param name="hour"></param>
++/// <param name="minute"></param>
++void
++GameMenu::SetTime(int hour, int minute)
++{
++	CClock::ms_nGameClockHours = hour;
++	CClock::ms_nGameClockMinutes = minute;
++
++}
++
++int gameMenuHour = 0;
++int gameMenuMinute = 0;
++
++// clang-format off
++void
++GameMenu::GameTab()
++{
++	GarageFunctions garageFunctions = GarageFunctions();
++
++	if(ImGui::CollapsingHeader("Weather")) {
++
++		ImGui::Text("Weather");
++		if(ImGui::Button("Sunny")) {
++			// CWeather::ForceWeather(WEATHER_SUNNY);
++			CWeather::ForceWeatherNow(WEATHER_SUNNY);
++		}
++
++		ImGui::SameLine();
++
++#if defined(GTAVC)
++		if(ImGui::Button("Extra Sunny")) { CWeather::ForceWeatherNow(WEATHER_EXTRA_SUNNY); }
++#endif
++		if(ImGui::Button("Cloudy")) { CWeather::ForceWeatherNow(WEATHER_CLOUDY); }
++
++		ImGui::SameLine();
++
++		if(ImGui::Button("Foggy")) { CWeather::ForceWeatherNow(WEATHER_FOGGY); }
++
++#if defined(GTAVC)
++		if(ImGui::Button("Extra Colors")) { CWeather::ForceWeatherNow(WEATHER_EXTRACOLOURS); }
++#endif
++		if(ImGui::Button("Rainy")) { CWeather::ForceWeatherNow(WEATHER_RAINY); }
++#if defined(GTAVC)
++		ImGui::SameLine();
++
++		if(ImGui::Button("Hurricane")) { CWeather::ForceWeatherNow(WEATHER_HURRICANE); }
++#endif
++	}
++
++	if (ImGui::CollapsingHeader("Time")) { 
++		ImGui::Text("Time");
++
++		ImGui::Text("Hour max: 23, Minute max: 59");
++		// TODO Come up with a better solution for this.
++		ImGuiFunctions::InputIntClamp("Hour", &gameMenuHour, 1, 10, 0, 23);
++
++		ImGuiFunctions::InputIntClamp("Minute", &gameMenuMinute, 1, 10, 0, 59);
++
++		if (ImGui::Button("Set time")) { 
++			// Check for invalid values
++			if(gameMenuHour > 23 || gameMenuHour < 0 || gameMenuMinute > 59 || gameMenuMinute < 0) return;
++
++			SetTime(gameMenuHour, gameMenuMinute);
++		}
++
++		if(ImGui::Checkbox("Freeze time", &timeFrozen)) 
++		{ 
++			ToggleFreezeTime();
++		}
++
++		ImGui::Separator();
++
++		if(ImGui::Button("Day")) 
++		{ 
++			SetTime(8, 0);
++		}
++
++		if (ImGui::Button("Night"))
++		{
++			SetTime(23, 0);
++		}
++	}
++
++	if (ImGui::CollapsingHeader("Garages")) 
++	{ 
++		ImGui::Text("This doesn't work yet.");
++		ImGui::Text("Garages");
++#if defined(GTAVC)
++		ImGui::Text("Ids from here: https://docs.sannybuilder.com/scm-documentation/vc/garages");
++#endif
++
++		// Temporary for now.
++#if defined(GTAVC)
++		if (ImGui::Button("Teleport to garage 16"))
++		{
++			CVector garage16Pos = CVector(443.4f, 639.6f, 11.2f);
++#elif defined(GTALCS)
++		if(ImGui::Button("Teleport to hideout 1")) 
++		{
++			CVector garage16Pos = CVector(1157.6f, -258.1f, 17.5f);
++#endif
++		
++			PlayerCheats::SetPlayerPosition(garage16Pos.x, garage16Pos.y, garage16Pos.z);
++			
++		}
++
++#if defined(GTAVC)
++		if (ImGui::Button("Deactivate garage 16")) 
++#elif defined(GTALCS)
++		if (ImGui::Button("Deactivate hideout 1"))
++#endif
++		{ 
++			//garageFunctions.DeactivateGarage(GARAGE_HIDEOUT_ONE);
++			// TODO Test this, seems to enable the garages in the scripts.
++			garageFunctions.ChangeGarageType(GARAGE_HIDEOUT_ONE, GARAGE_NONE, 0);
++		}
++
++		ImGui::SameLine();
++
++
++#if defined(GTAVC)
++		if(ImGui::Button("Activate garage 16")) 
++#elif defined(GTALCS)
++		if(ImGui::Button("Activate hideout 1"))
++#endif
++		{ 
++			//garageFunctions.ActivateGarage(GARAGE_HIDEOUT_ONE);
++			garageFunctions.ChangeGarageType(GARAGE_HIDEOUT_ONE, GARAGE_MISSION, 0);
++		}
++
++
++		// Well these don't seem to work.
++#if defined(GTAVC)
++		if(ImGui::Button("Open garage 16")) 
++#elif defined(GTALCS)
++		if(ImGui::Button("Open hideout 1"))
++#endif
++		{ 
++			garageFunctions.OpenGarage(GARAGE_HIDEOUT_ONE);
++		}
++
++		ImGui::SameLine();
++
++#if defined(GTAVC)
++		if (ImGui::Button("Close garage 16"))
++#elif defined(GTALCS)
++		if(ImGui::Button("Close hideout 1"))
++#endif
++		{ 
++			//garageFunctions.CloseGarage(GARAGE_HIDEOUT_ONE);
++
++		}
++
++
++	}
++
++}
++
++// clang-format on
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/game_menu.h b/src/extras/menus/game_menu.h
+new file mode 100644
+index 00000000..7a996443
+--- /dev/null
++++ b/src/extras/menus/game_menu.h
+@@ -0,0 +1,20 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++class GameMenu
++{
++
++private:
++	void EnableFreezeTime();
++	void DisableFreezeTime();
++
++public:
++	void GameTab();
++
++	// TODO Move into game_functions.cpp.
++	void SetTime(int hour, int minute);
++	void ToggleFreezeTime();
++};
++
++#endif // _IMGUI_TEST
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+new file mode 100644
+index 00000000..5942169a
+--- /dev/null
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -0,0 +1,302 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "imgui_main_menu.h"
++#include "imgui.h"
++
++#include <iomanip>
++
++// Lua test
++#ifdef _LUA_TEST
++#include "lua_test.h"
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++#endif // LUA_TEST
++//
++
++#include <iostream>
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++// Menus
++#include "warp_menu.h"
++#include "vehicle_menu.h"
++
++#include "cheat_menu.h"
++#include "player_menu.h"
++#include "misc_menu.h"
++#include "about_menu.h"
++#include "ped_menu.h"
++
++#include "game_menu.h"
++#include "animation_menu.h"
++//
++
++
++#include "model_ids.h"
++
++#include "defines.h"
++//
++
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Pad.h"
++
++// Enable the new sub tabs in this file.
++// TODO Refactor these a bit
++#define NEW_SUB_TABS
++
++// TODO Setup config file from Cheat Menu
++
++//DataStore gConfig = DataStore(FILE_NAME, true);
++
++// Test
++// TODO What are these for?
++int selectedIndex = 0;
++bool showMainMenuBar = false;
++// Test from debug_functions.cpp
++
++//
++
++// Enable this to enable menu movement and resize, it has some bad screen tearing.
++// Seems to work fine on ReLCS for some reason though.
++#if defined(GTALCS)
++bool menuMovingEnabled = true;
++#else
++bool menuMovingEnabled = false;
++
++#endif
++
++
++
++// I have moved most of these menus into their own files under src/extras/menus
++
++void
++toggleSecondWindow()
++{
++	if(ImGuiFunctions::ShowSecondWindow) {
++		ImGuiFunctions::ShowSecondWindow = false;
++	} else {
++		ImGuiFunctions::ShowSecondWindow = true;
++	}
++}
++
++//bool ImGuiMenus::ShowWindow2;
++//bool ImGuiMenus::ShowWindow2 = false;
++//
++//void
++//ShowDemoWindow()
++//{
++//	
++//}
++//
++//// This is disabled in the code.
++//void
++//Window2()
++//{
++//	//ImGui::Begin("Another Window", &show_another_window); // Pass a pointer to our bool variable (the window will have a closing button that
++//	ImGui::Begin("Another Window", &ImGuiMenus::ShowWindow2); // Pass a pointer to our bool variable (the window will have a closing button that
++//	                                                      // will clear the bool when clicked)
++//	ImGui::Text("Hello from another window!");
++//	//if(ImGui::Button("Close Me")) show_another_window = false;
++//	if(ImGui::Button("Close Me")) 
++//		ImGuiMenus::ShowWindow2 = false;
++//	ImGui::End();
++//}
++
++
++
++/// <summary>
++/// This is the test window that shows up.
++/// </summary>
++/// <param name="clear_color">This is the ImVec4 value for colors, mine is set to (0.45f, 0.55f, 0.60f, 1.00f)</param>
++void
++//ImGuiMenus::Menu::MainMenu(ImVec4 clear_color)
++ImGuiMenus::MainMenu(ImVec4 clear_color)
++{
++	ImGuiIO io;
++	static float f = 0.0f;
++	static int counter = 0;
++
++	PlayerCheats playerCheats = PlayerCheats();
++	Defines defines = Defines();
++
++	WarpMenu warpMenu = WarpMenu();
++	VehicleMenu vehicleMenu = VehicleMenu();
++	PlayerMenu playerMenu = PlayerMenu();
++	CheatMenu cheatMenu = CheatMenu();
++	MiscMenu miscMenu = MiscMenu();
++	AboutMenu aboutMenu = AboutMenu();
++	PedMenu pedMenu = PedMenu();
++
++	GameMenu gameMenu = GameMenu();
++	AnimMenu animMenu = AnimMenu();
++
++	CVector playerCoords = FindPlayerPed()->GetPosition();
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++	
++	// https://stackoverflow.com/questions/16691617/removing-some-digits-after-decimal-point-in-c
++	// Well this removes all the numbers
++	// TODO Make this only remove 3 numbers after the decimal.
++	//playerX = (double)((int)playerX * 100) / 100;
++
++
++	// This will fix the window movement being glitchy for now, but it cannot be moved around anymore.
++
++	// Test for setting menu position
++	// Set the initial position of the window (e.g., 100 pixels from the left, 200 pixels from the top)
++	//ImGui::SetNextWindowPos(ImVec2(600, 400), ImGuiCond_FirstUseEver);
++	// Set the position every frame
++	// This works
++	//ImGui::SetNextWindowPos(ImVec2(200, 175), ImGuiCond_Always);
++
++
++	// I added a toggle to enable/disable moving of the window.
++	if (menuMovingEnabled)
++	{ 
++		ImGui::Begin(Defines::imGuiMenuName.c_str(), nullptr);
++	} else 
++	{
++		ImGui::Begin(Defines::imGuiMenuName.c_str(), nullptr, ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
++	}
++	//
++	// TODO Fix ImGui window movement, then I'll enable this.
++	
++
++	if (ImGui::BeginTabBar("Functions")) {
++
++		// Player
++		if (ImGui::BeginTabItem("Player")) {
++			// TODO Setup this for multiple sub tabs, could be useful for something like vehicle spawners and stuff.
++			// This seems to work
++			// 
++			// ImGui sub tabs.
++			// Well I got this working so far.
++#ifdef NEW_SUB_TABS
++			if (ImGui::BeginTabBar("Test")) {
++				if (ImGui::BeginTabItem("Player"))
++				{ 
++					playerMenu.PlayerTab();
++					ImGui::EndTabItem();
++				}
++				// TODO Fix animation menu.
++				if(ImGui::BeginTabItem("Animation")) 
++				{ 
++					animMenu.AnimSubTab();
++					ImGui::EndTabItem(); 
++				}
++
++				// End test tab
++				ImGui::EndTabBar();
++				
++			}
++#else
++			// Original tab item
++			playerMenu.PlayerTab();
++#endif
++
++
++
++			ImGui::EndTabItem();
++		}
++
++
++		// Vehicle
++		if (ImGui::BeginTabItem("Vehicle")) {
++			vehicleMenu.VehicleTab();
++
++			ImGui::EndTabItem();
++		}
++
++		// Cheats
++		if (ImGui::BeginTabItem("Cheats")) {
++			cheatMenu.CheatTab();
++
++			ImGui::EndTabItem();
++		}
++
++		// Warps
++
++#ifdef NEW_WARP_TEST
++		
++		std::cout << defines.KcLogString << "g_gameInstance set to in imgui_main_menu.cpp: " << g_gameInstance << std::endl;
++		if(g_gameInstance) {
++
++#endif
++
++			if(ImGui::BeginTabItem("Warps")) {
++#ifdef NEW_WARP_TEST
++				warpMenu.WarpTab(*g_gameInstance);
++#else
++				warpMenu.WarpTab();
++#endif
++
++				ImGui::EndTabItem();
++			}
++
++#ifdef NEW_WARP_TEST
++		}
++		#endif
++
++		// Game
++		if(ImGui::BeginTabItem("Game")) { 
++			gameMenu.GameTab();
++			
++			ImGui::EndTabItem();
++		}
++
++		// Misc
++		if(ImGui::BeginTabItem("Misc")) { 
++			miscMenu.MiscTab();
++
++			ImGui::EndTabItem();
++		}
++
++		// Ped menu
++		// Need to work on this one a bit more, disabled
++		//if(ImGui::BeginTabItem("Peds")) { 
++		//	pedMenu.PedTab();
++		//	
++		//	ImGui::EndTabItem();
++		//}
++
++		// About
++		if(ImGui::BeginTabItem("About")) { 
++			aboutMenu.AboutTab();
++
++			ImGui::EndTabItem();
++		}
++
++		ImGui::EndTabBar();
++	}
++
++	ImGui::End();
++
++	// 3. Show another simple window.
++	// TODO Fix this to work like this, could be useful for something
++	//if(ImGuiMenus::ShowWindow2) { 
++	//	Window2();
++	//}
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/imgui_main_menu.h b/src/extras/menus/imgui_main_menu.h
+new file mode 100644
+index 00000000..7dc4f708
+--- /dev/null
++++ b/src/extras/menus/imgui_main_menu.h
+@@ -0,0 +1,28 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++#include "imgui.h"
++
++//namespace ImGuiMenus
++//{
++//	// TODO Setup toggle for demo window
++//	
++//
++//	namespace Menu
++//	{
++//	void
++//	MainMenu(ImVec4 clear_color);
++//
++//	
++//	}
++//}
++
++class ImGuiMenus
++{
++public:
++
++	void MainMenu(ImVec4 clear_color);
++	bool ShowWindow2;
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+new file mode 100644
+index 00000000..bf6cc65f
+--- /dev/null
++++ b/src/extras/menus/misc_menu.cpp
+@@ -0,0 +1,865 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "misc_menu.h"
++#include "imgui.h"
++#include "imgui_defines.h"
++
++// TODO Move some of these into the pch later!
++// Mostly my custom functions and extras needed for ReVC, so I don't have to find them everytime.
++
++// Menus
++#include "imgui_main_menu.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++// Game functions
++#include "vehicle_functions.h"
++#include "log_functions.h"
++#include "misc_functions.h"
++
++// Spawning a ped so far, doesn't work.
++#include "ped_functions.h"
++#include "ini_functions.h"
++
++// ImGui command system
++#include "imgui_commands.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++// Util
++#include "player_util.h"
++#include "message_util.h"
++#include "misc_util.h"
++
++// For area check command reimplementation
++//#include "area_check_test.h"
++
++// TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
++#ifdef PLUGIN_SDK_TEST
++#include "../test/scriptcommands_test.h"
++#endif
++
++// ReVC
++#include "ControllerConfig.h"
++#include "Pad.h"
++
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Physical.h"
++
++#include "Frontend.h"
++#include "Text.h"
++
++#include "Script.h"
++
++// CUserDisplay
++#include "User.h"
++
++// Set help message and more.
++#include "Hud.h"
++
++// For getting the PlayerInfo
++#include "World.h"
++
++// For getting the time cycles
++#include "Timecycle.h"
++
++// Extras
++#include <iostream>
++#include <vector>
++//#include <format>
++
++#include <string>
++#include <locale>
++#include <codecvt>
++
++
++
++// TODO Move into a utilites file
++#include <direct.h>
++
++// Added ICU library from here for these:
++// https://github.com/unicode-org/icu/releases/tag/release-77-1
++// https://unicode-org.github.io/icu/download/77.html
++// Added these includes in Visual Studio 2022:
++// ..\lib\icu\source\common
++// ..\lib\icu\source\io
++// These seem to break the build so I disabled them for now.
++//#include <unicode/unistr.h>
++//#include <unicode/ustream.h>
++#include <cstdint>
++
++//#include "toml_imgui.h"
++
++#include "Automobile.h"
++
++//#ifdef LOG_DLL_TEST
++//// TODO Test this in here
++//// New log functions, in dll
++//// I had to reconfigure the dll_log_headers and add some init for it to win.cpp.
++//#include "dll_log_headers.h"
++//
++//// New logging functions
++//// #include "dll_log_headers.h"
++////
++//#include "logging.h"
++//
++//#endif // LOG_DLL_TEST
++
++
++// This will toggle the controller button that is shown in ImGui
++bool toggleControllerText = false;
++
++// Display the timer bar test for my future chaos mod.
++bool timerBarTest = false;
++
++// Toggle the test for the mobile radio
++bool mobileRadioTest = false;
++
++ // Timecyc stuff
++static int m_nTimecycHour = 8;
++static std::vector<std::string> m_WeatherNames {
++
++	"SUNNY", "CLOUDY", "RAINY", "FOGGY"
++
++	,
++    "EXTRA_SUNNY",
++    "HURRICANE",
++    "EXTRACOLORS"};
++
++#define TOTAL_WEATHERS 7
++
++// TODO Replicate this function from the Cheat Menu
++//template <typename T>
++//int
++//GetTCVal(T *addr, int index)
++//{
++//#ifdef GTASA
++//	T *arr = static_cast<T *>(patch::GetPointer(int(addr)));
++//#else
++//	T *arr = static_cast<T *>(addr);
++//#endif
++//	return static_cast<int>(arr[index]);
++//}
++
++// TODO Replicate this function from the Cheat Menu
++//static void
++//GenerateTimecycFile()
++//{
++//	std::ofstream file = std::ofstream("timecyc.dat");
++//
++//	for(uint16 i = 0; i < TOTAL_WEATHERS; ++i) {
++//		std::string buffer;
++//		switch(i) {
++//		case 0: buffer = "\n// SUNNY\n"; break;
++//		case 1: buffer = "\n// CLOUDY\n"; break;
++//		case 2: buffer = "\n// RAINY\n"; break;
++//		case 3: buffer = "\n// FOGGY\n";
++//		case 4: buffer = "\n// EXTRA SUNNY\n";
++//		case 5: buffer = "\n// HURRICANE\n";
++//		case 6:
++//			buffer = "\n// EXTRA COLORS (INTERIORS)\n// These colours do not belong to a weather type but can be set by the level designers for "
++//			         "interiors.\n";
++//		}
++//
++//		buffer += "// Amb     Amb_Obj    Amb_bl     Amb_Obj_bl	   Dir          Sky top			Sky bot		SunCore 		"
++//		          "SunCorona   SunSz  SprSz	SprBght Shdw LightShd  PoleShd 	FarClp 	 FogSt 	LightOnGround	LowCloudsRGB TopCloudRGB "
++//		          "BottomCloudRGB		BlurRGB					WaterRGBA";
++//
++//
++//		file << buffer << std::endl;
++//
++//		        for(size_t j = 0; j < 24; ++j) {
++//					std::stringstream ss;   // Use stringstream for each line.
++//					std::string linePrefix; // Store the prefix for each line.
++//
++//			if(i == 6) // EXTRA COLORS
++//			{
++//				buffer = "// Extra Color " + std::to_string(j);
++//
++//				static std::string intNames[] = {"Maibu Club",     "Strip Club",     "Hotel",       "Bank",
++//				                                 "Police HQ",      "Mall",           "Rifle Range", "Mansion",
++//				                                 "Dirtring",       "Blood ring",     "Hotring",     "Concert Hall",
++//				                                 "Auntie Poulets", "Intro at Docks", "Biker Bar",   "Intro Cafe Dark Room",
++//				                                 "Studio"};
++//
++//				if(j < 18) 
++//				{ 
++//					buffer += "(" + intNames[j] + ")"; 
++//				}
++//			} 
++//			else 
++//			{
++//				buffer = "// " + std::to_string(j) + " ";
++//				if(j < 12) {
++//					buffer += "AM\n";
++//				} else {
++//					buffer += "PM\n";
++//				}
++//
++//			}
++//
++//			size_t val = TOTAL_WEATHERS * i + j;
++//			//buffer += std::format(
++//			//    "{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{} "
++//			//    "{} {}\t{} {} {}\t{} {} {}\t{} {} {}\t{} {} {} {}",
++//			//    GetTCVal(m_nAmbientRed, val), GetTCVal(m_nAmbientGreen, val), GetTCVal(m_nAmbientBlue, val), GetTCVal(m_nAmbientRed_Obj, val),
++//			//    GetTCVal(m_nAmbientGreen_Obj, val), GetTCVal(m_nAmbientBlue_Obj, val), GetTCVal(m_nAmbientBlRed, val),
++//			//    GetTCVal(m_nAmbientBlGreen, val), GetTCVal(m_nAmbientBlBlue, val), GetTCVal(m_nAmbientBlRed_Obj, val),
++//			//    GetTCVal(m_nAmbientBlGreen_Obj, val), GetTCVal(m_nAmbientBlBlue_Obj, val), GetTCVal(m_nDirRed, val), GetTCVal(m_nDirGreen, val),
++//			//    GetTCVal(m_nDirBlue, val), GetTCVal(m_nSkyTopRed, val), GetTCVal(m_nSkyTopGreen, val), GetTCVal(m_nSkyTopBlue, val),
++//			//    GetTCVal(m_nSkyBottomRed, val), GetTCVal(m_nSkyBottomGreen, val), GetTCVal(m_nSkyBottomBlue, val), GetTCVal(m_nSunCoreRed, val),
++//			//    GetTCVal(m_nSunCoreGreen, val), GetTCVal(m_nSunCoreBlue, val), GetTCVal(m_nSunCoronaRed, val), GetTCVal(m_nSunCoronaGreen, val),
++//			//    GetTCVal(m_nSunCoronaBlue, val), GetTCVal(m_fSunSize, val) / 10.0f, GetTCVal(m_fSpriteSize, val) / 10.0f,
++//			//    GetTCVal(m_fSpriteBrightness, val) / 10.0f, GetTCVal(m_nShadowStrength, val), GetTCVal(m_nLightShadowStrength, val),
++//			//    GetTCVal(m_nPoleShadowStrength, val), GetTCVal(m_fFarClip, val), GetTCVal(m_fFogStart, val),
++//			//    GetTCVal(m_fLightsOnGroundBrightness, val) / 10.0f, GetTCVal(m_nLowCloudsRed, val), GetTCVal(m_nLowCloudsGreen, val),
++//			//    GetTCVal(m_nLowCloudsBlue, val), GetTCVal(m_nTopCloudsRed, val), GetTCVal(m_nTopCloudsGreen, val), GetTCVal(m_nTopCloudsBlue, val),
++//			//    GetTCVal(m_nBottomCloudsRed, val), GetTCVal(m_nBottomCloudsGreen, val), GetTCVal(m_nBottomCloudsBlue, val),
++//			//    GetTCVal(m_nBlurRed, val), GetTCVal(m_nBlurGreen, val), GetTCVal(m_nBlurBlue, val), GetTCVal(m_fWaterRed, val),
++//			//    GetTCVal(m_fWaterGreen, val), GetTCVal(m_fWaterBlue, val), GetTCVal(m_fWaterAlpha, val));
++//
++//			
++//			// Well I'll need to remap these to using the internal names, and replicate the GetTCVal function
++//			// 
++//			//m_fCurrentAmbientBlue
++//			ss << GetTCVal(CTimeCycle::GetAmbientRed, val) << " " << GetTCVal(CTimeCycle::GetAmbientGreen, val) << " "
++//			   << GetTCVal(CTimeCycle::GetAmbientBlue, val) << "\t" << GetTCVal(CTimeCycle::GetAmbientRed_Obj, val) << " "
++//			   << GetTCVal(CTimeCycle::GetAmbientGreen_Obj, val) << " " << GetTCVal(CTimeCycle::GetAmbientBlue_Obj, val)
++//			   << "\t"
++//			   //<< GetTCVal(m_nAmbientBlRed, val) << " " << GetTCVal(m_nAmbientBlGreen, val) << " " << GetTCVal(m_nAmbientBlBlue, val) << "\t"
++//			   << GetTCVal(CTimeCycle::GetAmbientRed_Bl, val) << " " << GetTCVal(CTimeCycle::GetAmbientGreen_Bl, val) << " "
++//			   << GetTCVal(CTimeCycle::GetAmbientBlue_Bl, val)
++//			   << "\t"
++//
++//			   
++//			   << GetTCVal(CTimeCycle::GetAmbientRed_Obj_Bl, val) << " " << GetTCVal(CTimeCycle::GetAmbientGreen_Obj_Bl, val) << " " << GetTCVal(CTimeCycle::GetAmbientBlue_Obj_Bl, val);
++//			// TODO Finish this.   
++//			//<< "\t" << GetTCVal(m_nDirRed, val) << " " << GetTCVal(m_nDirGreen, val) << " " << GetTCVal(m_nDirBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSkyTopRed, val) << " " << GetTCVal(m_nSkyTopGreen, val) << " " << GetTCVal(m_nSkyTopBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSkyBottomRed, val) << " " << GetTCVal(m_nSkyBottomGreen, val) << " " << GetTCVal(m_nSkyBottomBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSunCoreRed, val) << " " << GetTCVal(m_nSunCoreGreen, val) << " " << GetTCVal(m_nSunCoreBlue, val) << "\t"
++//			   //<< GetTCVal(m_nSunCoronaRed, val) << " " << GetTCVal(m_nSunCoronaGreen, val) << " " << GetTCVal(m_nSunCoronaBlue, val) << "\t"
++//			   //<< GetTCVal(m_fSunSize, val) / 10.0f << "\t" << GetTCVal(m_fSpriteSize, val) / 10.0f << "\t"
++//			   //<< GetTCVal(m_fSpriteBrightness, val) / 10.0f << "\t" << GetTCVal(m_nShadowStrength, val) << "\t"
++//			   //<< GetTCVal(m_nLightShadowStrength, val) << "\t" << GetTCVal(m_nPoleShadowStrength, val) << "\t" << GetTCVal(m_fFarClip, val) << "\t"
++//			   //<< GetTCVal(m_fFogStart, val) << "\t" << GetTCVal(m_fLightsOnGroundBrightness, val) / 10.0f << "\t" << GetTCVal(m_nLowCloudsRed, val)
++//			   //<< " " << GetTCVal(m_nLowCloudsGreen, val) << " " << GetTCVal(m_nLowCloudsBlue, val) << "\t" << GetTCVal(m_nTopCloudsRed, val) << " "
++//			   //<< GetTCVal(m_nTopCloudsGreen, val) << " " << GetTCVal(m_nTopCloudsBlue, val) << "\t" << GetTCVal(m_nBottomCloudsRed, val) << " "
++//			   //<< GetTCVal(m_nBottomCloudsGreen, val) << " " << GetTCVal(m_nBottomCloudsBlue, val) << "\t" << GetTCVal(m_nBlurRed, val) << " "
++//			   //<< GetTCVal(m_nBlurGreen, val) << " " << GetTCVal(m_nBlurBlue, val) << "\t" << GetTCVal(m_fWaterRed, val) << " "
++//			   //<< GetTCVal(m_fWaterGreen, val) << " " << GetTCVal(m_fWaterBlue, val) << " " << GetTCVal(m_fWaterAlpha, val);
++//
++//
++//			file << buffer << std::endl;
++//
++//		}
++//	}
++//}
++
++// TODO Figure out how to replicate this
++
++
++// This didn't show anything, just showed 0.
++void
++MiscMenu::LogJoyButtonJustDown()
++{
++	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
++	int controllerButton = cControllerConfigManager.GetJoyButtonJustDown();
++
++	std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
++	LogFunctions::LogInfo(defines.logFile, controllerButtonMessage);
++
++}
++
++void
++MiscMenu::ClearAreaAroundPlayer(int radius)
++{
++	CustomCheats customCheats = CustomCheats();
++	customCheats.ClearItemsFromArea(radius);
++}
++
++bool customHelpMessageToggle = false;
++
++static int radiusToClear = 0;
++
++// TODO Test these
++
++//-------- String to wchar conversion  ----------//
++// For CHud and other stuff
++//std::vector<uint16_t>
++//stringToUtf16(const std::string &str)
++//{
++//	icu::UnicodeString ustr = icu::UnicodeString::fromUTF8(str);
++//	std::vector<uint16_t> utf16;
++//	int32_t length = ustr.length();
++//	utf16.resize(length);
++//	for(int32_t i = 0; i < length; ++i) { utf16[i] = ustr.get(i); }
++//	return utf16;
++//}
++
++//std::string
++//utf16ToString(const std::vector<uint16_t> &utf16)
++//{
++//	icu::UnicodeString ustr(reinterpret_cast<const UChar *>(utf16.data()), utf16.size());
++//	std::string str;
++//	ustr.toUTF8String(str);
++//	return str;
++//}
++//
++//std::vector<uint16_t>
++//createVectorFromWchar(const uint16_t *data, size_t size)
++//{
++//	return std::vector<uint16_t>(data, data + size);
++//}
++
++void playerTest()
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++	//pPlayer->IsPedDoingDriveByShooting();
++	
++}
++
++// Blip test
++int blipHandle = 0;
++
++// TODO Move into ImGui functions if i get this working.
++// Test for excluding characters in the text box for imgui
++//unsigned int
++int
++CharFilterCallback(ImGuiInputTextCallbackData *data)
++{
++	if(data->EventChar == '~') {
++		return 0; // Exclude '~'
++	}
++	return data->EventChar; // Allow other characters
++}
++
++
++/// <summary>
++/// TODO Fix this to work, should block the '~' symbol from the textbox which crashes the game if drawn.
++/// TODO Move into ImGui functions
++/// </summary>
++void
++ImguiTextboxWithCharFilterAndVector()
++{
++	static std::vector<char> buffer(41); // 40 characters + null terminator.
++
++	// Copy the current text from MiscMenu into the buffer:
++	std::string currentText = MiscFunctions::GetInstance().getTestText();
++	std::strncpy(buffer.data(), currentText.c_str(), 40);
++	buffer[40] = '\0'; // Ensure null termination
++
++	// Use ImGui::InputText to get input
++	if(ImGui::InputText("Test text", buffer.data(), 41,
++	                    ImGuiInputTextFlags_CallbackCharFilter | ImGuiInputTextFlags_EnterReturnsTrue, // Add EnterReturnsTrue for post-filtering
++	                    CharFilterCallback)) {
++		// Input text changed (e.g., Enter was pressed)
++
++		// 1. Post-Filtering (Remove unwanted characters)
++		std::string inputString(buffer.data());
++		inputString.erase(std::remove(inputString.begin(), inputString.end(), '~'), inputString.end());
++
++		// 2. Update buffer and MiscMenu
++		std::strncpy(buffer.data(), inputString.c_str(), 40);
++		buffer[40] = '\0'; // Ensure null termination
++
++		MiscFunctions::GetInstance().setTestText(inputString);
++
++		std::cout << "Input after filtering: " << inputString << std::endl;
++	}
++}
++//
++
++/// <summary>
++/// TODO Reimplement COMMAND_LOAD_AND_LAUNCH_MISSION_INTERNAL
++/// </summary>
++void
++loadAndLaunchMissionInternal()
++{
++
++}
++
++
++
++/// <summary>
++/// This works for playing a sound.
++/// Well it was working.
++/// TODO Fix this
++/// </summary>
++//void
++//playSoundTest()
++//{
++//	CPhysical cPhysical = CPhysical();
++//	CPlayerPed *pPlayer = FindPlayerPed();
++//	//DMAudio.PlayOneShot(cPhysical.m_audioEntityId, SOUND_CAR_WINDSHIELD_CRACK, 0.0f);
++//	if (pPlayer) { 
++//		int32 audioEntityId = pPlayer->m_audioEntityId;
++//		DMAudio.PlayOneShot(audioEntityId, SOUND_WEAPON_SHOT_FIRED, 3.0f);
++//	}
++//	
++//}
++
++//
++
++//----------- Misc tab ----------//
++void MiscMenu::MiscTab()
++{
++	PedFunctions pedFunctions = PedFunctions();
++	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
++#ifdef TOML_TEST
++	TomlImGui tomlImgui = TomlImGui();
++#endif //TOML_TEST
++
++#ifdef LOG_CLASS_TEST
++	Logger logger = Logger();
++#endif
++
++	ImGuiCommands imGuiCommands = ImGuiCommands();
++	MiscMenu miscMenu = MiscMenu();
++	//IniFunctions iniFunctions = IniFunctions();
++	PlayerCheats playerCheats = PlayerCheats();
++	PlayerUtil playerUtil = PlayerUtil();
++
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++	MiscUtil miscUtil = MiscUtil();
++	
++
++	ImGui::Text("Sounds");
++	// This works, plays the bridge announcement sounds, 1 is open and 2 is close.
++	if(ImGui::Button("Play bridge open")) 
++	{ 
++		CustomCheats::PlayAnnouncementTest(1); 
++	}
++	
++	if(ImGui::Button("Play bridge closed")) 
++	{ 
++		CustomCheats::PlayAnnouncementTest(2); 
++	}
++
++	// TODO Fix this
++	//if(ImGui::Button("Play sound test")) 
++	//{ 
++		//playSoundTest(); 
++	//}
++
++	// TODO Setup radius for this
++
++	ImGui::Separator();
++
++	ImGui::Text("Clear area");
++
++	// Well this works, it doesn't have a slider on it for some reason though.
++	//ImGui::DragInt("Clear area amount", &radiusToClear, 1);
++	// Got this from here https://github.com/ocornut/imgui/blob/master/imgui_demo.cpp#L927
++	//ImGui::DragInt("Clear area amount", &radiusToClear, 1, 1, 80, "%d", ImGuiSliderFlags_WrapAround);
++	ImGui::InputInt("Clear area amount", &radiusToClear);
++	
++	std::string radiusText = "Radius: " + std::to_string(radiusToClear);
++	ImGui::Text(radiusText.c_str());
++
++	if (ImGui::Button("Clear area")) { 
++		ClearAreaAroundPlayer(radiusToClear);
++	}
++
++	ImGui::Separator();
++	if(ImGui::CollapsingHeader("Debug Functions")) {
++		ImGui::Text("Debug functions");
++
++		// I have disabled this for now, broke it when moving into its own function.
++		// ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
++
++		// Display position from debug menu
++		miscFunctions.TogglePositionImGui();
++
++		// Toggle the version text like in the debug menu.
++		miscFunctions.ToggleVersionTextImGui();
++
++		// Use ImGui::InputText to get input
++		// Draw the KCNet Test text box from C++.
++		// DrawKCNetTextBox();
++		miscFunctions.DrawKCNetTextBoxImGui();
++
++		// if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText))
++		//{
++		//	// TODO Fix this to not show up if the other texts are active
++		//	if(!drawKcNetText && !gbDisplayPosn)
++		//		//toggleVersionText();
++		//		ToggleVersionText();
++		// }
++
++		// Show current directory toggle
++		miscFunctions.ShowCurrentDirectory();
++
++		// This works
++		imGuiFunctions.OpenCurrentDirectoryButton("Open game directory");
++		ImGui::SameLine();
++
++		// TODO Fix this, should open a custom directory.
++		// imGuiFunctions.OpenDirectoryButton("/ViceExtended/logs", "Open logs directory");
++		std::string currentDir = imGuiFunctions.GetCurrentWorkingDirectory() + "/ViceExtended/logs/";
++		imGuiFunctions.OpenDirectoryButton(currentDir.c_str(), "Open logs directory");
++
++		// Well this shows up but only when the menu is open, if I can get this to change with time
++		// and stay up, I could make a basic chaos mod test for random events.
++		// It goes away if the menu goes away, I'll probably need to put it somewhere like FrontendIdle, Idle, or DoRWStuffEndOfFrame.
++		ImGui::Checkbox("Timer bar toggle", &timerBarTest);
++
++		// This works if I have the toggle disabled in the function
++		// Well now, this works with a toggle if i put the toggle in here
++		if(timerBarTest) {
++			// This works fine.
++			miscFunctions.setChaosTimerBarToggle(timerBarTest);
++			// This below doesn't work
++			// TODO Fix this to work.
++			// MiscFunctions::GetInstance().setChaosTimerBarToggle(timerBarTest);
++			miscFunctions.TimerBarTest();
++		}
++
++		// Display the memory address to the player health as a test:
++		if(ImGui::Button("Display player health addr")) {
++			// miscUtil.DisplayPlayerHealthMemAddress();
++			miscUtil.TestHealthOffset();
++		}
++
++		IMGUITEXT("Check if in interior in cout");
++		if (IMGUIBUTTON("Interior check"))
++		{ 
++			if (PlayerCheats::IsPlayerInInterior())
++			{ 
++				std::cout << Defines::KcLogString << "You are in an interior." << std::endl;
++			} else {
++				std::cout << Defines::KcLogString << "You are not in an interior." << std::endl;
++			}
++			
++		}
++
++		//IMGUI_CHECKBOX()
++		//ImGui::Checkbox("Mobile radio", &mobileRadioTest);
++
++		//if (mobileRadioTest) 
++		//{ 
++		//	miscUtil.ToggleMobileRadio(mobileRadioTest);
++		//}
++
++		IMGUITEXT("These do not work!");
++		IMGUI_BEGIN_DISABLED();
++		if (IMGUIBUTTON("Turn on mobile radio")) 
++		{ 
++			miscUtil.ToggleMobileRadio(true);
++		}
++
++		if(IMGUIBUTTON("Turn off mobile radio")) 
++		{ 
++			miscUtil.ToggleMobileRadio(false);
++		}
++
++		IMGUI_END_DISABLED();
++
++		// TODO Fix this
++		//IMGUITEXT("Toggle radio in police vehicles");
++		//IMGUI_SAMELINE();
++		// This works but when turned off the radio stays on until the car is exited.
++		// TODO Fix this to revert back to the police radio, I don't hear it anymore
++		//IMGUI_CHECKBOX("Toggle", &gbPoliceRadioToggle);
++		
++
++		// TODO Fix this to work, it doesn't for some reason.
++#ifdef LOG_CLASS_TEST
++		IMGUITEXT("Log with dll test");
++		if (IMGUIBUTTON("Log dll value"))
++		{ 
++			logger.info(Defines::logFile, "Test");
++		}
++#endif
++
++		//
++	}
++	//
++
++	ImGui::Separator();
++	ImGui::Text("Other tests");
++
++
++#if defined(GTAVC)
++	if (ImGui::CollapsingHeader("Radar and hud hiding.")) { 
++		// Hud toggle
++		miscFunctions.ShowHudToggle();
++		ImGui::Separator();
++		
++		// Radar toggle
++		miscFunctions.ShowRadarToggle();
++		ImGui::Separator();
++	}
++#endif	
++
++	// Show a test counter on the screen like in the scripts, the text works, but this doesn't do anything yet.
++	miscFunctions.DisplayCounterImGui();
++
++	// Display if the player is in a specific area, log it to the logs.
++	// TODO Make this show to the screen 'Player is in area' or 'Player is not in area'
++	miscFunctions.DisplayAreaCheckImGui();
++
++
++	// This should display a custom message on the screen like cleo redux
++	// This works but crashes if there are too many characters input at once.
++	// Oh it tries to go off the screen
++	//static char customTextBuf[200] = "";
++	// TODO Figure out how to make this split up the text on multiple lines, this crashes somewhere after 16
++	static char customTextBuf[16] = "";
++
++
++	ImGui::InputText("Custom text", customTextBuf, sizeof(customTextBuf));
++	if (ImGui::Button("Custom help msg")) {
++		CustomCheats::CustomHelpMessage(customTextBuf);
++	}
++
++#if defined(GTAVC)
++	//ImGui::Text("Logs the memory address to the player health");
++	//if (ImGui::Button("Player health mem addr")) 
++	//{ 
++	//	displayPlayerHealthMemAddress();
++	//}
++#endif
++
++	IMGUITEXT("For now, I have disabled this.");
++	IMGUITEXT("I need to fine tune it a bit.");
++	IMGUI_BEGIN_DISABLED();
++
++	IMGUITEXT("Test for saving the game");
++	IMGUITEXT("For now saves to slot 3.");
++
++	if (IMGUIBUTTON("Save Game")) 
++	{ 
++		miscUtil.SaveGame(3);
++	}
++
++	IMGUI_END_DISABLED();
++
++
++	//---------------
++	// Ped stuff
++	//---------------
++
++	ImGui::Separator();
++
++	if(ImGui::CollapsingHeader("Ped stuff")) {
++		ImGui::Separator();
++
++		ImGui::Text("I will be testing running stuff on multiple peds at once.");
++		if(ImGui::Button("Kill peds in area")) 
++		{
++			miscUtil.KillAllPedsInArea(); 
++		}
++
++		ImGui::Text("Misc ped testing");
++		if (ImGui::Button("Ped test")) 
++		{ 
++			miscUtil.TestPedFeatures();
++		}
++
++
++		ImGui::Text("Objective testing");
++		// TODO Setup checkbox for toggling this value
++		
++		IMGUITEXT("Give peds in area weapons.");
++		IMGUITEXT("Set the peds in the area to kill player.");
++		if (ImGui::Button("Set objective #1")) 
++		{
++			pedFunctions.PedObjectiveTest(true, true);
++		}
++	}
++
++	//
++
++	ImGui::Separator();
++	// Fun functions
++	if(ImGui::CollapsingHeader("Fun functions")) {
++
++		ImGui::Text("Fun functions");
++
++		if(ImGui::Button("Drop bomb")) { CustomCheats::ExplosionCheat(); }
++
++		// Display some text from the american.gxt file in game.
++		if(ImGui::Button("Text test")) {
++			std::string message = "test";
++			std::wstring_convert<std::codecvt_utf8<wchar>> converter;
++
++			// wchar test = std::to_wstring("L");
++
++			const size_t size = strlen(message.c_str()) + 1;
++			// wchar_t *wc = new wchar_t[size];
++			wchar *wc = new wchar[size];
++
++			// utf16ToString(TheText.Get("KCCARUK"));
++			wchar *carUnlockText = TheText.Get("KCCARUK");
++
++			// CHud::SetHelpMessage(carUnlockText, false, false);
++			MessageUtil::SetMessage(carUnlockText);
++
++			// Some of this breaks it.
++			// std::wstring_convert<std::codecvt_utf8<wchar>> converter;
++			// std::wstring wide_string = converter.from_bytes(*carUnlockText);
++			// std::string regular_string = utf16ToString(wide_string);
++
++			// LogFunctions::LogInfo(defines.logFile, createVectorFromWchar(TheText.Get("KCCARUK"), sizeof(TheText.Get("KCCARUK"));
++			// LogFunctions::LogInfo(defines.logFile, wide_string);
++			//  mbstowcs(wc, message.c_str(), size);
++			// CHud::SetHelpMessage(wc, false, false);
++			// CHud::SetHelpMessage(converter.from_bytes(message), false, false);
++		}
++
++
++		ImGui::Text("This creates a minigun pickup near the player");
++		if (ImGui::Button("Minigun pickup")) 
++		{ 
++			miscFunctions.CreateWeaponPickup(MI_MINIGUN2);
++		}
++
++	}
++
++
++
++	// Run the test command system for ImGui.
++	// This works fairly well, I can add chat commands like in minecraft.
++	imGuiCommands.ImGuiCommandSystem();
++
++	// Temporary test, works when running the game with
++	// the '-console' argument
++	//if(ImGui::Button("Cout test")) { 
++	//	std::cout << "Test in cout with ReVC" << std::endl;
++	//}
++
++	// TODO Fix this to work, I can add a blip just not remove it.
++	 //ImGui::Separator();
++	 //ImGui::Text("Set blip on player coords");
++
++	 //// Well this works for putting a blip where the player is
++	 //if (ImGui::Button("Blip coords test"))
++	 //{
++		// // Set value to new handle
++		// //blipHandle = 3;
++		//
++		// int handle = playerUtil.AddBlipForPos(playerUtil.PlayerCoords(), blipHandle);
++		// blipHandle = handle;
++
++		// LogFunctions::LogInfo(defines.logFile, "Blip handle Added: " + std::to_string(blipHandle));
++		// //playerUtil.AddBlipForPos(playerUtil.PlayerCoords(), blipHandle);
++	 //}
++
++	 //// This doesn't remove the blip though.
++	 //// TODO Fix this later
++	 //if (ImGui::Button("Remove blip test")) 
++	 //{ 
++		// //LogFunctions::LogInfo(defines.logFile, "Blip handle: " + std::to_string(blipHandle));
++		// playerUtil.RemoveBlip(blipHandle);
++		// // Reset value
++		// //blipHandle = 0;
++		// LogFunctions::LogInfo(defines.logFile, "Blip handle Removed: " + std::to_string(blipHandle));
++	 //}
++
++	//ImGui::Separator();
++	//ImGui::Text("Warp test");
++
++	// This actually works! Now to separate the button so I can have multiple of these.
++	// I converted the locations.toml from the Cheat Menu to an ini.
++	// This doesn't show all the warps though just a few for now so I disabled it for now.
++	//iniFunctions.RenderWarpList(playerCheats, defines.warpsIniFile, "Ammunation");
++
++	// Run the test command system in lua for ImGui
++
++	//imGuiCommands.ImGuiCommandSystemLua();
++
++
++// Disable this for now, I would like to use the toml files like Cheat Menu for customization outside of the C++ code.
++#undef TOML_TEST
++#ifdef TOML_TEST
++	if (ImGui::Button("Toml test"))
++	{ 
++		tomlImgui.LogTest();
++	}
++#endif
++
++	//if(ImGui::Checkbox("Custom text", &customHelpMessageToggle))
++	//{
++	//}
++
++	// This was just for testing.
++	//ImGui::Separator();
++	//ImGui::Text("Test functions");
++
++	//ImGui::Text("defines.luaScript Value: ");
++	//std::string luaFileName = "Lua file: " + defines.luaScript;
++	//ImGui::Text(luaFileName.c_str());
++
++	//if (ImGui::Button("Log Button pressed")) 
++	//{ 
++	//	logJoyButtonJustDown();
++	//}
++
++	//ImGui::Checkbox("Toggle controller text", &toggleControllerText);
++	//
++	//		
++
++	//if(toggleControllerText) { 
++
++	//	// This didn't work either.
++	//	if(ControlsManager.m_aButtonStates[rsPADDPADRIGHT] == true) { ImGui::Text("Right DPad button pressed"); }
++		
++		// Well this didn't do anything.
++		//if(&CControllerState::CheckForInput) {
++		//	ImGui::Text("Input detected for CControllerState");
++		//    } else {
++		//		ImGui::Text("Input not detected for CControllerState");
++		//	}
++
++		// TODO Figure out how to get the controller button, check if RB + DPAD Right is pressed and toggle ImGui menu.
++		// The controller works in it.
++		//std::string controllerButtonStr = "Controller Button: " + std::to_string(controllerButton);
++		//ImGui::Text(controllerButtonStr.c_str());
++	//}
++
++//#ifdef PLUGIN_SDK_TEST
++//	ImGui::Text("Plugin sdk test");
++//	if(ImGui::Button("Blow up player")) 
++//	{ 
++//		CommandTest1();
++//	}
++//#endif
++
++	// TODO Test this
++	// Well this didn't do anything
++	//if(ImGui::Button("Save Game")) { 
++	//	FrontEndMenuManager.m_nCurrScreen = MENUPAGE_CHOOSE_SAVE_SLOT;
++	//}
++
++	// if (ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow)) {
++	//if(ImGuiFunctions::ShowSecondWindow) {
++	//	ImGuiFunctions::ShowSecondWindow = true;
++	//} else {
++	//	ImGuiFunctions::ShowSecondWindow = false;
++	// 
++	
++	// TODO Fix this to work
++	//if(ImGuiMenus::ShowWindow2) {
++	//	ImGuiMenus::ShowWindow2 = true;
++	//} else {
++	//	ImGuiMenus::ShowWindow2 = false;
++	//}
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/misc_menu.h b/src/extras/menus/misc_menu.h
+new file mode 100644
+index 00000000..a606265a
+--- /dev/null
++++ b/src/extras/menus/misc_menu.h
+@@ -0,0 +1,24 @@
++#pragma once
++
++#include <string>
++#include "defines.h"
++#include "misc_functions.h"
++
++#ifdef _IMGUI_TEST
++
++class MiscMenu
++{
++private:
++	std::string m_testText;
++	Defines defines;
++	MiscFunctions miscFunctions;
++
++	void LogJoyButtonJustDown();
++
++	// TODO Move into player_util.cpp.
++	void ClearAreaAroundPlayer(int radius);
++public:
++	void MiscTab();
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+new file mode 100644
+index 00000000..adbb74f0
+--- /dev/null
++++ b/src/extras/menus/ped_menu.cpp
+@@ -0,0 +1,62 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "ped_menu.h"
++
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++#include "ped_functions.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "World.h"
++
++
++#include "Pad.h"
++#include "Population.h"
++#include "CarCtrl.h"
++#include "Hud.h"
++#include "Text.h"
++
++
++
++/// <summary>
++/// Show the ped tab, disabled in imgui_main_menu.cpp
++/// </summary>
++void
++PedMenu::PedTab()
++{
++	PedFunctions pedFunctions = PedFunctions();
++
++	//----------- Ped Spawning -----------//
++	// This is broken, and needs to be worked on.
++	ImGui::Text("This is broken, doesn't work.");
++	ImGui::Text("Ped spawner");
++	if(ImGui::Button("Spawn ped")) { 
++		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, 12);
++		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, 20);
++		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, MI_BFOBE);
++		pedFunctions.CreatePed(PEDTYPE_CRIMINAL, MI_BFOBE);
++	}
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/ped_menu.h b/src/extras/menus/ped_menu.h
+new file mode 100644
+index 00000000..1b32fe9f
+--- /dev/null
++++ b/src/extras/menus/ped_menu.h
+@@ -0,0 +1,11 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++class PedMenu
++{
++public:
++	void PedTab();
++};
++
++#endif // _IMGUI_TEST
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+new file mode 100644
+index 00000000..84e982b2
+--- /dev/null
++++ b/src/extras/menus/player_menu.cpp
+@@ -0,0 +1,313 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "player_menu.h"
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++//#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++// Player
++bool infiniteHealth = false;
++bool infiniteSprint = false;
++bool getOutOfHospitalFree = false;
++bool getOutOfJailFree = false;
++
++/// <summary>
++/// Toggle for infinite health.
++/// </summary>
++void
++PlayerMenu::ToggleInfiniteHealth()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(infiniteHealth) {
++		playerCheats.EnableInfiniteHealth();
++	} else {
++		playerCheats.DisableInfiniteHealth();
++	}
++}
++
++/// <summary>
++/// Toggle for infinite sprint.
++/// </summary>
++void
++PlayerMenu::ToggleInfiniteSprint()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if (infiniteSprint) 
++	{ 
++		playerCheats.EnableInfiniteSprint();
++	} else {
++		playerCheats.DisableInfiniteSprint();
++	}
++}
++
++/// <summary>
++/// Toggle get out of hospital free.
++/// This sets toggles losing money when death.
++/// TODO See if this also makes you lose weapons when wasted.
++/// </summary>
++void
++PlayerMenu::ToggleGetOfHospitalFree()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(getOutOfHospitalFree) { 
++		playerCheats.EnableGetOutOfHospitalFree();
++	} else {
++		playerCheats.DisableGetOutOfHospitalFree();
++	}
++
++}
++
++/// <summary>
++/// Toggle get out of jail free.
++/// This sets toggles losing money when busted.
++/// TODO See if this also makes you lose weapons when busted.
++/// </summary>
++void
++PlayerMenu::ToggleGetOfJailFree()
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	if(getOutOfJailFree) 
++	{ 
++		playerCheats.EnableGetOutOfJailFree();
++	} else {
++		playerCheats.DisableGetOutOfJailFree();
++	}
++}
++
++// clang-format off
++
++#if defined(GTAVC)
++std::map<std::string, const char*> skinsMap = {
++	// Special
++	{"Sonny Forelli", "IGSonny"},			{"Alex Shrub", "IGalscb"},
++	{"Lance Normal", "IGbuddy"},					{"Lance Cop", "IGBudy2"},		{"Lance Beaten Up", "IGBudy3"},
++	{"Candy Suxxx", "IGCandy"},				{"Colonel Cortez", "IGColon"},	{"Ricardo Diaz", "IGDiaz"},
++	{"Dick (Lovefist)", "IGDick"},			{"Gonzalez", "IGGonz"},			{"Hilary", "IGHlary"},
++	{"Hilary (Bank Mission)", "IGHlry2"},	{"Jezz Torrent", "IGJezz"},		{"Ken Rosenberg", "IGKen"},
++	{"Mercedes", "IGMerc"},					{"Mercedes (purple dress)", "IGMerc2"},    {"Cam Jones", "IGmike"},
++	{"Cam Jones (Bank Mission)", "IGMike2"},	{"Percy (Lovefist)", "IGPercy"},
++	{"Phil (Injured)", "IGphil2"}, {"Phil (Bank Mission)", "IGphil3"}, {"Phil Cassidy", "IGPhil"},
++
++	// Misc
++	{"Chef", "Chef"}, {"Fsfa", "FSFA"}, {"Courier", "COURIER"},
++	{"Sgc", "SGC"}, {"Psycho", "PSYCHO"}, {"Striper", "STRIPA"},
++};
++#endif
++
++// clang-format on
++
++/// <summary>
++/// Menu for changing the players clothes.
++/// </summary>
++void
++PlayerMenu::ChangeClothesMenu()
++{
++	static int selectedItem = 0;
++	std::vector<std::string> displayNames;
++
++	// This works, moved the clothesMap into player_util.
++	const std::map<std::string, const char *> &clothesMap = PlayerUtil::GetClothesMap();
++	//
++
++	for(const auto &pair : clothesMap) 
++	{ 
++		displayNames.push_back(pair.first); 
++	}
++
++	std::vector<const char *> clothes;
++	for(const auto &name : displayNames) { 
++		clothes.push_back(name.c_str()); 
++	}
++
++	// Possible fix for the size_t to int warning
++	int clothesSize = 0;
++	if (clothes.size() <= INT_MAX)
++	{ 
++		clothesSize = static_cast<int>(clothes.size());
++	} else 
++	{
++
++		// This shouldn't need to be too high of a number
++		clothesSize = 45;
++	}
++
++
++	ImGui::Separator();
++	if(ImGui::CollapsingHeader("Clothes")) {
++
++		ImGui::Text("Select clothes");
++
++
++		//ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothes.size());
++		// Possible fix for the size_t to int warning
++		ImGui::ListBox("Clothes", &selectedItem, clothes.data(), clothesSize);
++
++		if(ImGui::Button("Change Clothes")) { // Add the button
++			if(selectedItem >= 0 && selectedItem < clothes.size()) {
++				std::string selectedDisplayName = displayNames[selectedItem];
++				// TODO Revert if crash
++				//const char *internalName = clothesMap[selectedDisplayName];
++
++				const char *internalName = PlayerUtil::GetClothingSetName(selectedDisplayName);
++				playerUtil.ChangeClothes(internalName);
++			}
++		}
++
++		if(ImGui::Button("Reset to default")) {
++			std::string defaultClothesName = displayNames[0];
++			// TODO Test this
++			//playerUtil.ChangeClothes(clothesMap[defaultClothesName]);
++			playerUtil.ChangeClothes("Player");
++		}
++	}
++}
++
++/// <summary>
++/// Menu for changing the players skins.
++/// </summary>
++#if defined(GTAVC)
++void
++PlayerMenu::ChangeSkinsMenu()
++{
++	static int selectedItem = 0;
++	std::vector<std::string> displayNames;
++	for(const auto &pair : skinsMap) 
++	{ 
++		displayNames.push_back(pair.first); 
++	}
++
++	std::vector<const char *> skins;
++	for(const auto &name : displayNames) { 
++		skins.push_back(name.c_str()); 
++	}
++
++	// Possible fix for the size_t to int warning
++	int skinsSize = 0;
++	if(skins.size() <= INT_MAX) {
++		skinsSize = static_cast<int>(skins.size());
++	} else {
++
++		// This shouldn't need to be too high of a number
++		skinsSize = 45;
++	}
++
++	ImGui::Separator();
++	if(ImGui::CollapsingHeader("Skins")) {
++
++		ImGui::Text("Select skin");
++
++		//ImGui::ListBox("Skins", &selectedItem, skins.data(), skins.size());
++		// Possible fix for the size_t to int warning
++		ImGui::ListBox("Skins", &selectedItem, skins.data(), skinsSize);
++
++		if(ImGui::Button("Change Skins")) { // Add the button
++			if(selectedItem >= 0 && selectedItem < skins.size()) {
++				std::string selectedDisplayName = displayNames[selectedItem];
++				const char *internalName = skinsMap[selectedDisplayName];
++				playerUtil.ChangeClothes(internalName);
++			}
++		}
++	
++		if(ImGui::Button("Reset to default")) { 
++			std::string defaultClothesName = displayNames[0];
++			// TODO Fix this to work, might not grab the right value in the skin menu.
++			//playerUtil.ChangeClothes(clothesMap[defaultClothesName]);
++			playerUtil.ChangeClothes("Player");
++		}
++	}
++
++
++}
++#endif
++
++
++
++/// <summary>
++/// Player tab Menu
++/// </summary>
++void
++PlayerMenu::PlayerTab()
++{
++	if(ImGui::Button("Heal")) 
++	{ 
++		PlayerCheats::HealPlayer(); 
++	}
++
++	ImGui::SameLine();
++
++	if(ImGui::Button("Suicide")) { 
++		
++		int amountOfExplosions = 5;
++		// Well this is fun, makes the player fly around a bit.
++		//int amountOfExplosions = 20;
++		// How the hell does this not crash it?
++		//int amountOfExplosions = 50;
++		// Seems like above 100 it somewhat stops doing anything.
++		//int amountOfExplosions = 100;
++
++		PlayerCheats::SuicideCheat();
++		// Sometimes the player doesn't die from this.. I'll just cause some mayhem
++		// This seems to finish the player off, now it's a true suicide cheat.
++		//for (int i = 0; i < 5; i++)
++		for (int i = 0; i < amountOfExplosions; i++)
++		{ 
++			CustomCheats::ExplosionCheat();
++		}
++		
++	}
++
++	if(ImGui::Checkbox("Infinite health", &infiniteHealth)) 
++	{ 
++		ToggleInfiniteHealth(); 
++	}
++
++	if(ImGui::Checkbox("Infinite sprint", &infiniteSprint)) 
++	{ 
++		ToggleInfiniteSprint(); 
++	}
++
++	ImGui::Text("For not having to pay when getting out of hospital and getting busted.");
++	// TODO Make these not take away weapons when dying/getting busted.
++
++	if(ImGui::Checkbox("Get out of hospital free", &getOutOfHospitalFree)) 
++	{ 
++		ToggleGetOfHospitalFree(); 
++	}
++
++	if(ImGui::Checkbox("Get out of jail free", &getOutOfJailFree)) 
++	{ 
++		ToggleGetOfJailFree(); 
++	}
++
++	// Change the players clothes.
++	ChangeClothesMenu();
++
++#if defined(GTAVC)
++	// Change the players skins
++	ChangeSkinsMenu();
++#endif
++
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/player_menu.h b/src/extras/menus/player_menu.h
+new file mode 100644
+index 00000000..61082bd4
+--- /dev/null
++++ b/src/extras/menus/player_menu.h
+@@ -0,0 +1,26 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++#include "player_cheats.h"
++#include "player_util.h"
++
++class PlayerMenu
++{
++private:
++	PlayerCheats playerCheats;
++	PlayerUtil playerUtil;
++
++	void ChangeClothesMenu();
++	void ChangeSkinsMenu();
++
++public:
++	void PlayerTab();
++	void ToggleInfiniteHealth();
++	void ToggleInfiniteSprint();
++
++	void ToggleGetOfHospitalFree();
++	void ToggleGetOfJailFree();
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+new file mode 100644
+index 00000000..4ffebbdd
+--- /dev/null
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -0,0 +1,406 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "vehicle_menu.h"
++#include "imgui.h"
++
++// Add shortcuts for ImGui colors, and a lot of other ImGui commands
++#include "imgui_defines.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++#include "player_util.h"
++
++// Vehicle spawner menu, put into its own file.
++#include "vehicle_spawn_menu.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Automobile.h"
++#include "Garages.h"
++
++// Vehicle
++// Moved into function
++//bool highVehicleMass = false;
++bool vehicleInvincible = false;
++
++// Set if the tank can blow up vehicles when hitting them, defaults to true.
++bool tankBlowUpCars = true;
++
++void
++toggleVehicleInvincible()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		if(vehicleInvincible) {
++			VehicleCheats::EnableVehicleInvincibility(currentVeh);
++		} else {
++			VehicleCheats::DisableVehicleInvincibility(currentVeh);
++		}
++	}
++}
++
++// This gets set in the function to the original value
++float vehicleMassOld = 0.0f;
++float vehicleTurnMassOld = 0.0f;
++
++/// <summary>
++/// Well, I created a bug with the high mass lol. I made a fun effect
++/// TODO Figure out how to reset this back to default
++/// TODO Figure out how to get these values from lua... Use my lua_test.cpp
++/// This is fun, I fixed the toggle to work on this function.
++/// </summary>
++void
++toggleHighVehicleMass(bool toggle)
++{
++	//LuaTest luaTest = LuaTest();
++
++	//// Test for lua
++	//lua_State *L = luaL_newstate();
++	//luaL_openlibs(L);
++
++	// This makes the vehicle super strong
++	float vehicleMass = 30000.0f;
++
++	// Well I created the spinny effect but sadly it crashes after a minute.
++	// This creates the spinny effect like from the reddit post I saw.
++	float vehicleTurnMass = 4.0f;
++
++	// This gives off an error too.
++	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) {
++	//	lua_getglobal(L, "vehicle_mass");
++	//	if(lua_isnumber(L, 1)) {
++	//		//if(luaTest.CheckLua(L, 1)) {
++	//			float vehicleMass = (float)lua_tonumber(L, 1);
++	//			TRACE("Vehicle mass: %f", vehicleMass);
++	//		//}
++	//	}
++	//}
++
++	// lua_close(L);
++
++	// Well this just gives off an error
++	// TODO Figure out how to fix this..
++	//
++	//	float vehicleMass = lua_tonumber(L, 1);
++	//	TRACE("VehicleMass: %f", vehicleMass);
++	//}
++	//
++	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua")))
++	//{
++
++	//}
++
++	//
++
++	CPlayerPed *pPed = FindPlayerPed();
++
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++
++		//if(highVehicleMass) {
++		if(toggle) {
++			// Set the old values, to be re-used
++			vehicleMassOld = currentVeh->m_fMass;
++			vehicleTurnMassOld = currentVeh->m_fTurnMass;
++			// currentVeh->m_fMass = 10000000.0f;
++
++			// currentVeh->m_fMass = 10000.0f;
++
++			// Set the new values
++			// This makes the vehicle super strong
++			currentVeh->m_fMass = vehicleMass;
++
++			// Spinny effect
++			currentVeh->m_fTurnMass = vehicleTurnMass;
++			log_output("Crazy handling enabled for vehicle.");
++		} 
++		else 
++		{
++			// First check if the values are valid
++			if(vehicleMassOld != 0.0f && vehicleTurnMassOld != 0.0f) 
++			{
++				// Set the turn mass and mass back to normal
++				currentVeh->m_fMass = vehicleMassOld;
++				currentVeh->m_fTurnMass = vehicleTurnMassOld;
++
++				log_output("Crazy handling disabled for vehicle.");
++			}
++		}
++	}
++}
++
++// This gets set in the function to the original value
++float engineAccelerationOld = 0.0f;
++void
++toggleFastVehicle(bool toggle)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) { 
++		CVehicle *currentVeh = pPed->m_pMyVehicle;
++		if (toggle) {
++			// Set the old engine acceleration value
++			engineAccelerationOld = currentVeh->pHandling->Transmission.fEngineAcceleration;
++			// Update the current value
++
++			currentVeh->pHandling->Transmission.fEngineAcceleration = 1000.0f;
++			log_output("New handling: 1000.0f");
++
++		} else {
++			// Fix back to original value stored
++			if (engineAccelerationOld != 0.0f)
++			{ 
++				currentVeh->pHandling->Transmission.fEngineAcceleration = engineAccelerationOld;
++				std::cout << Defines::KcLogString << "Engine acceleration set back to " << engineAccelerationOld << std::endl;
++			}
++		}
++		
++	
++	}
++}
++
++
++
++/// <summary>
++/// This should unlock all cars in the area, sets this to the player coords + the values set below.
++/// </summary>
++/// <param name="leftBottomX"></param>
++/// <param name="leftBottomY"></param>
++/// <param name="topRightX"></param>
++/// <param name="topRightY"></param>
++void
++unlockCarsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY)
++{
++	CPlayerPed *pPlayer = FindPlayerPed();
++	CVector pPlayerCoords = pPlayer->GetPosition();
++	leftBottomX = pPlayerCoords.x - leftBottomX;
++	leftBottomY = pPlayerCoords.y - leftBottomY;
++	
++	topRightX = pPlayerCoords.y + topRightX;
++	topRightY = pPlayerCoords.y + topRightY;
++
++	VehicleFunctions::UnlockAllCarDoorsInArea(leftBottomX, leftBottomY, topRightX, topRightY);
++}
++
++/// <summary>
++/// Toggle the tank blowing up vehicles when they are hit.
++/// </summary>
++void
++toggleTankDetonateCars()
++{
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++	PlayerUtil playerUtil = PlayerUtil();
++	Defines defines = Defines();
++
++	if(vehicleFunctions.IsPlayerInVehicle()) {
++		CVehicle *playerVeh = playerUtil.GetCurrentVehicle();
++		((CAutomobile *)playerVeh)->bTankDetonateCars = tankBlowUpCars;
++		std::string canTankBlowUpCarsString =
++		    tankBlowUpCars ? "You tank can now blow up vehicles when hitting them" : "You tank can no longer blow up vehicles when hitting them";
++
++		LogFunctions::LogInfo(defines.logFile, canTankBlowUpCarsString);
++	}
++}
++
++//
++
++//
++
++void
++VehicleMenu::VehicleTab()
++{
++	CustomCheats customCheats = CustomCheats();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	VehicleSpawnMenu vehicleSpawnMenu = VehicleSpawnMenu();
++	PlayerUtil playerUtil = PlayerUtil();
++
++	static bool toggleFastCar = false;
++	static bool highMassEnabled = false;
++	static bool toggleAllVehicleRepair = false;
++
++	// True by default
++	static bool upsidedownExplosions = true;
++
++	// Spawn vehicle tab
++	vehicleSpawnMenu.VehicleSpawnTab();
++
++	PUSH_TEXT_COLOR(IMGUI_RGBA_CYAN);
++	ImGui::Text("This has a fun effect.");
++	ImGui::Text("Makes the vehicle spin in the air a bit.");
++	POP_TEXT_COLOR();
++	if(ImGui::Checkbox("Toggle high mass", &highMassEnabled)) 
++	{ 
++		toggleHighVehicleMass(highMassEnabled); 
++	}
++
++	// This works
++	PUSH_TEXT_COLOR(IMGUI_RGBA_CYAN);
++	ImGui::Text("Toggle high acceleration on/off.");
++	POP_TEXT_COLOR();
++	if(ImGui::Checkbox("Toggle Fast Car", &toggleFastCar)) 
++	{ 
++		toggleFastVehicle(toggleFastCar); 
++	}
++	
++	// Seems to work fine, copied in from the debug menu
++	IMGUITEXT("Toggle all vehicle repair.");
++	IMGUITEXT("Allows you to respray police vehicles.");
++	//if (IMGUI_CHECKBOX("Toggle all veh repair", CGarage::m_allowAllVehiclesRespray))
++	if (IMGUI_CHECKBOX("Toggle all veh repair", &toggleAllVehicleRepair)) 
++	{ 
++		CGarages::ToggleRespray();
++	}
++
++	if(ImGui::Checkbox("Toggle invincibility", &vehicleInvincible)) 
++	{
++		toggleVehicleInvincible(); 
++	}
++
++	if (IMGUIBUTTON("Repair Vehicle")) 
++	{ 
++		VehicleFunctions::RepairCurrentVehicle();
++	}
++
++	ImGui::Separator();
++	ImGui::Text("Lock/Unlock");
++
++	if (ImGui::Button("Lock vehicle")) 
++	{ 
++		vehicleFunctions.LockVehicle();
++	}
++
++	if (ImGui::Button("Unlock vehicles in area"))
++	{ 
++		unlockCarsInArea(20, 20, 20, 20);
++	}
++
++	// This works
++	ImGui::Text("This toggles the tank being able to blow vehicles up from hitting them");
++
++	// This works for making a disabled checkbox if the player isn't in a vehicle.
++	if (vehicleFunctions.IsPlayerInVehicle())
++	{
++		if(ImGui::Checkbox("Tank blow up vehicles", &tankBlowUpCars)) 
++		{ 
++			toggleTankDetonateCars(); 
++		}
++	} else {
++		// Disable the following widgets
++		ImGui::Text("You are not in a vehicle!");
++		ImGui::BeginDisabled(true);
++		if(ImGui::Checkbox("Tank blow up vehicles", &tankBlowUpCars)) { toggleTankDetonateCars(); }
++		// Re-enable widgets
++		ImGui::EndDisabled();
++	}
++
++#if defined(GTAVC)
++	ImGui::Separator();
++	ImGui::Text("Toggle falling off bikes for the player, this is on by default.");
++	// Well this works! This is set to true by default in main.cpp, so it can be toggled off.
++	// Also you won't lose health when hitting something if this is turned off.
++	ImGui::Checkbox("Fall off bike", &gbFalloffBike);
++#endif
++
++	// Unflip car
++#if defined(GTAVC)
++	// TODO Figure out how to add this
++	// I added GetOrientation into Placeable.h, disabled certain items in it.
++	// This somewhat works, not well though.
++	IMGUITEXT("This doesn't work and is disabled");
++	IMGUI_BEGIN_DISABLED();
++	if (ImGui::Button("Unflip car"))
++	{
++		if(vehicleFunctions.IsPlayerInVehicle()) {
++
++			CVehicle *pVeh = playerUtil.GetCurrentVehicle();
++			float x, y, z;
++			// pVeh->GetForward();
++			// pVeh->SetOrientation()
++			pVeh->GetOrientation(x, y, z);
++			y += 135.0f;
++			pVeh->SetOrientation(x, y, z);
++			// pVeh->m_placement.GetOrientation(x, y, z);
++			// y += 135.0f;
++			// pVeh->m_placement.SetOrientation(x, y, z);
++		}
++	}
++	IMGUI_END_DISABLED();
++#elif defined(GTA3)
++
++#endif
++	//
++
++	// Toggle upside down vehicle explosions on/off
++	// TODO Fix this to work
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++	ImGui::Text("Toggle explosion when upside down");
++
++	//if(ImGui::Checkbox("Toggle explosions", &CAutomobile::vehUpsidedownExplode)) 
++	// Well this shows the message but doesn't seem to work anymore, did I break this?
++	if(ImGui::Checkbox("Toggle explosions", &upsidedownExplosions)) 
++	{
++		//if(upsidedownExplosions) 
++		//{ 
++			vehicleFunctions.ToggleUpsideDownExplosions(); 
++		//}
++	}
++#endif
++	//
++
++	ImGui::Separator();
++	// Fun functions
++	ImGui::Text("Fun functions");
++
++	if(ImGui::Button("Blow up current vehicle")) 
++	{ 
++		vehicleFunctions.BlowUpVehicle();
++	}
++
++	// This should blow up all cars.
++	if(ImGui::Button("Blow up all cars")) 
++	{ 
++		CustomCheats::BlowUpAllCars(); 
++	}
++
++	if (ImGui::Button("Set bomb on car")) { 
++		//setBombOnCar();
++		vehicleFunctions.SetBombOnCar();
++	}
++
++	ImGui::SameLine();
++
++	if(ImGui::Button("Remove bomb from car")) 
++	{ 
++		//removeBombFromCar();
++		vehicleFunctions.RemoveBombFromCar();
++	}
++ }
++
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_menu.h b/src/extras/menus/vehicle_menu.h
+new file mode 100644
+index 00000000..2ecddb8b
+--- /dev/null
++++ b/src/extras/menus/vehicle_menu.h
+@@ -0,0 +1,16 @@
++#pragma once
++
++#ifdef _IMGUI_TEST
++
++#include "vehicle_functions.h"
++
++class VehicleMenu
++{
++private:
++	VehicleFunctions vehicleFunctions;
++
++public:
++	void VehicleTab();
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_spawn_menu.cpp b/src/extras/menus/vehicle_spawn_menu.cpp
+new file mode 100644
+index 00000000..187181e0
+--- /dev/null
++++ b/src/extras/menus/vehicle_spawn_menu.cpp
+@@ -0,0 +1,249 @@
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "vehicle_spawn_menu.h"
++
++#include "ini_functions.h"
++
++//#include "vehicle_menu.h"
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++#include "defines.h"
++#include "model_ids.h"
++
++#include "player_util.h"
++
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++
++#include <map>
++#include <functional> // For std::function
++
++// Vehicle
++
++// Moved this out of vehicle_menu.cpp, it was getting cluttered.
++
++bool loadVehicles = false;
++
++/// <summary>
++/// I have moved this into ImGuiVehicleList() below
++/// </summary>
++/// <param name="vehModels"></param>
++void
++spawnVehicle(VehicleModels::ModelIds vehModels)
++{
++		 //static const std::map<VehicleModels, std::function<void()>> vehicleSpawnMap = {
++		 static const std::map<VehicleModels::ModelIds, std::function<void()>> vehicleSpawnMap = {
++	     {VehicleModels::RHINO, []() { VehicleFunctions::SpawnVehicle(VehicleModels::RHINO, true, true); }},
++	     {VehicleModels::CHEETAH, []() { VehicleFunctions::SpawnVehicle(VehicleModels::CHEETAH, true, true); }},
++	    // Add more vehicles here...
++	};
++}
++
++
++bool spawnInCar = false;
++// Car colors
++int carColor1 = 0;
++int carColor2 = 0;
++
++/// <summary>
++/// Sets the vehicle colors
++/// </summary>
++void
++VehicleSpawnMenu::ImGuiCarColors()
++{
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	ImGui::Text("Colors");
++
++	// This works for the color changing.
++	static ImVec4 color1 = ImVec4(1.0f, 0.0f, 0.0f, 1.0f); // Red
++	static ImVec4 color2 = ImVec4(0.0f, 0.0f, 1.0f, 1.0f); // Blue
++
++	ImGui::ColorEdit4("Color 1", (float *)&color1);
++	ImGui::ColorEdit4("Color 2", (float *)&color2);
++
++	// Separate these into their own buttons.
++	if (ImGui::Button("Set color #1"))
++	{ 
++		std::pair<int, int> indices = imGuiFunctions.GetReVCColorIndices(color1, color2);
++		int carColor1 = indices.first;
++		vehicleFunctions.SetColor1(carColor1);
++	}
++
++	if(ImGui::Button("Set color #2")) {
++		std::pair<int, int> indices = imGuiFunctions.GetReVCColorIndices(color1, color2);
++		int carColor2 = indices.second;
++		vehicleFunctions.SetColor2(carColor2);
++	}
++
++	// Disabled this, the above works fine.
++	//if(ImGui::Button("Set colors")) {
++	//	std::pair<int, int> indices = getReVCColorIndices(color1, color2);
++	//	int carColor1 = indices.first;
++	//	int carColor2 = indices.second;
++	//	// std::cout << "ReVC Color Indices: " << indices.first << ", " << indices.second << std::endl;
++	//	vehicleFunctions.SetColors(carColor1, carColor2);
++	//}
++}
++
++/// <summary>
++/// This shows up a list box with the vehicles, and has a button on it.
++/// </summary>
++/// 
++// This is in ini_functions, disabled for Re3
++#if defined(GTAVC)
++void
++VehicleSpawnMenu::ImGuiVehicleList()
++{
++	CustomCheats customCheats = CustomCheats();
++	static int selectedVehicle = -1;
++
++	static int selectedHeli = -1;
++	// Add vehicles for the list in here.
++	static const char *vehicles[] = {"Rhino",   "Cheetah", "Infernus", "Comet",  "Hotring Racer", "Stinger",
++	                                 "Sparrow", "Pheonix", "Hunter",   "Deluxo", "Banshee"};
++
++	static const char *helis[] = {"Hunter", "Sea Sparrow", "Sparrow", "Maverick", 
++								"VCN Maverick", "Police Maverick"};
++
++	// Default random value
++	static VehicleModels::ModelIds modelId = VehicleModels::MANANA;
++
++	// Add vehicles for the list in here.
++	static const std::map<std::string, VehicleModels::ModelIds> vehicleNameToModel = {
++	    {"Rhino", VehicleModels::RHINO},     {"Cheetah", VehicleModels::CHEETAH},       {"Infernus", VehicleModels::INFERNUS},
++	    {"Comet", VehicleModels::COMET},     {"Hotring Racer", VehicleModels::HOTRING}, {"Stinger", VehicleModels::STINGER},
++	    {"Sparrow", VehicleModels::SPARROW}, {"Phoenix", VehicleModels::PHEONIX},       {"Hunter", VehicleModels::HUNTER},
++	    {"Deluxo", VehicleModels::DELUXO},   {"Banshee", VehicleModels::BANSHEE}};
++
++	// Quite sure Chopper just crashes this..
++	static const std::map<std::string, VehicleModels::ModelIds> heliNameToModel = {
++	    //{"Hunter", VehicleModels::HUNTER}, {"Chopper", VehicleModels::CHOPPER}, {"Sea Sparrow", VehicleModels::SEA_SPARROW}, 
++	    {"Hunter", VehicleModels::HUNTER}, {"Sea Sparrow", VehicleModels::SEA_SPARROW}, 
++		{"Sparrow", VehicleModels::SPARROW}, {"Maverick", VehicleModels::MAVERICK}, {"VCN Maverick", VehicleModels::VCN_MAVERICK},
++		{"Police Maverick", VehicleModels::POLICE_MAVERICK}
++	};
++
++	if(ImGui::CollapsingHeader("Vehicles")) {
++		if(ImGui::ListBox("Vehicles", &selectedVehicle, vehicles, IM_ARRAYSIZE(vehicles))) {
++			if(selectedVehicle >= 0 && selectedVehicle < IM_ARRAYSIZE(vehicles)) {
++				std::string selectedVehicleName = vehicles[selectedVehicle];
++				if(vehicleNameToModel.count(selectedVehicleName) > 0) {
++					VehicleModels::ModelIds model = vehicleNameToModel.at(selectedVehicleName);
++					modelId = model;
++					// spawnVehicle(model);
++					// VehicleFunctions::SpawnVehicle(modelId, false, false);
++				}
++			}
++		}
++	}
++
++	if(ImGui::CollapsingHeader("Helis")) {
++
++		if(ImGui::ListBox("Helis", &selectedHeli, helis, IM_ARRAYSIZE(helis))) {
++			if(selectedHeli >= 0 && selectedHeli < IM_ARRAYSIZE(helis)) {
++				std::string selectedHeliName = helis[selectedHeli];
++				VehicleModels::ModelIds model = heliNameToModel.at(selectedHeliName);
++				modelId = model;
++			}
++		}
++	}
++
++
++	// Test for spawning in the vehicles
++	 ImGui::Checkbox("Spawn in vehicle", &spawnInCar);
++		// This works for spawning the vehicles
++	
++
++	if(ImGui::Button("Spawn")) {
++		if (spawnInCar) 
++		{
++			customCheats.ClearItemsFromArea(25);
++			VehicleFunctions::SpawnVehicle(modelId, true, true);
++		} else {
++			customCheats.ClearItemsFromArea(25);
++			VehicleFunctions::SpawnVehicle(modelId, false, false);
++		}
++	}
++
++	// Show the list of car colors and the button
++	// Oh, this was here, moved into the menu tab function.
++	//ImGuiCarColors();
++
++	// Original working function, moved into another function.
++	//ImGuiFunctions::InputIntClamp("Color 1", &carColor1, 1, 10, 0, 250);
++	//ImGuiFunctions::InputIntClamp("Color 2", &carColor2, 1, 10, 0, 250);
++	//ImGui::inputint
++
++	//if (ImGui::Button("Set colors")) { 
++	//	VehicleFunctions::SetColors(carColor1, carColor2);
++	//}
++
++	ImGui::Separator();
++}
++#endif
++
++void
++VehicleSpawnMenu::VehicleSpawnTab()
++{
++	CustomCheats customCheats = CustomCheats();
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	IniFunctions iniFunctions = IniFunctions();
++	Defines defines = Defines();
++	//VehicleSpawnMenu vehicleSpawnMenu = VehicleSpawnMenu();
++	// 
++	// This should store the current vehicle id from the listbox
++	// int currentVehicleID = imGuiFunctions.selectedVehicleId;
++	int currentVehicleID = imGuiFunctions.getSelectedVehicleId();
++
++	if(!loadVehicles) {
++		// std::vector<IniFunctions::Category> locations = iniFunctions.LoadLocationsFromIni(defines.warpsIniFile);
++		iniFunctions.LoadLocationsFromIni(defines.vehiclesIniFile);
++		loadVehicles = true;
++	}
++
++
++	// Test a new vehicle list, moved spawn in vehicle, vehicle list box, and submit button in here.
++	// I will be using this one for now, I still need to work on the one below that lists everything.
++
++	// I have disabled this
++	// Crashes Re3, it is the ReVC vehicle list.
++//#if defined(GTAVC)
++//	if(ImGui::CollapsingHeader("Old vehicle list")) {
++//		ImGuiVehicleList();
++//		ImGuiCarColors();
++//	}
++//#endif
++
++	// This is a new test in the iniFunctions file, reads vehicles.ini in 'ViceExtended/'
++	// Well this new category works now, it doesn't look as neat as it can be and the names are internal like this:
++	// 'TopFun' 'FireTruk', but for the most part they are readable.
++	iniFunctions.DisplayVehicles(iniFunctions.LoadVehiclesFromIni(defines.vehiclesIniFile));
++
++	// Show the vehicle colors
++	if (ImGui::CollapsingHeader("Vehicle colors")) 
++	{ 
++		ImGuiCarColors();
++	}
++
++	
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/vehicle_spawn_menu.h b/src/extras/menus/vehicle_spawn_menu.h
+new file mode 100644
+index 00000000..41c30e31
+--- /dev/null
++++ b/src/extras/menus/vehicle_spawn_menu.h
+@@ -0,0 +1,18 @@
++#pragma once
++#include "vehicle_functions.h"
++
++#ifdef _IMGUI_TEST
++
++class VehicleSpawnMenu
++{
++private:
++	VehicleFunctions vehicleFunctions;
++
++	void ImGuiCarColors();
++	void ImGuiVehicleList();
++
++public:
++	void VehicleSpawnTab();
++};
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+new file mode 100644
+index 00000000..3f35aea8
+--- /dev/null
++++ b/src/extras/menus/warp_menu.cpp
+@@ -0,0 +1,408 @@
++// Pre compiled header test
++// This works! Now to add most stuff that is used in my part of the project to it.
++#include "pch.h"
++
++#ifdef _IMGUI_TEST
++
++#include "warp_menu.h"
++#include "imgui.h"
++
++// My functions
++#include "imgui_functions.h"
++// Cheat functions
++#include "custom_cheats.h"
++
++#include "vehicle_cheats.h"
++#include "player_cheats.h"
++
++#include "vehicle_functions.h"
++#include "log_functions.h"
++
++//#include "defines.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++#include "Game.h"
++
++#include <map>
++#include <vector>
++
++// Add shortcuts for ImGui colors, and a lot of other ImGui commands
++#include "imgui_defines.h"
++
++// To add a warp, first add its name to this list.
++const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
++int currentWarp = 0;
++bool showWarps = false;
++bool showCurrentWarp = false;
++
++// TODO Setup this to warp to locations from the locations.toml in the Cheat Menu once I figure that out.
++
++// Removed static from the void in debug_functions using a preprocessor.
++// This works.
++void TeleportToWaypoint(void);
++
++// Test from teleport.cpp in Cheat Menu
++#define INPUT_BUFFER_SIZE 64
++char m_LocBuf[INPUT_BUFFER_SIZE];
++
++char m_LocationBuf[INPUT_BUFFER_SIZE];
++char m_HeadingBuffer[INPUT_BUFFER_SIZE];
++
++#define WARP_NAME_BUFFER_SIZE 32
++char m_warpCategoryBuffer[WARP_NAME_BUFFER_SIZE];
++char m_warpLocationNameBuffer[WARP_NAME_BUFFER_SIZE];
++
++// Locations, possibly move these somewhere else later
++float airportX = -1515.1f;
++float airportY = -1182.1f;
++float airportZ = 16.5f;
++
++float mansionX = -373.6f;
++float mansionY = -519.5f;
++float mansionZ = 13.6f;
++
++float beachX = 267.8f;
++float beachY = -1503.1f;
++float beachZ = 12.5f;
++
++float mallX = 317.2f;
++float mallY = 1122.6f;
++float mallZ = 20.1f;
++
++// Set new warp locations below
++//
++
++// Add new warp locations in here, incrementing the previous number.
++enum WarpLocations { 
++	AIRPORT = 0,
++	MANSION = 1,
++	BEACH = 2,
++	MALL = 3,
++};
++
++// I'm currently using this in ini_functions, 
++// this is for the old function.
++struct WarpData {
++	std::string name;
++	float x, y, z, heading;
++};
++
++// TODO Fix this from my vehicle spawner
++
++
++
++
++
++// Moved into IniFunctions::ImGuiWarpList()
++void
++imGuiWarpList()
++{
++	 ImGui::Separator();
++	 ImGui::Text("Warps");
++	static int selectedWarp = -1;
++	// Add warps for the list in here.
++	// Why would I ever use these? The vector is very useful for this stuff.
++	//static const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
++
++	static std::vector<WarpData> warps = {
++		{"Airport", -1515.1f, -1182.1f, 16.5f, 0.0f},
++	    {"Mansion", -373.6f, -519.5f, 13.6f, 0.0f},
++	    {"Beach", 267.8f, -1503.1f, 12.5f, 0.0f},
++	    {"Mall", 317.2f, 1122.6f, 20.1f, 0.0f},
++
++	};
++
++	std::vector<const char *> warpNames;
++
++	// Populate warpNames with the names from the warps vector
++	for(const auto &warp : warps) { 
++		warpNames.push_back(warp.name.c_str());
++	}
++
++	// Possible fix for the size_t to int warning
++	int warpsSize = 0;
++	if(warpNames.size() <= INT_MAX) {
++		warpsSize = static_cast<int>(warpNames.size());
++	} else {
++
++		// This shouldn't need to be too high of a number
++		warpsSize = 300;
++	}
++
++	//if (ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpNames.size()))
++	if (ImGui::ListBox("Warp", &selectedWarp, warpNames.data(), warpsSize))
++	{
++		// Listbox selection handling is done for you by imgui.
++	}
++
++	if (ImGui::Button("Warp to location")) {
++		if (selectedWarp >= 0 && selectedWarp < warps.size())
++		{
++			// Get the selected warp data
++			const WarpData &selectedWarpData = warps[selectedWarp];
++			float posX = selectedWarpData.x;
++			float posY = selectedWarpData.y;
++			float posZ = selectedWarpData.z;
++
++			// Set player position
++			PlayerCheats::SetPlayerPosition(posX, posY, posZ);
++	}
++	}
++
++}
++
++
++
++//void
++//imGuiWarpList()
++//{
++//
++//	static int selectedWarp = -1;
++//	// Add warps for the list in here.
++//	static const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
++//
++//	// Default random value
++//	static WarpLocations warpLocations = WarpLocations::AIRPORT;
++//
++//	// Add warps for the list in here.
++//	static const std::map<std::string, WarpLocations> WarpLocationNameToEnum = {
++//		{{"Airport", WarpLocations::AIRPORT}}}
++//	;
++//
++//	if(ImGui::ListBox("Warp", &selectedWarp, warps, IM_ARRAYSIZE(warps))) {
++//		if(selectedWarp >= 0 && selectedWarp < IM_ARRAYSIZE(warps)) {
++//			std::string selectedWarpName = warps[selectedWarp];
++//			if(WarpLocationNameToEnum.count(selectedWarpName) > 0) {
++//				WarpLocations warpLocatons = WarpLocationNameToEnum.at(selectedWarpName);
++//				//modelId = model;
++//				// spawnVehicle(model);
++//				
++//				// VehicleFunctions::SpawnVehicle(modelId, false, false);
++//			}
++//		}
++//	}
++//
++//	//if(ImGui::Button("Warp to location")) 
++//	//{
++//	//	
++//	//}
++//
++//}
++
++#ifdef NEW_WARP_TEST
++void
++WarpMenu::RenderWarpMenu(CGame &game)
++{
++	game.GetIniFunctions().ImGuiWarpList();
++}
++#endif
++
++/// <summary>
++/// Warp tab Menu
++/// </summary>
++void
++#ifdef NEW_WARP_TEST
++WarpMenu::WarpTab(CGame &game)
++#else
++WarpMenu::WarpTab()
++#endif
++{
++	IniFunctions iniFunctions;
++	CVector playerCoords = FindPlayerPed()->GetPosition();
++	//CGame cGame;
++
++
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++	float playerHeading = FindPlayerHeading();
++
++	
++	// New for warp saving
++	static int interiorId = 0;
++	static float warpX = 0.0f;
++	static float warpY = 0.0f;
++	static float warpZ = 0.0f;
++
++	// Defaults to true, automatically clear the warp value on save.
++	static bool clearWarpOnSave = true;
++	//
++
++	// Heading, TODO Move into teleport function.
++	// Well this doesn't work.
++	// TODO Fix this.
++	//ImGui::Text("Heading Test");
++	//ImGui::InputTextWithHint("Heading", "Heading", m_HeadingBuffer, INPUT_BUFFER_SIZE);
++	//if (ImGui::Button("Set Heading")) { 
++	//	float heading = 0;
++	//	if(sscanf(m_HeadingBuffer, "%f", &heading) == 1) { 
++	//		playerCheats.SetPlayerHeading(heading);
++	//	}
++	//	
++	//}
++
++
++	// Coords
++	ImGui::Text("Teleports");
++	ImGui::InputTextWithHint("Coordinates", "x, y, z", m_LocationBuf, INPUT_BUFFER_SIZE);
++	ImGui::Spacing();
++
++	// I got this to work, I took the idea from teleport.cpp in the Cheat Menu.
++	if(ImGui::Button("Teleport")) {
++		CVector pos{0, 0, 10};
++		if(sscanf(m_LocationBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) {
++			pos.z += 1.0f;
++			PlayerCheats::WarpPlayer(pos, 0);
++
++#ifdef EXTRA_LOGGING
++			CVector teleportPos{pos.x, pos.y, pos.z};
++			std::string warpMessage =
++			    "Player has warped to " + std::to_string(teleportPos.x) + std::to_string(teleportPos.y) + std::to_string(teleportPos.z);
++
++			if(gbExtraLogging) {
++				LogFunctions::LogInfo(defines.logFile, warpMessage);
++				TRACE("X: %f, Y: %f, Z: %f", pos.x, pos.y, pos.z);
++			}
++
++#endif
++		}
++	}
++
++	if(ImGui::Button("Marker")) { TeleportToWaypoint(); }
++
++	if(ImGui::Button("Log Coords")) { 
++		logUtil.LogCurrentCoords();
++
++	}
++
++	// TODO Test this:
++	// Added to game.h also
++	
++	//game.GetIniFunctions().ImGuiWarpList();
++	//cGame.GetIniFunctions().ImGuiWarpList();
++
++	// This works now, load from the warps.ini, i had to load it on the game init.
++	
++	// Display the old warp list - without categories.
++	//iniFunctions.ImGuiWarpList();
++
++	// Display the new warp list
++	iniFunctions.DisplayLocationsImGui();
++
++	if (ImGui::Button("Reload warps.ini")) { 
++		iniFunctions.LoadLocations();
++	}
++
++	//
++	// Create a warp
++	if(ImGui::CollapsingHeader("Create Warp")) {
++
++		ImGui::Text("To add a warp, modify these below.");
++		IniFunctions::WarpData newLocation;
++
++		ImGui::Text("This will clear the entry when saved");
++		ImGui::Checkbox("Clear warp on save", &clearWarpOnSave);
++
++		// This seems to work for adding my current coordinates into this.
++		ImGui::Text("Insert your current coordinates to save");
++		if(ImGui::Button("Insert Coordinates")) {
++			CVector playerCoords = FindPlayerCoors();
++			warpX = playerCoords.x;
++			warpY = playerCoords.y;
++			warpZ = playerCoords.z;
++		}
++
++		// Set the warp category
++		ImGui::InputText("Category", m_warpCategoryBuffer, IM_ARRAYSIZE(m_warpCategoryBuffer));
++
++		// Set the warp name
++		ImGui::InputText("Name", m_warpLocationNameBuffer, IM_ARRAYSIZE(m_warpLocationNameBuffer));
++		// TODO Enable this for ReVC
++		// Set the interior ID
++#if defined(GTAVC)
++		ImGui::InputInt("Interior ID", &interiorId);
++#endif
++
++		float xCoord = ImGui::InputFloat("X Coord", &warpX);
++		// ImGui::SameLine();
++		float yCoord = ImGui::InputFloat("Y Coord", &warpY);
++		// ImGui::SameLine();
++		float zCoord = ImGui::InputFloat("Z Coord", &warpZ);
++
++		static bool locationEmpty = false;
++
++		// This seems to work now
++		if(ImGui::Button("Create warp")) {
++#if defined(GTAVC)
++			newLocation.interiorId = 0;
++#endif
++			newLocation.x = warpX;
++			newLocation.y = warpY;
++			newLocation.z = warpZ;
++
++			std::string category(m_warpCategoryBuffer);
++			std::string location(m_warpLocationNameBuffer);
++
++			// Check if the category is empty, if so, display an error message
++			if(category.empty() || location.empty()) {
++				std::cout << Defines::KcLogString << "Category or location can't be empty." << std::endl;
++
++				// This will set the text to show under this: Category or location can't be empty.
++				locationEmpty = true;
++			} else {
++				if(iniFunctions.AppendWarpWithInput(Defines::warpsIniFile, category, location, newLocation)) {
++					// Clear input fields after successful addition
++					// Make this reload the warps.ini, this will automatically add the warps to the menu.
++					// This will set the text to not under this: Category or location can't be empty.
++					locationEmpty = false;
++
++					iniFunctions.LoadLocations();
++					//
++					// TODO Add a checkbox option for this.
++					if(clearWarpOnSave) {
++						memset(m_warpCategoryBuffer, 0, sizeof(m_warpCategoryBuffer));
++						memset(m_warpLocationNameBuffer, 0, sizeof(m_warpLocationNameBuffer));
++#if defined(GTAVC)
++						interiorId = 0;
++#endif
++						warpX = 0.0f;
++						warpY = 0.0f;
++						warpZ = 0.0f;
++					}
++				}
++			}
++		}
++
++		// This seems to work
++		// Display the empty location text if the location isn't set.
++		if(locationEmpty) {
++			// Set the text color to red.
++			PUSH_TEXT_COLOR(IMGUI_RGBA_RED);
++			ImGui::Text("Error: Category or location can't be empty.");
++			// Remove the text color
++			POP_TEXT_COLOR();
++		}
++	}
++
++	//
++
++	// Current Position
++
++	ImGui::Separator();
++	ImGui::Text("Position");
++	// This seems to show up the current coordinates on the screen.
++	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + " Y: " + std::to_string(playerY) + " Z: " + std::to_string(playerZ);
++	ImGui::Text(playerPositionMessage.c_str());
++
++	// Show the heading also
++	ImGui::NewLine();
++	ImGui::Text("Heading");
++	std::string playerHeadingMessage = "Heading: " + std::to_string(playerHeading);
++	ImGui::Text(playerHeadingMessage.c_str());
++}
++
++#endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.h b/src/extras/menus/warp_menu.h
+new file mode 100644
+index 00000000..51aca397
+--- /dev/null
++++ b/src/extras/menus/warp_menu.h
+@@ -0,0 +1,36 @@
++#pragma once
++
++#include "player_cheats.h"
++//#include "log_functions.h"
++
++#include "defines.h"
++// I have put the warp imgui stuff in here for now.
++#include "ini_functions.h"
++// Logging player coords so far.
++#include "log_util.h"
++#include "Game.h"
++
++class WarpMenu
++{
++private:
++	PlayerCheats playerCheats;
++	Defines defines;
++	IniFunctions iniFunctions;
++	LogUtil logUtil;
++
++	//void ImGuiWarpList();
++	void ImGuiWarpList(IniFunctions &iniFuncs);
++
++	
++
++public:
++#ifdef NEW_WARP_TEST
++	// TODO Make this work, I should be able to pass the iniFunctions to it if i figure it out.
++	 void WarpTab(CGame &game);
++	void RenderWarpMenu(CGame &game);
++#else
++	void WarpTab();
++#endif
++
++
++};
+\ No newline at end of file
+diff --git a/src/extras/utils/imgui_defines.h b/src/extras/utils/imgui_defines.h
+new file mode 100644
+index 00000000..7cbd54e2
+--- /dev/null
++++ b/src/extras/utils/imgui_defines.h
+@@ -0,0 +1,83 @@
++#pragma once
++
++#include "imgui.h"
++
++// This file will add shortcuts for certain ImGui actions with a preprocessor
++// The idea for this came from Google Gemini, I've never really messed with these too much.
++
++// Set the style color with 'r, g, b, a' values 
++//#define PUSH_TEXT_COLOR(r, g, b, a) ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(r, g, b, a))
++
++
++//--------------------
++// RGBA Colors
++// Usage: PUSH_TEXT_COLOR(IMGUI_RGBA_RED);
++// -------------------
++// Set the RGBA colors
++// 
++// Another macro for my RGBA colors
++#define PUSH_TEXT_COLOR(color) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(color))
++
++#define IMGUI_RGBA_RED IM_COL32(255, 0, 0, 255)
++
++// Generated with Google Gemini
++// RGBA Color Codes (IM_COL32(R, G, B, A))
++#define IMGUI_RGBA_BLACK IM_COL32(0, 0, 0, 255)
++#define IMGUI_RGBA_WHITE IM_COL32(255, 255, 255, 255)
++#define IMGUI_RGBA_GREEN IM_COL32(0, 255, 0, 255)
++#define IMGUI_RGBA_BLUE IM_COL32(0, 0, 255, 255)
++#define IMGUI_RGBA_YELLOW IM_COL32(255, 255, 0, 255)
++#define IMGUI_RGBA_CYAN IM_COL32(0, 255, 255, 255)
++#define IMGUI_RGBA_MAGENTA IM_COL32(255, 0, 255, 255)
++#define IMGUI_RGBA_GRAY IM_COL32(128, 128, 128, 255)
++#define IMGUI_RGBA_DARK_RED IM_COL32(139, 0, 0, 255)
++#define IMGUI_RGBA_DARK_GREEN IM_COL32(0, 100, 0, 255)
++#define IMGUI_RGBA_DARK_BLUE IM_COL32(0, 0, 139, 255)
++#define IMGUI_RGBA_ORANGE IM_COL32(255, 165, 0, 255)
++#define IMGUI_RGBA_PINK IM_COL32(255, 192, 203, 255)
++#define IMGUI_RGBA_LIGHT_GRAY IM_COL32(211, 211, 211, 255)
++#define IMGUI_RGBA_DARK_GRAY IM_COL32(169, 169, 169, 255)
++#define IMGUI_RGBA_BROWN IM_COL32(165, 42, 42, 255)
++#define IMGUI_RGBA_OLIVE IM_COL32(128, 128, 0, 255)
++#define IMGUI_RGBA_PURPLE IM_COL32(128, 0, 128, 255)
++#define IMGUI_RGBA_TEAL IM_COL32(0, 128, 128, 255)
++#define IMGUI_RGBA_LIME IM_COL32(0, 255, 0, 255) // same as green.
++#define IMGUI_RGBA_NAVY IM_COL32(0, 0, 128, 255)
++
++// Remove the style color
++#define POP_TEXT_COLOR ImGui::PopStyleColor
++
++//--------------------
++// End RGBA colors
++//--------------------
++
++
++// This works for shortening the ImGui text.
++// Add it to files that use ImGui text.
++#define IMGUITEXT ImGui::Text
++
++// Make a checkbox
++#define IMGUI_CHECKBOX(LABEL, VALUE) ImGui::Checkbox(LABEL, VALUE)
++
++// Make the item be on the same line 
++#define IMGUI_SAMELINE ImGui::SameLine
++
++
++// Changes from KCNet-ImGui-Test
++// Make a button
++#define IMGUIBUTTON ImGui::Button
++
++// Make a input int value
++#define IMGUI_INPUT_INT(LABEL, VALUE) ImGui::InputInt(LABEL, VALUE)
++
++// Make a input int with flags
++#define IMGUI_INPUT_INT_FLAGS(LABEL, VALUE, FLAGS) ImGui::InputInt(LABEL, VALUE, FLAGS)
++
++// Make an ImGui separator
++#define IMGUI_SEPERATOR ImGui::Separator
++
++// ImGui begin and end disabled
++//#define IMGUI_BEGIN_DISABLED(VALUE) ImGui::BeginDisabled(VALUE)
++#define IMGUI_BEGIN_DISABLED ImGui::BeginDisabled
++
++#define IMGUI_END_DISABLED ImGui::EndDisabled
+\ No newline at end of file
+diff --git a/src/extras/utils/log_util.cpp b/src/extras/utils/log_util.cpp
+new file mode 100644
+index 00000000..659c4143
+--- /dev/null
++++ b/src/extras/utils/log_util.cpp
+@@ -0,0 +1,25 @@
++#include "log_util.h"
++
++#include "player_util.h"
++#include <iostream>
++
++#include "log_functions.h"
++#include "defines.h"
++
++/// <summary>
++/// Log the current coords to the log file.
++/// Useful for marking locations quickly.
++/// </summary>
++void
++LogUtil::LogCurrentCoords()
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector playerCoords = pPed->GetPosition();
++	float playerX = playerCoords.x;
++	float playerY = playerCoords.y;
++	float playerZ = playerCoords.z;
++
++	std::string playerCoordsString = "Player coords X: " + std::to_string(playerX) + +" Y: " + std::to_string(playerY) + +" Z: " + std::to_string(playerZ);
++
++	LogFunctions::LogInfo(Defines::logFile, playerCoordsString);
++ }
+diff --git a/src/extras/utils/log_util.h b/src/extras/utils/log_util.h
+new file mode 100644
+index 00000000..99865fcc
+--- /dev/null
++++ b/src/extras/utils/log_util.h
+@@ -0,0 +1,6 @@
++#pragma once
++class LogUtil
++{
++public:
++	void LogCurrentCoords();
++};
+diff --git a/src/extras/utils/message_util.cpp b/src/extras/utils/message_util.cpp
+new file mode 100644
+index 00000000..072b85a3
+--- /dev/null
++++ b/src/extras/utils/message_util.cpp
+@@ -0,0 +1,49 @@
++#include "pch.h"
++#include "message_util.h"
++
++// ReVC
++#include "Hud.h"
++#include "Font.h"
++
++/// <summary>
++/// Show a help message to the hud
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetMessage(wchar *message)
++{
++	CHud::SetHelpMessage(message, false, false);
++}
++
++/// <summary>
++/// Not sure what this does, it didn't work
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetBigMessage(wchar* message)
++{
++	CHud::SetBigMessage(message, FONT_STANDARD);
++}
++
++/// <summary>
++/// I don't think ReVC had pager messages, this might work on Re3
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetPagerMessage(wchar *message)
++{
++	CHud::SetPagerMessage(message);
++}
++
++/// <summary>
++/// Draw a message to the bottom of the screen, TODO Setup a loop for this somewhere.
++/// TODO Come up with a better name for this.. Or rename 'SetMessage' to SetHelpMessage'
++/// </summary>
++/// <param name="message"></param>
++void
++MessageUtil::SetMessageOnScreen(wchar *message)
++{
++	// This draws to the screen like missions but goes away,
++	// TODO Setup a loop for this to display messages at the bottom instead of on the top left for the hud
++	CHud::SetMessage(message);
++}
+diff --git a/src/extras/utils/message_util.h b/src/extras/utils/message_util.h
+new file mode 100644
+index 00000000..a52854b8
+--- /dev/null
++++ b/src/extras/utils/message_util.h
+@@ -0,0 +1,15 @@
++#pragma once
++#include "pch.h"
++
++class MessageUtil
++{
++public:
++	// Hud message
++	static void SetMessage(wchar *message);
++	// Doesn't work
++	static void SetBigMessage(wchar *message);
++	// Possibly GTA 3 specific
++	static void SetPagerMessage(wchar *message);
++	// Show a message at the bottom of the screen, needs to be in a loop.
++	static void SetMessageOnScreen(wchar *message);
++};
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 39b5a19c..4ea9d11d 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -75,6 +75,54 @@ long _dwOperatingSystemVersion;
+ #include "fast_loader.h"
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
++
++// TODO Fix ImGui to work on OpenGL
++#ifdef _IMGUI_TEST
++
++// Moved ImGui init, ImGui loop, controller and mouse/keyboard keybinds into here
++#include "imgui_setup.h"
++
++#include "imgui.h"
++#include "imgui_impl_dx9.h"
++#include "imgui_impl_win32.h"
++
++#include "imgui_functions.h"
++#include "imgui_main_menu.h"
++
++
++#ifdef _WIN32
++// Required for opening menu with Xbox controller.
++#include <Xinput.h>
++#endif // _WIN32
++
++bool bInit = false;
++#ifdef _WIN32
++HWND mainWindow = nullptr;
++#endif // _WIN32
++
++// ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++
++// Set the resize variables
++static int g_ResizeWidth = 0, g_ResizeHeight = 0;
++
++// Forward declare message handler from imgui_impl_win32.cpp
++#ifdef _WIN32
++extern IMGUI_IMPL_API LRESULT
++ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++// LRESULT WINAPI
++// MainWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
++// #include "imgui_impl_dx9.h"
++// TODO Why the hell is this not working? It's in the backends folder...
++//#include "imgui_impl_win32.h
++
++#include "backends/imgui_impl_win32.h"
++#endif // _WIN32
++
++// #include "imgui.h"
++
++
++#endif // _IMGUI_TEST
++
+ #ifdef DISABLE_PAUSE_FOCUS_LOSS
+ // Boolean to keep track of the pause on focus loss value.
+ bool isGameFocused = true; // Initially focused
+@@ -2102,6 +2150,18 @@ main(int argc, char *argv[])
+ 		FrontEndMenuManager.DrawMemoryCardStartUpMenus();
+ 	}
+ #endif
++
++	
++	// ImGui setup and functions
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	CPad cpad = CPad();
++
++	CPad *pad = CPad::GetPad(0);
++
++	ImGuiSetup imGuiSetup = ImGuiSetup();
++
++#endif //_IMGUI_TEST
+ 	
+ 	initkeymap();
+ 
+@@ -2168,6 +2228,31 @@ main(int argc, char *argv[])
+ 						gGameState = GS_INIT_LOGO_MPEG;
+ #endif
+ 						TRACE("gGameState = GS_INIT_ONCE");
++
++						// TODO Implement ImGui OpenGL3 here, currently doesn't work.
++#ifdef _IMGUI_TEST
++
++					        // Check if ImGui bool above is enabled in the ini.
++					        // This fixes the mouse showing up on game start when I have this toggled off
++					        // TODO Make the ImGui test not always show a mouse until it's hidden.
++					        if(gbImGuiToggle) {
++
++						        // Test for checking if Rw is initialized and gameState is GS_PLAYING_GAME
++						        // This shows up!!
++						        // if(RwInitialised && gGameState == GS_PLAYING_GAME) {
++						        if(RwInitialised) {
++							        // Init ImGui
++
++									// TODO Fix this
++#ifdef _WIN32
++							        imGuiSetup.InitImGui(mainWindow);
++#else
++#endif // _WINew
++						        }
++					        }
++
++#endif
++
+ 						break;
+ 					}
+ 
+@@ -2361,6 +2446,16 @@ main(int argc, char *argv[])
+ 							if (!FrontEndMenuManager.m_PrefsFrameLimiter || (1000.0f / (float)RsGlobal.maxFPS) < ms)
+ 								RsEventHandler(rsIDLE, (void *)TRUE);
+ 						}
++
++						// TODO Fix this to work with OpenGL, should be the same concept for the loop.
++#ifdef _IMGUI_TEST
++					        // Run the ImGui loop that checks for controller input, and mouse/keyboard input if enabled in the ini
++					        if(gbImGuiToggle) { 
++								imGuiSetup.ImGuiPlayingGameLoop(); 
++							}
++
++#endif
++
+ 						break;
+ 					}
+ 				}
+diff --git a/src/vehicles/Bike.cpp b/src/vehicles/Bike.cpp
+index a65b64d2..acfdeba6 100644
+--- a/src/vehicles/Bike.cpp
++++ b/src/vehicles/Bike.cpp
+@@ -38,6 +38,10 @@
+ #include "Debug.h"
+ #include "SaveBuf.h"
+ 
++#ifdef CUSTOM_CODE // Toggle fall off bike
++#include "main.h"
++#endif
++
+ const uint32 CBike::nSaveStructSize =
+ #ifdef COMPATIBLE_SAVES
+ 	1260;
+@@ -2133,8 +2137,20 @@ CBike::VehicleDamage(void)
+ 			int dir = -10;
+ 			if(pDriver){
+ 				dir = pDriver->GetLocalDirection(-m_vecDamageNormal);
++
++#ifdef CUSTOM_CODE // Toggle fall off bike
++				// Check if fall off bike is enabled, if not do nothing
++				// Fix for losing health when fall off bike is disabled.
++				if(gbFalloffBike) 
++				{
++					if(pDriver->m_fHealth > 0.0f)
++						pDriver->InflictDamage(m_pDamageEntity, WEAPONTYPE_RAMMEDBYCAR, 0.05f * damage, PEDPIECE_TORSO, dir);
++				}
++#else
+ 				if(pDriver->m_fHealth > 0.0f)
+ 					pDriver->InflictDamage(m_pDamageEntity, WEAPONTYPE_RAMMEDBYCAR, 0.05f*damage, PEDPIECE_TORSO, dir);
++#endif
++
+ 				if(pDriver && pDriver->GetPedState() == PED_DRIVING)
+ 					KnockOffRider(WEAPONTYPE_RAMMEDBYCAR, dir, pDriver, false);
+ 			}
+@@ -2574,6 +2590,16 @@ CBike::PlayCarHorn(void)
+ void
+ CBike::KnockOffRider(eWeaponType weapon, uint8 direction, CPed *ped, bool bGetBackOn)
+ {
++#ifdef CUSTOM_CODE // Toggle fall off bike
++	if (ped->IsPlayer()) 
++	{
++		if (!gbFalloffBike) 
++		{ 
++			return;
++		}
++	}
++#endif
++
+ 	AnimationId anim = ANIM_STD_KO_FRONT;
+ 	if(ped == nil)
+ 		return;
+-- 
+2.49.0.windows.1
+

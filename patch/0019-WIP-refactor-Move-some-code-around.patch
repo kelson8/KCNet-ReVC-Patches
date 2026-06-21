@@ -1,0 +1,45 @@
+From 3f8777648011978c861b8f9ea72c17a3e63e982e Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 25 Feb 2026 00:00:59 -0500
+Subject: [PATCH 19/58] WIP: refactor: Move some code around
+
+---
+ src/extras/functions/imgui_setup.cpp | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index bcd5b18c..d440298c 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -363,7 +363,7 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 	if(imGuiFunctions.ImGuiActive) {
+ 
+ #ifdef _WIN32
+-		ClipCursor(NULL);
++		//ClipCursor(NULL);
+ #endif // _WIN32
+ 
+ 		// Frames
+@@ -377,15 +377,15 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ #ifdef _WIN32
+ 		POINT p;
+ 		GetCursorPos(&p);
+-#else
+-		// TODO Figure this out for Linux if it's needed.
+-#endif // _WIN32
+ 
+ 		// I setup the hwnd to nullptr by default in win.cpp, and it's being set in the MainWndProc
+ 		// Idk what I did to break this...
+ 		//ScreenToClient(imGuiFunctions.mainWindow, &p); // convert screen coords to client coords.
+ 		io.MousePos = ImVec2(p.x, p.y);
+-	
++#else
++		// TODO Figure this out for Linux if it's needed.
++#endif // _WIN32
++
+ 		// Update mouse button state
+ 		//io.MouseDown[0] = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+ 		//io.MouseDown[1] = (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0;
+-- 
+2.49.0.windows.1
+

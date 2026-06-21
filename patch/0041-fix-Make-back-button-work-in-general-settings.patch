@@ -1,0 +1,52 @@
+From c9293e8aa4b9fc84d37544b4c856765fae75bcb9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 27 Feb 2026 18:48:15 -0500
+Subject: [PATCH 41/58] fix: Make back button work in general settings * Wrap
+ custom menu code with custom code preprocessor.
+
+* Add glfw to vscode settings.json.
+---
+ .vscode/settings.json          | 2 ++
+ src/core/MenuScreensCustom.cpp | 6 ++++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index 1eb3ad61..0762c1c8 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -39,6 +39,8 @@
+     "src/vehicles",
+     "src/weapons",
+     "vendor/librw",
++    "vendor/glfw-3.4.bin.WIN64/include",
++    "vendor/glfw-3.4.bin.WIN64/include/GLFW",
+   ],
+   "C_Cpp.vcFormat.indent.gotoLabels": "leftmostColumn",
+   "C_Cpp.vcFormat.space.pointerReferenceAlignment": "right",
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index d9319c92..85287dd7 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -820,6 +820,7 @@ CMenuScreenCustom aScreens[] = {
+ 	// MENUPAGE_OUTRO = 34
+ 	{ "", 0, nil, nil, },
+ 
++#ifdef CUSTOM_CODE
+ 	// MENUPAGE_GENERAL_SETTINGS = 35
+ 	// Well changing from this to the below fixed the back button.
+ 	// { "FEO_GEN",MENUPAGE_GENERAL_SETTINGS, nil, nil,
+@@ -848,6 +849,11 @@ CMenuScreenCustom aScreens[] = {
+ #ifdef EXTRA_LOGGING
+ 		MENUACTION_EXTRA_LOGGING,      "KCEXLOG",   {nil, SAVESLOT_NONE, MENUPAGE_GENERAL_SETTINGS}, 0, 0, MENUALIGN_LEFT,
+ #endif //EXTRA_LOGGING
++
++
++	MENUACTION_GOBACK,			"FEDS_TB",   {nil, SAVESLOT_NONE, MENUPAGE_NONE}, 0, 0, MENUALIGN_LEFT,
++#endif // CUSTOM_CODE
++
+ 	},
+ };
+ 
+-- 
+2.49.0.windows.1
+
