@@ -1,0 +1,891 @@
+From 499fcee3513ef609c1b666528eebb739d8a8c510 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Sep 2026 13:47:51 -0400
+Subject: [PATCH 093/161] feat: Update CreateVehicle function to take a CVector
+
+* Now my create vehicle function takes a CVector in the C++ code and in the lua code.
+
+* Move player and vehicle lua functions into 'player' and 'vehicle' tables so they aren't in the global namespaces anymore.
+
+* Update the lua scripts with the new create_vehicle function and test functions.
+
+* Add new functions to test later and info to kcnet-keybind-events.lua.
+
+* Update TODO.md for things to do and look into for project.
+
+* Update changelog, bump version to 1.2.10-1a.
+---
+ Changelog.md                                  |  16 +-
+ TODO.md                                       | 160 +++++++++++++++++
+ .../lua_scripts/kcnet-keybind-events.lua      | 163 ++++++++++++++----
+ src/extras/functions/vehicle_functions.cpp    |  26 ++-
+ src/extras/functions/vehicle_functions.h      |   6 +-
+ src/extras/lua/lua_player.cpp                 | 104 ++++++++++-
+ src/extras/lua/lua_player.h                   |   1 +
+ src/extras/lua/lua_test.cpp                   |  51 ++++--
+ src/extras/lua/lua_vehicle.cpp                |  67 +++++--
+ src/extras/lua/lua_vehicle.h                  |   1 +
+ src/extras/utils/defines.cpp                  |   2 +-
+ 11 files changed, 529 insertions(+), 68 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 9fecf307..f48d3e10 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -236,4 +236,18 @@ Misc changes:---
+ 
+ * Make game assert if the player isn't created with `create_player` in the lua scripts.
+ 
+-* Update changelog.md, bump version to 1.2.10-2a.
+\ No newline at end of file
++* Update changelog.md, bump version to 1.2.9-2a.
++
++### 1.2.10-1a
++
++feat: Update CreateVehicle function to take a CVector
++
++* Now my create vehicle function takes a CVector in the C++ code and in the lua code.
++
++* Update the lua scripts with the new create_vehicle function and test functions.
++
++* Add new functions to test later and info to kcnet-keybind-events.lua.
++
++* Update TODO.md for things to do and look into for project.
++
++* Update changelog, bump version to 1.2.10-1a.
+diff --git a/TODO.md b/TODO.md
+index 85964e81..5cbbf7cb 100644
+--- a/TODO.md
++++ b/TODO.md
+@@ -1,6 +1,166 @@
+ ## TODO For project
+ 
++Look into making sure all of my lua examples are working and updated, I don't really have time to test them yet.
++
++I migrated everything to lua tables so it is out of the global namespaces.
++
++Look into the lua_player.cpp and lua_vehicle.cpp files for these changes later, I also disabled the old functions by using `#if 0` in the Register Lua functions within the C++ code.
++
++This is still incomplete though
++
++#### Git Stuff
++
++Setup this for automating changelogs with my git commits.
++* https://github.com/cookpete/auto-changelog
++
++Setup automatic building and release publishing which always keep up to date with the commits, and for tagged versions such as `1.2.8a` or whatever syntax I decide to switch to.
++
++I may go back from `1.2.8a` to `0.4.0a` or something to somewhat reset the version system.
++That will make things a bit confusing, but this ReVC build is too early to go into beta yet.
++
++### Implement commands
++Look into this for seeing what exactly the commands do so I can replicate some of them.
++* https://library.sannybuilder.com/#/
++
++This is a list of commands from the game scripts to implement for my lua system
++
++Mostly taken from here
++* https://library.sannybuilder.com/#/vc/script
++
++**Area functions**
++
++
++**Misc functions**
++
++* SET_GARAGE
++
++* EXPLODE_CAR
++* ADD_EXPLOSION
++* GENERATE_RANDOM_INT_IN_RANGE - Create my own random number function
++
++* DRAW_CORONA
++* STORE_CLOCK
++* RESTORE_CLOCK
++* IS_PLAYER_PLAYING
++* SET_CHAR_HEED_THREATS
++* GET_CONTROLLER_MODE
++* SET_CAN_RESPRAY_CAR - I may implement this if I enable the Pay n sprays.
++* IS_PLAYER_STOPPED
++* SET_CHAR_PROOFS
++* SET_CAR_PROOFS
++* SET_CAR_ONLY_DAMAGED_BY_PLAYER
++* SET_CHAR_ONLY_DAMAGED_BY_PLAYER
++
++* GET_CLOSEST_CHAR_NODE
++* GET_CLOSEST_CAR_NODE
++* CAR_GOTO_COORDINATES_ACCURATE
++* IS_CAR_ON_SCREEN
++* IS_CHAR_ON_SCREEN
++* IS_OBJECT_ON_SCREEN
++* GET_GROUND_Z_FOR_3D_COORD
++* START_SCRIPT_FIRE
++* IS_SCRIPT_FIRE_EXTINGUISHED
++* REMOVE_SCRIPT_FIRE
++* BOAT_GOTO_COORDS
++* BOAT_STOP
++
++* IS_PLAYER_SHOOTING_IN_AREA
++* IS_CURRENT_PLAYER_WEAPON
++* IS_CURRENT_CHAR_WEAPON
++* SET_BOAT_CRUISE_SPEED
++* GET_RANDOM_CHAR_IN_ZONE
++* IS_PLAYER_IN_TAXI
++* IS_PLAYER_SHOOTING
++* IS_CHAR_SHOOTING
++* CREATE_MONEY_PICKUP
++
++
++* SET_CHAR_ACCURACY
++* GET_CAR_SPEED
++* 
++* LOAD_CUTSCENE - I wonder if this will work without the game scripts.
++* RESTORE_CAMERA_JUMPCUT
++* CREATE_COLLECTABLE1 - Create hidden packages, might be fun to replicate for a minigame or something.
++* SET_COLLECTABLE1_TOTAL - Set the total number of hidden packages to collect
++
++* IS_CHAR_MODEL
++* GET_CAR_FORWARD_X
++* GET_CAR_FORWARD_Y 
++* CHANGE_GARAGE_TYPE
++* 
++* 
++* 
++
++**Blip functions**
++* ADD_SPRITE_BLIP_FOR_CONTACT_POINT
++* ADD_SPRITE_BLIP_FOR_COORD
++* 
++* 
++* 
++
++
++
++**Model functions**
++
++* REQUEST_MODEL
++* HAS_MODEL_LOADED
++* MARK_MODEL_AS_NO_LONGER_NEEDED
++
++* SET_GANG_PED_MODELS
++* SET_GANG_CAR_MODEL
++* SET_GANG_WEAPONS
++* SET_CHAR_OBJ_RUN_TO_COORD
++* SET_CHAR_PERSONALITY
++* SET_ANIM_GROUP_FOR_CHAR
++
++**Message functions**
++* PRINT_BIG_Q
++
++**Pickup functions**
++* CREATE_PICKUP
++* HAS_PICKUP_BEEN_COLLECTED
++* REMOVE_PICKUP
++
++**Car functions**
++
++* LOCK_CAR_DOORS
++* UNLOCK_CAR_DOORS
++* IS_CAR_UPRIGHT
++* SET_TAXI_LIGHTS
++* APPLY_BRAKES_TO_PLAYERS_CAR
++* IS_CAR_IN_WATER
++
++**Get and set health functions**
++
++* I already have a version of `SET_PLAYER_HEALTH` in my scripts.
++
++* SET_CHAR_HEALTH
++* SET_CAR_HEALTH
++
++* GET_PLAYER_HEALTH
++* GET_CHAR_HEALTH
++* GET_CAR_HEALTH
++
++* CHANGE_CAR_COLOUR
++
++
++**Turning roads on/off**
++* SWITCH_PED_ROADS_ON
++* SWITCH_PED_ROADS_OFF
++
++
+ ### High priority
++* Figure out how to fix the main menu with my lua scripts enabled.
++* I need to disable the load game, delete game, and save game menu options without breaking the game menus.
++
++* Implement a stat saving system, at least to store the kills and everything, this won't save everything just the player position, health, and their stats.
++
++* Make my create player function only load in one player at a time, earlier I had two players controlled by the same mouse and keyboard lol, someone might try to load in more and break it with the lua code.
++
++* Implement the `WAIT` function from the scm scripts, so I can wait and make loops that can wait on something like the vehicle model loading, currently most of my functions are done in the C++ side but I may want to move them so the user has control of when everything happens.
++
++* Make the F5 key start a new game when I have DISABLE_GAME_SCRIPTS enabled, so I can easily reload my freeroam-game.lua script. - Complete, I added this into lua_setup.cpp.
++
+ * If player gets out of vehicle, store last vehicle they were in, for use with the `CustomCheats::LockDoors()` and `CustomCheats::UnlockDoors()` functions so I can unlock the players last vehicle.
+ 
+ * Look into modifying functions like this with the lua code.
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+index 0150c74a..6a2662fd 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+@@ -6,38 +6,99 @@ dofile("ViceExtended/lua_scripts/vehicles.lua")
+ -- For loading locations
+ dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
+ 
+--- Obtained from freeroam-locations.lua
+-local oldSpawn = GameLocations.oldSpawn
+-local airport = GameLocations.airport
+-local policeStation = GameLocations.policeStation
+-local construction_site = GameLocations.constructionSiteVehicle
++-- TODO Test these later
+ 
+--- TODO Rename this file to freeroam-keybind-events.lua later.
++-- New format for lua scripts, most of these are moved over
++-- This now seems to work well for moving things out of the global namespaces.
+ 
+-------
++---------
+ -- Player functions
+-------
++---------
+ 
+--- Get the players position, this only works in this file
+--- Use these globals:
+--- playerX
+--- playerY
+--- playerZ
++--[[
++-- Create the player, this should only ever be ran once
++-- TODO Make this function take a CVector instead of floats.
++player.create(0, posX, posY, posZ)
++
++-- Is the player alive
++player.is_alive()
++
++-- Kill player if wanted level is greater then 0.
++player.kill_wanted()
++
++-- Kill the player
++player.kill()
++
++-- Change the players clothes
++player.change_clothes()
++
++-- Get the players wanted level
++player.get_wanted_level()
++
++-- Set the players position.
++player.set_position({x = 2, y = 2, z = 2}) - This works.
++
++player.heal()
++player.get_health()
++
++player.enable_never_wanted()
++player.disable_never_wanted()
++
++player.enable_never_wanted()
++player.disable_never_wanted()
++
++player.enable_infinite_health()
++player.disable_infinite_health()
++
++player.set_respawn_point()
++
++player.cancel_override_restart()
++
++player.enable_lose_weapons_on_death()
++player.disable_lose_weapons_on_death()
++
++player.log_coords()
++player.log_heading()
++
++
++]]
+ 
+ ------
+ -- Vehicle functions
+ ------
+--- Create a vehicle
+--- 
+--- create_vehicle(vehicle id, posX, posY, posZ, delete last vehicle, warp into vehicle)
++
++-- Create a vehicle, this works in here like this.
++--
++-- create_vehicle(vehicle id, CVector pos, delete last vehicle, warp into vehicle)
+ -- Example:
+--- create_vehicle(145, 200.0, 100.0, 10.0, true, true)
++-- vehicle.create(id, {x = airport.pos.x, y = airport.pos.y, z = airport.pos.z}, false, false)
++
++------
++-- Locations from freeroam-locations.lua
++------
+ 
++local oldSpawn = GameLocations.oldSpawn
++local airport = GameLocations.airport
++local policeStation = GameLocations.policeStation
++local construction_site = GameLocations.constructionSiteVehicle
+ 
+--- This works! Now kcnet-init.lua is just for starting the game.
++-- The current players position.
++-- This adds an offset for spawning vehicles.
++-- TODO Make into a player.get_position function later.
++local playerPos = {x = playerX, y = playerY, z = playerZ}
+ 
+--- Disabled this message
+--- print("kcnet-keybind-events.lua loaded")
++-- TODO Rename this file to freeroam-keybind-events.lua later.
++
++------
++-- Toggles
++------
++
++-- If the vehicle spawned message gets displayed on the screen.
++-- Only does anything if create_vehicle_toggle is enabled
++local dbgShowVehicleIdMsg = false
++
++-- If this should heal the player.
++local dbgHealPlayer = false
+ 
+ -- This works but doesn't delete the previous vehicle.
+ local create_vehicle_toggle = false
+@@ -48,15 +109,40 @@ local create_vehicle_toggle = false
+ local teleportPlayerToSpawn = false
+ local teleportPlayerToAirport = false
+ 
++-- If the player should teleport to the position set when 'F9' is pressed.
++local teleportPlayer = false
++
++-- This works! Now kcnet-init.lua is just for starting the game.
++
++-- Disabled this message
++-- print("kcnet-keybind-events.lua loaded")
++
++
++
+ -- Set the players position, new values can easily be added into freeroam-locations.lua.
+-set_position({
+-	x = construction_site.pos.x,
+-	y = construction_site.pos.y,
+-	z = construction_site.pos.z
+-})
++-- Shouldn't be used anymore once I switch over.
++-- set_position({
++-- 	x = construction_site.pos.x,
++-- 	y = construction_site.pos.y,
++-- 	z = construction_site.pos.z
++-- })
++
++-- This new format works!
++-- I will switch every lua function to using this later before I start porting more commands.
++-- It uses a RegisterFunction in each lua file that needs a table, such as 'RegisterPlayerLuaFunctions'
++
++if teleportPlayer then
++	player.set_position({
++		x = airport.pos.x,
++		y = airport.pos.y,
++		z = airport.pos.z
++	})
++end
+ 
+--- Vehicle ID, posX, posY, posZ, Delete last vehicle, Warp into vehicle.
+--- create_vehicle(145, airportX + 10.0, airportY + 10.0, airportZ + 2.0, false, false)
++-- New format, heal the player
++if dbgHealPlayer then
++	player.heal()
++end
+ 
+ -- Get the players position, this only works in this file
+ -- TODO Move into a CVector value instead of the floats later.
+@@ -92,16 +178,31 @@ if create_vehicle_toggle then
+ 	print(vehicle_id_msg)
+ 
+ 	-- Display the message to the screen.
+-	print_msg(vehicle_id_msg)
++	if dbgShowVehicleIdMsg then
++		print_msg(vehicle_id_msg)
++	end
+ 
+ 	print("Spawned ID " .. vehicle_id)
+ 	-- Well this was crashing it, it still does with invalid models though.
+ 	-- TODO Add error handling to the lua vehicle script so it only spawns valid models.
+ 	-- TODO Make this place the vehicle in a safe place, sometimes it can get stuck in a tree.
+-	-- TODO Make this function take a CVector like the new setup for setting the players position above.
+ 	-- I'll fix it later.
+-	create_vehicle(vehicle_id, playerX + 5, playerY + 5, playerZ + 2.0, false, false)
+-	-- create_vehicle(411, playerX + 5, playerY + 5, playerZ + 2.0, false, false)
++
++	-- New vehicle format, this works for spawning a vehicle now
++	-- create_vehicle(vehicle_id, playerPos, false, false)
++
++    -- This function works now with my new setup!
++	vehicle.create(
++    	vehicle_id,
++		-- CVector of the position to spawn the vehicle, currently
++    	{
++        	x = playerPos.x,
++        	y = playerPos.y,
++        	z = playerPos.z
++    	},
++    	false, -- Should this remove the previous vehicle, this needs fixed it doesn't work.
++    	false -- Should this warp the player into the vehicle, somewhat buggy so defaults to false.
++	)
+ 	
+ 	-- TODO Fix this below, should create a random vehicle.
+ 	-- To create a random vehicle from the available IDs (keys):
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index b7bc8edc..0ecf8029 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -518,7 +518,7 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 
+ 	// Moved logic into this new function.
+ 	// Now this just calls into that function, it takes a custom X, Y, and Z.
+-	CreateVehicle(id, vehiclePos.x, vehiclePos.y, vehiclePos.z, deleteCurrentVehicle, warpIntoVehicle);
++	CreateVehicle(id, vehiclePos, deleteCurrentVehicle, warpIntoVehicle);
+ 
+ 	// TODO Look into using this below if possible to implement into the CreateVehicle function.
+ 	// #define NEW_VEHICLE_SPAWN
+@@ -623,17 +623,26 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+  * And this will be a new function mostly for Lua but I'll switch some other stuff to using it.
+  * This will need to have a boolean with a default value of true for setting custom coordinates and switching
+  *  to making this go near the player.
+- * TODO Make this take a Vector3, until I can pass it in Lua I'll just do floats.
++ * 
++ * Now this takes a CVector for the position instead of 3 floats, since I got
++ *  this working in lua now.
++ * 
++ * TODO Make this tell the lua script that there is already a vehicle spawned, remove the old ones.
++ * 
++ * @param id The vehicle ID to spawn in.
++ * @param pos The CVector position to spawn the vehicle.
++ * @param deleteCurrentVehicle If the current vehicle should be removed.
++ * @param warpIntoVehicle If the player should warp into the vehicle.
+  */
+ void
+-VehicleFunctions::CreateVehicle(int id, float posX, float posY, float posZ, bool deleteCurrentVehicle, bool warpIntoVehicle)
++VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle, bool warpIntoVehicle)
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 	VehicleFunctions vehicleFunctions = VehicleFunctions();
+ 
+-	CVector vehiclePos = CVector(posX, posY, posZ);
++	// CVector vehiclePos = CVector(posX, posY, posZ);
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
+ 
+ 	// This should prevent this from spawning the vehicle if it isn't valid, and no longer crash in lua.
+@@ -687,7 +696,8 @@ VehicleFunctions::CreateVehicle(int id, float posX, float posY, float posZ, bool
+ 
+ 			// Set the vehicle to be owned by the player.
+ 			v->bHasBeenOwnedByPlayer = true;
+-			v->SetPosition(vehiclePos);
++			// v->SetPosition(vehiclePos);
++			v->SetPosition(pos);
+ 			// TODO Setup
+ 			// v->SetOrientation(0.0f, 0.0f, heading);
+ 
+@@ -760,9 +770,9 @@ VehicleFunctions::CreateVehicle(int id, float posX, float posY, float posZ, bool
+ 			std::string logMsg = "Vehicle with ID: " 
+ 			+ std::to_string(id) 
+ 			+ " was spawned at " 
+-			+ " X: " + std::to_string(posX) 
+-			+ " Y: " + std::to_string(posY)
+-			+ " Z: " + std::to_string(posZ);
++			+ " X: " + std::to_string(pos.x) 
++			+ " Y: " + std::to_string(pos.y)
++			+ " Z: " + std::to_string(pos.z);
+ 
+ 			// Log the spawn position.
+ 			LogFunctions::LogInfo(Defines::logFile, logMsg);
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index c674e830..2058613a 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -31,8 +31,12 @@ public:
+ 	static void RemoveCurrentVehicleFromWorld();
+ 	static void RequestVehicleModel(int vehicleModel);
+ 	// static void SpawnVehicle(int id);
++
++	// Spawn a vehicle near the player, mostly used for the ImGui mod menu.
+ 	static void SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle);
+-	static void CreateVehicle(int id, float posX, float posY, float posZ, bool deleteCurrentVehicle, bool warpIntoVehicle);
++
++	// Create a vehicle, for use with the lua scripts, directly called by SpawnVehicle to reuse this function.
++	static void CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ 
+ 	void RemovePlayerFromVehicle(CPed *pPed);
+ 
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 488ce821..9d86dcf1 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -11,6 +11,8 @@
+ // Helpers, so far just gets the singleton
+ #include "lua_helpers.h"
+ 
++#include "lua_log.h"
++
+ #include "defines.h"
+ #include "log_functions.h"
+ 
+@@ -39,8 +41,108 @@
+ 
+ extern "C" {
+ 
++/** 
++ * Register the player lua functions under the 'player' namespace.
++ * This works! TODO Make all lua functions use a table with a namespace instead of being in the global namespace.
++ * 
++ * Usage for new format:
++ * 
++ * player.set_position({x = 2.0, y = 2.0, z = 15.0})
++ */
++void RegisterPlayerFunctionsLua(lua_State* L)
++{
++    lua_newtable(L); // Stack: player table
++
++	// Create the player, should only run if the scripts are disabled.
++#ifdef DISABLE_GAME_SCRIPTS
++    lua_pushcfunction(L, createPlayerLua);
++    lua_setfield(L, -2, "create");
++#endif
++
++	// Set the players position
++    lua_pushcfunction(L, SetPlayerPositionLua);
++    lua_setfield(L, -2, "set_position");
++
++	// TODO Figure out where this is.
++    // lua_pushcfunction(L, GetPlayerPositionLua);
++    // lua_setfield(L, -2, "get_position");
++
++	// Heal/get health
++    lua_pushcfunction(L, GetPlayerHealthLua);
++    lua_setfield(L, -2, "get_health");
++
++    lua_pushcfunction(L, HealPlayerLua);
++    lua_setfield(L, -2, "heal");
++
++	// Toggles for never wanted
++    lua_pushcfunction(L, enableNeverWantedLua);
++    lua_setfield(L, -2, "enable_never_wanted");
++
++    lua_pushcfunction(L, disableNeverWantedLua);
++    lua_setfield(L, -2, "disable_never_wanted");
++
++	// Auto enable infinite health in the lua script
++
++	// Toggles for infinite health
++    lua_pushcfunction(L, enablePlayerInfiniteHealthLua);
++    lua_setfield(L, -2, "enable_infinite_health");
++
++    lua_pushcfunction(L, disablePlayerInfiniteHealthLua);
++    lua_setfield(L, -2, "disable_infinite_health");
++
++	// This works
++	// TODO Get CVector for respawn from file.
++    lua_pushcfunction(L, setRespawnPointLua);
++    lua_setfield(L, -2, "set_respawn_point");
++
++	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
++    lua_pushcfunction(L, cancelOverrideNextRestartLua);
++    lua_setfield(L, -2, "cancel_override_restart");
++
++	// Toggles for losing weapons when dying.
++    lua_pushcfunction(L, enableLoseWeaponsOnDeathLua);
++    lua_setfield(L, -2, "enable_lose_weapons_on_death");
++
++    lua_pushcfunction(L, disableLoseWeaponsOnDeathLua);
++    lua_setfield(L, -2, "disable_lose_weapons_on_death");
++
++	// Log the player coords and heading
++    lua_pushcfunction(L, logPlayerCoordsLua);
++    lua_setfield(L, -2, "log_coords");
++
++    lua_pushcfunction(L, logPlayerHeadingLua);
++    lua_setfield(L, -2, "log_heading");
++
++
++	// TODO Add these to this format too.
++	// Kill the player if wanted
++	lua_pushcfunction(L, killPlayerIfWantedLua);
++	lua_setfield(L, -2, "kill_wanted");
++
++	// Kill the player cheat
++	lua_pushcfunction(L, suicideCheatLua);
++	// lua_setfield(L, -2, "kill_player");
++	lua_setfield(L, -2, "kill");
++
++	// Check if the player is alive
++	lua_pushcfunction(L, isPlayerAliveLua);
++	// lua_setfield(L, -2, "is_player_alive");
++	lua_setfield(L, -2, "is_alive");
++
++	// Setup changing player clothes
++	lua_pushcfunction(L, changePlayerClothesLua);
++	lua_setfield(L, -2, "change_clothes");
++
++	// Get the current wanted level if above 0
++	lua_pushcfunction(L, checkWantedLevelLua);
++	lua_setfield(L, -2, "get_wanted_level");
++
++    lua_setglobal(L, "player");
++}
++
+ /**
+  * Create the player in lua
++ * TODO Make this function take a CVector instead of floats.
+  * Usage: create_player(0, posX, posY, posZ)
+  */
+ int
+@@ -84,7 +186,7 @@ SetPlayerPositionLua(lua_State *L)
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	// CVector pPlayerPos = FindPlayerCoors();
+ 
+-	// TODO Test this, it should get a CVector instead of my floats.
++	// Gets a CVector instead of my floats.
+ 	auto playerPos = luaGetCVector(L, 1);
+ 
+ 	if (!playerPos)
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index b2542944..d598608f 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -13,6 +13,7 @@ extern "C" {
+ #endif
+ 
+ 	//------------- Player ------------//
++	extern void RegisterPlayerFunctionsLua(lua_State* L);
+ 	extern int createPlayerLua(lua_State *L);
+ 
+ 	extern int enableLoseWeaponsOnDeathLua(lua_State *L);
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index ee475ec5..ccfc2c45 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -370,6 +370,8 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 
+ 	//------------- Vehicle ------------//
++	// Moved into lua_vehicle.cpp RegisterVehicleFunctionsLua with v1.2.10-1a.
++	//-----------------------------------
+ 	
+ 	// Test for creating a vehicle, this will probably crash on invalid models.
+ 	// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
+@@ -385,10 +387,16 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	 */
+ 	// TODO Make this create only one vehicle.
+ 	// 
+-	lua_register(L, "create_vehicle", createVehicleLua);
++	// lua_register(L, "create_vehicle", createVehicleLua);
+ 
+ 	//------------- Player ------------//
++	// Moved into lua_player.cpp RegisterPlayerFunctionsLua with v1.2.10-1a.
++	// TODO Make some functions such as create_player use the new functions such as 'player.create'
++	//-----------------------------------
+ 
++	
++	// Disabled for now 
++#if 0
+ 	// Create the player, should only run if the scripts are disabled.
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	lua_register(L, "create_player", createPlayerLua);
+@@ -425,29 +433,46 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_register(L, "log_player_coords", logPlayerCoordsLua);
+ 	lua_register(L, "log_player_heading", logPlayerHeadingLua);
+ 
+-	// Vehicle
+-	// Check if player is in a vehicle
+-	lua_register(L, "is_player_in_vehicle", isPlayerInVehicleLua);
+-	// Blow up the players vehicle
+-	lua_register(L, "blow_up_vehicle", blowUpPlayerVehicleLua);
+-	// Blow up all vehicles
+-	lua_register(L, "blow_up_all_vehicles", blowUpAllVehiclesLua);
+ 
+-	// Kill the player if wanted
+-	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
++	// Check if the player is alive
++	lua_register(L, "is_player_alive", isPlayerAliveLua);
++
+ 
+ 	// Kill the player cheat
+ 	lua_register(L, "kill_player", suicideCheatLua);
+ 
+-	// Check if the player is alive
+-	lua_register(L, "is_player_alive", isPlayerAliveLua);
+-
+ 	// Setup changing player clothes
+ 	lua_register(L, "change_clothes", changePlayerClothesLua);
+ 
+ 	// Get the current wanted level if above 0
+ 	lua_register(L, "get_wanted_level", checkWantedLevelLua);
+ 
++	// Kill the player if wanted
++	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
++
++#endif // 
++
++
++	// TODO Move out of lua_test.cpp later.
++	// Vehicle
++	// Check if player is in a vehicle
++	lua_register(L, "is_player_in_vehicle", isPlayerInVehicleLua);
++	// Blow up the players vehicle
++	lua_register(L, "blow_up_vehicle", blowUpPlayerVehicleLua);
++	// Blow up all vehicles
++	lua_register(L, "blow_up_all_vehicles", blowUpAllVehiclesLua);
++
++	//----
++	// TODO Fully switch to this, I'll deal with this later.
++	// I will need to rewrite some of my examples but once I fix this,
++	//  I should be able to start porting the commands over much neater.
++	// Try to use namespace like player.set_position({2, 2, 2})
++	//----
++
++	RegisterPlayerFunctionsLua(m_luaVM);
++	RegisterVehicleFunctionsLua(m_luaVM);
++	//----
++
+ 	//
+ 
+ 	//-------------- World --------------//
+diff --git a/src/extras/lua/lua_vehicle.cpp b/src/extras/lua/lua_vehicle.cpp
+index 566dce5b..dcb54f6b 100644
+--- a/src/extras/lua/lua_vehicle.cpp
++++ b/src/extras/lua/lua_vehicle.cpp
+@@ -2,6 +2,8 @@
+ 
+ #ifdef LUA_TEST
+ 
++#include "lua_vehicle.h"
++
+ // Lua functions
+ #include "lua_functions.h"
+ 
+@@ -19,7 +21,25 @@
+ extern "C"
+ {
+ 
++	/**
++	 * Register the lua vehicle functions namespace
++	 * 
++	 * Usage:
++	 * vehicle.create(id, {x = 2, y = 2, z = 2}, false, false)
++	 */
++	void RegisterVehicleFunctionsLua(lua_State* L)
++	{
++		lua_newtable(L); // Stack: vehicle table
++
++		lua_pushcfunction(L, createVehicleLua);
++		lua_setfield(L, -2, "create");
++
++		lua_setglobal(L, "vehicle");
++	}
++
+ 	// With my new function this does work! I had the spawn position set incorrect in lua.
++	// TODO Make this only spawn one vehicle at a time, and remove the old one.
++	// I'll need to setup vehicle storage like in the scripts and remove the old one.
+ 	int
+ 	createVehicleLua(lua_State* L)
+ 	{
+@@ -29,10 +49,31 @@ extern "C"
+ 
+ 		// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
+ 
+-		int vehicleId = lua_tonumber(L, 1);
+-		float posX = (float)lua_tonumber(L, 2);
+-		float posY = (float)lua_tonumber(L, 3);
+-		float posZ = (float)lua_tonumber(L, 4);
++		if (!lua_isinteger(L, 1))
++    	{
++        	return luaL_error(
++            	L,
++            	"vehicle.create expects an integer vehicle ID"
++        	);
++    	}
++
++		// int vehicleId = lua_tonumber(L, 1);
++		// int vehicleId = lua_tointeger(L, 1);
++		int vehicleId = static_cast<int>(lua_tointeger(L, 1));
++		// float posX = (float)lua_tonumber(L, 2);
++		// float posY = (float)lua_tonumber(L, 3);
++		// float posZ = (float)lua_tonumber(L, 4);
++
++		// Gets a CVector instead of my floats.
++		auto vehiclePos = luaGetCVector(L, 2);
++
++		if (!vehiclePos)
++    	{
++        	return luaL_error(
++            	L,
++            	"vehicle.create expects a vector table with numeric x, y, and z fields"
++        	);
++    	}
+ 
+ 		// TODO Check for invalid vehicle.
+ 		// TODO Move this into ImGui menu to test if this will be valid and work.
+@@ -46,8 +87,8 @@ extern "C"
+ 		// 	CustomCheats::CustomHelpMessage(messageText);
+ 		// }
+ 
+-		// if(vehicleId < MI_LANDSTAL || vehicleId <= MI_GANGBUR 
+-		// 	|| vehicleId >= MI_SPEEDER || vehicleId <= MI_VICECHEE)
++		// || vehicleId >= MI_SPEEDER || vehicleId <= MI_VICECHEE
++		// if(vehicleId < MI_LANDSTAL || vehicleId <= MI_GANGBUR )
+ 		// {
+ 		// 	const char* messageText = "Vehicle model was invalid!";
+ 		// 	CustomCheats::CustomHelpMessage(messageText);
+@@ -58,17 +99,19 @@ extern "C"
+ 		// Disabling for now, so I can see the output of above without crashing
+ 
+ 		// Why does this not work
+-		bool deleteLastVehicle = lua_toboolean(L, 5);
++		// bool deleteLastVehicle = lua_toboolean(L, 3);
+ 		// // Oops, I had this set to float, that could've been causing a problem.
+-		bool warpIntoVehicle = lua_toboolean(L, 6);
++		// bool warpIntoVehicle = lua_toboolean(L, 4);
++
++    	const bool deleteLastVehicle = lua_toboolean(L, 3) != 0;
++
++    	const bool warpIntoVehicle = lua_toboolean(L, 4) != 0;
+ 
+ 		// VehicleFunctions::SpawnVehicle(vehicleId, deleteLastVehicle, warpIntoVehicle);
+ 
+ 		// New function for testing.
+-		VehicleFunctions::CreateVehicle(vehicleId, posX, posY, posZ, deleteLastVehicle, warpIntoVehicle);
+-
+-		// return 3;
+-		//
++		// VehicleFunctions::CreateVehicle(vehicleId, posX, posY, posZ, deleteLastVehicle, warpIntoVehicle);
++		VehicleFunctions::CreateVehicle(vehicleId, *vehiclePos, deleteLastVehicle, warpIntoVehicle);
+ 
+ 		return 0;
+ 	}
+diff --git a/src/extras/lua/lua_vehicle.h b/src/extras/lua/lua_vehicle.h
+index 2b0f5448..70aaa5b3 100644
+--- a/src/extras/lua/lua_vehicle.h
++++ b/src/extras/lua/lua_vehicle.h
+@@ -12,6 +12,7 @@ extern "C" {
+ extern "C" {
+ #endif
+ 	//------------- Vehicle ------------//
++	extern void RegisterVehicleFunctionsLua(lua_State* L);
+ 	extern int createVehicleLua(lua_State *L);
+ 
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 2ab069e1..0ae72b91 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.9-2a";
++std::string Defines::programVersion = "1.2.10-1a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

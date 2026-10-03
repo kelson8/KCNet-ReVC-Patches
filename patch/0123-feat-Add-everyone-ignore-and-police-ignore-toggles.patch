@@ -1,0 +1,207 @@
+From 0ebef02db40fa2ebbea33429b8359c00bea0de40 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 21:10:46 -0400
+Subject: [PATCH 123/161] feat: Add everyone ignore and police ignore toggles
+
+* I added these into lua to be set now, with player.everyone_ignore, and player.police_ignore.
+
+* Update changelog, change version to 1.2.11a.
+---
+ Changelog.md                  |   8 +++
+ src/extras/lua/lua_player.cpp | 120 ++++++++++++++++++++++++++++++++++
+ src/extras/lua/lua_player.h   |   6 ++
+ src/extras/utils/defines.cpp  |   2 +-
+ 4 files changed, 135 insertions(+), 1 deletion(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 96bc16aa..add0de61 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -586,3 +586,11 @@ feat: Add toggle for emergency vehicle spawns
+ * Make project build again without DISABLE_GAME_SCRIPTS, I need to keep this working so the main mission scripts also still work.
+ 
+ * Update changelog
++
++### 1.2.12-11a
++
++feat: Add everyone ignore and police ignore toggles
++
++* I added these into lua to be set now, with player.everyone_ignore, and player.police_ignore.
++
++* Update changelog, change version to 1.2.12-11a.
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 5ea43e3e..f4ed0ffc 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -33,6 +33,7 @@
+ #include "Text.h"
+ 
+ #include "Pad.h"
++#include "Wanted.h"
+ 
+ // Removed static from the void in debug_functions using a preprocessor.
+ // This works.
+@@ -144,6 +145,18 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, teleportToMarkerLua);
+ 	lua_setfield(L, -2, "tp_to_marker");
+ 
++	// Toggle the players control
++	lua_pushcfunction(L, togglePlayerControlLua);
++	lua_setfield(L, -2, "set_control");
++	
++	// Toggle everyone ignores the player
++	lua_pushcfunction(L, toggleEveryoneIgnorePlayerLua);
++	lua_setfield(L, -2, "everyone_ignore");
++
++	// Toggle police ignores the player
++	lua_pushcfunction(L, togglePoliceIgnorePlayerLua);
++	lua_setfield(L, -2, "police_ignore");
++
+ 	// Player namespace
+     lua_setglobal(L, "player");
+ }
+@@ -581,4 +594,111 @@ teleportToMarkerLua(lua_State *L)
+ }
+ //
+ 
++//------------------
++// New toggles
++// Added in: v1.12-11a
++//------------------
++
++/**
++ * Toggle the players control, can enable/disable their movement.
++ * SET_PLAYER_CONTROL
++ * 
++ * TODO Fix this one
++ * 
++ * 
++ * 
++ * Usage:
++ * player.set_control(true)
++ * 
++ */
++int 
++togglePlayerControlLua(lua_State *L)
++{
++	bool toggle = static_cast<float>(lua_toboolean(L, 1));
++
++	if(!lua_isboolean(L, 1))
++	{
++		return luaL_error(L, "player.toggle_control requires a boolean true or false value.");
++	}
++
++	// I need to figure this out.
++	// FindPlayerPed()->MakePlayerSafe(false);
++
++
++
++	return 1;
++}
++
++
++/**
++ * Toggle everyone ignores the player
++ * SET_EVERYONE_IGNORE_PLAYER
++ * 
++ * Usage:
++ * player.everyone_ignore(true)
++ * 
++ */
++int 
++toggleEveryoneIgnorePlayerLua(lua_State *L)
++{
++	bool toggle = static_cast<float>(lua_toboolean(L, 1));
++
++	if(!lua_isboolean(L, 1))
++	{
++		return luaL_error(L, "player.everyone_ignore requires a boolean true or false value.");
++	}
++
++	FindPlayerPed()->m_pWanted->m_bIgnoredByEveryone = toggle;
++
++	if(toggle)
++	{
++		CWorld::StopAllLawEnforcersInTheirTracks();
++	}
++
++	return 1;
++}
++
++
++/**
++ * Toggle police ignores the player
++ * SET_POLICE_IGNORE_PLAYER
++ * 
++ * Usage:
++ * player.police_ignore_player(true)
++ * 
++ */
++int 
++togglePoliceIgnorePlayerLua(lua_State *L)
++{
++	bool toggle = static_cast<float>(lua_toboolean(L, 1));
++
++	// TODO Is this right?
++	if(!lua_isboolean(L, 1))
++	{
++		return luaL_error(L, "player.police_ignore requires a boolean true or false value.");
++	}
++
++	CPlayerPed *playerPed = FindPlayerPed();
++
++	// if(!playerPed)
++	// {
++	// 	return luaL_error(L, "player.police_ignore_player Player doesnt exist!");
++	// }
++
++	playerPed->m_pWanted->m_bIgnoredByCops = toggle;
++	if(toggle)
++	{
++		CWorld::StopAllLawEnforcersInTheirTracks();
++	}
++
++	// FindPlayerPed()->m_pWanted.
++	// 
++
++	// togglePoliceIgnorePlayer
++
++
++
++	return 1;
++}
++
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index fb10adce..1ed65614 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -48,6 +48,12 @@ extern "C" {
+ 
+ 	extern int teleportToMarkerLua(lua_State *L);
+ 
++	extern int teleportToMarkerLua(lua_State *L);
++
++	extern int togglePlayerControlLua(lua_State *L);
++	extern int toggleEveryoneIgnorePlayerLua(lua_State *L);
++	extern int togglePoliceIgnorePlayerLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 86f99fd2..78fdfb66 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-10a";
++std::string Defines::programVersion = "1.2.12-11a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

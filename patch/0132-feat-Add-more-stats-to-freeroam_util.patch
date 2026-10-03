@@ -1,0 +1,214 @@
+From 6bf9d0af9484d03e8af9d436036c522a7be72f15 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 02:15:37 -0400
+Subject: [PATCH 132/161] feat: Add more stats to freeroam_util
+
+* I added more stats for the json save file in freeroam_util.
+
+* Fix add blip for coord to now take a custom parameter for the blip sprite, and if the blip should have a route.
+
+* Update changelog, change version to 1.2.13-7a.
+---
+ Changelog.md                       | 12 +++++-
+ src/extras/lua/lua_game.cpp        | 45 ++++++++++++--------
+ src/extras/utils/defines.cpp       |  2 +-
+ src/extras/utils/freeroam_util.cpp | 67 ++++++++++++++++++++++++++++++
+ 4 files changed, 107 insertions(+), 19 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 395f2406..b7d19000 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -677,4 +677,14 @@ feat: Add set health, armor and get armor functions
+ 
+ * Add disabled toggle for creating some objects, this currently crashes in lua.
+ 
+-* Update changelog, change version to 1.2.13-6a.
+\ No newline at end of file
++* Update changelog, change version to 1.2.13-6a.
++
++### 1.2.13-7a
++
++feat: Add more stats to freeroam_util 
++
++* I added more stats for the json save file in freeroam_util.
++
++* Fix add blip for coord to now take a custom parameter for the blip sprite, and if the blip should have a route.
++
++* Update changelog, change version to 1.2.13-7a.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index b837c46a..74bfc291 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -676,41 +676,52 @@ int setAllowHurricanesLua(lua_State *L)
+  * 
+  * ADD_BLIP_FOR_COORD_OLD
+  * 
+- * This works! It adds a destination marker.
++ * This works! It adds a custom sprite to the map now.
++ * This can also add a route marker.
+  * 
+  * Usage:
+- * game.add_blip_for_coord({x = 2, y = 2, z = 2})
++ * game.add_blip_for_coord({x = 2, y = 2, z = 2}, radar_enums.eRadarSprite.RADAR_SPRITE_SAVE, false)
+  */
+ int addBlipForCoordOldLua(lua_State *L)
+ {
+ 	auto pos = luaGetCVector(L, 1);
++	int blipSprite = lua_tonumber(L, 2);
++	bool setBlipRoute = static_cast<float>(lua_toboolean(L, 3));
++
++	if(!lua_isboolean(L, 3))
++	{
++		return luaL_error(L, "game.add_blip_for_coord boolean required for parameter 3! game.add_blip_for_coord(coords, blip_sprite, is_route_enabled).");
++	}
++
++	if(blipSprite < RADAR_SPRITE_AVERY || blipSprite > RADAR_SPRITE_WAYPOINT)
++	{
++		return luaL_error(L, "game.add_blip_for_coord value invalid, use the radar_enums.eRadarSprite enum.");
++	}
+ 
+ 	if (!pos)
+     {
+-    	// return luaL_error(L, "game.add_blip_for_coord expects a vector table with numeric x, y, and z fields, a blip color, and the blip to display.");
+-    	return luaL_error(L, "game.add_blip_for_coord expects a vector table with numeric x, y, and z fields.");
++    	return luaL_error(L, "game.add_blip_for_coord expects a vector table with numeric x, y, and z fields, a blip color, and the blip to display.");
+ 	}
+ 
+ 	// 
+ 	// CRadar::SetCoordBlip(BLIP_COORD, *pos, 20, BLIP_DISPLAY_BOTH);
+ 
+ 	// Taken below from lua_test.cpp.
+-	CRadar radar = CRadar();
+ 
+-	int blip = radar.SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++	// This works now!
++	// int blip = radar.SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++	int blip = CRadar::SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
+ 	
+-	int blipIndex = CRadar::GetActualBlipArrayIndex(blip);
+-	// TODO Figure this part out I'm not sure of the icons for this 
+-	// Possibly from eRadarSprite
+-	// RADAR_SPRITE_SAVE
+-	radar.SetBlipSprite(blipIndex, RADAR_SPRITE_SAVE);
+-	// TODO Test for setting a blip route.
+-	// radar.SetBlipRoute(blipIndex, true);
+-
+-	// radar.SetBlipSprite(blipIndex, RADAR_SPRITE_LAWYER);
+-
+-	radar.DisplayThisBlip(blipIndex);
++	// Set the blip icon here.
++	// Icons are from eRadarSprite
++	CRadar::SetBlipSprite(blip, blipSprite);
+ 
++	// Set a blip route
++	CRadar::SetBlipRoute(blip, setBlipRoute);
++	
++	// I'm not sure what the blip array index is for, this mostly seems to be used in the scripts.
++	// int blipIndex = CRadar::GetActualBlipArrayIndex(blip);
++	
+ 	return 1;
+ }
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 54579e93..26c38d29 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-6a";
++std::string Defines::programVersion = "1.2.13-7a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index c56a8b12..6acbb65f 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -10,6 +10,7 @@
+ #include "vehicle_functions.h"
+ 
+ // ReVC
++#include "Stats.h"
+ #include "Clock.h"
+ #include "Entity.h"
+ #include "Placeable.h"
+@@ -110,6 +111,72 @@ bool FreeroamUtil::SaveFreeroamJson()
+         save["stats"]["health"] = FindPlayerPed()->m_fHealth;
+         save["stats"]["armor"] = FindPlayerPed()->m_fArmour;
+ 
++        // New stats
++        // TODO Test these!
++        // TODO Make all of these able to be called in lua.
++        // Possibly make a player.set_stat(stat_type, value)
++        // It should be easy since most of these are floats or ints.
++
++        // Peds killed by player and others
++        save["stats"]["peds_killed_by_player"] = CStats::PeopleKilledByPlayer;
++        save["stats"]["peds_killed_by_others"] = CStats::PeopleKilledByOthers;
++        save["stats"]["kills_since_last_checkpoint"] = CStats::KillsSinceLastCheckpoint;
++
++        // Explosions
++        save["stats"]["kgs_of_explosives_used"] = CStats::KgsOfExplosivesUsed;
++        
++        save["stats"]["boats_exploded"] = CStats::BoatsExploded;
++        save["stats"]["helis_destroyed"] = CStats::HelisDestroyed;
++        save["stats"]["vehicles_exploded"] = CStats::CarsExploded;
++        
++        save["stats"]["bullets_that_hit"] = CStats::BulletsThatHit;
++        save["stats"]["rounds_fired_by_player"] = CStats::RoundsFiredByPlayer;
++        
++        save["stats"]["days_passed"] = CStats::DaysPassed;
++
++        // Distance travelled
++        save["stats"]["distance_traveled_by_bike"] = CStats::DistanceTravelledByBike;
++        save["stats"]["distance_traveled_by_boat"] = CStats::DistanceTravelledByBoat;
++        save["stats"]["distance_traveled_by_car"] = CStats::DistanceTravelledByCar;
++        save["stats"]["distance_traveled_by_golf_cart"] = CStats::DistanceTravelledByGolfCart;
++        save["stats"]["distance_traveled_by_helicopter"] = CStats::DistanceTravelledByHelicoptor;
++        save["stats"]["distance_traveled_by_plane"] = CStats::DistanceTravelledByPlane;
++        save["stats"]["distance_traveled_on_foot"] = CStats::DistanceTravelledOnFoot;
++
++        // Wanted
++        save["stats"]["wanted_stars_evaded"] = CStats::WantedStarsEvaded;
++        save["stats"]["wanted_stars_attained"] = CStats::WantedStarsAttained;
++        
++        // Misc
++        save["stats"]["tires_popped"] = CStats::TyresPopped;
++        save["stats"]["total_kills"] = CStats::TotalLegitimateKills;
++        save["stats"]["times_arrested"] = CStats::TimesArrested;
++        save["stats"]["times_died"] = CStats::TimesDied;
++        save["stats"]["times_drowned"] = CStats::TimesDrowned;
++        save["stats"]["seagulls_killed"] = CStats::SeagullsKilled;
++
++        // Wheelies, stoppies and other vehicle stats.
++        save["stats"]["longest_stoppie_time"] = CStats::LongestStoppie;
++        save["stats"]["longest_stoppie_distance"] = CStats::LongestStoppieDist;
++        save["stats"]["longest_2_wheel_time"] = CStats::Longest2Wheel;
++        save["stats"]["longest_2_wheel_distance"] = CStats::Longest2WheelDist;
++        save["stats"]["longest_wheelie_time"] = CStats::LongestWheelie;
++        save["stats"]["longest_wheelie_distance"] = CStats::LongestWheelieDist;
++        //
++
++        
++        // Not in use, I could possibly use this once I figure out how to place the pickups.
++        // Then I could increment this when I save my game.
++        // save["stats"]["safehouse_visits"] = CStats::SafeHouseVisits;
++        
++        
++        
++        // TODO Figure out how to save the favorite radio station list.
++        // save["stats"][""] = CStats::FavoriteRadioStationList;
++
++        // save["stats"][""] = CStats::;       
++
++
+         /*
+          * Write to a temporary file first. If the game crashes while
+          * writing, the previous save is not immediately destroyed.
+-- 
+2.43.0
+

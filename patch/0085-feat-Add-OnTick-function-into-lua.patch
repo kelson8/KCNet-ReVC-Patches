@@ -1,0 +1,820 @@
+From 9fc5a826904d49bc2529ad21dfe85bb4f494887c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Sep 2026 13:31:52 -0400
+Subject: [PATCH 085/161] feat: Add OnTick function into lua
+
+* Now my game scripts can have a tick system, although if you change anything in it, you have to start a new game.
+
+* Add things todo for things to replicate into my lua freeroam scripts.
+
+* Update lua_setup, now F5 will start a new game if DISABLE_GAME_SCRIPTS is enabled, my OnTick function in lua requires a reload to be changed so this is a workaround.
+
+* Make fast loader able to be toggled with DISABLE_GAME_SCRIPTS enabled by holding control.
+
+* Update changelog.md, Bump version to 1.2.7a.
+---
+ Changelog.md                                  | 14 ++++
+ .../lua_scripts/freeroam-game.lua             | 24 ++++++
+ .../ViceExtended/lua_scripts/kcnet-events.lua |  3 +
+ .../ViceExtended/lua_scripts/kcnet-init.lua   |  3 +
+ src/control/Script.cpp                        | 74 ++++++++++++++++
+ src/control/Script2.cpp                       |  2 +
+ src/control/Script3.cpp                       | 30 +++++++
+ src/core/Game.cpp                             | 11 +++
+ src/core/PlayerInfo.cpp                       | 22 +++++
+ src/extras/lua/lua_setup.cpp                  | 12 ++-
+ src/extras/utils/fast_loader.cpp              | 84 ++++++++++---------
+ 11 files changed, 238 insertions(+), 41 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 7474abd8..cafaf788 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -99,3 +99,17 @@ feat: Move vehicle spawn logic
+ * Update lua scripts.
+ 
+ * Update changelog.md.
++
++### 1.2.7a
++feat: Add OnTick function into lua
++
++* Now my game scripts can have a tick system, although if you change anything in it, you have to start a new game.
++
++* Add things todo for things to replicate into my lua freeroam scripts.
++
++* Update lua_setup, now F5 will start a new game if DISABLE_GAME_SCRIPTS is enabled, my OnTick function in lua requires a reload to be changed so this is a workaround.
++
++* Make fast loader able to be toggled with DISABLE_GAME_SCRIPTS enabled by holding control.
++
++* Update changelog.md, Bump version to 1.2.7a.
++
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index a85d0a6f..295a813f 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -36,6 +36,10 @@ local airportY = -1182.1
+ local airportZ = 16.5
+ local airportHeading = 0.0
+ 
++local policeStationX = 402.371
++local policeStationY = -463.671
++local policeStationZ = 10.1132
++
+ -- Spawn in the player, mostly for spawning without the .scm scripts
+ -- This works in here now!
+ 
+@@ -49,6 +53,26 @@ create_player(0, airportX, airportY, airportZ)
+ -- End REQUIRED
+ --------
+ 
++--------
++-- Game Tick
++-- Runs all the time
++-- WARNING do not put anything in here that will crash, such as spawning vehicles or creating the player.
++-- You will spam the command and the game will crash pretty quickly.
++-- I will try to add a protection against this later, so only specific commands can run in the Tick function.
++--------
++
++-- This runs every frame (called by the C++ Update/Heartbeat)
++function OnTick()
++    -- TODO Implement getting player keybinds in lua directly, I should be able to.
++--     if GetPlayerKey('W') then
++        -- Do something
++--     end
++
++    -- Kill player if they get cops
++    -- This works, although I need to start a new game to change these in the tick function.
++--      kill_wanted_player()
++end
++
+ --------
+ -- Custom functions go below
+ --------
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua
+index 01e45d80..4efd077b 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-events.lua
+@@ -1,6 +1,9 @@
+ -- My custom event system running in lua
+ -- KCNet Event System ReVC
+ 
++-- Disabled if DISABLE_GAME_SCRIPTS is toggled in the code.
++-- Switches to using the OnTick function in freeroam-game.lua.
++
+ -- Functions for this:
+ -- blow_up_vehicle - This blows up the current vehicle if the player is in one.
+ -- kill_wanted_player - This will kill the player if they get wanted.
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-init.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-init.lua
+index f04a72f2..3c00dcb3 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-init.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-init.lua
+@@ -1,5 +1,8 @@
+ -- local vehicle_test = require 'vehicles'
+ 
++-- Disabled if DISABLE_GAME_SCRIPTS is toggled in the code.
++-- Switches to the freeroam-game.lua script.
++
+ -- C++
+ -- Testing moving out of the global namespace
+ -- local test_functions = require("testfunctions")
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index ba616149..9961610f 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -1946,6 +1946,9 @@ int8 CRunningScript::ProcessCommands0To99(int32 command)
+ 			CTheScripts::DrawDebugSquare(x1, y1, x2, y2);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
++	// Looks somewhat simple, I'll just have to test it a bit first.
+ 	case COMMAND_IS_PLAYER_IN_AREA_3D:
+ 	{
+ 		CollectParameters(&m_nIp, 8);
+@@ -1956,12 +1959,16 @@ int8 CRunningScript::ProcessCommands0To99(int32 command)
+ 		float x2 = *(float*)&ScriptParams[4];
+ 		float y2 = *(float*)&ScriptParams[5];
+ 		float z2 = *(float*)&ScriptParams[6];
++
+ 		if (ped->bInVehicle)
+ 			UpdateCompareFlag(ped->m_pMyVehicle->IsWithinArea(x1, y1, z1, x2, y2, z2));
+ 		else
+ 			UpdateCompareFlag(ped->IsWithinArea(x1, y1, z1, x2, y2, z2));
++
+ 		if (ScriptParams[7])
+ 			CTheScripts::HighlightImportantArea((uintptr)this + m_nIp, x1, y1, x2, y2, (z1 + z2) / 2);
++
++		// TODO What is the DbgFlag? Can I draw bounding boxes around these areas?
+ 		if (CTheScripts::DbgFlag)
+ 			CTheScripts::DrawDebugCube(x1, y1, z1, x2, y2, z2);
+ 		return 0;
+@@ -2320,6 +2327,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 	case COMMAND_GENERATE_RANDOM_INT:
+ 		*GetPointerToScriptVariable(&m_nIp, VAR_GLOBAL) = CGeneral::GetRandomNumber();
+ 		return 0;
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CREATE_CHAR:
+ 	{
+ 		CollectParameters(&m_nIp, 5);
+@@ -2354,32 +2363,43 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		CPed* ped;
+ 		if (ScriptParams[0] == PEDTYPE_COP)
+ 			ped = new CCopPed((eCopType)ScriptParams[1]);
++
+ 		else if (ScriptParams[0] == PEDTYPE_EMERGENCY || ScriptParams[0] == PEDTYPE_FIREMAN)
+ 			ped = new CEmergencyPed(ScriptParams[1]);
+ 		else
+ 			ped = new CCivilianPed((ePedType)ScriptParams[0], ScriptParams[1]);
++
+ 		ped->CharCreatedBy = MISSION_CHAR;
+ 		ped->bRespondsToThreats = false;
+ 		ped->bAllowMedicsToReviveMe = false;
+ 		ped->bIsPlayerFriend = false;
++
+ 		CVector pos = *(CVector*)&ScriptParams[2];
+ 		if (pos.z <= MAP_Z_LOW_LIMIT)
+ 			pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
+ 		pos.z += 1.0f;
+ 		ped->SetPosition(pos);
+ 		ped->SetOrientation(0.0f, 0.0f, 0.0f);
++
+ 		CTheScripts::ClearSpaceForMissionEntity(pos, ped);
+ 		if (m_bIsMissionScript)
+ 			ped->bIsStaticWaitingForCollision = true;
++
+ 		CWorld::Add(ped);
+ 		ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
++
+ 		CPopulation::ms_nTotalMissionPeds++;
+ 		ScriptParams[0] = CPools::GetPedPool()->GetIndex(ped);
++
+ 		StoreParameters(&m_nIp, 1);
++
+ 		if (m_bIsMissionScript)
+ 			CTheScripts::MissionCleanUp.AddEntityToList(ScriptParams[0], CLEANUP_CHAR);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_DELETE_CHAR:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -2389,6 +2409,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 			CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_CHAR);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CHAR_WANDER_DIR:
+ 	{
+ 		CollectParameters(&m_nIp, 2);
+@@ -2408,6 +2430,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		return 0;
+ 	}
+ 	//case COMMAND_CHAR_WANDER_RANGE:
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CHAR_FOLLOW_PATH:
+ 	{
+ 		CollectParameters(&m_nIp, 6);
+@@ -2501,6 +2525,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		return 0;
+ 	}
+ 	*/
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_CHAR_IN_AREA_2D:
+ 	{
+ 		CollectParameters(&m_nIp, 6);
+@@ -2525,6 +2551,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 			CTheScripts::DrawDebugSquare(x1, y1, x2, y2);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_CHAR_IN_AREA_3D:
+ 	{
+ 		CollectParameters(&m_nIp, 8);
+@@ -2623,6 +2651,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 			CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_CAR);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CAR_GOTO_COORDINATES:
+ 	{
+ 		CollectParameters(&m_nIp, 4);
+@@ -2642,6 +2672,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		car->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CAR_WANDER_RANDOMLY:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -2654,6 +2686,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		car->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CAR_SET_IDLE:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -2662,6 +2696,7 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		car->AutoPilot.m_nCarMission = MISSION_NONE;
+ 		return 0;
+ 	}
++
+ 	case COMMAND_GET_CAR_COORDINATES:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -2731,6 +2766,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		return 0;
+ 	}
+ 	*/
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SET_CAR_CRUISE_SPEED:
+ 	{
+ 		CollectParameters(&m_nIp, 2);
+@@ -2739,6 +2776,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		car->AutoPilot.m_nCruiseSpeed = Min(*(float*)&ScriptParams[1], 60.0f * car->pHandling->Transmission.fMaxCruiseVelocity);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SET_CAR_DRIVING_STYLE:
+ 	{
+ 		CollectParameters(&m_nIp, 2);
+@@ -2747,6 +2786,7 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		car->AutoPilot.m_nDrivingStyle = (uint8)ScriptParams[1];
+ 		return 0;
+ 	}
++
+ 	case COMMAND_SET_CAR_MISSION:
+ 	{
+ 		CollectParameters(&m_nIp, 2);
+@@ -2757,6 +2797,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		car->bEngineOn = true;
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_CAR_IN_AREA_2D:
+ 	{
+ 		CollectParameters(&m_nIp, 6);
+@@ -2773,6 +2815,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 			CTheScripts::DrawDebugSquare(x1, y1, x2, y2);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_CAR_IN_AREA_3D:
+ 	{
+ 		CollectParameters(&m_nIp, 8);
+@@ -2801,6 +2845,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 	case COMMAND_SPECIAL_7:
+ 		script_assert(0);
+ 		return 0;
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_PRINT_BIG:
+ 	{
+ 		wchar* key = CTheScripts::GetTextByKeyFromScript(&m_nIp);
+@@ -2816,6 +2862,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		CMessages::AddBigMessage(key, ScriptParams[0], ScriptParams[1] - 1);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_PRINT:
+ 	{
+ 		wchar* key = CTheScripts::GetTextByKeyFromScript(&m_nIp);
+@@ -2823,6 +2871,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		CMessages::AddMessage(key, ScriptParams[0], ScriptParams[1]);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_PRINT_NOW:
+ 	{
+ 		wchar* key = CTheScripts::GetTextByKeyFromScript(&m_nIp);
+@@ -2839,6 +2889,8 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		return 0;
+ 	}
+ 	*/
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CLEAR_PRINTS:
+ 		CMessages::ClearMessages();
+ 		return 0;
+@@ -2935,6 +2987,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 		CTheScripts::MissionCleanUp.Process();
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_STORE_CAR_CHAR_IS_IN:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -3151,6 +3205,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 	case COMMAND_LOCATE_CHAR_IN_CAR_CHAR_3D:
+ 		LocateCharCharCommand(command, &m_nIp);
+ 		return 0;
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_CREATE_OBJECT:
+ 	{
+ 		CollectParameters(&m_nIp, 4);
+@@ -3176,6 +3232,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 			CTheScripts::MissionCleanUp.AddEntityToList(ScriptParams[0], CLEANUP_OBJECT);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_DELETE_OBJECT:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -3189,6 +3247,7 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 			CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_OBJECT);
+ 		return 0;
+ 	}
++
+ 	case COMMAND_ADD_SCORE:
+ 		CollectParameters(&m_nIp, 2);
+ 		CWorld::Players[ScriptParams[0]].m_nMoney += ScriptParams[1];
+@@ -3254,10 +3313,14 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 	}
+ 	//case COMMAND_ADD_AMMO_TO_CAR:
+ 	//case COMMAND_IS_PLAYER_STILL_ALIVE:
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_PLAYER_DEAD:
+ 		CollectParameters(&m_nIp, 1);
+ 		UpdateCompareFlag(CWorld::Players[ScriptParams[0]].m_WBState == WBSTATE_WASTED);
+ 		return 0;
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_CHAR_DEAD:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -3265,6 +3328,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 		UpdateCompareFlag(!pPed || pPed->DyingOrDead());
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_CAR_DEAD:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -3272,6 +3337,7 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 		UpdateCompareFlag(!pVehicle || pVehicle->GetStatus() == STATUS_WRECKED || pVehicle->bIsDrowning);
+ 		return 0;
+ 	}
++
+ 	case COMMAND_SET_CHAR_THREAT_SEARCH:
+ 	{
+ 		CollectParameters(&m_nIp, 2);
+@@ -3294,6 +3360,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 	//case COMMAND_ORDER_CHAR_TO_DRIVE_CAR:
+ 	//case COMMAND_ADD_PATROL_POINT:
+ 	//case COMMAND_IS_PLAYER_IN_GANGZONE:
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_IS_PLAYER_IN_ZONE:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+@@ -3341,6 +3409,10 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 	case COMMAND_SET_CHAR_DRIVE_AGGRESSION:
+ 	case COMMAND_SET_CHAR_MAX_DRIVESPEED:
+ 	*/
++
++	// TODO Replicate in my freeroam scripts.
++	// I think this is one of the reasons I don't have emergency peds in vehicles.
++	// Or this does something else.
+ 	case COMMAND_CREATE_CHAR_INSIDE_CAR:
+ 	{
+ 		CollectParameters(&m_nIp, 3);
+@@ -3411,6 +3483,8 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 			CTheScripts::MissionCleanUp.AddEntityToList(ScriptParams[0], CLEANUP_CHAR);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_WARP_PLAYER_FROM_CAR_TO_COORD:
+ 	{
+ 		CollectParameters(&m_nIp, 4);
+diff --git a/src/control/Script2.cpp b/src/control/Script2.cpp
+index 4e7a1c3e..895d8139 100644
+--- a/src/control/Script2.cpp
++++ b/src/control/Script2.cpp
+@@ -1085,6 +1085,8 @@ int8 CRunningScript::ProcessCommands400To499(int32 command)
+ 		CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_CAR);
+ 		return 0;
+ 	}
++
++	// TODO Replicate for my freeroam scripts, should make the objects not be removed.
+ 	case COMMAND_DONT_REMOVE_OBJECT:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+diff --git a/src/control/Script3.cpp b/src/control/Script3.cpp
+index f831645e..4d7f0f67 100644
+--- a/src/control/Script3.cpp
++++ b/src/control/Script3.cpp
+@@ -393,6 +393,9 @@ int8 CRunningScript::ProcessCommands500To599(int32 command)
+ 		CPlayerPed* pPed = CWorld::Players[ScriptParams[0]].m_pPed;
+ 		script_assert(pPed);
+ 		pPed->m_fHealth = Min(ScriptParams[1], CWorld::Players[ScriptParams[0]].m_nMaxHealth);
++
++		// TRACE("HEALTH Set to {}", pPed->m_fHealth);
++		// debug("HEALTH Set to {}", pPed->m_fHealth);
+ 		return 0;
+ 	}
+ 	case COMMAND_SET_CHAR_HEALTH:
+@@ -1262,28 +1265,37 @@ int8 CRunningScript::ProcessCommands600To699(int32 command)
+ 		return 0;
+ 	}
+ 	*/
++
++	// TODO Replicate for my new freeroam scripts.
+ 	case COMMAND_CREATE_OBJECT_NO_OFFSET:
+ 	{
+ 		CollectParameters(&m_nIp, 4);
+ 		int mi = ScriptParams[0] >= 0 ? ScriptParams[0] : CTheScripts::UsedObjectArray[-ScriptParams[0]].index;
++
+ 		CObject* pObj = new CObject(mi, false);
+ ;		pObj->ObjectCreatedBy = MISSION_OBJECT;
+ 		CVector pos = *(CVector*)&ScriptParams[1];
++
+ 		if (pos.z <= MAP_Z_LOW_LIMIT)
+ 			pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
+ 		pObj->SetPosition(pos);
+ 		pObj->SetOrientation(0.0f, 0.0f, 0.0f);
+ 		pObj->GetMatrix().UpdateRW();
++
+ 		pObj->UpdateRwFrame();
+ 		CBaseModelInfo* pModelInfo = CModelInfo::GetModelInfo(mi);
+ 		if (pModelInfo->IsBuilding() && ((CSimpleModelInfo*)pModelInfo)->m_isBigBuilding)
+ 			pObj->SetupBigBuilding();
++
+ 		CTheScripts::ClearSpaceForMissionEntity(pos, pObj);
+ 		CWorld::Add(pObj);
+ 		ScriptParams[0] = CPools::GetObjectPool()->GetIndex(pObj);
++
+ 		StoreParameters(&m_nIp, 1);
+ 		if (m_bIsMissionScript)
+ 			CTheScripts::MissionCleanUp.AddEntityToList(ScriptParams[0], CLEANUP_OBJECT);
++
+ 		return 0;
+ 	}
+ 	/*
+@@ -1476,6 +1488,24 @@ int8 CRunningScript::ProcessCommands600To699(int32 command)
+ 		pPed->bExplosionProof = (ScriptParams[3] != 0);
+ 		pPed->bCollisionProof = (ScriptParams[4] != 0);
+ 		pPed->bMeleeProof = (ScriptParams[5] != 0);
++
++		// New
++		// This works for logging, although this isn't the script params values.
++		// debug("bBulletProof: %d\n", pPed->bBulletProof);
++		// debug("bFireProof: %d\n", pPed->bFireProof);
++		// debug("bExplosionProof: %d\n", pPed->bExplosionProof);
++		// debug("bCollisionProof: %d\n", pPed->bCollisionProof);
++		// debug("bMeleeProof: %d\n", pPed->bMeleeProof);
++
++		// This works for logging the values.
++		// debug("bBulletProof: %d\n", ScriptParams[1]);
++		// debug("bFireProof: %d\n", ScriptParams[2]);
++		// debug("bExplosionProof: %d\n", ScriptParams[3]);
++		// debug("bCollisionProof: %d\n", ScriptParams[4]);
++		// debug("bMeleeProof: %d\n", ScriptParams[5]);
++
++		// 
++
+ 		return 0;
+ 	}
+ 	case COMMAND_SET_CAR_PROOFS:
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index ea023776..7a8ac80f 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -966,7 +966,18 @@ void CGame::Process(void)
+ #ifdef LUA_EVENT_TEST
+ 		LuaTest luaTest = LuaTest();
+ 		// Load events from kcnet-events.lua or whatever is set in defines.cpp.
++
++#ifdef DISABLE_GAME_SCRIPTS
++		// Run the tick system in freeroam-game.lua.
++		LuaTest::GetInstance().OnTick();
++#else
++		// Run the kcnet-events.lua file.
++		// TODO Switch to this, might fix some things.
++		// LuaTest::GetInstance().LuaEvents();
+ 		luaTest.LuaEvents();
++
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ #endif
+ 
+ 		CSprite2d::SetRecipNearClip();
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index a3e64386..39efe232 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -183,11 +183,14 @@ CPlayerInfo::Process(void)
+ 				m_nCancelWheelStuntTimer += CTimer::GetTimeStepInMilliseconds();
+ 
+ 			} else {
++
+ 				if (m_nTimeCarSpentOnTwoWheels >= 2000) {
+ 					m_nLastTimeCarSpentOnTwoWheels = m_nTimeCarSpentOnTwoWheels;
+ 					m_nLastDistanceCarTravelledOnTwoWheels = m_nDistanceCarTravelledOnTwoWheels;
++
+ 					if (CStats::Longest2Wheel < m_nTimeCarSpentOnTwoWheels / 1000)
+ 						CStats::Longest2Wheel = m_nTimeCarSpentOnTwoWheels / 1000;
++
+ 					if (CStats::Longest2WheelDist < m_nDistanceCarTravelledOnTwoWheels)
+ 						CStats::Longest2WheelDist = m_nDistanceCarTravelledOnTwoWheels;
+ 				}
+@@ -195,26 +198,35 @@ CPlayerInfo::Process(void)
+ 				m_nDistanceCarTravelledOnTwoWheels = 0;
+ 				m_nCancelWheelStuntTimer = 0;
+ 			}
++
+ 		} else if (m_nTimeCarSpentOnTwoWheels != 0) {
++
+ 			if (m_nTimeCarSpentOnTwoWheels >= 2000) {
+ 				m_nLastTimeCarSpentOnTwoWheels = m_nTimeCarSpentOnTwoWheels;
+ 				m_nLastDistanceCarTravelledOnTwoWheels = m_nDistanceCarTravelledOnTwoWheels;
++
+ 				if (CStats::Longest2Wheel < m_nTimeCarSpentOnTwoWheels / 1000)
+ 					CStats::Longest2Wheel = m_nTimeCarSpentOnTwoWheels / 1000;
++
+ 				if (CStats::Longest2WheelDist < m_nDistanceCarTravelledOnTwoWheels)
+ 					CStats::Longest2WheelDist = m_nDistanceCarTravelledOnTwoWheels;
+ 			}
++
+ 			m_nTimeCarSpentOnTwoWheels = 0;
+ 			m_nDistanceCarTravelledOnTwoWheels = 0;
+ 			m_nCancelWheelStuntTimer = 0;
+ 		}
++
+ 		m_nTimeSpentOnWheelie = 0;
+ 		m_nTimeSpentOnStoppie = 0;
++
+ 	} else if (m_pPed->m_pMyVehicle->IsBike()) {
+ 		CBike *bike = (CBike*)m_pPed->m_pMyVehicle;
++
+ 		if (bike->m_aSuspensionSpringRatioPrev[0] == 1.0f && bike->m_aSuspensionSpringRatioPrev[1] == 1.0f) {
+ 			if (bike->m_aSuspensionSpringRatioPrev[2] < 1.0f
+ 				|| (bike->m_aSuspensionSpringRatioPrev[3] < 1.0f && 0.0f == bike->m_fDamageImpulse)) {
++
+ 				m_nTimeSpentOnWheelie += CTimer::GetTimeStepInMilliseconds();
+ 				m_nDistanceTravelledOnWheelie += bike->m_fDistanceTravelled;
+ 				m_nCancelWheelStuntTimer = Max(0.0f, m_nCancelWheelStuntTimer - CTimer::GetTimeStepInMilliseconds() * 0.2f);
+@@ -356,6 +368,11 @@ CPlayerInfo::Process(void)
+ 				}
+ 			}
+ 		} else {
++			
++			// Hmm possible chaos mode option, disable entering vehicles :P
++			// I can actually turn this off, I may make a toggle for this in lua somewhere later.
++			// TODO Make toggle for this!!
++
+ 			// Enter vehicle
+ 			if (CPad::GetPad(0)->ExitVehicleJustDown()) {
+ 				bool weAreOnBoat = false;
+@@ -413,6 +430,7 @@ CPlayerInfo::Process(void)
+ 					}
+ 				}
+ 			}
++
+ 		}
+ 	}
+ 
+@@ -928,6 +946,10 @@ CPlayerInfo::PlayerFailedCriticalMission()
+ 	CDarkel::ResetOnPlayerDeath();
+ }
+ 
++/**
++ * Stop the player from entering a vehicle
++ * I didn't even know this was a function.
++ */
+ void
+ CPlayerInfo::CancelPlayerEnteringCars(CVehicle *car)
+ {
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 981afd4d..40852be2 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -15,6 +15,8 @@
+ 
+ #include "main.h"
+ 
++#include "Frontend.h"
++
+ // Begin win.cpp headers
+ #if defined RW_D3D9 || defined RWLIBS || defined __MWERKS__
+ 
+@@ -129,7 +131,6 @@ LuaSetup::LuaPlayingGameLoop()
+ 	static int newTime = 0;
+ 	// Check if lua is enabled in the config before running
+ 	// Reload the lua function, I have it named InitLua for now.
+-	// TODO Make this run luaTest.LuaKeybindEvents() when I set it up
+ 	if(gbLuaTest) {
+ 		if(KEYDOWN(rsF9) && CTimer::GetTimeInMilliseconds() - newTime > 500) {
+ 			newTime = CTimer::GetTimeInMilliseconds();
+@@ -140,6 +141,15 @@ LuaSetup::LuaPlayingGameLoop()
+ 			luaTest.LuaKeybindEvents();
+ 			
+ 		}
++
++#ifdef DISABLE_GAME_SCRIPTS
++		// Start a new game directly, for debugging my new freeroam scripts.
++		// TODO Add toggle for this somewhere, it shouldn't always be enabled.
++		if(KEYDOWN(rsF5) && CTimer::GetTimeInMilliseconds() - newTime > 500)
++		{
++			FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++		}
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	}
+ 
+ 	// Some of the idea for this test came from here:
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index f88420cd..ba652e38 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -27,12 +27,12 @@
+ 
+ /**
+  * Fast loader for ReVC
+- * 
++ *
+  * This will run if it is enabled in the ini.
+  * If the script is set to SCRIPT_RELEASE, this loads a save game.
+  * Otherwise, it just loads straight into a script such as freeroam_miami.scm.
+  * The save game slot and fast loader can be toggled in the reVC.ini.
+- * 
++ *
+  * Runs in GS_FRONTEND under GameStateFrontend() within glfw.cpp.
+  */
+ void
+@@ -61,11 +61,20 @@ FastLoader::FastLoad()
+ 	//
+ 
+ 	// Failsafe for scripts being disabled.
++	// Now this only runs the fast loader if its enabled.
++	// I can press control to stop this now, although you have to hold it as the game starts.
+ #ifdef DISABLE_GAME_SCRIPTS
+-		// Lock the game to the freeroam script, this will be used for my lua scripts once I implement them
++	// Lock the game to the freeroam script, this will be used for my lua scripts once I implement them
++
++	// Starting the game! No game scripts here just freeroam
++	if(gbFastLoader) {
++		// Probably not required here, just forcing the freeroam script anyways.
++		// If the game scripts are disabled this variable is probably discarded.
+ 		CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+-		return;
++	}
++
++	return;
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ 	// New
+@@ -73,10 +82,7 @@ FastLoader::FastLoad()
+ 	CTheScripts::ScriptToLoad = gbScriptToLoad;
+ 
+ 	// Only run this save loading if the release script is enabled.
+-	if(gbGameSaveOnStartup > 0 
+-		&& CheckSlotDataValid(gbGameSaveOnStartup - 1) 
+-		&& gbFastLoader
+-		&& gbScriptToLoad == SCRIPT_RELEASE) {
++	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader && gbScriptToLoad == SCRIPT_RELEASE) {
+ 		// TODO Test
+ 		// This doesn't work.
+ 		//     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
+@@ -84,46 +90,44 @@ FastLoader::FastLoad()
+ 		// cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
+ 
+ 		// Load the current save setup for this.
+-			// This is required to be offset by 1, otherwise it gets the incorrect save slot.
+-			// TODO Make this check if the save slot doesn't exist
+-
+-			int32 saveSlot = gbGameSaveOnStartup - 1;
+-			FrontEndMenuManager.m_nCurrSaveSlot = saveSlot;
+-			FrontEndMenuManager.m_bWantToLoad = true;
+-
+-			// TODO Fix this check, currently it spams the console if the save slot doesn't exist with casepath errors.
+-			// Although this already seems to be done in my function.
+-			// if(CheckSlotDataValid(saveSlot))
+-			// {
+-			// 	FrontEndMenuManager.m_nCurrSaveSlot = saveSlot;
+-			// 	// Oh this is what breaks the SCRIPT_FREEROAM_MIAMI loading.
+-			// 	// Hmm...
+-			// 	// I moved this up here
+-			// 	FrontEndMenuManager.m_bWantToLoad = true;
+-			// } else {
+-			// 	TRACE("Game save doesn't exist, switching to new game.");
+-			// 	FrontEndMenuManager.SwitchToNewScreen(MENUPAGE_NEW_GAME);
+-			// }
++		// This is required to be offset by 1, otherwise it gets the incorrect save slot.
++		// TODO Make this check if the save slot doesn't exist
++
++		int32 saveSlot = gbGameSaveOnStartup - 1;
++		FrontEndMenuManager.m_nCurrSaveSlot = saveSlot;
++		FrontEndMenuManager.m_bWantToLoad = true;
++
++		// TODO Fix this check, currently it spams the console if the save slot doesn't exist with casepath errors.
++		// Although this already seems to be done in my function.
++		// if(CheckSlotDataValid(saveSlot))
++		// {
++		// 	FrontEndMenuManager.m_nCurrSaveSlot = saveSlot;
++		// 	// Oh this is what breaks the SCRIPT_FREEROAM_MIAMI loading.
++		// 	// Hmm...
++		// 	// I moved this up here
++		// 	FrontEndMenuManager.m_bWantToLoad = true;
++		// } else {
++		// 	TRACE("Game save doesn't exist, switching to new game.");
++		// 	FrontEndMenuManager.SwitchToNewScreen(MENUPAGE_NEW_GAME);
++		// }
+ 
+ #ifdef XBOX_MESSAGE_SCREEN
+-			SetDialogText("FELD_WR");
+-			ToggleDialog(true);
++		SetDialogText("FELD_WR");
++		ToggleDialog(true);
+ #else
+ #if defined(GTAVC) || defined(GTALCS)
+-			if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
+ #elif defined(GTA3)
+-			if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR");
++		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR");
+ #endif
+ 
+ #endif
+-			FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+-
+-	// TODO Fix this else if to work, it should fix this to be able to be cancelled with left control again.
+-	} else if(gbScriptToLoad == SCRIPT_FREEROAM_MIAMI
+-		|| gbScriptToLoad == SCRIPT_DEBUG 
+-		&& gbFastLoader) {
+-	// } else {
+-		// Jump straight to freeroam_miami.scm, don't worry about loading the save games since this is 
++		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++
++		// TODO Fix this else if to work, it should fix this to be able to be cancelled with left control again.
++	} else if(gbScriptToLoad == SCRIPT_FREEROAM_MIAMI || gbScriptToLoad == SCRIPT_DEBUG && gbFastLoader) {
++		// } else {
++		// Jump straight to freeroam_miami.scm, don't worry about loading the save games since this is
+ 		//  using the custom freeroam_miami.scm script.
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 	}
+-- 
+2.43.0
+

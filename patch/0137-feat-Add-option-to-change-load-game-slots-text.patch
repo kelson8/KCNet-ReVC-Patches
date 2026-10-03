@@ -1,0 +1,277 @@
+From 122664e11ad1a18fd95ba2e175c286c3b793b1e1 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 15:03:00 -0400
+Subject: [PATCH 137/161] feat: Add option to change load game slots text
+
+* I figured out how to change the text that shows up on the load game slots, and only set one slot to show up.
+
+* Update changelog.
+---
+ Changelog.md                      |  8 +++
+ src/core/Frontend.cpp             | 88 ++++++++++++++++++++++++++++++-
+ src/core/MenuScreensCustom.cpp    | 10 ++--
+ src/extras/utils/message_util.cpp |  4 +-
+ src/extras/utils/message_util.h   |  5 +-
+ 5 files changed, 107 insertions(+), 8 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index a847c238..037ff321 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -728,3 +728,11 @@ feat: Move some functions
+ * Cleanup some code in GameLogic.cpp and remove code that I was no longer using.
+ 
+ * Update changelog.
++
++**Commit 4**
++
++feat: Add option to change load game slots text
++
++* I figured out how to change the text that shows up on the load game slots, and only set one slot to show up.
++
++* Update changelog.
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 230cfa56..e405a04b 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -36,6 +36,7 @@
+ #include "User.h"
+ #include "sampman.h"
+ 
++
+ #ifdef CUSTOM_CODE
+ #include <fstream>
+ #include "misc_functions.h"
+@@ -49,6 +50,12 @@
+ #include "init_game.h"
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "message_util.h"
++#endif // DISABLE_GAME_SCRIPTS - Custom save slots.
++
++
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -1006,6 +1013,18 @@ CMenuManager::DoSettingsBeforeStartingAGame()
+ void
+ CMenuManager::DrawStandardMenus(bool activeScreen)
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++
++	// Max text to convert for the save system.
++	// Shouldn't need to be too big of a value.
++	constexpr int MAX_TEXT = 50;
++
++	// The text that displays on the load game menu
++	const char* saveText = "KCNet JSON Save";
++	// The text that displays when confirming to load a game, not used yet.
++	const char* loadText = "Load KCNet JSON Save?";
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	float nextYToUse = 0.0f; // III leftover, set but unused in VC
+ 	bool itemsAreSelectable = true;
+ 	CFont::SetBackgroundOff();
+@@ -1038,7 +1057,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 				MENU_X_LEFT_ALIGNED(30.0f), MENU_Y(320.0f), 
+ 				MENU_X_LEFT_ALIGNED(605.0f), MENU_Y(330.0f), CRGBA(LIST_BACKGROUND_COLOR.r, LIST_BACKGROUND_COLOR.g, LIST_BACKGROUND_COLOR.b, FadeIn(LIST_BACKGROUND_COLOR.a)));
+ 			break;
+-#endif // DISABLE_GAME_SCRIPTS
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		case MENUPAGE_SOUND_SETTINGS:
+ 			PrintRadioSelector();
+ 			break;
+@@ -1093,6 +1112,25 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 			else
+ 				str = TheText.Get(aScreens[m_nCurrScreen].m_aEntries[0].m_EntryName);
+ 			break;
++#else
++		case MENUPAGE_LOAD_SLOT_CONFIRM:
++
++			// This actually works for overwriting the save slot confirm text!
++			// TODO Make a helper method for this.
++			char gameStr[MAX_TEXT];
++			wchar ustr[MAX_TEXT];
++
++			sprintf(gameStr, loadText);
++
++			// This converts the text to show up in game
++			AsciiToUnicode(gameStr, ustr);
++			//
++			
++			if (m_bGameNotLoaded)
++				str = TheText.Get("FES_LCG");
++			else
++				str = TheText.Get(gameStr);
++			break;
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ 		case MENUPAGE_EXIT:
+@@ -1187,9 +1225,32 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 					CFont::SetRightJustifyOff();
+ 
+ 					leftText = nil;
++					// Names of the save games, will this actually disable the text for the slots?
++					// This works! At least now it says save file not present so it's changing the save file text
+ 					if (Slots[i] == SLOT_OK) {
++#ifdef DISABLE_GAME_SCRIPTS
++						// This actually works for overwriting the save slot text!
++						// constexpr int MAX_TEXT = 50;
++						
++						char str[MAX_TEXT];
++						wchar ustr[MAX_TEXT];
++
++						sprintf(str, saveText);
++
++						// This converts the text to show up in game
++						AsciiToUnicode(str, ustr);
++						//
++
++						// TODO Make a helper method for this.
++						leftText = ustr;
++
++						// Well now, this doesn't crash but it doesn't display the text either.
++						// leftText = MessageUtil::ConvertToUnicode(textToConvert);
++
++#else
+ 						leftText = GetNameOfSavedGame(i);
+ 						rightText = GetSavedGameDateAndTime(i);
++#endif // DISABLE_GAME_SCRIPTS - Custom save slots.
+ 					}
+ 
+ 					if (!leftText || leftText[0] == '\0') {
+@@ -1591,6 +1652,9 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 
+ 				if (section == 1) {
+ 					if (leftText) {
++						// This prints off the text for most of the menus?
++						// I thought it was for the saves.. Oops.
++						// Disabling this just kills the games menu system.
+ 						CFont::PrintString(MENU_X_LEFT_ALIGNED(aScreens[m_nCurrScreen].m_aEntries[i].m_X), MENU_Y(aScreens[m_nCurrScreen].m_aEntries[i].m_Y MINUS_SCROLL_OFFSET), leftText);
+ 					}
+ 
+@@ -1604,6 +1668,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 							CFont::SetFontStyle(FONT_LOCALE(FONT_HEADING));
+ 							CFont::SetScale(MENU_X(BIGTEXT_X_SCALE), MENU_Y(BIGTEXT_Y_SCALE));
+ 						}
++						// This prints off the time for the save slot.
+ 						CFont::PrintString(MENU_X_LEFT_ALIGNED(DEFAULT_SCREEN_WIDTH - RIGHT_ALIGNED_TEXT_RIGHT_MARGIN(xMargin)), MENU_Y(aScreens[m_nCurrScreen].m_aEntries[i].m_Y MINUS_SCROLL_OFFSET), rightText);
+ 					}
+ 
+@@ -5065,6 +5130,27 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 						}
+ 					}
+ 				}
++#else
++				// TODO Make this load my json save.
++				// For now, its hardcoded to run this which I don't think loads the save.
++				int saveSlot = aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_SaveSlot;
++				// if(saveSlot >= SAVESLOT_1 && saveSlot <= SAVESLOT_1)
++				if (saveSlot >= SAVESLOT_1 && saveSlot <= SAVESLOT_8) {
++					m_nCurrSaveSlot = saveSlot - SAVESLOT_1;
++					if (Slots[m_nCurrSaveSlot] != SLOT_EMPTY)
++					{
++						// TODO Switch this format in the future, so it asks for confirmation.
++						// I'll need to adjust somethings for this to work.
++						// SwitchToNewScreen(MENUPAGE_LOAD_SLOT_CONFIRM);
++
++						// TODO Make this load json save.
++						// For now, it just loads the new game, but at least the option is now on the menu.
++						// This needs to make sure the player is set to not created, otherwise my code will crash here.
++						// This works! Although it breaks the delete game options, which I'll try to implement later.
++						InitGame::GetInstance().SetPlayerCreated(false);
++						DoSettingsBeforeStartingAGame();
++					}
++				}
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 				break;
+ 			}
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 29b7a359..4f7ed14e 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -514,8 +514,9 @@ CMenuScreenCustom aScreens[] = {
+ 	// MENUPAGE_CHOOSE_LOAD_SLOT = 8
+ 
+ 	{ "FET_LG", MENUPAGE_NEW_GAME, nil, nil,
+-#ifndef DISABLE_GAME_SCRIPTS
++
+ 		MENUACTION_CHECKSAVE,	"FEM_SL1", {nil, SAVESLOT_1,		0}, 40, 90, MENUALIGN_LEFT,
++#ifndef DISABLE_GAME_SCRIPTS
+ 		MENUACTION_CHECKSAVE,	"FEM_SL2", {nil, SAVESLOT_2,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL3", {nil, SAVESLOT_3,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL4", {nil, SAVESLOT_4,		0}, 0, 0, MENUALIGN_LEFT,
+@@ -523,15 +524,18 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_CHECKSAVE,	"FEM_SL6", {nil, SAVESLOT_6,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL7", {nil, SAVESLOT_7,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL8", {nil, SAVESLOT_8,		0}, 0, 0, MENUALIGN_LEFT,
+-		MENUACTION_GOBACK,		"FEDS_TB", {nil, SAVESLOT_NONE,	0}, 320, 345, MENUALIGN_CENTER,
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++		MENUACTION_GOBACK,		"FEDS_TB", {nil, SAVESLOT_NONE,	0}, 320, 345, MENUALIGN_CENTER,
+ 	},
+ 
+ 	// MENUPAGE_CHOOSE_DELETE_SLOT = 9
+ 
++	// Well this isn't supposed to do anything but it loads the save.
++	// Later on I'll set this up to delete the JSON save with a confirmation message.
+ 	{ "FES_DEL", MENUPAGE_NEW_GAME, nil, nil,
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		MENUACTION_CHECKSAVE,	"FEM_SL1",	{nil, SAVESLOT_1,		0}, 40, 90, MENUALIGN_LEFT,
++
+ 		MENUACTION_CHECKSAVE,	"FEM_SL2",	{nil, SAVESLOT_2,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL3",	{nil, SAVESLOT_3,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL4",	{nil, SAVESLOT_4,		0}, 0, 0, MENUALIGN_LEFT,
+@@ -539,8 +543,8 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_CHECKSAVE,	"FEM_SL6",	{nil, SAVESLOT_6,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL7",	{nil, SAVESLOT_7,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL8",	{nil, SAVESLOT_8,		0}, 0, 0, MENUALIGN_LEFT,
+-		MENUACTION_GOBACK,		"FEDS_TB",	{nil, SAVESLOT_NONE,	0}, 320, 345, MENUALIGN_CENTER,
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++		MENUACTION_GOBACK,		"FEDS_TB",	{nil, SAVESLOT_NONE,	0}, 320, 345, MENUALIGN_CENTER,
+ 	},
+ 	
+ 
+diff --git a/src/extras/utils/message_util.cpp b/src/extras/utils/message_util.cpp
+index 5a4799ac..04659d1e 100644
+--- a/src/extras/utils/message_util.cpp
++++ b/src/extras/utils/message_util.cpp
+@@ -55,7 +55,7 @@ MessageUtil::SetMessageOnScreen(wchar *message)
+ /// This is supposed to convert a string to Unicode, but it doesn't work yet.
+ /// </summary>
+ /// <param name="textToConvert"></param>
+-wchar
++wchar*
+ MessageUtil::ConvertToUnicode(const char* textToConvert)
+ {
+ 
+@@ -68,5 +68,5 @@ MessageUtil::ConvertToUnicode(const char* textToConvert)
+ 	// This converts the text to show up in game
+ 	AsciiToUnicode(str, ustr);
+ 
+-	return *ustr;
++	return ustr;
+ }
+diff --git a/src/extras/utils/message_util.h b/src/extras/utils/message_util.h
+index 39243e5b..79e2a69e 100644
+--- a/src/extras/utils/message_util.h
++++ b/src/extras/utils/message_util.h
+@@ -1,5 +1,6 @@
+ #pragma once
+-#include "pch.h"
++
++#include "common.h"
+ 
+ class MessageUtil
+ {
+@@ -14,5 +15,5 @@ public:
+ 	static void SetMessageOnScreen(wchar *message);
+ 
+ 	// Convert a message to Ascii.
+-	static wchar ConvertToUnicode(const char* textToConvert);
++	static wchar* ConvertToUnicode(const char* textToConvert);
+ };
+-- 
+2.43.0
+

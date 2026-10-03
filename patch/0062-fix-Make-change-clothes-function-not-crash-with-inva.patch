@@ -1,0 +1,161 @@
+From 79c6810595fba5b68c91993f11e95d6eb3145b6b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Aug 2026 12:18:59 -0400
+Subject: [PATCH 062/161] fix: Make change clothes function not crash with
+ invalid clothes models
+
+* Enable change_clothes in lua again.
+* Add build.sh script for the gxt.exe GXT compiler.
+
+* Update gitignore.
+---
+ .gitignore                                    |  3 ++
+ .../lua_scripts/kcnet-keybind-events.lua      | 31 +++++++++++++++++--
+ src/extras/lua/lua_test.cpp                   |  5 ++-
+ src/extras/utils/player_util.cpp              | 30 ++++++++++++++++--
+ utils/gxt/build.sh                            |  5 +++
+ 5 files changed, 66 insertions(+), 8 deletions(-)
+ create mode 100755 utils/gxt/build.sh
+
+diff --git a/.gitignore b/.gitignore
+index 55fd5da4..45fe0887 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -9,6 +9,9 @@
+ vendor/glfw-3.4.bin.WIN64/docs
+ vendor/glfw-3.4.bin.WIN32/docs
+ 
++# Extra GXT files
++utils/gxt/*.gxt
++
+ *.bak
+ 
+ # Remove files with "- Copy" in the name
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+index 3ba24133..af845e02 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+@@ -1,4 +1,4 @@
+--- TODO Move keybind events in here for testing, when running with F9.
++-- Keybind events are in here for when running with F9.
+ 
+ ------
+ -- Vehicle functions
+@@ -106,4 +106,31 @@ end
+ blow_up_vehicles_cheat = false
+ if blow_up_vehicles_cheat then
+ 	blow_up_all_vehicles()
+-end
+\ No newline at end of file
++end
++
++---- Changing clothes
++
++-- This will crash normally, with my new clothes changing function it will try and
++--  check if the clothes exist first, if not it will log an error and just not do anything
++--  which prevents crashing.
++-- change_clothes("TT")
++
++-- This works fine for changing clothes.
++-- List of clothes to use, TODO Make this ignore the capitalization.
++-- For now, this has to match with exact case and spacing to work.
++	-- "Sonny Forelli", 	"Alex Shrub"
++	-- "Lance Normal", 		"Lance Cop", 		"Lance Beaten Up"
++	-- "Candy Suxxx", 		"Colonel Cortez",    "Ricardo Diaz"
++	-- "Dick (Lovefist)", 	"Gonzalez",      "Hilary"
++	-- "Hilary (Bank Mission)",		"Jezz Torrent",  	"Ken Rosenberg"
++	-- "Mercedes",				"Mercedes (purple dress)",    "Cam Jones"
++	-- "Cam Jones (Bank Mission)"		"Percy (Lovefist)
++	-- "Phil (Injured)",	 "Phil (Bank Mission)", 		"Phil Cassidy"
++
++	-- Misc
++	-- "Chef" 	"Fsfa",		 "Courier"
++	-- "Sgc", 	"Psycho", 	"Striper"
++-- change_clothes("Sonny Forelli")
++
++-- This won't work until I fix it.
++-- change_clothes("SoNny ForellI")
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 7d28251f..bff1257d 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -460,9 +460,8 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Check if the player is alive
+ 	lua_register(L, "is_player_alive", isPlayerAliveLua);
+ 
+-	// TODO Setup changing player clothes, check if the model is invalid.
+-	// Until I figure that out, I have disabled this.
+-	// lua_register(L, "change_clothes", changePlayerClothesLua);
++	// Setup changing player clothes
++	lua_register(L, "change_clothes", changePlayerClothesLua);
+ 
+ 	// Get the current wanted level if above 0
+ 	lua_register(L, "get_wanted_level", checkWantedLevelLua);
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 942f0202..780c5ad7 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -43,6 +43,7 @@ std::map<std::string, const char *> PlayerUtil::clothesMap =
+ 
+ #if defined (GTAVC)
+ // TODO Setup skins in here later, for now they are in player_menu.cpp
++// Well now this is in use here for checking if the skins exist with the ChangeClothes function.
+ std::map<std::string, const char*> PlayerUtil::skinsMap = {
+ 	// Special
+ 	{"Sonny Forelli", "IGSonny"},			{"Alex Shrub", "IGalscb"},
+@@ -217,8 +218,33 @@ PlayerUtil::ChangeClothes(const char* clothingSetName)
+ {
+ 	//OutputDebugStringA(("Changing clothes to: " + std::string(clothingSetName)).c_str()); // Debug line
+ 
++
++	// https://www.geeksforgeeks.org/cpp/how-to-check-if-map-contains-a-specific-key-in-cpp/
++
++	// This works now!!!
++	// Now it checks if the clothes value is in the map, to use this in the LUA code, use the 
++	// Name such as 'Percy (Lovefist)' instead of 'IGPercy' to be less confusing.
++	// TODO Make this use my function
++	// GetClothingSetName
++	// TODO Make this not care about capitalization.
++	if(skinsMap.find(clothingSetName) != skinsMap.end()) {
++		TRACE("--------===Clothes exist");
++		// LogFunctions::LogInfo(Defines::logFile, "ChangeClothes: Clothes exist.");
++		// Change the clothing set name to match the value in the map.
++		clothingSetName = skinsMap[clothingSetName];
++		LogFunctions::LogInfo(Defines::logFile, "ChangeClothes: Clothes name in code: " + std::string(clothingSetName));
++		
++		// Early exit for now to attempt to prevent crashing.
++		// return;
++	} else {
++		// TRACE("----------===Clothes do not exist, will probably crash");
++		LogFunctions::LogError(Defines::logFile, "ChangeClothes: Clothes " + std::string(clothingSetName) + " doesn't exist.");
++		// Exit out of this to prevent crashing.
++		return;
++	}
++
+ 	CPed *pPlayerPed = FindPlayerPed();
+-	if (pPlayerPed == nullptr) 
++	if (pPlayerPed == nullptr)
+ 	{ 
+ 		return; 
+ 	}
+@@ -245,5 +271,3 @@ PlayerUtil::ChangeClothes(const char* clothingSetName)
+ 		//TRACE("Clothes not valid.");
+ 	}
+ }
+-
+-// TODO Figure out how to get if the clothes model is valid
+\ No newline at end of file
+diff --git a/utils/gxt/build.sh b/utils/gxt/build.sh
+new file mode 100755
+index 00000000..b9b79195
+--- /dev/null
++++ b/utils/gxt/build.sh
+@@ -0,0 +1,5 @@
++#!/bin/bash
++
++# This program requires Wine to run, it was tested on Pop OS 24.
++
++wine gxt.exe -i american.txt -o american.gxt
+-- 
+2.43.0
+

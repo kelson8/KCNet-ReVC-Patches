@@ -1,0 +1,357 @@
+From 3a7a796e7a9fb015da6341fdc7a7736485d01eff Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 13 Sep 2026 11:29:28 -0400
+Subject: [PATCH 146/161] feat: Make setPedObjectives take parameters in lua
+
+* Now you can set custom actions for the test objectives.
+
+* Remove ped objective test from ped menu.
+
+* Update changelog, change version to 1.2.13-13a.
+---
+ Changelog.md                           |  10 ++
+ src/extras/functions/ped_functions.cpp |  62 ++++++++++---
+ src/extras/functions/ped_functions.h   |   2 +-
+ src/extras/lua/lua_world.cpp           | 124 +++++++++++--------------
+ src/extras/menus/ped_menu.cpp          |  19 ++--
+ src/extras/utils/defines.cpp           |   2 +-
+ 6 files changed, 124 insertions(+), 95 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 0eaeacb0..1c5ddf9c 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -815,3 +815,13 @@ feat: Fix load game option to work
+ * Move function that sets the player as not created into fast_loader.cpp, this makes it to where I don't have to remember to run the function each time I reload the save.
+ 
+ * Update changelog, change version to 1.2.13-12a.
++
++### 1.2.13-12a
++
++feat: Make setPedObjectives take parameters in lua
++
++* Now you can set custom actions for the test objectives.
++
++* Remove ped objective test from ped menu.
++
++* Update changelog, change version to 1.2.13-13a.
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 07fdb5cb..371bfb19 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -33,22 +33,25 @@ PedFunctions::PedFunctions() : m_pCurrentPed(nullptr)
+ 	// m_bSkipWakeTime = 0;
+ }
+ 
+-/// <summary>
+-/// Run an objective on all peds in the area
+-/// TODO Make this run in a loop somewhere for extra chaos
+-/// </summary>
+-/// <param name="givePedsWeapons">This gives all peds in the area weapons if enabled.</param>
+-/// <param name="attackPlayer">This makes all peds in the area attack the player if enabled.</param>
++/**
++ * Run a test objective on all peds in the area
++ * TODO Make this run in a loop somewhere for extra chaos.
++ * 
++ * TODO Make this take an enum as to what to do, instead of a bunch of booleans.
++ * So, if this is set to PED_OBJ_GIVE_WEAPONS or something custom run that part of it.
++ * 
++ * @param givePedsWeapons - This gives all peds in the area weapons if enabled.
++ * @param attackPlayer - This makes all peds in the area attack the player if enabled.
++ * @param shouldExitVehicle - This makes all peds exit their vehicles.
++ * @param killPeds - If this should kill all of the peds.
++ * 
++ */
+ void
+-PedFunctions::PedObjectiveTest(bool givePedsWeapons, bool attackPlayer)
++PedFunctions::PedObjectiveTest(bool givePedsWeapons, 
++	bool attackPlayer, 
++	bool shouldExitVehicle = false,
++	bool killPeds = false)
+ {
+-
+-	// Give all the peds in the area a weapon specified below.
+-	// bool givePedsWeapons = true;
+-
+-	// Set all peds in the area to attack the player
+-	// bool attackPlayer = true;
+-
+ 	CPed *pPlayer = FindPlayerPed();
+ 	CVector pPlayerCoords = FindPlayerCoors();
+ 
+@@ -72,6 +75,37 @@ PedFunctions::PedObjectiveTest(bool givePedsWeapons, bool attackPlayer)
+ 		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) {
+ 			// Check if peds are not a player, I figured this out.
+ 			if(!ped->IsPlayer()) {
++
++				//------------
++				//-- Taken from setPedObjectivesInAreaLua
++				//------------
++				// Make them exit the vehicle, so they can die.
++				// 
++				if(shouldExitVehicle)
++				{
++					if(ped->InVehicle())
++					{
++						CVehicle* pVehicle = ped->m_pMyVehicle;
++						ped->SetObjective(OBJECTIVE_LEAVE_CAR, pVehicle);
++						ped->SetObjectiveTimer(4000);
++					}
++				}
++
++				if(killPeds)
++				{
++					// Kill the peds
++					ped->m_fHealth = 0;
++				}
++
++				// Set the peds as cops.
++				// ped->m_nPedType = PEDTYPE_COP;
++
++				// Make the peds pissed off at the player, this should make them all attack the player.
++				// This works!
++				// ped->SetObjective(OBJECTIVE_AIM_GUN_AT, FindPlayerPed());
++				// ped->SetObjective(OBJECTIVE_KILL_CHAR_ON_FOOT, FindPlayerPed());
++				//-------------	
++
+ 				// Give all the peds weapons
+ 				// This seems to work but they run away.
+ 				// Adapted from COMMAND_GIVE_WEAPON_TO_CHAR
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+index dfe89066..a4f2aa0f 100644
+--- a/src/extras/functions/ped_functions.h
++++ b/src/extras/functions/ped_functions.h
+@@ -23,7 +23,7 @@ public:
+ 	void RemovePed();
+ 
+ 	// Test setting objectives on all peds in the area.
+-	void PedObjectiveTest(bool givePedsWeapons, bool attackPlayer);
++	void PedObjectiveTest(bool givePedsWeapons, bool attackPlayer, bool shouldExitVehicle, bool killPeds);
+ 
+ 	void RequestModel(uint32 modelIndex);
+ 	void HasModelLoaded(uint32 modelIndex);
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 29ebcefa..90cfbe1c 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -16,6 +16,7 @@
+ #include "defines.h"
+ #include "log_functions.h"
+ 
++#include "ped_functions.h"
+ #include "vehicle_cheats.h"
+ //#include "vehicle_functions.h"
+ 
+@@ -269,72 +270,32 @@ extern "C"
+ 	 * 
+ 	 * I could use this for a chaos mod function or just a random event.
+ 	 * 
+-	 * Usage:
+-	 * world.set_ped_objectives()
++	 * Changed usage in 1.2.13-13a.
++	 * Now this takes parameters in lua to set custom actions.
++	 * 
++	 * Usage (These are all boolean values):
++	 * world.set_ped_objectives(give_ped_weapons, attack_player, should_exit_vehicle, kill_peds)
+ 	 */
+ 	int
+ 	setPedObjectivesInAreaLua(lua_State *L)
+ 	{
++		// TODO Make this function use PedFunctions::PedObjectiveTest instead.
++		// I will need to copy somethings out of this function into there.
++		// And make this function in lua require a give_peds_weapons, and attack_player booleans.
++		// This should still run near the player so I won't change that.
++
++		// These parameters are from 'PedFunctions::PedObjectiveTest'
++		bool givePedsWeapons = static_cast<float>(lua_toboolean(L, 1));
++		bool attackPlayer = static_cast<float>(lua_toboolean(L, 2));
++		bool shouldExitVehicle = static_cast<float>(lua_toboolean(L, 3));
++		bool killPeds = static_cast<float>(lua_toboolean(L, 4));
++
++		// Moved function into here to cleanup this lua_world file a bit.
+ 		// TODO Make this get a list of peds in the area, set their objective to just wander randomly.
+ 		// For now, this will just run a random function I define below.
++		PedFunctions::GetInstance().PedObjectiveTest(givePedsWeapons, attackPlayer, shouldExitVehicle, killPeds);
+ 
+-		// The weapon model to spawn
+-		int weaponModelIndex = MI_COLT45;
+-		eWeaponType weaponType = WEAPONTYPE_COLT45;
+-		int ammo = 999;
+-
+-		int i = CPools::GetPedPool()->GetSize();
+-		while(i-- > 0) {
+-			if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) 
+-			{
+-				// Check if peds are not a player, I figured this out.
+-				if (!ped->IsPlayer())
+-				{
+-					// Make them exit the vehicle, so they can die.
+-					if(ped->InVehicle())
+-					{
+-						CVehicle* pVehicle = ped->m_pMyVehicle;
+-						ped->SetObjective(OBJECTIVE_LEAVE_CAR, pVehicle);
+-						ped->SetObjectiveTimer(4000);
+-					}
+-
+-					// Kill the peds
+-					// ped->m_fHealth = 0;
+-
+-					// Set the peds as cops.
+-					// ped->m_nPedType = PEDTYPE_COP;
+-
+-					// Make the peds pissed off at the player, this should make them all attack the player.
+-					// This works!
+-					// ped->SetObjective(OBJECTIVE_AIM_GUN_AT, FindPlayerPed());
+-					// ped->SetObjective(OBJECTIVE_KILL_CHAR_ON_FOOT, FindPlayerPed());
+-					
+-
+-					// Request the weapon model
+-
+-					// CStreaming::RequestModel(MI_KATANA, STREAMFLAGS_DONT_REMOVE);
+-					CStreaming::RequestModel(weaponModelIndex, STREAMFLAGS_DONT_REMOVE);
+-					CStreaming::LoadAllRequestedModels(false);
+-
+-
+-					// Make the peds all get weapons.
+-					// I got this working!
+-
+-					// From GIVE_WEAPON_TO_CHAR.
+-					ped->SetCurrentWeapon(ped->GiveWeapon(weaponType, 999));
+-
+-					// Set the weapon model as deletable.
+-					CStreaming::SetModelIsDeletable(weaponModelIndex);
+-
+-					// Make the peds aim, and shoot at the player.
+-					ped->SetObjective(OBJECTIVE_AIM_GUN_AT, FindPlayerPed());
+-					ped->SetObjective(OBJECTIVE_KILL_CHAR_ON_FOOT, FindPlayerPed());
+-				
+-				}
+-			}
+-		}
+-
+-		return 1;
++		return 0;
+ 	}
+ 
+ 	/**
+@@ -354,9 +315,14 @@ extern "C"
+     		return luaL_error(L, "world.switch_roads_off expects two vector tables with x, y and z values." );
+ 		}
+ 
+-		ThePaths.SwitchRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
+-										rightTop.value().x, rightTop.value().y, rightTop.value().z, true);
+-
++		ThePaths.SwitchRoadsOffInArea(
++			leftBottom->x, 
++			leftBottom->y, 
++			leftBottom->z,			
++			rightTop->x, 
++			rightTop->y, 
++			rightTop->z, 
++			true);
+ 		// SwitchRoadsOffInArea
+ 		return 1;
+ 	}
+@@ -378,9 +344,13 @@ extern "C"
+     		return luaL_error(L, "world.switch_roads_on expects two vector tables with x, y and z values." );
+ 		}
+ 
+-		ThePaths.SwitchRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
+-										rightTop.value().x, rightTop.value().y, rightTop.value().z, false);
+-
++		ThePaths.SwitchRoadsOffInArea(			leftBottom->x, 
++			leftBottom->y, 
++			leftBottom->z,			
++			rightTop->x, 
++			rightTop->y, 
++			rightTop->z, 
++			false);
+ 		return 1;
+ 	}
+ 
+@@ -400,10 +370,16 @@ extern "C"
+     		return luaL_error(L, "world.switch_ped_roads_off expects two vector tables with x, y and z values." );
+ 		}
+ 
+-		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
+-										rightTop.value().x, rightTop.value().y, rightTop.value().z, true);
++		ThePaths.SwitchPedRoadsOffInArea(
++			leftBottom->x, 
++			leftBottom->y, 
++			leftBottom->z,			
++			rightTop->x, 
++			rightTop->y, 
++			rightTop->z, 
++			true);
+ 
+-		return 1;
++		return 0;
+ 	}
+ 
+ 	/**
+@@ -422,9 +398,15 @@ extern "C"
+     		return luaL_error(L, "world.switch_ped_roads_on expects two vector tables with x, y and z values." );
+ 		}
+ 
+-		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
+-										rightTop.value().x, rightTop.value().y, rightTop.value().z, false);
+-		return 1;
++		ThePaths.SwitchPedRoadsOffInArea(
++			leftBottom->x, 
++			leftBottom->y, 
++			leftBottom->z,			
++			rightTop->x, 
++			rightTop->y, 
++			rightTop->z, 
++			false);
++		return 0;
+ 	}
+ 
+ 
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index d5d68007..88209a75 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -153,15 +153,18 @@ PedMenu::PedTab()
+ 		}
+ 
+ 
+-		ImGui::Text("Objective testing");
+-		// TODO Setup checkbox for toggling this value
++		//------------
++		// Moved function for use in lua_world.cpp, parameters have changed
++		//------------
++		// ImGui::Text("Objective testing");
++		// // TODO Setup checkbox for toggling this value
+ 		
+-		ImGui::Text("Give peds in area weapons.");
+-		ImGui::Text("Set the peds in the area to kill player.");
+-		if (ImGui::Button("Set objective #1")) 
+-		{
+-			pedFunctions.PedObjectiveTest(true, true);
+-		}
++		// ImGui::Text("Give peds in area weapons.");
++		// ImGui::Text("Set the peds in the area to kill player.");
++		// if (ImGui::Button("Set objective #1")) 
++		// {
++		// 	pedFunctions.PedObjectiveTest(true, true);
++		// }
+ 	}
+ }
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 1ff8266a..57ee4d9b 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-12a";
++std::string Defines::programVersion = "1.2.13-13a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

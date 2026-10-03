@@ -1,0 +1,663 @@
+From 177ffa67b3d409c0e765aa8a1cbfdd91fbfd86ac Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Aug 2026 15:46:01 -0400
+Subject: [PATCH 065/161] feat: Add C++ version info to about on menu
+
+* Add Sol2 for lua to use for later.
+* Refactor lua_test.cpp a bit and move some functions out of it.
+---
+ .gitmodules                      |   3 +
+ .vscode/c_cpp_properties.json    |   8 +-
+ lib/sol2                         |   1 +
+ premake5.lua                     |   7 +
+ src/extras/lua/lua_functions.cpp |  18 +++
+ src/extras/lua/lua_functions.h   |   3 +-
+ src/extras/lua/lua_player.cpp    |  75 ++++++++++-
+ src/extras/lua/lua_player.h      |   3 +
+ src/extras/lua/lua_test.cpp      | 222 +++++++++++++++----------------
+ src/extras/lua/lua_test.h        |  16 ++-
+ src/extras/menus/about_menu.cpp  |  19 +++
+ src/extras/menus/about_menu.h    |   5 +
+ 12 files changed, 258 insertions(+), 122 deletions(-)
+ create mode 160000 lib/sol2
+
+diff --git a/.gitmodules b/.gitmodules
+index acf7006a..1ab4be3d 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -17,3 +17,6 @@
+ [submodule "lib/imgui"]
+ 	path = lib/imgui
+ 	url = https://github.com/ocornut/imgui.git
++[submodule "lib/sol2"]
++	path = lib/sol2
++	url = https://github.com/ThePhD/sol2.git
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+index 460b021e..da8617e8 100644
+--- a/.vscode/c_cpp_properties.json
++++ b/.vscode/c_cpp_properties.json
+@@ -20,7 +20,10 @@
+     },
+     {
+       "name": "Linux",
+-      "includePath": ["${default}"],
++      "includePath": [
++        "${default}",
++        "lib/sol2/include"
++    ],
+       "defines": [
+         "XDG_ROOT",
+         "RW_GL3"
+@@ -47,7 +50,8 @@
+     {
+       "name": "Win32",
+       "includePath": [
+-        "${workspaceFolder}/**"
++        "${workspaceFolder}/**",
++        "lib/sol2/include"
+       ],
+       "defines": [
+         "DEBUGMODE",
+diff --git a/lib/sol2 b/lib/sol2
+new file mode 160000
+index 00000000..c1f95a77
+--- /dev/null
++++ b/lib/sol2
+@@ -0,0 +1 @@
++Subproject commit c1f95a773c6f8f4fde8ca3efe872e7286afe4444
+diff --git a/premake5.lua b/premake5.lua
+index 9223bcfb..42472430 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -247,6 +247,8 @@ project "librw"
+ 		includedirs { ("src/extras/functions") }
+ 		includedirs { ("src/extras/menus") }
+ 
++		-- includedirs { ("src/extras/test") }
++
+ 		includedirs { "src/core" }
+ 		includedirs { "src/extras/kcnet" }
+ 	
+@@ -255,6 +257,8 @@ project "librw"
+ 
+ 		-- Src folders - ImGui
+ 		files { addSrcFiles("lib/imgui") }
++
++		-- files { addSrcFiles("src/extras/test") }
+ 	
+ 		-- I don't want all ImGui backend files in here
+ 	
+@@ -418,6 +422,9 @@ project "reVC"
+ 	-- files { addSrcFiles("lib/lua") }
+ 	
+ 	includedirs { "lib/lua" }
++
++	includedirs { "lib/sol2/include" }
++	-- files { addSrcFiles("lib/sol2/") }
+ 	
+ 	-- This works for excluding the files
+ 	-- TODO Remove onelua.c from this.
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 4deb5d3c..6d410543 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -97,6 +97,24 @@ pushBooleanToLua(lua_State *L, bool value)
+ 	lua_pushboolean(L, value);
+ }
+ 
++// Check lua globals, made this into a function
++// Moved out of lua_test.cpp.
++bool
++CheckLua(lua_State *L, int r)
++{
++	// Check if the value is valid
++	if(r != LUA_OK) {
++		std::string errorMsg = lua_tostring(L, -1);
++		// std::cout << errorMsg << std::endl;
++		TRACE("KCNet - Lua Error", errorMsg);
++		return false;
++	} /*else {
++	        TRACE("KCNet - Lua Error");
++	}*/
++
++	return true;
++}
++
+ // clang-format on
+ 
+ #endif //LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 453c69d2..78a60499 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -14,7 +14,7 @@ extern "C" {
+ 
+ 	//------------- Functions -----------//
+ 	extern void pushBooleanToLua(lua_State *L, bool value);
+-	
++	extern bool CheckLua(lua_State *L, int r);
+ 
+ #ifdef __cplusplus
+ }
+@@ -25,6 +25,5 @@ extern "C" {
+ // TODO Is this needed? I'm using this global above.
+ class LuaFunctions
+ {
+-	
+ 
+ };
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 54c1ae94..118523be 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -21,15 +21,14 @@
+ #include "custom_cheats.h"
+ #include "player_cheats.h"
+ 
+-
+ // VC Specific
+ #include "Hud.h"
+ #include "Radar.h"
+ #include "Text.h"
++#include "Restart.h"
+ 
+ #include "Pad.h"
+ 
+-
+ //-----------------------
+ // Player options
+ //-----------------------
+@@ -332,4 +331,76 @@ changePlayerClothesLua(lua_State *L)
+ }
+ }
+ 
++/**
++ * TODO Test the setRespawnPointLua and cancelOverrideNextRestartLua
++ *  functions, I moved them out of lua_test.cpp.
++ */
++
++/// <summary>
++/// This works for respawning the player.
++/// TODO Make this get the X, Y, Z, and heading in lua also.
++/// </summary>
++/// <param name="l"></param>
++/// <returns></returns>
++
++///
++extern "C" int
++setRespawnPointLua(lua_State *L)
++{
++	Defines defines = Defines();
++	LuaTest luaTest = LuaTest();
++
++	// This doesn't update the values right
++	float spawnPosX = (float)lua_tonumber(L, 1);
++	float spawnPosY = (float)lua_tonumber(L, 2);
++	float spawnPosZ = (float)lua_tonumber(L, 3);
++	float spawnHeading = (float)lua_tonumber(L, 4);
++
++	// Set values in the header
++	luaTest.spawnPosX = spawnPosX;
++	luaTest.spawnPosY = spawnPosY;
++	luaTest.spawnPosZ = spawnPosZ;
++	luaTest.spawnHeading = spawnHeading;
++	//
++
++	CVector spawnVector = CVector(spawnPosX, spawnPosY, spawnPosZ);
++
++	std::string spawnVectorString = "Spawn Vector value: X: " + std::to_string(spawnPosX) + " Y: " + std::to_string(spawnPosY) +
++	                                " Z: " + std::to_string(spawnPosZ) + " Heading: " + std::to_string(spawnHeading);
++
++	LogFunctions::LogInfo(defines.luaLogFile, spawnVectorString);
++
++	// CVector airportVector = CVector(-1515.1f, -1182.1f, 16.5f);
++	// float airportHeading = 0.0f;
++
++	// vecRestartPos = airportVector;
++	// fRestartFloat = airportHeading;
++
++	// CRestart::OverrideNextRestart(airportVector, airportHeading);
++	// CRestart::OverridePosition = airportVector;
++	// CRestart::OverrideHeading = airportHeading;
++
++	CRestart::OverrideNextRestart(spawnVector, spawnHeading);
++	CRestart::OverridePosition = spawnVector;
++	CRestart::OverrideHeading = spawnHeading;
++
++	return 1;
++}
++
++/// <summary>
++/// Disable the override respawn, fix it back to normal.
++/// </summary>
++/// <param name="L"></param>
++/// <returns></returns>
++extern "C" int
++cancelOverrideNextRestartLua(lua_State *L)
++{
++	Defines defines = Defines();
++
++	CRestart::CancelOverrideRestart();
++
++	LogFunctions::LogInfo(defines.luaLogFile, "Disabled override restart.");
++	return 1;
++}
++
+ #endif // LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index d4cd5bf7..7319537c 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -38,6 +38,9 @@ extern "C" {
+ 
+ 	extern int checkWantedLevelLua(lua_State *L);
+ 
++	extern int setRespawnPointLua(lua_State *L);
++	extern int cancelOverrideNextRestartLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index bff1257d..a9eb917c 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -35,6 +35,8 @@ extern "C" {
+ #include <lualib.h>
+ }
+ 
++// #include <sol/sol.hpp>
++
+ #include <fstream>
+ #include <iostream>
+ #include <string>
+@@ -66,6 +68,9 @@ extern "C" {
+ #include "imgui_functions.h"
+ #endif
+ 
++// TODO Fix this include, add this folder into premake if this builds and works.
++#include "../vendor/LuaBridge3/Distribution/LuaBridge/LuaBridge.h"
++
+ // VC Specific
+ #include "Hud.h"
+ #include "Radar.h"
+@@ -242,116 +247,8 @@ CheatTestNew(lua_State *L)
+ 	return 1;
+ }
+ 
+-// Well this toggles the players control on/off
+-// Could be useful for ImGui.
+-#ifndef MOVE_LUA_FUNCTIONS
+-bool playerControl = true;
+-extern "C" int
+-TogglePlayerControlLua(lua_State *L)
+-{
+-	playerControl = !playerControl;
+-	if(!playerControl) {
+-		CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+-		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-	} else {
+-		CHud::SetHelpMessage(TheText.Get("CHEATOF"), false, false);
+-		// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_ENABLED);
+-		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-	}
+-
+-	return 1;
+-}
+-#endif
+-
+-/// <summary>
+-/// This works for respawning the player.
+-/// TODO Make this get the X, Y, Z, and heading in lua also.
+-/// </summary>
+-/// <param name="l"></param>
+-/// <returns></returns>
+-
+-///
+-extern "C" int
+-setRespawnPointLua(lua_State *L)
+-{
+-	Defines defines = Defines();
+-	LuaTest luaTest = LuaTest();
+-
+-	// This doesn't update the values right
+-	float spawnPosX = (float)lua_tonumber(L, 1);
+-	float spawnPosY = (float)lua_tonumber(L, 2);
+-	float spawnPosZ = (float)lua_tonumber(L, 3);
+-	float spawnHeading = (float)lua_tonumber(L, 4);
+-
+-	// Set values in the header
+-	luaTest.spawnPosX = spawnPosX;
+-	luaTest.spawnPosY = spawnPosY;
+-	luaTest.spawnPosZ = spawnPosZ;
+-	luaTest.spawnHeading = spawnHeading;
+-	//
+-
+-	CVector spawnVector = CVector(spawnPosX, spawnPosY, spawnPosZ);
+-
+-	std::string spawnVectorString = "Spawn Vector value: X: " + std::to_string(spawnPosX) + " Y: " + std::to_string(spawnPosY) +
+-	                                " Z: " + std::to_string(spawnPosZ) + " Heading: " + std::to_string(spawnHeading);
+-
+-	LogFunctions::LogInfo(defines.luaLogFile, spawnVectorString);
+-
+-	// CVector airportVector = CVector(-1515.1f, -1182.1f, 16.5f);
+-	// float airportHeading = 0.0f;
+-
+-	// vecRestartPos = airportVector;
+-	// fRestartFloat = airportHeading;
+-
+-	// CRestart::OverrideNextRestart(airportVector, airportHeading);
+-	// CRestart::OverridePosition = airportVector;
+-	// CRestart::OverrideHeading = airportHeading;
+-
+-	CRestart::OverrideNextRestart(spawnVector, spawnHeading);
+-	CRestart::OverridePosition = spawnVector;
+-	CRestart::OverrideHeading = spawnHeading;
+-
+-	return 1;
+-}
+-
+-/// <summary>
+-/// Disable the override respawn, fix it back to normal.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
+-extern "C" int
+-cancelOverrideNextRestartLua(lua_State *L)
+-{
+-	Defines defines = Defines();
+-
+-	CRestart::CancelOverrideRestart();
+-
+-	LogFunctions::LogInfo(defines.luaLogFile, "Disabled override restart.");
+-	return 1;
+-}
+-
+-
+-
+-
+ //------- End cheat functions --------//
+ 
+-// Check lua globals, made this into a function
+-bool
+-LuaTest::CheckLua(lua_State *L, int r)
+-{
+-	// Check if the value is valid
+-	if(r != LUA_OK) {
+-		std::string errorMsg = lua_tostring(L, -1);
+-		// std::cout << errorMsg << std::endl;
+-		TRACE("KCNet - Lua Error", errorMsg);
+-		return false;
+-	} /*else {
+-	        TRACE("KCNet - Lua Error");
+-	}*/
+-
+-	return true;
+-}
+-
+ // TODO Test from Google Gemini
+ void
+ printTable(lua_State *L, int index)
+@@ -383,6 +280,30 @@ printTable(lua_State *L, int index)
+ 	}
+ }
+ 
++/**
++ * Log an info message
++ * TODO Remove this, only in use for testing init and new LUA methods.
++ * TODO Figure out how to use this with luabridge to get data from lua.
++ * I can easily use namespaces with LuaBridge3.
++ */
++void
++// LogInfoMsg(std::string &message) {
++LogInfoMsg() {
++// LogInfoMsg(lua_State *L) {
++
++	// Well this doesn't work like this for some reason.
++	// std::string infoMessage = lua_tostring(L, 1);
++	// TRACE(infoMessage.c_str());
++
++	// if(infoMessage == "") {
++	// 	return;
++	// }
++
++	LogFunctions::LogInfo(Defines::logFile, "Lua:: newtest.loginfo worked.");
++	// LogFunctions::LogInfo(Defines::logFile, infoMessage);
++	// LogFunctions::LogInfo(Defines::logFile, message);
++}
++
+ /// <summary>
+ /// I had to add this to the class to fix it.
+ /// I got this working, I had to add lua_State *L and get the lua state
+@@ -396,6 +317,14 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	assert(L != nullptr);
+ 	// 
+ 
++	// LuaBridge3 test, this seems to work well for namespaces.
++	luabridge::getGlobalNamespace(L)
++		.beginNamespace("newtest")
++		// TODO Make this get a message from lua, this is for LuaBridge testing.
++		.addProperty("loginfo", LogInfoMsg)
++		.endNamespace();
++	//
++
+ 	// Cheat test
+ 	lua_register(L, "cheat_test", CheatTestNew);
+ 
+@@ -511,6 +440,8 @@ LuaTest::LuaEvents()
+ 	Defines defines = Defines();
+ 	LuaTest luaTest = LuaTest();
+ 
++	// TODO Add Sol support for Lua.
++
+ 	// TODO Move into the constructor
+ 	// TODO Fix other functions and remove this from them:
+ 	// LuaTest luaTest = LuaTest();
+@@ -530,6 +461,71 @@ LuaTest::LuaEvents()
+ 
+ }
+ 
++#ifdef LUA_SOL_TEST
++/**
++ * Adapted from here
++ * https://git.internal.kelsoncraft.net/kelson8/KCNet-Linux-Coding/src/branch/main/CPP-Projects/Test-Projects/LuaTest/src/sol_read_file.cpp
++ * 
++ * TODO Fix this to work in here.
++ * TODO Test this, it should read the file with sol functions.
++ */
++void LuaTest::ReadSolFile()
++{
++    sol::state lua;
++
++    // Open some common libraries
++    lua.open_libraries(sol::lib::base, sol::lib::io, sol::lib::math, sol::lib::table);
++
++    // This is how to pass variables to lua from C++
++    std::string testString = "Test In Lua";
++    // This works, I guess I was forgetting to set this for the lua side.
++    lua["testString"] = testString;
++
++
++    // Try to parse the file, with error handling, check if the file exists and if not print the error.
++    try
++    {
++        lua.safe_script_file(defines.luaEventsScript);
++        std::cout << "[CPP S1] Lua File read OK!" << std::endl;
++    }
++    catch (const sol::error &e)
++    {
++        // Something went wrong with loading this script
++        std::cout << std::string(e.what()) << std::endl;
++        // return 0; // This was used in the main function, doesn't do anything in a void.
++    }
++
++    //------------
++    // Calling functions
++    //------------
++
++    // This is how to call a function in sol.
++
++    // I got this working!!!
++    // I had to modify the video guide using sol at the top a bit and I added it to a table
++    // TODO Figure out how to iterate through the table with a for loop
++
++    // This is how to call a function in lua
++    //
++    // Read from a file using a lua function.
++    // I added error handling to this test so it doesn't crash.
++    try
++    {
++        // sol::table another_table = lua["lines_from"]("src/scripts/test.lua");
++        sol::table another_table = lua["lines_from"](Config::GetLuaFile().c_str());
++        fileTest.line1 = another_table[2];
++        // std::cout << another_table.size();
++        std::cout << fileTest.line1 << std::endl;
++    }
++    catch (sol::error &e)
++    {
++        std::cout << e.what() << std::endl;
++    }
++
++}
++
++#endif // LUA_SOL_TEST
++
+ // TODO Fix these to work
+ // Seperate out the game init stuff for CGame::Init into kcnet-init.lua or something
+ // Make wasted and busted events use their own file: "kcnet-wasted-events.lua" and "kcnet-busted-events.lua
+@@ -585,10 +581,10 @@ LuaTest::LuaKeybindEvents()
+ 
+ 	// New, for vehicle list
+ 	// TODO Implement this into the key bind script.
+-	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaVehiclesScript.c_str())))
+-	{
++	// if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaVehiclesScript.c_str())))
++	// {
+ 
+-	}
++	// }
+ 		
+ 
+ }
+@@ -602,9 +598,9 @@ LuaTest::LuaKeybindEvents()
+ void
+ LuaTest::SetupLua()
+ {
+-	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaSetupScript.c_str()))) 
++	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaSetupScript.c_str()))) 
+ 	{
+-	
++		return;
+ 	}
+ }
+ 
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index b4162c2a..72260b30 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -11,6 +11,10 @@ extern "C"
+ #include <lualib.h>
+ }
+ 
++#ifdef LUA_SOL_TEST
++#include <sol/sol.hpp>
++#endif // LUA_SOL_TEST
++
+ #include "defines.h"
+ 
+ #include <iostream>
+@@ -31,6 +35,14 @@ private:
+ 	// lua_State *m_luaVM;
+ 	lua_State *m_luaVM;
+ 
++#ifdef LUA_SOL_TEST
++// New lua testing
++	// TODO Fix sol2 for lua.
++	// sol::state lua;
++	void ReadSolFile();
++//
++#endif // LUA_SOL_TEST
++
+ 	// Register the lua functions
+ 	void RegisterLuaFunctions(lua_State *L);
+ 
+@@ -43,7 +55,7 @@ private:
+ public:
+ // TODO Fix this, possibly use the same concept from MTA SA, if I can get it to work.
+ #ifdef LUA_TEST
+-	static void HelloWorldTest();
++	// static void HelloWorldTest();
+ #endif
+ 
+ 	// TODO Make getters and setters for this
+@@ -75,8 +87,6 @@ public:
+ 	LuaTest();
+ 	void InitLua();
+ 	
+-	bool CheckLua(lua_State *L, int r);
+-
+ 	// Run the custom event system I am working on in Lua
+ 	void LuaEvents();
+ 
+diff --git a/src/extras/menus/about_menu.cpp b/src/extras/menus/about_menu.cpp
+index ce59dcc3..852872dc 100644
+--- a/src/extras/menus/about_menu.cpp
++++ b/src/extras/menus/about_menu.cpp
+@@ -29,6 +29,22 @@
+ 
+ #include "Pad.h"
+ 
++/**
++ * Get the current C++ version
++ * https://stackoverflow.com/questions/2324658/how-to-determine-the-version-of-the-c-standard-used-by-the-compiler
++ */
++std::string AboutMenu::CVersion()
++{
++	if (__cplusplus == 202302L) return "C++23";
++    else if (__cplusplus == 202002L) return "C++20";
++    else if (__cplusplus == 201703L) return "C++17";
++    else if (__cplusplus == 201402L) return "C++14";
++    else if (__cplusplus == 201103L) return "C++11";
++    else if (__cplusplus == 199711L) return "C++98";
++    else std::cout << "pre-standard C++." << __cplusplus;
++    std::cout << "\n";
++}
++
+ void
+ AboutMenu::AboutTab()
+ {
+@@ -47,6 +63,9 @@ AboutMenu::AboutTab()
+ 	//std::string luaLogFileName = "Lua Log File Name: " + defines.luaLogFile;
+ 	//ImGui::Text(luaLogFileName.c_str());
+ 
++	std::string builtWith = "This project is built with " + CVersion();
++	ImGui::Text(builtWith.c_str());
++
+ 	ImGui::Separator();
+ 	ImGui::Text("Credits");
+ 
+diff --git a/src/extras/menus/about_menu.h b/src/extras/menus/about_menu.h
+index 0ae6ea94..bfea8615 100644
+--- a/src/extras/menus/about_menu.h
++++ b/src/extras/menus/about_menu.h
+@@ -2,10 +2,15 @@
+ 
+ #ifdef _IMGUI_TEST
+ 
++#include <iostream>
++
+ class AboutMenu
+ {
+ public:
+ 	void AboutTab();
++
++private:
++	std::string CVersion();
+ };
+ 
+ #endif // _IMGUI_TEST
+-- 
+2.43.0
+

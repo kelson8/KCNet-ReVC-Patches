@@ -1,0 +1,52 @@
+From fc566ed261d9e720b264f76642316fb296067ebf Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 12:36:33 -0400
+Subject: [PATCH 118/161] fix: Add missing changes from last commit
+
+---
+ src/extras/lua/lua_player.cpp | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index b3ad09c7..5ea43e3e 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -34,6 +34,11 @@
+ 
+ #include "Pad.h"
+ 
++// Removed static from the void in debug_functions using a preprocessor.
++// This works.
++// Taken from warp_menu.cpp.
++void TeleportToWaypoint(void);
++
+ //-----------------------
+ // Player options
+ //-----------------------
+@@ -556,11 +561,21 @@ cancelOverrideNextRestartLua(lua_State *L)
+ 	return 1;
+ }
+ 
+-// New
++/**
++ * Teleport to the marker position if one is set.
++ * 
++ * Added in: v1.2.12-9a
++ * 
++ * Usage:
++ * player.tp_to_marker()
++ */
+ int
+ teleportToMarkerLua(lua_State *L)
+ {
+-	
++	if(PlayerUtil::IsPlayerSafe())
++	{
++		TeleportToWaypoint();
++	}
+ 
+ 	return 1;
+ }
+-- 
+2.43.0
+

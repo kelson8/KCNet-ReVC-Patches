@@ -1,0 +1,240 @@
+From 4fecebb881ea4f1492e4c670868204a497a62e1b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 15 Sep 2026 17:57:21 -0400
+Subject: [PATCH 162/176] feat: Try to fix auto pause on minimize
+
+When you switch windows the game should automatically pause instead of keep running, well this didn't work.
+
+Taken from a few git commits from this repo
+
+Commit 1:
+https://github.com/AltronMaxX/reVC/commit/4413fd505b5ad67a1fa4463e4f645f3e6f9936f6
+
+Commit 2:
+https://github.com/AltronMaxX/reVC/commit/81f62c4d31e76ff87d9ddd24e459be4b4100526c
+
+* Update changelog.
+---
+ Changelog.md           | 16 ++++++++++++
+ src/core/Timer.cpp     | 33 +++++++++++++++++++++++
+ src/core/Timer.h       | 14 ++++++++++
+ src/skel/glfw/glfw.cpp | 59 ++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 122 insertions(+)
+
+diff --git a/Changelog.md b/Changelog.md
+index e72a361c..3868b1b3 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1013,3 +1013,19 @@ feat: Update comments in vehicle_functions
+ * Add Doxyfile from other git branch for documentation.
+ 
+ * Update changelog.
++
++**Commit 4**
++
++feat: Try to fix auto pause on minimize
++
++When you switch windows the game should automatically pause instead of keep running, well this didn't work.
++
++Taken from a few git commits from this repo
++
++Commit 1:
++https://github.com/AltronMaxX/reVC/commit/4413fd505b5ad67a1fa4463e4f645f3e6f9936f6
++
++Commit 2:
++https://github.com/AltronMaxX/reVC/commit/81f62c4d31e76ff87d9ddd24e459be4b4100526c
++
++* Update changelog.
+diff --git a/src/core/Timer.cpp b/src/core/Timer.cpp
+index 77f26a8b..a0a903b7 100644
+--- a/src/core/Timer.cpp
++++ b/src/core/Timer.cpp
+@@ -18,6 +18,11 @@ float CTimer::ms_fTimeStep;
+ float CTimer::ms_fTimeStepNonClipped;
+ bool  CTimer::m_UserPause;
+ bool  CTimer::m_CodePause; 
++
++#ifdef CUSTOM_CODE
++bool  CTimer::m_WindowMinimizedPause;
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ #ifdef FIX_BUGS
+ uint32 CTimer::m_LogicalFrameCounter;
+ uint32 CTimer::m_LogicalFramesPassed;
+@@ -48,6 +53,12 @@ void CTimer::Initialise(void)
+ 	suspendDepth = 0;
+ 	m_UserPause = false;
+ 	m_CodePause = false;
++
++#ifdef CUSTOM_CODE
++	m_WindowMinimizedPause = false;
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
++
+ 	m_snTimeInMillisecondsNonClipped = 0;
+ 	m_snPreviousTimeInMilliseconds = 0;
+ 	m_snTimeInMilliseconds = 1;
+@@ -329,3 +340,25 @@ uint32 CTimer::GetCyclesPerFrame()
+ 	return 20;
+ }
+ 
++#ifdef CUSTOM_CODE
++
++/**
++ * For pausing the game when minimized
++ * 
++ * From this commit
++ * https://github.com/AltronMaxX/reVC/commit/4413fd505b5ad67a1fa4463e4f645f3e6f9936f6
++ * 
++ */
++void CTimer::SetWindowMinimizedPause(bool pause)
++{
++	if (m_WindowMinimizedPause == pause)
++		return;
++
++	m_WindowMinimizedPause = pause;
++	if (pause)
++		Suspend();
++	else
++		Resume();
++}
++
++#endif // CUSTOM_CODE - Auto pause when switching windows
+diff --git a/src/core/Timer.h b/src/core/Timer.h
+index 819bd30c..7e589fcb 100644
+--- a/src/core/Timer.h
++++ b/src/core/Timer.h
+@@ -19,6 +19,10 @@ public:
+ 	static bool  m_UserPause;
+ 	static bool  m_CodePause;
+ 
++#ifdef CUSTOM_CODE
++	static bool  m_WindowMinimizedPause;
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ 	static const float &GetTimeStep(void) { return ms_fTimeStep; }
+ 	static void SetTimeStep(float ts) { ms_fTimeStep = ts; }
+ 	static float GetTimeStepInSeconds() { return ms_fTimeStep / 50.0f; }
+@@ -41,11 +45,21 @@ public:
+ 	static void SetTimeScale(float ts) { ms_fTimeScale = ts; }
+ 	static uint32 GetCyclesPerFrame();
+ 
++#ifdef CUSTOM_CODE
++	static bool GetIsPaused() { return m_UserPause || m_CodePause || m_WindowMinimizedPause; }
++#else
+ 	static bool GetIsPaused() { return m_UserPause || m_CodePause; }
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ 	static bool GetIsUserPaused() { return m_UserPause; }
+ 	static bool GetIsCodePaused() { return m_CodePause; }
+ 	static void SetCodePause(bool pause) { m_CodePause = pause; }
+ 	
++#ifdef CUSTOM_CODE
++	static bool GetIsWindowMinimizedPaused() { return m_WindowMinimizedPause; }
++	static void SetWindowMinimizedPause(bool pause);
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ 	static void Initialise(void);
+ 	static void Shutdown(void);
+ 	static void Update(void);
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 42db868d..a6858c7c 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -183,6 +183,37 @@ static psGlobalType PsGlobal;
+ 
+ #define PSGLOBAL(var) (((psGlobalType *)(RsGlobal.ps))->var)
+ 
++#ifdef CUSTOM_CODE
++
++// From this commit
++// Fix full screen
++// https://github.com/AltronMaxX/reVC/commit/81f62c4d31e76ff87d9ddd24e459be4b4100526c
++
++static RwBool
++IsWindowMinimizedPauseActive(void)
++{
++	return WindowIconified || (PSGLOBAL(fullScreen) && !WindowFocused);
++}
++
++static void
++UpdateWindowMinimizedPause(void)
++{
++	RwBool pause = IsWindowMinimizedPauseActive();
++	CTimer::SetWindowMinimizedPause(pause);
++	if (pause)
++		ForegroundApp = FALSE;
++}
++
++static void
++RefreshWindowActivityState(void)
++{
++	WindowIconified = glfwGetWindowAttrib(PSGLOBAL(window), GLFW_ICONIFIED);
++	WindowFocused = glfwGetWindowAttrib(PSGLOBAL(window), GLFW_FOCUSED);
++	UpdateWindowMinimizedPause();
++}
++
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ size_t _dwMemAvailPhys;
+ RwUInt32 gGameState;
+ 
+@@ -273,6 +304,11 @@ psCameraBeginUpdate(RwCamera *camera)
+ 	if ( !RwCameraBeginUpdate(Scene.camera) )
+ 	{
+ 		ForegroundApp = FALSE;
++
++#ifdef CUSTOM_CODE
++		RefreshWindowActivityState();
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ 		RsEventHandler(rsACTIVATE, (void *)FALSE);
+ 		return FALSE;
+ 	}
+@@ -2079,11 +2115,22 @@ cursorEnterCB(GLFWwindow* window, int entered) {
+ void
+ windowFocusCB(GLFWwindow* window, int focused) {
+ 	WindowFocused = !!focused;
++
++#ifdef CUSTOM_CODE
++	UpdateWindowMinimizedPause();
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ }
+ 
+ void
+ windowIconifyCB(GLFWwindow* window, int iconified) {
+ 	WindowIconified = !!iconified;
++
++#ifdef CUSTOM_CODE
++	// CTimer::SetWindowMinimizedPause(!!iconified);
++	UpdateWindowMinimizedPause();
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ }
+ 
+ //**************
+@@ -2714,8 +2761,20 @@ main(int argc, char *argv[])
+ 				if ( RwCameraBeginUpdate(Scene.camera) )
+ 				{
+ 					RwCameraEndUpdate(Scene.camera);
++
++#ifdef CUSTOM_CODE
++					RefreshWindowActivityState();
++					if (!CTimer::GetIsWindowMinimizedPaused())
++						{
++							ForegroundApp = TRUE;
++							RsEventHandler(rsACTIVATE, (void *)TRUE);
++						}
++#else
+ 					ForegroundApp = TRUE;
+ 					RsEventHandler(rsACTIVATE, (void *)TRUE);
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
++
+ 				}
+ 			}
+ 		}
+-- 
+2.43.0
+

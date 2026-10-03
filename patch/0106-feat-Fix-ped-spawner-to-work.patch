@@ -1,0 +1,710 @@
+From beef6b803d40fb971cef74e3a372cefcd952b822 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 9 Sep 2026 13:49:51 -0400
+Subject: [PATCH 106/161] feat: Fix ped spawner to work
+
+* I had something messed up forever on my ped spawner and now it works, I had to disable some variable and move some things around with it.
+
+* Make CreatePed function store the ped, and add RemovePed function for removing them from the world.
+
+* I need to fix removing the ped, currently it doesn't work.
+
+* Add some more ped functions.
+
+* Update changelog, bump version to 1.2.12-2a
+---
+ Changelog.md                           |  14 +
+ src/extras/functions/ped_functions.cpp | 464 +++++++++++++++----------
+ src/extras/functions/ped_functions.h   |  21 ++
+ src/extras/menus/imgui_main_menu.cpp   |   2 +-
+ src/extras/menus/ped_menu.cpp          |  34 +-
+ src/extras/utils/defines.cpp           |   2 +-
+ 6 files changed, 331 insertions(+), 206 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index d8521018..7a993176 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -432,3 +432,17 @@ feat: Setup basic save/load system with json
+ * Add freeroam_util.cpp/.h, currently this has my new saving/loading system in it.
+ 
+ * Update changelog, bump version to 1.2.12-1a.
++
++### 1.2.12-2a
++
++feat: Fix ped spawner to work
++
++* I had something messed up forever on my ped spawner and now it works, I had to disable some variable and move some things around with it.
++
++* Make CreatePed function store the ped, and add RemovePed function for removing them from the world.
++
++* I need to fix removing the ped, currently it doesn't work.
++
++* Add some more ped functions.
++
++* Update changelog, bump version to 1.2.12-2a
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 5491f340..b6817b6f 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -1,18 +1,21 @@
+ #include "ped_functions.h"
+ 
++#include "log_functions.h"
++
++#include "CivilianPed.h"
+ #include "CopPed.h"
++#include "DMAudio.h"
+ #include "EmergencyPed.h"
+-#include "CivilianPed.h"
+ 
+-#include "PlayerPed.h"
+-#include "PlayerInfo.h"
+ #include "Entity.h"
++#include "PlayerInfo.h"
++#include "PlayerPed.h"
+ 
+ #include "World.h"
+ 
++#include "Population.h"
+ #include "Script.h"
+ #include "Zones.h"
+-#include "Population.h"
+ 
+ #include "Pools.h"
+ 
+@@ -25,7 +28,6 @@
+ 
+ // https://wiki.gtaconnected.com/File:Model-Ped-VC-12.png
+ 
+-
+ /// <summary>
+ /// Run an objective on all peds in the area
+ /// TODO Make this run in a loop somewhere for extra chaos
+@@ -36,11 +38,11 @@ void
+ PedFunctions::PedObjectiveTest(bool givePedsWeapons, bool attackPlayer)
+ {
+ 
+-    // Give all the peds in the area a weapon specified below.
+-    //bool givePedsWeapons = true;
++	// Give all the peds in the area a weapon specified below.
++	// bool givePedsWeapons = true;
+ 
+-    // Set all peds in the area to attack the player
+-    //bool attackPlayer = true;
++	// Set all peds in the area to attack the player
++	// bool attackPlayer = true;
+ 
+ 	CPed *pPlayer = FindPlayerPed();
+ 	CVector pPlayerCoords = FindPlayerCoors();
+@@ -49,12 +51,11 @@ PedFunctions::PedObjectiveTest(bool givePedsWeapons, bool attackPlayer)
+ 	float playerY = pPlayerCoords.y + 4.0f;
+ 	float playerZ = pPlayerCoords.z;
+ 
+-    int weaponModel = MI_COLT45;
++	int weaponModel = MI_COLT45;
+ 	eWeaponType weaponType = WEAPONTYPE_COLT45;
+ 
+-    // First, request the weapon model
+-	if(givePedsWeapons) 
+-    {
++	// First, request the weapon model
++	if(givePedsWeapons) {
+ 		CStreaming::RequestModel(weaponModel, STREAMFLAGS_DONT_REMOVE);
+ 		CStreaming::LoadAllRequestedModels(false);
+ 	}
+@@ -65,196 +66,286 @@ PedFunctions::PedObjectiveTest(bool givePedsWeapons, bool attackPlayer)
+ 	while(i-- > 0) {
+ 		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) {
+ 			// Check if peds are not a player, I figured this out.
+-			if(!ped->IsPlayer()) 
+-            {
+-                // Give all the peds weapons 
+-                // This seems to work but they run away.
+-                // Adapted from COMMAND_GIVE_WEAPON_TO_CHAR
+-                // TODO Add vehicle check.
+-                if (givePedsWeapons)
+-                { 
+-                    ped->SetCurrentWeapon(ped->GiveWeapon(weaponType, 1000));
+-                }
+-				
+-                // This works for making everyone attack the player
+-                if (attackPlayer)
+-                { 
+-                    ped->SetObjective(OBJECTIVE_KILL_CHAR_ANY_MEANS, pPlayer);
+-                    // Hmm, chaos mode? This should make the peds never miss a shot.
+-                    ped->m_wepAccuracy = 100;
+-                }
+-
+-				//ped->GiveWeapon(WEAPONTYPE_RUGER, 1000);
+-				// Well, I can add stuff to these objectives.
+-				//ped->SetObjective(OBJECTIVE_HASSLE_CHAR, pPlayer);
+-                // TODO Test this, make the peds aim a gun at the player
+-                // Well this didn't work.
+-				//ped->SetObjective(OBJECTIVE_AIM_GUN_AT, pPlayerCoords);
+-            }
++			if(!ped->IsPlayer()) {
++				// Give all the peds weapons
++				// This seems to work but they run away.
++				// Adapted from COMMAND_GIVE_WEAPON_TO_CHAR
++				// TODO Add vehicle check.
++				if(givePedsWeapons) { ped->SetCurrentWeapon(ped->GiveWeapon(weaponType, 1000)); }
++
++				// This works for making everyone attack the player
++				if(attackPlayer) {
++					ped->SetObjective(OBJECTIVE_KILL_CHAR_ANY_MEANS, pPlayer);
++					// Hmm, chaos mode? This should make the peds never miss a shot.
++					ped->m_wepAccuracy = 100;
++				}
++
++				// ped->GiveWeapon(WEAPONTYPE_RUGER, 1000);
++				//  Well, I can add stuff to these objectives.
++				// ped->SetObjective(OBJECTIVE_HASSLE_CHAR, pPlayer);
++				// TODO Test this, make the peds aim a gun at the player
++				// Well this didn't work.
++				// ped->SetObjective(OBJECTIVE_AIM_GUN_AT, pPlayerCoords);
++			}
+ 		}
+ 	}
+ 
+-    // Lastly, set the weapon model as deletable
+-    if (givePedsWeapons) 
+-    { 
+-        CStreaming::SetModelIsDeletable(weaponModel);
+-    }
+-	
++	// Lastly, set the weapon model as deletable
++	if(givePedsWeapons) { CStreaming::SetModelIsDeletable(weaponModel); }
+ }
+ 
+-/// <summary>
+-/// This should create a ped
+-/// I got this to not crash, but it doesn't do anything.
+-/// TODO Fix this to work.
+-/// </summary>
+-/// <param name="pedType">The ped type from the ePedType enum</param>
+-/// <param name="modelIndex">The model index, found here https://wiki.gtaconnected.com/Resources/GTAVC/PedSkins</param>
++/**
++ * This creates a ped, I got this working in v1.2.12-2a
++ *
++ * @param pedType The ped type from the ePedType enum
++ * @param modelIndex The model index, found here https://wiki.gtaconnected.com/Resources/GTAVC/PedSkins
++ */
+ void
+ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+ {
++    // Remove the ped if they already exist
++    // This doesn't work.
++    // if(m_pCurrentPed)
++    // {
++    //     RemovePed();
++    // }
++
++	// Blank error message for logs.
++	std::string errorMsg = "";
++
+ 	// Possibly use this to load the model in.
+ 	// int mi = ped->GetModelIndex();
+-    // Moved to top as a test
+ 	CStreaming::RequestModel(modelIndex, 0);
+-	//CStreaming::RequestModel(modelIndex, STREAMFLAGS_DONT_REMOVE);
+-	CStreaming::LoadAllRequestedModels(true);
++	// CStreaming::RequestModel(modelIndex, STREAMFLAGS_DONT_REMOVE);
++	// CStreaming::RequestModel(modelIndex, STREAMFLAGS_DONT_REMOVE);
++	CStreaming::LoadAllRequestedModels(false);
++
++	// Make sure the model has loaded first.
++	if(!CStreaming::HasModelLoaded(modelIndex)) {
++		errorMsg = "Error, ped " + std::to_string(modelIndex) + " model hasn't loaded!";
++		TRACE(errorMsg.c_str());
++		LogFunctions::LogError(Defines::logFile, errorMsg);
++		return;
++	}
+ 
+ 	Defines defines = Defines();
+-    // Raise the values in here.
+-    CVector playerPedPos = FindPlayerPed()->GetPosition();
++	// Raise the values in here.
++	CVector playerPedPos = FindPlayerPed()->GetPosition();
+ 	float playerX = playerPedPos.x + 3.0f;
+ 	float playerY = playerPedPos.y + 3.0f;
+ 	float playerZ = playerPedPos.z + 3.0f;
+ 
+-    CVector playerPosNew = CVector(playerX, playerY, playerZ);
+-
++	CVector playerPosNew = CVector(playerX, playerY, playerZ);
++
++	//     LogFunctions::LogInfo(Defines::logFile, "PedFunctions::CreatePed was run..");
++
++	// Add attempt checking to see if model is loaded, this didn't work.
++	// All this does is slightly freeze the game while waiting on this.
++	//     int attempts = 0;
++	//     static int maxSpawnAttempts = 100;
++	//     while(!CStreaming::HasModelLoaded(modelIndex) && attempts < maxSpawnAttempts) {
++	//         // Delay it a bit, 10 ms
++	//         std::this_thread::sleep_for(std::chrono::milliseconds(10));
++	// 	    attempts++;
++	//     }
++
++	//     std::string isModelLoaded = CStreaming::HasModelLoaded(modelIndex) ? " The model has loaded." : " The model failed to load.";
++	//     LogFunctions::LogInfo(Defines::logFile, "PedFunctions::CreatePed while loop was run.. Is the model loaded? " + isModelLoaded);
++
++	//
++
++	// From Pad.cpp, I wonder if this will help out for waiting on the model.
++	// if (CStreaming::ms_aInfoForModel[model].m_loadState == STREAMSTATE_LOADED) {
++
++	// This should check if the model hasn't loaded.
++	// if(CStreaming::ms_aInfoForModel[modelIndex].m_loadState != STREAMSTATE_LOADED && attempts > maxSpawnAttempts)
++	// {
++	//     std::string errorLogMsg = "The model " + std::to_string(modelIndex) + " could not be loaded!";
++	//     LogFunctions::LogError(Defines::logFile, errorLogMsg);
++	//     TRACE(errorLogMsg.c_str());
++	//     return;
++	// }
++
++	// For now, always make the ped a civilian ped.
++	// I think this or something else fixed this!
++	// Now the peds spawn in!!!!
++	// I had to disable bIsStaticWaitingForCollision, I guess that's only for mission scripts.
++	//
++	CPed *ped = new CCivilianPed(pedType, modelIndex);
++
++	// Make sure the ped has loaded.
++	if(!ped) {
++		errorMsg = "Error: failed to spawn ped model " + std::to_string(modelIndex);
++		TRACE(errorMsg.c_str());
++		LogFunctions::LogError(Defines::logFile, errorMsg);
++		return;
++	}
+ 
++	// Old check for this, might work but I disabled it for now.
++	// CPed *ped;
++	// if(pedType == PEDTYPE_COP) {
++	//     eCopType copType;
++	//     switch(modelIndex) {
++	//     case MI_COP: copType = COP_STREET; break;
++	//     case MI_SWAT: copType = COP_SWAT; break;
++	//     case MI_FBI: copType = COP_FBI; break;
++	//     case MI_ARMY: copType = COP_ARMY; break;
++	//     default: copType = COP_STREET; break; // Default cop type
++	//     }
++	//     ped = new CCopPed(copType);
++	// } else if(pedType == PEDTYPE_EMERGENCY || pedType == PEDTYPE_FIREMAN) {
++	//     ped = new CEmergencyPed(pedType); // Model index is the ped type here.
++	// } else {
++	//     ped = new CCivilianPed(pedType, modelIndex);
++	// }
++
++	// Setup the ped
++
++	ped->CharCreatedBy = MISSION_CHAR;
++	ped->bRespondsToThreats = false;
++	ped->bAllowMedicsToReviveMe = false;
++	ped->bIsPlayerFriend = false;
++
++	CVector pos = playerPosNew;
++
++	if(pos.z <= MAP_Z_LOW_LIMIT) pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
++	pos.z += 1.0f;
++	ped->SetPosition(pos);
++	ped->SetOrientation(0.0f, 0.0f, 0.0f);
++
++	// Clear space for the mission entity
++	CTheScripts::ClearSpaceForMissionEntity(pos, ped);
++
++	// WARNING!! Do not enable this, it breaks the ped spawner.
++	// I'm not sure what this is for honestly.
++	// From Entity.h:
++	// This is used by script created entities - they are static until the collision is loaded below them
++	// ped->bIsStaticWaitingForCollision = true; // Mimic mission script behavior.
++
++	// Add the ped to the world
++	ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
++	CPopulation::ms_nTotalMissionPeds++;
++
++	CWorld::Add(ped);
++
++    // Makes the ped wander around.
++    ped->SetObjective(OBJECTIVE_WANDER);
++
++    // Store the currently added ped, they can be removed later on.
++    m_pCurrentPed = ped;
++
++	// Release the model after use.
++	// CStreaming::SetModelIsDeletable(modelIndex);
++}
+ 
+-    // Add attempt checking to see if model is loaded, this didn't work.
+-    int attempts = 0;
+-    while(!CStreaming::HasModelLoaded(modelIndex) && attempts < 100) { 
+-        // Delay it a bit, 10 ms
+-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+-	    attempts++;
+-    }
+-    //
+-
+-    // Check if the model has loaded.
+-    if(CStreaming::HasModelLoaded(modelIndex)) {
+-
+-	    CPed *ped;
+-	    if(pedType == PEDTYPE_COP) {
+-		    eCopType copType;
+-		    switch(modelIndex) {
+-		    case MI_COP: copType = COP_STREET; break;
+-		    case MI_SWAT: copType = COP_SWAT; break;
+-		    case MI_FBI: copType = COP_FBI; break;
+-		    case MI_ARMY: copType = COP_ARMY; break;
+-		    default: copType = COP_STREET; break; // Default cop type
+-		    }
+-		    ped = new CCopPed(copType);
+-	    } else if(pedType == PEDTYPE_EMERGENCY || pedType == PEDTYPE_FIREMAN) {
+-		    ped = new CEmergencyPed(pedType); // Model index is the ped type here.
+-	    } else {
+-		    ped = new CCivilianPed(pedType, modelIndex);
+-	    }
+-
+-	    // Setup the ped
+-
+-	    ped->CharCreatedBy = MISSION_CHAR;
+-	    ped->bRespondsToThreats = false;
+-	    ped->bAllowMedicsToReviveMe = false;
+-	    ped->bIsPlayerFriend = false;
+-
+-	    CVector pos = playerPosNew;
+-
+-	    if(pos.z <= MAP_Z_LOW_LIMIT) 
+-            pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+-
+-	    pos.z += 1.0f;
+-	    ped->SetPosition(pos);
+-	    ped->SetOrientation(0.0f, 0.0f, 0.0f);
+-
+-        // Clear space for the mission entity
+-        CTheScripts::ClearSpaceForMissionEntity(pos, ped);
+-	    ped->bIsStaticWaitingForCollision = true; // Mimic mission script behavior.
+-
+-	    // Add the ped to the world
+-	    CWorld::Add(ped);
+-	    ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
+-	    CPopulation::ms_nTotalMissionPeds++;
+-	    
+-        // Release the model after use.
+-	    //CStreaming::SetModelIsDeletable(modelIndex);
+-    } else {
+-	    std::cout << defines.KcLogString << "Model " << modelIndex << " is not loaded yet." << std::endl;
++/**
++ * Remove the currently spawned ped if there is one spawned with CreatePed.
++ * 
++ * TODO Fix this to work, it doesn't seem to do anything.
++ */
++void
++PedFunctions::RemovePed()
++{
++    if(m_pCurrentPed)
++    {
++        CWorld::Remove(m_pCurrentPed);
++        delete m_pCurrentPed;
+     }
+-    
+ }
+ 
+-/* case COMMAND_CREATE_CHAR:
+-* 
++//--------------
++// Request and load models
++// TODO Possibly move these into 'extras/scripts/ped_scripts.cpp'
++// I may move my script functions into the 'extras/scripts' folder.
++//--------------
+ 
++/**
++ * Reimplmentation of REQUEST_MODEL command.
++ */
++void
++PedFunctions::RequestModel(uint32 modelIndex)
++{ 
++    CStreaming::RequestModel(modelIndex, STREAMFLAGS_DEPENDENCY | STREAMFLAGS_NOFADE | STREAMFLAGS_SCRIPTOWNED); 
++}
++
++/**
++ * Reimplmentation of HAS_MODEL_LOADED command.
++ * TODO Make this work in a loop for my lua OnTick function.
++ * TODO Is this needed? I can just as easily use CStreaming::HasModelLoaded by itself.
++ * So I can actually load in the models and spawn the peds.
++ *
++ * Example for future lua wait command, game.wait() doesn't exist just yet in my lua scripts.
++ *
++ * -- Wait on the ped model to load.
++ * while not ped.has_model_loaded()
++ *      game.wait(0)
++ * end
++ */
++void
++PedFunctions::HasModelLoaded(uint32 modelIndex)
++{ 
++    CStreaming::HasModelLoaded(modelIndex); 
++}
++
++/**
++ * Reimplementation of MARK_MODEL_AS_NO_LONGER_NEEDED
++ */
++void
++PedFunctions::MarkModelAsNoLongerNeeded(uint32 modelIndex)
++{ 
++    CStreaming::SetMissionDoesntRequireModel(modelIndex); 
++}
++
++/**
++ * Check if the ped model is valid
++ * Not sure which command this is, this may not exist in the scripts.
++ */
++bool
++PedFunctions::IsModelValid(uint32 modelIndex)
++{
++
++}
++
++/**
++ * Create a ped, reimplementation of CREATE_CHAR
++ * I do have a function called CreatePed above but I might rename it to CreateChar instead.
++ */
++void
++PedFunctions::CreateChar(ePedType pedType, uint32 modelIndex)
++{
++
++}
++
++// Reimplementation of SHUT_CHAR_UP command.
++void
++PedFunctions::ShutCharUp(CPed *ped)
++{ 
++    DMAudio.SetPedTalkingStatus(ped, false); 
++}
++
++/**
++ * Reimplementation of WAIT command for waiting on stuff like loading models
++ *
++ * TODO Move this elsewhere.
++ * TODO Implement this, from Script.cpp.
++ */
++void
++PedFunctions::Wait(uint32 waitTime)
++{
++
++	// I may need to make new member functions for these, it looks like it's all these really are.
++	m_nWakeTime = CTimer::GetTimeInMilliseconds() + waitTime;
++	m_bSkipWakeTime = false;
++
++	// TODO Test this
++	// while()...
++	// Keep wait running while something? Not sure..
++	//
++}
++
++/*
+ 
+-        {
+-                CollectParameters(&m_nIp, 5);
+-                switch (ScriptParams[1]) {
+-                case MI_COP:
+-                        if (ScriptParams[0] == PEDTYPE_COP)
+-                                ScriptParams[1] = COP_STREET;
+-                        break;
+-                case MI_SWAT:
+-                        if (ScriptParams[0] == PEDTYPE_COP)
+-                                ScriptParams[1] = COP_SWAT;
+-                        break;
+-                case MI_FBI:
+-                        if (ScriptParams[0] == PEDTYPE_COP)
+-                                ScriptParams[1] = COP_FBI;
+-                        break;
+-                case MI_ARMY:
+-                        if (ScriptParams[0] == PEDTYPE_COP)
+-                                ScriptParams[1] = COP_ARMY;
+-                        break;
+-                case MI_MEDIC:
+-                        if (ScriptParams[0] == PEDTYPE_EMERGENCY)
+-                                ScriptParams[1] = PEDTYPE_EMERGENCY;
+-                        break;
+-                case MI_FIREMAN:
+-                        if (ScriptParams[0] == PEDTYPE_FIREMAN)
+-                                ScriptParams[1] = PEDTYPE_FIREMAN;
+-                        break;
+-                default:
+-                        break;
+-                }
+-                CPed* ped;
+-                if (ScriptParams[0] == PEDTYPE_COP)
+-                        ped = new CCopPed((eCopType)ScriptParams[1]);
+-                else if (ScriptParams[0] == PEDTYPE_EMERGENCY || ScriptParams[0] == PEDTYPE_FIREMAN)
+-                        ped = new CEmergencyPed(ScriptParams[1]);
+-                else
+-                        ped = new CCivilianPed((ePedType)ScriptParams[0], ScriptParams[1]);
+-                ped->CharCreatedBy = MISSION_CHAR;
+-                ped->bRespondsToThreats = false;
+-                ped->bAllowMedicsToReviveMe = false;
+-                ped->bIsPlayerFriend = false;
+-                CVector pos = *(CVector*)&ScriptParams[2];
+-                if (pos.z <= MAP_Z_LOW_LIMIT)
+-                        pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+-                pos.z += 1.0f;
+-                ped->SetPosition(pos);
+-                ped->SetOrientation(0.0f, 0.0f, 0.0f);
+-                CTheScripts::ClearSpaceForMissionEntity(pos, ped);
+-                if (m_bIsMissionScript)
+-                        ped->bIsStaticWaitingForCollision = true;
+-                CWorld::Add(ped);
+-                ped->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
+-                CPopulation::ms_nTotalMissionPeds++;
+-                ScriptParams[0] = CPools::GetPedPool()->GetIndex(ped);
+-                StoreParameters(&m_nIp, 1);
+-                if (m_bIsMissionScript)
+-                        CTheScripts::MissionCleanUp.AddEntityToList(ScriptParams[0], CLEANUP_CHAR);
+-                return 0;
+-        }
+         case COMMAND_DELETE_CHAR:
+         {
+                 CollectParameters(&m_nIp, 1);
+@@ -264,6 +355,7 @@ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+                         CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_CHAR);
+                 return 0;
+         }
++
+         case COMMAND_CHAR_WANDER_DIR:
+         {
+                 CollectParameters(&m_nIp, 2);
+@@ -323,17 +415,3 @@ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+                 CVector pos;
+                 /* Seems a bit clumsy but I'll leave original flow */
+ 
+-/*
+-if(ped->bInVehicle)
+-	vehicle = ped->m_pMyVehicle;
+-else
+-	vehicle = nil;
+-if(vehicle)
+-	pos = vehicle->GetPosition();
+-else
+-	pos = ped->GetPosition();
+-*(CVector *)&ScriptParams[0] = pos;
+-StoreParameters(&m_nIp, 3);
+-return 0;
+-}
+-*/    
+\ No newline at end of file
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+index c7941dc5..d47b0026 100644
+--- a/src/extras/functions/ped_functions.h
++++ b/src/extras/functions/ped_functions.h
+@@ -11,7 +11,28 @@ class PedFunctions
+ {
+ public:
+ 	void CreatePed(ePedType pedType, uint32 modelIndex);
++	void RemovePed();
+ 
+ 	// Test setting objectives on all peds in the area.
+ 	void PedObjectiveTest(bool givePedsWeapons, bool attackPlayer);
++
++	void RequestModel(uint32 modelIndex);
++	void HasModelLoaded(uint32 modelIndex);
++	void MarkModelAsNoLongerNeeded(uint32 modelIndex);
++
++	bool IsModelValid(uint32 modelIndex);
++
++	void CreateChar(ePedType pedType, uint32 modelIndex);
++
++	void ShutCharUp(CPed *ped);
++
++	void Wait(uint32 waitTime);
++
++
++private:
++	int m_nWakeTime;
++	bool m_bSkipWakeTime;
++
++	// The current ped spawned by the CreateChar function.
++	CPed *m_pCurrentPed;
+ };
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index 906f429b..d232d525 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -224,7 +224,7 @@ ImGuiMenus::MainMenu()
+ 		}
+ 
+ 		// Ped menu
+-		// Need to work on this one a bit more, disabled
++		// I got this working now.
+ 		if(ImGui::BeginTabItem("Peds")) { 
+ 			pedMenu.PedTab();
+ 			
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index adbb74f0..ba79a022 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -37,25 +37,37 @@
+ #include "Hud.h"
+ #include "Text.h"
+ 
+-
+-
+-/// <summary>
+-/// Show the ped tab, disabled in imgui_main_menu.cpp
+-/// </summary>
++/**
++ * Show the ped tab, this is now working
++ */
+ void
+ PedMenu::PedTab()
+ {
+ 	PedFunctions pedFunctions = PedFunctions();
+ 
+ 	//----------- Ped Spawning -----------//
+-	// This is broken, and needs to be worked on.
+-	ImGui::Text("This is broken, doesn't work.");
++	// I got this working now!
++	// TODO Hook this up to the lua code
++	// TODO Make this able to modify this specific ped spawned, remove it and everything in the lua code.
++	// I should be able to make this set all the ped stats and possibly pass a CPed into lua.
++
++	// https://github.com/DK22Pac/plugin-sdk/blob/master/examples/PedSpawner/Main.cpp
+ 	ImGui::Text("Ped spawner");
++
++
++	ImGui::Text("Spawn a ped near your position.");
+ 	if(ImGui::Button("Spawn ped")) { 
+-		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, 12);
+-		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, 20);
+-		//pedFunctions.CreatePed(PEDTYPE_CIVMALE, MI_BFOBE);
+-		pedFunctions.CreatePed(PEDTYPE_CRIMINAL, MI_BFOBE);
++		// pedFunctions.CreatePed(PEDTYPE_CRIMINAL, MI_BFOBE);
++		pedFunctions.CreatePed(PEDTYPE_CIVMALE, MI_BFOBE);
++
++		// pedFunctions.CreatePed(PEDTYPE_FIREMAN, MI_FIREMAN);
++	}
++
++	ImGui::Text("Remove the previously spawned ped.");
++	ImGui::Text("Currently broken.");
++	if(ImGui::Button("Remove ped"))
++	{
++		pedFunctions.RemovePed();
+ 	}
+ }
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 3168802b..3c4430f4 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-1a";
++std::string Defines::programVersion = "1.2.12-2a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

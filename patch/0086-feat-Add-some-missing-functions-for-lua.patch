@@ -1,0 +1,268 @@
+From 95002d6d6fd4f5eb1cb72abc8ec2ce8474ff879c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Sep 2026 14:18:18 -0400
+Subject: [PATCH 086/161] feat: Add some missing functions for lua
+
+* Add disable_never_wanted to lua,  I was missing this for turning off never wanted in my lua scripts.
+
+* Add disable_infinite_health to lua.
+* Update freeroam-game.lua.
+
+* Fix player spawned log line in createPlayerLua.
+
+* Update lua-documentation.md.
+
+* Update changelog.md.
+---
+ Changelog.md                                  | 16 +++++++
+ .../lua_scripts/freeroam-game.lua             | 10 ++++-
+ guides/lua-documentation.md                   | 45 +++++++++++++++++--
+ src/extras/lua/lua_player.cpp                 | 30 +++++++++++--
+ src/extras/lua/lua_player.h                   |  2 +
+ src/extras/lua/lua_test.cpp                   |  2 +
+ src/extras/utils/defines.cpp                  |  2 +-
+ 7 files changed, 98 insertions(+), 9 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index cafaf788..cc0600b6 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -101,6 +101,9 @@ feat: Move vehicle spawn logic
+ * Update changelog.md.
+ 
+ ### 1.2.7a
++
++**Commit 1**
++
+ feat: Add OnTick function into lua
+ 
+ * Now my game scripts can have a tick system, although if you change anything in it, you have to start a new game.
+@@ -113,3 +116,16 @@ feat: Add OnTick function into lua
+ 
+ * Update changelog.md, Bump version to 1.2.7a.
+ 
++**Commit 2**
++feat: Add some missing functions for lua
++
++* Add disable_never_wanted to lua,  I was missing this for turning off never wanted in my lua scripts.
++
++* Add disable_infinite_health to lua.
++* Update freeroam-game.lua.
++
++* Fix player spawned log line in createPlayerLua.
++
++* Update lua-documentation.md.
++
++* Update changelog.md.
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index 295a813f..9da30f76 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -125,12 +125,20 @@ if disableVehicles then
+ 	disable_vehicles()
+ end
+ 
++-- Fixes below here, if game is reloaded with F5 these never get disabled.
++-- So this just always disables them if they aren't toggled.
++-- Although these have a cheat activated message, I'll deal with this later.
++-- For now they can manually be disabled with the keybind events or something.
+ if enableNeverWanted then
+ 	enable_never_wanted()
++else
++    -- disable_never_wanted()
+ end
+ 
+ if enableInfiniteHealth then
+ 	enable_infinite_health()
++else
++    -- disable_infinite_health()
+ end
+ 
+ -----------
+@@ -140,7 +148,7 @@ end
+ -- Create some vehicles
+ -- TODO Fix this in here, this doesn't work just yet.
+ -- For some reason this doesn't work here, it works in kcnet-keybinds-events.lua though.
+-create_vehicle(145, airportX + 10.0, airportY + 10.0, airportZ + 2.0, false, false)
++-- create_vehicle(145, airportX + 10.0, airportY + 10.0, airportZ + 2.0, false, false)
+ 
+ -- Spawn some peds
+ -- TODO Implement this.
+diff --git a/guides/lua-documentation.md b/guides/lua-documentation.md
+index 3c9f3f82..045c5be4 100644
+--- a/guides/lua-documentation.md
++++ b/guides/lua-documentation.md
+@@ -1,8 +1,32 @@
+ ## Info about my lua test
++
++**DISABLE_GAME_SCRIPTS new preprocessor info**
++
++I now have my lua test scripts setup to run `freeroam-game.lua` when DISABLE_GAME_SCRIPTS is enabled in `config.h`.
++
++What this does, is it disables the games normal `.scm` scripting language and will pretty much be a full replacement of the `.scm` language, although this will have way less features since I'll implement what I need for basic gameplay and eventually get this working for a multiplayer system once I figure that out.
++
++With this enabled, you won't require `main.scm`, `freeroam_miami.scm` or `main_d.scm`, they aren't loaded in at all and get disabled with my custom scripts.
++
++If DISABLE_GAME_SCRIPTS is enabled, it also disables these files and switches to the freeroam ones:
++* Disables `kcnet-init.lua` - This is handled by `freeroam-game.lua`.
++* Disables `kcnet-events.lua` - This is handled by the `OnTick` function in `freeroam-game.lua`.
++
++I will need to implement restrictions on what can be placed in the `OnTick` function, otherwise the create_vehicle and create_player functions can be placed there which will crash the game.
++
++The `OnTick` function is pretty much a replacement of the main script loop in the `main.scm` file.
++
++You can press `F5` to start a new game with the new freeroam scripts, this is for easier development of the lua scripts.
++
++-----
++
++**Main Lua Info**
++
++This below is for if `DISABLE_GAME_SCRIPTS` is not toggled in `config.h`.
++
+ I will have a list of all functions that work in my lua test in here
+ 
+-TODO I need to rename the test.lua file to kcnet-revc.lua or kcnet-revc-init.lua.
+-It will need renamed in the C++ code and the file itself. - Complete 9-4-2026
++I renamed the test.lua file to kcnet-init.lua, 9-4-2026
+ 
+ These will always run on game startup, wasted, and busted if placed in the test.lua file under ViceExtended/lua_scripts.
+ 
+@@ -28,15 +52,28 @@ Toggle the players control on/off
+ * toggle_imgui()
+ 
+ # Player
+-Toggles
++**Creating the player**
++This is required for my `freeroam-game.lua` script. 
++
++Params: playerIndex, positionX, positionY, positionZ.
++
++* create_player(0, posX, posY, posZ)
++
++**Toggles**
+ 
+ Turn on never wanted
+ * enable_never_wanted()
+ 
++Turn off never wanted
++* disable_never_wanted()
++
+ Turn on infinite health
+ * enable_infinite_health()
+ 
+-Functions
++Turn off infinite health
++* disable_infinite_health()
++
++**Functions**
+ 
+ Set the players position to the specified coords
+ * set_position(x, y, z)
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index c3629dd2..3669606d 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -60,9 +60,9 @@ createPlayerLua(lua_State *L)
+ 	MiscFunctions::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ);
+ 	
+ 	std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
+-	+ "Y: " + std::to_string(spawnPosY)
+-	+ "Z: " + std::to_string(spawnPosY);
+-	LogFunctions::LogInfo(Defines::logFile, logMsg);
++	+ " Y: " + std::to_string(spawnPosY)
++	+ " Z: " + std::to_string(spawnPosY);
++	LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
+ 
+ 	return 0;
+ }
+@@ -139,6 +139,11 @@ TogglePlayerControlLua(lua_State *L)
+ 	return 1;
+ }
+ 
++//-------
++// Toggles
++// TODO Make these into toggle functions that take a boolean later.
++//-------
++
+ int
+ enableNeverWantedLua(lua_State *L)
+ {
+@@ -148,6 +153,15 @@ enableNeverWantedLua(lua_State *L)
+ 	return 1;
+ }
+ 
++int
++disableNeverWantedLua(lua_State *L)
++{
++	PlayerCheats::DisableNeverWanted();
++	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was disabled");
++
++	return 1;
++}
++
+ int
+ enablePlayerInfiniteHealthLua(lua_State *L)
+ {
+@@ -158,6 +172,16 @@ enablePlayerInfiniteHealthLua(lua_State *L)
+ 	return 1;
+ }
+ 
++int
++disablePlayerInfiniteHealthLua(lua_State *L)
++{
++	PlayerCheats playerCheats = PlayerCheats();
++	playerCheats.DisableInfiniteHealth();
++	LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was disabled");
++
++	return 1;
++}
++
+ /// <summary>
+ /// Basic test for healing the player in lua, this works.
+ /// </summary>
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index 1d862b3b..b2542944 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -31,7 +31,9 @@ extern "C" {
+ 	extern int GetPlayerHealthLua(lua_State *L);
+ 	// 
+ 	extern int enableNeverWantedLua(lua_State *L);
++	extern int disableNeverWantedLua(lua_State *L);
+ 	extern int enablePlayerInfiniteHealthLua(lua_State *L);
++	extern int disablePlayerInfiniteHealthLua(lua_State *L);
+ 
+ 	extern int changePlayerClothesLua(lua_State *L);
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 5ce51ffa..2eb076b6 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -381,9 +381,11 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	// Auto enable never wanted in the lua script
+ 	lua_register(L, "enable_never_wanted", enableNeverWantedLua);
++	lua_register(L, "disable_never_wanted", disableNeverWantedLua);
+ 
+ 	// Auto enable infinite health in the lua script
+ 	lua_register(L, "enable_infinite_health", enablePlayerInfiniteHealthLua);
++	lua_register(L, "disable_infinite_health", disablePlayerInfiniteHealthLua);
+ 
+ 	// This seems to work now.
+ 	lua_register(L, "set_position", SetPlayerPositionLua);
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 0d0941cd..8f28741c 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.6a";
++std::string Defines::programVersion = "1.2.7a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

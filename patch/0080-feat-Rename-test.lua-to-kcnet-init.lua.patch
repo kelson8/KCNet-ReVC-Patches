@@ -1,0 +1,316 @@
+From 3f030e7778499ae905d03023e52b80fb40e674dd Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 18:12:29 -0400
+Subject: [PATCH 080/161] feat: Rename test.lua to kcnet-init.lua
+
+* This is a needed change for my lua scripts, so I know what this is doing without looking in the code.
+
+* Update Changelog.md, and lua-documentation.md.
+---
+ Changelog.md                                  | 19 ++++++++++++++
+ .../lua_scripts/{test.lua => kcnet-init.lua}  |  2 +-
+ .../lua_scripts/kcnet-keybind-events.lua      |  8 +++---
+ .../ViceExtended/lua_scripts/vehicles.lua     |  2 +-
+ guides/file-changes.md                        |  8 +++---
+ guides/lua-documentation.md                   |  2 +-
+ src/extras/functions/vehicle_functions.cpp    | 26 ++++++++++++++++++-
+ src/extras/functions/vehicle_functions.h      |  3 +++
+ src/extras/lua/lua_test.cpp                   |  5 ++--
+ src/extras/menus/vehicle_menu.cpp             |  4 +--
+ src/extras/utils/defines.cpp                  |  6 ++---
+ src/modelinfo/ModelIndices.h                  |  6 +++++
+ 12 files changed, 72 insertions(+), 19 deletions(-)
+ rename gamefiles/ViceExtended/lua_scripts/{test.lua => kcnet-init.lua} (99%)
+
+diff --git a/Changelog.md b/Changelog.md
+index f0305be6..df917230 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -24,9 +24,28 @@ DISABLE_GAME_SCRIPTS preprocessor info
+ Extra changes
+ * Disable an assert under LoadAllScripts, seems to crash.
+ * Add COMMAND_INVALID into ScriptCommands.h.
++
++* Add Changelog.md.
++
+ * Bump project version from 1.2.2a to 1.2.3a.
+ * Add freeroam-game.lua script under `gamefiles/ViceExtended/lua_scripts`, I will use this once I figure out how to redirect the game scripts to lua.
+ 
++
+ * Update c_cpp_properties, fix some errors in VSCode.
+ * Add TODO.md for a list of things to do for this project.
+ * Add DISABLE_GAME_SCRIPTS to config.h and document the option a bit more.
++
++* Move FastLoader and GameSaveOnStartup ini values out of General and into KCNet options.
++* Update reVC.ini with new changes, disable fast loader by default since it might crash on invalid saves.
++
++### 1.2.4a
++
++**Commit 1**
++
++feat: Rename test.lua to kcnet-init.lua
++
++* This is a needed change for my lua scripts, so I know what this is doing without looking in the code.
++
++Added:
++* Add VehicleFunctions::IsModelValid for checking if a vehicle model is valid.
++* 
+\ No newline at end of file
+diff --git a/gamefiles/ViceExtended/lua_scripts/test.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-init.lua
+similarity index 99%
+rename from gamefiles/ViceExtended/lua_scripts/test.lua
+rename to gamefiles/ViceExtended/lua_scripts/kcnet-init.lua
+index 8a15c577..f04a72f2 100644
+--- a/gamefiles/ViceExtended/lua_scripts/test.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-init.lua
+@@ -13,7 +13,7 @@
+ 
+ -- print(package.path)
+ 
+-print("KCNet -- test.lua loaded")
++print("KCNet -- kcnet-init.lua loaded")
+ 
+ 
+ -- I have remapped this Lua mod from F8 to F9
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+index 75bb233b..d8bfd6b6 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+@@ -10,10 +10,10 @@
+ -- create_vehicle(145, true, true)
+ 
+ 
+--- This works! Now test.lua is just for starting the game.
+--- I'll rename it to kcnet-setup.lua later
++-- This works! Now kcnet-init.lua is just for starting the game.
+ 
+-print("kcnet-keybind-events.lua loaded")
++-- Disabled this message
++-- print("kcnet-keybind-events.lua loaded")
+ 
+ -- This works but doesn't delete the previous vehicle.
+ local create_vehicle_toggle = false
+@@ -47,7 +47,7 @@ if create_vehicle_toggle then
+     --     set_position(spawnX, spawnY, spawnZ)
+     -- end
+ 
+-	create_vehicle(145, true, true)
++	-- create_vehicle(145, true, true)
+ 
+ 	-- TODO Test this in a different namespace
+ 	-- Well this didn't work.
+diff --git a/gamefiles/ViceExtended/lua_scripts/vehicles.lua b/gamefiles/ViceExtended/lua_scripts/vehicles.lua
+index 0338d4ce..29fc76da 100644
+--- a/gamefiles/ViceExtended/lua_scripts/vehicles.lua
++++ b/gamefiles/ViceExtended/lua_scripts/vehicles.lua
+@@ -1,4 +1,4 @@
+--- TODO Figure out how to make test.lua read from this.
++-- TODO Figure out how to make kcnet-init.lua read from this.
+ -- local vehicle_test = require 'vehicles'
+ --
+ 
+diff --git a/guides/file-changes.md b/guides/file-changes.md
+index cd6eaa82..baee8858 100644
+--- a/guides/file-changes.md
++++ b/guides/file-changes.md
+@@ -22,20 +22,22 @@ The only new files that seems like is in 'ViceExtended/models' are these (Not im
+ |------|-----|
+ | kcnet-busted.lua | Events defined in this file will run if the player has been busted. |
+ | kcnet-events.lua | Events defined in this file will constantly run, so don't place anything in here that may crash the game, I don't have any protections in place for that currently. |
++| kcnet-init.lua | This was the original main lua file, it is still required for some tasks and has some documentation. I may rename it to something else in the future. |
+ | kcnet-keybind-events.lua | Events in this file will run when the F9 key is pressed, I may make this keybind configurable later. |
+ | kcnet-wasted.lua | Events in this file will run if the player has been wasted. |
+ | locations.lua | List of locations, this isn't currently in use. |
+-| test.lua | This was the original main lua file, it is still required for some tasks and has some documentation. I may rename it to something else in the future. |
++
+ | vehicles.lua | This is a list of vehicles for use in Lua, I couldn't get it working in the other lua scripts though. |
+ 
+ Lua info for devs:
+ | Lua file | Description |
+ |------|-----|
+-| kcnet-events.lua | This is set under the 'void CGame::Process' inside of Game.cpp. |
+ | kcnet-busted.lua  | Running under `WBSTATE_BUSTED` in `GameLogic::Update` |
++| kcnet-events.lua | This is set under the 'void CGame::Process' inside of Game.cpp. |
++| kcnet-init.lua | This is running under 'WBSTATE_WASTED' and 'WBSTATE_BUSTED' switch statements in GameLogic.cpp, and in the 'GS_PLAYING_GAME' switch statement within glfw.cpp. |
+ | kcnet-keybind-events.lua  | This runs under `LuaSetup::LuaPlayingGameLoop` if the F9 key is pressed, I need to make this configurable later. |
+ | kcnet-wasted.lua | Running under `WBSTATE_WASTED` in `GameLogic::Update`. |
+-| test.lua | This is running under 'WBSTATE_WASTED' and 'WBSTATE_BUSTED' switch statements in GameLogic.cpp, and in the 'GS_PLAYING_GAME' switch statement within glfw.cpp. |
++
+ 
+ 'ViceExtended' folder {My additions} (TODO Move these into 'ViceExtended/kcnet' folder or something):
+ 
+diff --git a/guides/lua-documentation.md b/guides/lua-documentation.md
+index 5eeeb3ac..3c9f3f82 100644
+--- a/guides/lua-documentation.md
++++ b/guides/lua-documentation.md
+@@ -2,7 +2,7 @@
+ I will have a list of all functions that work in my lua test in here
+ 
+ TODO I need to rename the test.lua file to kcnet-revc.lua or kcnet-revc-init.lua.
+-It will need renamed in the C++ code and the file itself.
++It will need renamed in the C++ code and the file itself. - Complete 9-4-2026
+ 
+ These will always run on game startup, wasted, and busted if placed in the test.lua file under ViceExtended/lua_scripts.
+ 
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 493d4c9d..6e2f23bf 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -1021,4 +1021,28 @@ VehicleFunctions::GetVehicleSpeed()
+ 	// Return nothing if there is no vehicle.
+ 	return 0.0f;
+ 	
+-}
+\ No newline at end of file
++}
++
++/**
++ * Check if a vehicle model is valid.
++ * 
++ * TODO Test this, I'm not sure if it'll work.
++ * 
++ * @return If the vehicle is a spawnable vehicle.
++ */
++bool
++VehicleFunctions::IsModelValid(int vehicleId)
++{
++	// if(vehicleId < MI_LANDSTAL || vehicleId <= MI_GANGBUR 
++	// || vehicleId >= MI_SPEEDER 
++	// || vehicleId <= MI_VICECHEE || vehicleId > MI_VICECHEE)
++
++	// These will either crash or need special code to work, I'm not dealing with it right now.
++	if(vehicleId == MI_AIRTRAIN || vehicleId == MI_DEADDODO
++	|| vehicleId == MI_RCBANDIT || vehicleId == MI_RCBARON | vehicleId == MI_RCRAIDER|| vehicleId == MI_RCGOBLIN)
++	{
++		return false;
++	}
++
++	return true;
++}
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 2dc01ace..e9252ab6 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -75,4 +75,7 @@ public:
+ 	static void DisableUpsideDownExplosions();
+ 	static void ToggleUpsideDownExplosions();
+ 	#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
++	// Check if the vehicle model is valid.
++	static bool IsModelValid(int vehicleId);
+ };
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 15157736..b15ed3df 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -444,7 +444,7 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ /// <summary>
+ /// This works for events in lua within a separate file, I tested it and if I have the same
+-/// item in test.lua (Main script) it won't run the blow up vehicle function if enabled without the keybind.
++/// item in kcnet-init.lua (Main script) it won't run the blow up vehicle function if enabled without the keybind.
+ /// Running in CGame::Process
+ /// </summary>
+ void 
+@@ -524,7 +524,7 @@ void LuaTest::ReadSolFile()
+     // I added error handling to this test so it doesn't crash.
+     try
+     {
+-        // sol::table another_table = lua["lines_from"]("src/scripts/test.lua");
++        // sol::table another_table = lua["lines_from"]("src/scripts/sol_test.lua");
+         sol::table another_table = lua["lines_from"](Config::GetLuaFile().c_str());
+         fileTest.line1 = another_table[2];
+         // std::cout << another_table.size();
+@@ -724,7 +724,6 @@ LuaTest::InitLua()
+ 
+ 	// TODO Rename this in the future.
+ 	if(CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaScript.c_str()))) {
+-	//if(CheckLua(L, luaL_dofile(L, defines.luaScript.c_str()))) {
+ 
+ 		// I was able to output this value to the log.
+ 		// TODO Setup table with locations in this file.
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index e5e369c4..a15f90b1 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -88,7 +88,7 @@ toggleHighVehicleMass(bool toggle)
+ 	float vehicleTurnMass = 4.0f;
+ 
+ 	// This gives off an error too.
+-	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua"))) {
++	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/kcnet-init.lua"))) {
+ 	//	lua_getglobal(L, "vehicle_mass");
+ 	//	if(lua_isnumber(L, 1)) {
+ 	//		//if(luaTest.CheckLua(L, 1)) {
+@@ -107,7 +107,7 @@ toggleHighVehicleMass(bool toggle)
+ 	//	TRACE("VehicleMass: %f", vehicleMass);
+ 	//}
+ 	//
+-	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/test.lua")))
++	// if(luaTest.CheckLua(L, luaL_dofile(L, "ViceExtended/lua_scripts/kcnet-init.lua")))
+ 	//{
+ 
+ 	//}
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 8d2e8038..097d209a 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.3a";
++std::string Defines::programVersion = "1.2.4a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+@@ -101,8 +101,8 @@ std::string luaScriptsFolder = Defines::gamePathFolder + "lua_scripts/";
+ // std::string luaScriptsFolder = viceExtendedFolder + "lua_scripts/";
+ 
+ // Lua files, mostly in use in lua_test.cpp
+-// TODO Rename file to something else.
+-std::string Defines::luaScript = luaScriptsFolder + "test.lua";
++// Renamed from test.lua to kcnet-init.lua.
++std::string Defines::luaScript = luaScriptsFolder + "kcnet-init.lua";
+ 
+ // New lua items
+ std::string Defines::luaKeyBindScript = luaScriptsFolder + "kcnet-keybind-events.lua";
+diff --git a/src/modelinfo/ModelIndices.h b/src/modelinfo/ModelIndices.h
+index 836c4092..cff334c8 100644
+--- a/src/modelinfo/ModelIndices.h
++++ b/src/modelinfo/ModelIndices.h
+@@ -333,8 +333,10 @@ enum
+ 	MI_SEASPAR,
+ 	MI_PIZZABOY,
+ 	MI_GANGBUR,
++
+ 	MI_AIRTRAIN,
+ 	MI_DEADDODO,
++
+ 	MI_SPEEDER,
+ 	MI_REEFER,
+ 	MI_TROPIC,
+@@ -347,8 +349,10 @@ enum
+ 	MI_PCJ600,
+ 	MI_FAGGIO,
+ 	MI_FREEWAY,
++
+ 	MI_RCBARON,
+ 	MI_RCRAIDER,
++
+ 	MI_GLENDALE,
+ 	MI_OCEANIC,
+ 	MI_SANCHEZ,
+@@ -384,7 +388,9 @@ enum
+ 	MI_BOXVILLE,
+ 	MI_BENSON,
+ 	MI_MESA,
++
+ 	MI_RCGOBLIN,
++
+ 	MI_HOTRINA,
+ 	MI_HOTRINB,
+ 	MI_BLOODRA,
+-- 
+2.43.0
+

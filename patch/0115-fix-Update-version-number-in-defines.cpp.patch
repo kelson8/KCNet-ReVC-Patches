@@ -1,0 +1,25 @@
+From dad2ba9dc403534529bb52f2d0839c8c952a43ec Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 11:52:58 -0400
+Subject: [PATCH 115/161] fix: Update version number in defines.cpp
+
+---
+ src/extras/utils/defines.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 908cd185..a887e3a8 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-7a";
++std::string Defines::programVersion = "1.2.12-8a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

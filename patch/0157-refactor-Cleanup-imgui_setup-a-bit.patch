@@ -1,0 +1,327 @@
+From 15253a18cb6070c280bbc36e0c6eb43644959eb8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 22:08:49 -0400
+Subject: [PATCH 157/161] refactor: Cleanup imgui_setup a bit
+
+* I moved somethings around in imgui_setup, and made comments into my new style for doxygen.
+
+* Update changelog.
+---
+ Changelog.md                         |   9 ++
+ src/extras/functions/imgui_setup.cpp | 216 +++++++++++++++++----------
+ 2 files changed, 142 insertions(+), 83 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index cda93bcc..a195b5e3 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -964,3 +964,12 @@ feat: Move chas mode timer bar into main.cpp
+ * Add check for if player is in water to kill them with invincibility cheat, otherwise they get stuck in the water.
+ 
+ * Update changelog.
++
++**Commit 4**
++
++refactor: Cleanup imgui_setup a bit
++
++* I moved somethings around in imgui_setup, and made comments into my new style for doxygen.
++
++* Update changelog.
++
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index 93db208b..043b235f 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -22,6 +22,10 @@
+ #include <iostream>
+ #include <string>
+ 
++#include <format>
++#include <cstdlib>
++
++
+ #include "main.h"
+ 
+ // Begin win.cpp headers
+@@ -88,6 +92,8 @@
+ #include "imgui_functions.h"
+ #endif
+ 
++#include "log_functions.h"
++
+ // ReVC
+ // Timer for the keybind
+ #include "Pad.h"
+@@ -131,83 +137,38 @@ bool ImGuiFunctions::ImGuiActive = false;
+ extern IDirect3DDevice9 *rw::d3d::d3ddevice; // Assuming librw exposes the device.
+ #endif // RW_D3d9
+ 
+-//--------------------
+-// Disable/enable player control
+-//--------------------
+-
+-/// <summary>
+-/// Disable players control, the camera process code seems to be doing that when I have ImGui open.
+-/// This runs just in case it isn't
+-/// </summary>
+-void
+-ImGuiSetup::DisablePlayerControl()
+-{
+-#if defined(GTAVC)
+-	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-#elif defined(GTA3)
+-	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
+-#elif defined(GTALCS)
+-	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
+-#endif
+-
+-	// I don't think these are needed
+-	// pad->DisablePlayerControls = 1;
+-
+-	// pad->ClearMouseHistory();
+-	// pad->NewState.DPadUp = 0;
+-	// pad->OldState.DPadUp = 0;
+-	// pad->NewState.DPadDown = 0;
+-	// pad->OldState.DPadDown = 0;
+-
+-	// Old
+-	// CPad::UpdatePads();
+-
+-	// Well this breaks the menu from being toggled.
+-	// cpad.Clear(true);
+-}
+-
+-/// <summary>
+-/// Enable players control, the camera process code seems to be doing that when I have ImGui open.
+-/// This runs just in case it isn't
+-/// </summary>
+-void
+-ImGuiSetup::EnablePlayerControl()
+-{
+-#if defined(GTAVC)
+-	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+-#elif defined(GTA3)
+-	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_PHONE);
+-#elif defined(GTALCS)
+-	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_CUTSCENE);
+-#endif
+-}
++// New, for trying to fix mouse crashes with ImGui
++static int screenWidth, screenHeight;
++static float mouseX, mouseY;
+ 
+ //--------------------
+ // ImGui setup
+ //--------------------
+ 
+-// Disable ImGui on pause
+-void
+-ImGuiSetup::DisableImGuiOnGamePause()
+-{
+-	ImGuiFunctions imGuiFunctions;
+-
+-	// First, check if the game is paused, if so disable the menu.
+-	// This works right here.
+-	if(imGuiFunctions.ImGuiActive && CTimer::GetIsPaused()) { imGuiFunctions.ImGuiActive = false; }
+-}
+-
+-/// <summary>
+-/// Run my imgui DirectX9 init with Win32
+-/// </summary>
+-/// <param name="window">The HWND for the program.</param>
+-///
+-// TODO Test
++// This sets the glsl version when the InitImGui() function is run.
+ const char *glsl_version = nullptr;
+ 
++
++/**
++ * Setup imgui, this makes sure the ImGui context is setup.
++ * Sets the glsl version.
++ * Makes sure GLFW is setup, Inits GLFW and OpenGL for ImGui.
++ * 
++ * Sets the ImGui menu style to dark mode, and applies the user-grinch cheat menu theme.
++ */
+ void
+ ImGuiSetup::InitImGui()
+ {
++	//
++	// TODO Fix C++20 support and switch from raw lua to using sol2 or something.
++	// std::cout << "----------------------------------" << std::endl;
++	// std::cout << "C++ Version 20:----" << std::endl;
++	//     std::cout << std::format("{}", __cpp_lib_format) << "\n";
++
++	
++	// std::cout << "----------------------------------" << std::endl;
++	//
++
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
+ 	Defines defines = Defines();
+@@ -273,10 +234,10 @@ ImGuiSetup::InitImGui()
+ #endif // _WIN32
+ }
+ 
+-/// <summary>
+-/// Function to poll XInput and toggle ImGui window.
+-/// This now works with GLFW also, I need to make it get the controller values from the config.
+-/// </summary>
++/**
++ * Function to poll XInput and toggle ImGui window.
++ * This now works with GLFW also, I need to make it get the controller values from the config.
++ */
+ void
+ ImGuiSetup::HandleControllerInput()
+ {
+@@ -372,10 +333,10 @@ ImGuiSetup::HandleControllerInput()
+ #endif // #if _WIN32 && RW_D3D9
+ }
+ 
+-/// <summary>
+-/// Gets the current window for GLFW, useful for librw.
+-/// Not in use
+-/// </summary>
++/**
++ * Gets the current window for GLFW, useful for librw.
++ * Not currently in use, can be used for something.
++ */
+ #ifdef RW_GL3
+ GLFWwindow*
+ ImGuiSetup::GetGlfwWindow()
+@@ -384,13 +345,13 @@ ImGuiSetup::GetGlfwWindow()
+ }
+ #endif // RW_GL3
+ 
+-/// <summary>
+-/// This runs the loop for ImGui under GS_PLAYING_GAME
+-/// TODO Test running this in gl3device under endUpdate.
+-/// Moved this into its own function
+-/// This checks for the keybind being pressed on the keyboard or controller.
+-/// Disables the player controls while the menu is open.
+-/// </summary>
++/**
++ * This runs the loop for ImGui under GS_PLAYING_GAME
++ * TODO Test running this in gl3device under endUpdate.
++ * Moved this into its own function.
++ * This checks for the keybind being pressed on the keyboard or controller.
++ * Disables the player controls while the menu is open.
++ */
+ // clang-format off
+ void ImGuiSetup::ImGuiPlayingGameLoop()
+ {
+@@ -398,6 +359,13 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 	ImGuiMenus imGuiMenus = ImGuiMenus();
+ 	CPad cpad = CPad();
+ 
++	int dirX = 1;
++	int dirY = 1;
++
++	RwCamera *cam = RwCameraGetCurrentCamera();
++	screenWidth = RwRasterGetWidth(RwCameraGetRaster(cam));
++	screenHeight = RwRasterGetHeight(RwCameraGetRaster(cam));
++
+ 	CPad *pad = CPad::GetPad(0);
+ 
+ 	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+@@ -439,6 +407,26 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 			// Disable the players control and movement.
+ 			this->DisablePlayerControl();
+ 
++			// TODO Try to make this work, taken from debugmenu.cpp.
++			// This might fix the mouse going out of bounds and crashing with ImGui and OpenGL.
++
++
++			// Well this did nothing...
++			// Although it might help with something a bit.
++			// if(MousePointerStateHelper.bInvertHorizontally) dirX = -1;
++			// if(MousePointerStateHelper.bInvertVertically) dirY = -1;
++
++			// mouseX += pad->NewMouseControllerState.x*dirX;
++			// mouseY += pad->NewMouseControllerState.y*dirY;
++
++			// // TODO Look into using this for my ImGui mouse code.
++			// // Sometimes it crashes or goes off of the screen.
++			// // Although I'm not sure where I would put that.
++			// if(mouseX < 0.0f) mouseX = 0.0f;
++			// if(mouseY < 0.0f) mouseY = 0.0f;
++			// if(mouseX >= screenWidth) mouseX = screenWidth;
++			// if(mouseY >= screenHeight) mouseY = screenHeight;
++
+ 		} else {
+ 			// Enable the players control and movement.
+ 			this->EnablePlayerControl();
+@@ -446,8 +434,70 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 	}
+ }
+ 
++/**
++ * This disables ImGui when the game is paused.
++ * So it doesn't glitch out the mouse or break anything.
++ */
++void
++ImGuiSetup::DisableImGuiOnGamePause()
++{
++	ImGuiFunctions imGuiFunctions;
++
++	// First, check if the game is paused, if so disable the menu.
++	// This works right here.
++	if(imGuiFunctions.ImGuiActive && CTimer::GetIsPaused()) { imGuiFunctions.ImGuiActive = false; }
++}
++
++//--------------------
++// Disable/enable player control
++//--------------------
+ 
+-//#endif // CUSTOM_CODE
++/**
++ * Disable players control, the camera process code seems to be doing that when I have ImGui open.
++ * This runs just in case it isn't.
++ */
++void
++ImGuiSetup::DisablePlayerControl()
++{
++#if defined(GTAVC)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
++
++	// I don't think these are needed
++	// pad->DisablePlayerControls = 1;
++
++	// pad->ClearMouseHistory();
++	// pad->NewState.DPadUp = 0;
++	// pad->OldState.DPadUp = 0;
++	// pad->NewState.DPadDown = 0;
++	// pad->OldState.DPadDown = 0;
++
++	// Old
++	// CPad::UpdatePads();
++
++	// Well this breaks the menu from being toggled.
++	// cpad.Clear(true);
++}
++
++/**
++ * Enable players control, the camera process code seems to be doing that when I have ImGui open.
++ * This runs just in case it isn't
++ */
++void
++ImGuiSetup::EnablePlayerControl()
++{
++#if defined(GTAVC)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
++#elif defined(GTA3)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_PHONE);
++#elif defined(GTALCS)
++	CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_CUTSCENE);
++#endif
++}
+ 
+ // clang-format on
+ 
+-- 
+2.43.0
+

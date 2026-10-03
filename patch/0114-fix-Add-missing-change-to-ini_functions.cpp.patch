@@ -1,0 +1,30 @@
+From ca8e7d078bcf7133e5d6043a766ade97182fc032 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 11:51:01 -0400
+Subject: [PATCH 114/161] fix: Add missing change to ini_functions.cpp
+
+---
+ src/extras/functions/ini_functions.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index b7c42c17..9e829f9a 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1351,11 +1351,11 @@ LoadINISettings()
+ 	}
+ #endif
+ 
+-#ifdef CUSTOM_CODE
++#if defined(IMPROVED_VIDEOMODE) && defined(CUSTOM_CODE)
+ 	if (FrontEndMenuManager.m_nPrefsWindowed < 0 || FrontEndMenuManager.m_nPrefsWindowed >= NUM_WINDOW_MODES)
+ 		FrontEndMenuManager.m_nPrefsWindowed = WINDOWMODE_FULLSCREEN;
+ 	FrontEndMenuManager.m_nSelectedScreenMode = FrontEndMenuManager.m_nPrefsWindowed;
+-#endif // CUSTOM_CODE - Borderless window
++#endif // IMPROVED_VIDEOMODE && CUSTOM_CODE - Borderless window.
+ 
+ 	// Fetched in above block, but needs evaluation
+ #ifdef PED_CAR_DENSITY_SLIDERS
+-- 
+2.43.0
+

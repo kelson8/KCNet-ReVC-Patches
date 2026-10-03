@@ -1,0 +1,170 @@
+From e6e482c1bd559d524238927853e6f0b5866e5c20 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Sep 2026 20:01:50 -0400
+Subject: [PATCH 088/161] fix: Actually make the function only create one
+ player.
+
+* Make CreatePlayer function set `m_bPlayerCreated` to true, so it doesn't spawn in more then one player.
+
+* Set CreatePlayer function to bool, makes it to where the log message in lua only prints once when the player is created, instead of spamming it if there are multiple lines.
+
+* Update player spawn in freeroam-game.lua to the police station.
+
+* Update changelog.
+---
+ Changelog.md                                  | 12 +++++++++++
+ .../lua_scripts/freeroam-game.lua             |  7 ++++++-
+ src/extras/custom_scripts/init_game.cpp       | 21 ++++++++++++++++---
+ src/extras/custom_scripts/init_game.h         | 14 ++++++++-----
+ src/extras/lua/lua_player.cpp                 | 14 +++++++------
+ 5 files changed, 53 insertions(+), 15 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 6462e8c2..0936598c 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -132,6 +132,8 @@ feat: Add some missing functions for lua
+ 
+ ### 1.2.8a
+ 
++**Commit 1**
++
+ fix: Make CreatePlayer function only create one player
+ 
+ * Add more todo for scripts to replicate.
+@@ -146,3 +148,13 @@ fix: Make CreatePlayer function only create one player
+ 
+ * Update changelog.md, bump version to 1.2.8a.
+ 
++**Commit 2**
++fix: Actually make the function only create one player.
++
++* Make CreatePlayer function set `m_bPlayerCreated` to true, so it doesn't spawn in more then one player.
++
++* Set CreatePlayer function to bool, makes it to where the log message in lua only prints once when the player is created, instead of spamming it if there are multiple lines.
++
++* Update player spawn in freeroam-game.lua to the police station.
++
++* Update changelog.
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index 3291889e..8271d79d 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -54,7 +54,12 @@ local policeStationZ = 10.1132
+ -- REQUIRED if DISABLE_GAME_SCRIPTS is toggled on in the game code, otherwise it won't spawn the player.
+ -------
+ -- create_player(0, spawnX, spawnY, spawnZ)
+-create_player(0, airportX, airportY, airportZ)
++-- create_player(0, airportX, airportY, airportZ)
++
++-- This only runs once in the init, if there are more then one of the create_player functions they won't do anything.
++-- Fixes some bugs I was having, which was spawning multiple players for me to control lol.
++
++create_player(0, policeStationX, policeStationY, policeStationZ)
+ 
+ --------
+ -- End REQUIRED
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+index 6a15e65d..85217d51 100644
+--- a/src/extras/custom_scripts/init_game.cpp
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -44,12 +44,22 @@
+ /**
+  * Create the player for my lua scripts.
+  * Implementation of COMMAND_CREATE_PLAYER.
+- * TODO Test this in my lua init, I'm not sure if this will work.
++ * Fixed to only spawn one player, otherwise this will spawn more then one player.
++ * I may be able to use that for some type of local coop like GTA SA had on the PS2.
++ * 
++ * @returns If the player was created.
+  */
+-void InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
++// void InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
++bool InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
+ {
+ 	// Do nothing if the player is already created.
+-	if(m_bPlayerCreated) return;
++
++	if(m_bPlayerCreated)
++    {
++        std::cout << "[KCNET-Lua]: Player tried to be created more then once! There should only be one create_player in freeroam-game.lua." << std::endl;
++        return true;
++    }
++        
+ 
+ 	// Load the player model.
+ 	if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
+@@ -84,4 +94,9 @@ void InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
+ 		
+ 	// Reactivate the player ped.
+ 	CPlayerPed::ReactivatePlayerPed(playerIndex);
++
++    // Make this set the player as created, otherwise it will spawn multiple players.
++    m_bPlayerCreated = true;
++
++    return false;
+ }
+diff --git a/src/extras/custom_scripts/init_game.h b/src/extras/custom_scripts/init_game.h
+index 36da013a..c1f3405f 100644
+--- a/src/extras/custom_scripts/init_game.h
++++ b/src/extras/custom_scripts/init_game.h
+@@ -12,11 +12,15 @@ private:
+ 	bool m_bPlayerCreated;
+ public:
+ 	// Constructor, initalize the boolean also
+-	// TODO Test this
+-	//MiscFunctions(bool timerBarInitialValue) : m_bChaosTimerBar(timerBarInitialValue) {}
++	// TODO Fix this to work, should allow me to disable multiple players spawning in.
++    // Otherwise having multiple create_player functions in the lua code spawns in more then one player ped.
++	// I just switched this to enabling it in the CreatePlayer function.
++    // InitGame(bool playerCreated) : m_bPlayerCreated(playerCreated) {}
++	// InitGame() : m_bPlayerCreated(false) {}
+ 
+ 	// Create the player, for the lua scripts.
+-	void CreatePlayer(int playerIndex, float posX, float posY, float posZ);
++	// void CreatePlayer(int playerIndex, float posX, float posY, float posZ);
++	bool CreatePlayer(int playerIndex, float posX, float posY, float posZ);
+ 
+ 	// Singleton
+ 	static InitGame &GetInstance()
+@@ -26,10 +30,10 @@ public:
+ 	}
+ 
+ 	// Setters
+-	void setPlayerCreated(const bool &playerCreated) { m_bPlayerCreated = playerCreated; }
++	void SetPlayerCreated(const bool &playerCreated) { m_bPlayerCreated = playerCreated; }
+ 
+ 
+ 	// Getters
+-	const bool &getPlayerCreated() const { return m_bPlayerCreated; }
++	const bool &GetPlayerCreated() const { return m_bPlayerCreated; }
+ 
+ };
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 4c212f13..cb3424fa 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -58,12 +58,14 @@ createPlayerLua(lua_State *L)
+ 		return 0;
+ 	}
+ 
+-	InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ);
+-	
+-	std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
+-	+ " Y: " + std::to_string(spawnPosY)
+-	+ " Z: " + std::to_string(spawnPosY);
+-	LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
++	// TODO Make this give an error in the lua script somewhere, or display error in game if it loads more then once.
++	if(!InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ))
++	{
++				std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
++			+ " Y: " + std::to_string(spawnPosY)
++			+ " Z: " + std::to_string(spawnPosY);
++		LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
++	}
+ 
+ 	return 0;
+ }
+-- 
+2.43.0
+

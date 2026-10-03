@@ -1,0 +1,1147 @@
+From d99ff19d0ccdc28ff80bc30873ac678261faab21 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 11 Sep 2026 15:43:49 -0400
+Subject: [PATCH 128/161] feat: Enable some items in CTheScripts::Process
+
+* I had somethings disabled in here and the game doesn't crash with them enabled so I turned them back on.
+
+* Add test for new lua coroutines with lua_script.cpp/.h, this isn't complete yet.
+
+* Add some commands to implement in the future to lua_vehicle and lua_world.
+
+* Fix setFontStyleLua function, and label some more items in Script.cpp.
+
+* Add global in lua to toggle fading the game when wasted or busted.
+
+* Update changelog, change version to 1.2.13-3a.
+---
+ Changelog.md                   |  18 +++
+ src/control/GameLogic.cpp      |  71 +++++++++-
+ src/control/Script.cpp         |  90 ++++++++++++-
+ src/core/Game.cpp              |   4 +-
+ src/core/main.cpp              |   5 +
+ src/core/main.h                |   4 +
+ src/extras/lua/lua_font.cpp    |   2 +
+ src/extras/lua/lua_game.cpp    |  51 --------
+ src/extras/lua/lua_game.h      |   2 -
+ src/extras/lua/lua_script.cpp  | 230 +++++++++++++++++++++++++++++++++
+ src/extras/lua/lua_script.h    |  46 +++++++
+ src/extras/lua/lua_test.cpp    |  22 ++--
+ src/extras/lua/lua_test.h      |   2 +
+ src/extras/lua/lua_vehicle.cpp |  90 +++++++++++++
+ src/extras/lua/lua_world.cpp   |  36 ++++++
+ src/extras/utils/defines.cpp   |   2 +-
+ 16 files changed, 599 insertions(+), 76 deletions(-)
+ create mode 100644 src/extras/lua/lua_script.cpp
+ create mode 100644 src/extras/lua/lua_script.h
+
+diff --git a/Changelog.md b/Changelog.md
+index 88487b2a..90f76cd3 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -595,6 +595,8 @@ feat: Add everyone ignore and police ignore toggles
+ 
+ * Update changelog, change version to 1.2.12-11a.
+ 
++# 1.2.13a
++
+ ### 1.2.13-1a
+ 
+ **Commit 1**
+@@ -628,3 +630,19 @@ feat: Add test for giving player the rc car in lua
+ * Move is player vehicle check, and toggle player control out of lua_test.cpp.
+ 
+ * Update changelog, change version to 1.2.13-2a.
++
++### 1.2.13-3a
++
++feat: Enable some items in CTheScripts::Process
++
++* I had somethings disabled in here and the game doesn't crash with them enabled so I turned them back on.
++
++* Add test for new lua coroutines with lua_script.cpp/.h, this isn't complete yet.
++
++* Add some commands to implement in the future to lua_vehicle and lua_world.
++
++* Fix setFontStyleLua function, and label some more items in Script.cpp.
++
++* Add global in lua to toggle fading the game when wasted or busted.
++
++* Update changelog, change version to 1.2.13-3a.
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 38274184..15235e61 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -183,13 +183,25 @@ CGameLogic::Update()
+ //
+ //#endif
+ 
++
++#ifdef DISABLE_GAME_SCRIPTS
++			if(gbFadeOnDeath)
++			{
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
++
+ 			TheCamera.SetFadeColour(200, 200, 200);
+ 			TheCamera.Fade(2.0f, FADE_OUT);
++
++#ifdef DISABLE_GAME_SCRIPTS
++			}
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 		}
+ 
+ #ifdef MISSION_REPLAY
+ 		// 0x1000 = 4096
+ 		if (CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime >= AddExtraDeathDelay() + 0x1000) {
++		// Well changing this fully disables the respawn delay, oops.
++		// if (CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime >= AddExtraDeathDelay() + 1024) {
+ #else
+ 		if (CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime >= 0x1000) {
+ #endif
+@@ -310,15 +322,21 @@ CGameLogic::Update()
+ 			// TODO Add a toggle for this and fading the camera out, I didn't know these could be changed
+ 			// TODO Add toggle into the freeroam lua scripts for this.
+ 
+-//#ifndef CUSTOM_CODE
++#ifdef DISABLE_GAME_SCRIPTS
++			if(gbFadeOnDeath)
++			{
++
++			
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 			if (CRestart::bFadeInAfterNextDeath) { 
+ 				TheCamera.SetFadeColour(200, 200, 200);
+ 				TheCamera.Fade(4.0f, FADE_IN);
+ 			} else
+ 				CRestart::bFadeInAfterNextDeath = true;
+-//#endif
+-
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++		}
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 
+ 		}
+ 		break;
+@@ -330,8 +348,18 @@ CGameLogic::Update()
+ #else
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= 0x800)) {
+ #endif
++
++
++#ifdef DISABLE_GAME_SCRIPTS
++			if(gbFadeOnDeath)
++			{
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 			TheCamera.SetFadeColour(0, 0, 0);
+ 			TheCamera.Fade(2.0f, FADE_OUT);
++
++#ifdef DISABLE_GAME_SCRIPTS
++			}
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 		}
+ 
+ 
+@@ -473,13 +501,22 @@ CGameLogic::Update()
+ 			// Enable player controls
+ 			CPad::GetPad(CWorld::PlayerInFocus)->DisablePlayerControls = PLAYERCONTROL_ENABLED;
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++			// Hmm, I could just set bFadeInAfterNextArrest to false by default in CRestart::Initialise()...
++			// Damn that would've been much easier
++			// Oh well this system is already in place.
++			if(gbFadeOnDeath)
++			{
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 			if (CRestart::bFadeInAfterNextArrest) {
+ 				TheCamera.SetFadeColour(0, 0, 0);
+ 				TheCamera.Fade(4.0f, FADE_IN);
+ 			} else
+ 				CRestart::bFadeInAfterNextArrest = true;
+ 
+-
++#ifdef DISABLE_GAME_SCRIPTS
++		}
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 
+ 		}
+ 		break;
+@@ -537,6 +574,11 @@ CGameLogic::Update()
+ 	}
+ }
+ 
++/**
++ * Set the players stats when respawning
++ * TODO Make some of these values into globals in lua freeroam scripts.
++ * TODO Try to call this to see what it does called by itself.
++ */
+ void
+ CGameLogic::RestorePlayerStuffDuringResurrection(CPlayerPed *pPlayerPed, CVector pos, float angle)
+ {
+@@ -544,46 +586,63 @@ CGameLogic::RestorePlayerStuffDuringResurrection(CPlayerPed *pPlayerPed, CVector
+ 	CPlayerInfo* pPlayerInfo = pPlayerPed->GetPlayerInfoForThisPlayerPed();
+ 	pPlayerPed->m_fHealth = pPlayerInfo->m_nMaxHealth;
+ 	pPlayerPed->m_fArmour = 0.0f;
++
+ 	pPlayerPed->bIsVisible = true;
+ 	pPlayerPed->m_bloodyFootprintCountOrDeathTime = 0;
+ 	pPlayerPed->bDoBloodyFootprints = false;
++
+ 	pPlayerPed->m_nDrunkenness = 0;
+ 	pPlayerPed->m_nFadeDrunkenness = 0;
++
+ 	CMBlur::ClearDrunkBlur();
+ 	pPlayerPed->m_nDrunkCountdown = 0;
++
+ 	pPlayerPed->ClearAdrenaline();
+ 	pPlayerPed->m_fCurrentStamina = pPlayerPed->m_fMaxStamina;
++
+ 	if (pPlayerPed->m_pFire)
+ 		pPlayerPed->m_pFire->Extinguish();
++
+ 	pPlayerPed->bInVehicle = false;
+ 	pPlayerPed->m_pMyVehicle = nil;
++
+ 	pPlayerPed->m_pVehicleAnim = nil;
+ 	pPlayerPed->m_pWanted->Reset();
++
+ 	pPlayerPed->bCancelEnteringCar = false;
+ 	pPlayerPed->RestartNonPartialAnims();
++
+ 	pPlayerInfo->MakePlayerSafe(false);
+ 	pPlayerPed->bRemoveFromWorld = false;
++
+ 	pPlayerPed->ClearWeaponTarget();
+ 	pPlayerPed->SetInitialState();
+ 	CCarCtrl::ClearInterestingVehicleList();
++
+ 	pPlayerPed->Teleport(pos + CVector(0.0f, 0.0f, 1.0f));
+ 	pPlayerPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
+ 	pPlayerPed->m_fRotationCur = DEGTORAD(angle);
++
+ 	pPlayerPed->m_fRotationDest = pPlayerPed->m_fRotationCur;
+ 	pPlayerPed->SetHeading(pPlayerPed->m_fRotationCur);
+ 	CTheScripts::ClearSpaceForMissionEntity(pos, pPlayerPed);
++
+ 	CWorld::ClearExcitingStuffFromArea(pos, 4000.0f, true);
+ 	pPlayerPed->RestoreHeadingRate();
+ 	CGame::currArea = AREA_MAIN_MAP;
++
+ 	CStreaming::RemoveBuildingsNotInArea(AREA_MAIN_MAP);
+ 	TheCamera.SetCameraDirectlyInFrontForFollowPed_CamOnAString();
+ 	TheCamera.Restore();
++
+ 	CReferences::RemoveReferencesToPlayer();
+ 	CGarages::PlayerArrestedOrDied();
+ 	CStats::CheckPointReachedUnsuccessfully();
+ 	CWorld::Remove(pPlayerPed);
++
+ 	CWorld::Add(pPlayerPed);
+ 	CHud::ResetWastedText();
++
+ 	CStreaming::StreamZoneModels(pos);
+ 	clearWaterDrop = true;
+ }
+@@ -760,6 +819,10 @@ CGameLogic::RemoveShortCutDropOffPointForMission()
+ 	MissionDropOffReadyToBeUsed = false;
+ }
+ 
++/**
++ * TODO Look into this for setting up a taxi that can bring the players somewhere.
++ * Although, this does skip the taxi ride, maybe I can change that.
++ */
+ void
+ CGameLogic::AfterDeathArrestSetUpShortCutTaxi()
+ {
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 5e7ebada..613a5346 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -384,50 +384,71 @@ void CMissionCleanup::CheckIfCollisionHasLoadedForMissionObjects()
+ 	}
+ }
+ 
++/**
++ * Process the mission cleanup
++ * This seems to reset a lot of values back to normal.
++ */
+ void CMissionCleanup::Process()
+ {
+ 	CPopulation::m_AllRandomPedsThisType = -1;
+ 	CPopulation::PedDensityMultiplier = 1.0f;
+ 	CCarCtrl::CarDensityMultiplier = 1.0f;
++
+ 	CPed::nThreatReactionRangeMultiplier = 1;
+ 	CPed::nEnterCarRangeMultiplier = 1;
+ 	FindPlayerPed()->m_pWanted->m_fCrimeSensitivity = 1.0f;
++
+ 	CRoadBlocks::ClearScriptRoadBlocks();
+ 	CRouteNode::Initialise();
++
+ 	if (!CWorld::Players[CWorld::PlayerInFocus].m_pRemoteVehicle)
+ 		TheCamera.Restore();
++
+ 	TheCamera.SetWideScreenOff();
+ 	CSpecialFX::bLiftCam = false;
+ 	CSpecialFX::bVideoCam = false;
++
+ 	CTimeCycle::StopExtraColour(0);
++
+ 	for (int i = 0; i < MISSION_AUDIO_SLOTS; i++)
+ 		DMAudio.ClearMissionAudio(i);
++
+ 	CWeather::ReleaseWeather();
++
+ 	for (int i = 0; i < NUM_OF_SPECIAL_CHARS; i++)
+ 		CStreaming::SetMissionDoesntRequireSpecialChar(i);
++
+ 	for (int i = 0; i < NUM_OF_CUTSCENE_OBJECTS; i++)
+ 		CStreaming::SetMissionDoesntRequireModel(MI_CUTOBJ01 + i);
++
+ 	CStreaming::ms_disableStreaming = false;
+ 	CHud::m_ItemToFlash = -1;
+ 	CHud::SetHelpMessage(nil, false);
++
+ 	CUserDisplay::OnscnTimer.m_bDisabled = false;
+ 	CTheScripts::RemoveScriptTextureDictionary();
+ 	CWorld::Players[0].m_pPed->m_pWanted->m_bIgnoredByCops = false;
++
+ 	CWorld::Players[0].m_pPed->m_pWanted->m_bIgnoredByEveryone = false;
+ 	CWorld::Players[0].MakePlayerSafe(false);
+ 	CWorld::Players[0].m_pPed->m_nFadeDrunkenness = 1;
++
+ 	CWorld::Players[0].m_pPed->m_nDrunkCountdown = 0;
+ 	CPad::GetPad(0)->SetDrunkInputDelay(0);
+ 	CWorld::Players[0].m_bDriveByAllowed = true;
++
+ 	DMAudio.ShutUpPlayerTalking(FALSE);
+ 	CVehicle::bDisableRemoteDetonation = false;
+ 	CVehicle::bDisableRemoteDetonationOnContact = false;
++
+ 	CGameLogic::ClearShortCut();
+ 	CTheScripts::RiotIntensity = 0;
+ 	CTheScripts::StoreVehicleIndex = -1;
++
+ 	CTheScripts::StoreVehicleWasRandom = true;
+ 	CTheScripts::UpsideDownCars.Init();
+ 	CTheScripts::StuckCars.Init();
++
+ 	for (int i = 0; i < MAX_CLEANUP; i++){
+ 		if (m_sEntities[i].type == CLEANUP_UNUSED)
+ 			continue;
+@@ -509,6 +530,12 @@ void CUpsideDownCarCheck::UpdateTimers()
+ 	}
+ }
+ 
++/**
++ * Check if any cars are upside down
++ * 
++ * 
++ * Seems unused.
++ */
+ bool CUpsideDownCarCheck::AreAnyCarsUpsideDown()
+ {
+ 	for (int i = 0; i < MAX_UPSIDEDOWN_CAR_CHECKS; i++){
+@@ -518,6 +545,11 @@ bool CUpsideDownCarCheck::AreAnyCarsUpsideDown()
+ 	return false;
+ }
+ 
++/**
++ * Add a car to the upside down check.
++ * 
++ * Used by COMMAND_ADD_UPSIDEDOWN_CAR_CHECK.
++ */
+ void CUpsideDownCarCheck::AddCarToCheck(int32 id)
+ {
+ 	uint16 index = 0;
+@@ -531,6 +563,12 @@ void CUpsideDownCarCheck::AddCarToCheck(int32 id)
+ 	m_sCars[index].m_nUpsideDownTimer = 0;
+ }
+ 
++
++/**
++ * Remove the car from the upside down check.
++ * 
++ * Used by COMMAND_REMOVE_UPSIDEDOWN_CAR_CHECK.
++ */
+ void CUpsideDownCarCheck::RemoveCarFromCheck(int32 id)
+ {
+ 	for (int i = 0; i < MAX_UPSIDEDOWN_CAR_CHECKS; i++){
+@@ -541,6 +579,11 @@ void CUpsideDownCarCheck::RemoveCarFromCheck(int32 id)
+ 	}
+ }
+ 
++/**
++ * Check if the car has been upside down for a while.
++ * 
++ * Used by COMMAND_IS_CAR_STUCK_ON_ROOF.
++ */
+ bool CUpsideDownCarCheck::HasCarBeenUpsideDownForAWhile(int32 id)
+ {
+ 	for (int i = 0; i < MAX_UPSIDEDOWN_CAR_CHECKS; i++){
+@@ -550,6 +593,9 @@ bool CUpsideDownCarCheck::HasCarBeenUpsideDownForAWhile(int32 id)
+ 	return false;
+ }
+ 
++/**
++ * Reset the stuck car values back to normal.
++ */
+ void stuck_car_data::Reset()
+ {
+ 	m_nVehicleIndex = -1;
+@@ -560,6 +606,9 @@ void stuck_car_data::Reset()
+ 	m_bStuck = false;
+ }
+ 
++/**
++ * Init for the stuck car checks, resets all of the stuck car values.
++ */
+ void CStuckCarCheck::Init()
+ {
+ 	for (int i = 0; i < MAX_STUCK_CAR_CHECKS; i++) {
+@@ -567,6 +616,9 @@ void CStuckCarCheck::Init()
+ 	}
+ }
+ 
++/**
++ * Process the stuck car checks.
++ */
+ void CStuckCarCheck::Process()
+ {
+ 	uint32 timer = CTimer::GetTimeInMilliseconds();
+@@ -587,6 +639,11 @@ void CStuckCarCheck::Process()
+ 	}
+ }
+ 
++/**
++ * Add the car to the car stuck list.
++ * 
++ * Used by COMMAND_ADD_STUCK_CAR_CHECK.
++ */
+ void CStuckCarCheck::AddCarToCheck(int32 id, float radius, uint32 time)
+ {
+ 	CVehicle* pv = CPools::GetVehiclePool()->GetAt(id);
+@@ -607,6 +664,11 @@ void CStuckCarCheck::AddCarToCheck(int32 id, float radius, uint32 time)
+ 	m_sCars[index].m_bStuck = false;
+ }
+ 
++/**
++ * Remove the car from the car stuck list.
++ * 
++ * Used by COMMAND_REMOVE_UPSIDEDOWN_CAR_CHECK.
++ */
+ void CStuckCarCheck::RemoveCarFromCheck(int32 id)
+ {
+ 	for (int i = 0; i < MAX_STUCK_CAR_CHECKS; i++){
+@@ -616,6 +678,11 @@ void CStuckCarCheck::RemoveCarFromCheck(int32 id)
+ 	}
+ }
+ 
++/**
++ * Check if the car has been stuck for a while.
++ * 
++ * Used by COMMAND_IS_CAR_STUCK.
++ */
+ bool CStuckCarCheck::HasCarBeenStuckForAWhile(int32 id)
+ {
+ 	for (int i = 0; i < MAX_STUCK_CAR_CHECKS; i++){
+@@ -1041,12 +1108,7 @@ void CTheScripts::Process()
+ {
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+-	// TODO Fix this to work with my custom lua scripts, I should just have a OnTick method for the game ticks.
+-	// Only run this if enabled in ini, otherwise just run the normal game scripts.
+-	return;
+-
+-	// Always disable below code.
+-#else
++	// I have enabled some code in this script processing again, some of this might be useful for timers.
+ 
+ 	if (CReplay::IsPlayingBack())
+ 		return;
+@@ -1060,8 +1122,20 @@ void CTheScripts::Process()
+ 	MissionCleanUp.CheckIfCollisionHasLoadedForMissionObjects();
+ 	DrawScriptSpheres();
+ 
++
++
++	// Always disable below code.
++
++	// Only run this if enabled in ini, otherwise just run the normal game scripts.
++	// TODO Setup ini to be able to disable this, not sure if I will though.
++	return;
++// #else
++#endif
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 	if (FailCurrentMission)
+ 		--FailCurrentMission;
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ 	if (UseTextCommands){
+ 		for (int i = 0; i < MAX_NUM_INTRO_TEXT_LINES; i++)
+@@ -1078,6 +1152,7 @@ void CTheScripts::Process()
+ 			UseTextCommands = 0;
+ 	}
+ 
++#ifndef DISABLE_GAME_SCRIPTS
+ #ifdef MISSION_REPLAY
+ 	static uint32 TimeToWaitTill;
+ 	static bool AlreadyResetHealth;
+@@ -1152,7 +1227,7 @@ void CTheScripts::Process()
+ 	LogAfterScriptProcessing();
+ #endif
+ 
+-#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ }
+ 
+@@ -2419,6 +2494,7 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		default:
+ 			break;
+ 		}
++		
+ 		CPed* ped;
+ 		if (ScriptParams[0] == PEDTYPE_COP)
+ 			ped = new CCopPed((eCopType)ScriptParams[1]);
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 5a4d30e7..63542ad2 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -626,8 +626,10 @@ bool CGame::Initialise(const char* datFile)
+ 	
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		CTheScripts::StartTestScript();
+-		CTheScripts::Process();
++		
+ #else
++		// Enabled again here, this is running elsewhere and I have re-enabled some checks in here to test.
++		CTheScripts::Process();
+ 	// Init lua scripts, moved out of glfw.cpp.
+ 	LuaTest::GetInstance().SetupFreeroamScript();
+ 	
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e0df9428..d1e251b5 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -183,6 +183,11 @@ bool gbDisableEmergencyVehicleSpawning = false;
+ bool gbInfiniteAmmoCheat = false;
+ #endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++// Toggle fading on death and being wasted global in lua, by default this is on in the game. 
++bool gbFadeOnDeath = true;
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/core/main.h b/src/core/main.h
+index d2789185..a3b90397 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -132,6 +132,10 @@ extern bool gbDisableEmergencyVehicleSpawning;
+ extern bool gbInfiniteAmmoCheat;
+ #endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++extern bool gbFadeOnDeath;
++#endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/extras/lua/lua_font.cpp b/src/extras/lua/lua_font.cpp
+index ccad3303..7b2595d9 100644
+--- a/src/extras/lua/lua_font.cpp
++++ b/src/extras/lua/lua_font.cpp
+@@ -144,6 +144,8 @@ extern "C"
+             return luaL_error(L, "font.set_style requires a font style of either 0, 1, or 2.");
+         }
+ 
++        CFont::SetFontStyle(fontStyle);
++
+         return 1;
+     }
+ 
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 9ab12307..fb87ab20 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -662,57 +662,6 @@ int addBlipForVehicleLua(lua_State *L)
+ 	return 1;
+ }
+ 
+-//--------------
+-// Test functions
+-//--------------
+-
+-/**
+- * Implementation of COMMAND_WAIT
+- * 
+- * Sleeps the game for this amount of time like in the scripts.
+- * 
+- * Runs sleep like the original game scripts.
+- * 
+- * Usage (Time in miliseconds):
+- * game.wait(ms)
+- * 
+- * TODO Implement this, I might have this working with the CTimer class.
+- */
+-int
+-waitLua(lua_State* L)
+-{
+-    const int milliseconds =
+-        static_cast<int>(luaL_checkinteger(L, 1));
+-
+-    LuaTest& luaTest =
+-        LuaTest::GetInstance();
+-
+-    LuaThread* thread =
+-        luaTest.FindThread(L);
+-
+-    if (thread == nullptr) {
+-        return luaL_error(
+-            L,
+-            "wait() must be called from a managed Lua coroutine"
+-        );
+-    }
+-
+-    const uint32 now =
+-        CTimer::GetTimeInMilliseconds();
+-
+-    thread->wakeTime =
+-        now + static_cast<uint32>(milliseconds);
+-
+-    thread->waiting = true;
+-
+-#if LUA_VERSION_NUM >= 504
+-    return lua_yieldk(L, 0, 0, nullptr);
+-#else
+-    return lua_yield(L, 0);
+-#endif
+-
+-}
+-
+ 
+ }
+ 
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 0b3f50a5..eb7cff32 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -36,8 +36,6 @@ extern "C" {
+     extern int addBlipForPedLua(lua_State *L);
+     extern int addBlipForVehicleLua(lua_State *L);
+ 
+-    extern int waitLua(lua_State *L);
+-
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_script.cpp b/src/extras/lua/lua_script.cpp
+new file mode 100644
+index 00000000..4d1e7590
+--- /dev/null
++++ b/src/extras/lua/lua_script.cpp
+@@ -0,0 +1,230 @@
++#include "pch.h"
++#include "lua_script.h"
++
++#include <memory>
++#include <vector>
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_player.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++#include "lua_log.h"
++
++#include "defines.h"
++#include "log_functions.h"
++
++#include "file_functions.h"
++#include "player_functions.h"
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
++
++#include "custom_cheats.h"
++#include "player_cheats.h"
++#include "misc_functions.h"
++#include "init_game.h"
++
++// VC Specific
++#include "Hud.h"
++#include "Radar.h"
++#include "Restart.h"
++#include "Text.h"
++
++#include "Pad.h"
++#include "Wanted.h"
++
++// Use the same timer function already used by reVC.
++#include "Timer.h"
++
++static std::vector<std::unique_ptr<LuaScript>> gLuaScripts;
++
++// TODO Use this in the main lua_test register functions.
++// lua_register(mainState, "wait", luaWait);
++//
++
++// TODO Set this up
++// Create script after initalizing lua.
++
++/**
++ * 
++ * auto interiorScript =
++    std::make_unique<LuaScript>(
++        mainState,
++        "data/interiors.lua"
++    );
++
++if (interiorScript->Load()) {
++    gLuaScripts.push_back(
++        std::move(interiorScript)
++    );
++}
++ * 
++ */
++
++// When creating the coroutine, use this exact order:
++/*
++m_luaThread = lua_newthread(m_mainState);
++
++m_threadReference =
++    luaL_ref(m_mainState, LUA_REGISTRYINDEX);
++*/
++
++/**
++ * 
++ Do not call luaL_ref() on the coroutine state. 
++ The new thread is pushed onto the main state’s stack, so the reference must be created from m_mainState.
++
++Also, do not call the Lua script with lua_pcall() if it uses wait(). 
++Load it with luaL_loadfile(), then execute it using lua_resume() as shown above.
++ * 
++ */
++
++//-------------------------------------------
++// New coroutine testing
++// TODO Fix this for waits and coroutines in my scripts.
++// So I can set this up to have waits like the original game.
++// That way I can run a function every second or a set amount of time.
++
++// I might be able to get this working for a lua coroutine test.
++//-------------------------------------------
++
++LuaScript::LuaScript(lua_State* mainState,
++                     const std::string& filename)
++    : m_mainState(mainState),
++      m_luaThread(nullptr),
++      m_threadReference(LUA_NOREF),
++      m_wakeTime(0),
++      m_finished(false),
++      m_filename(filename)
++{
++}
++
++LuaScript::~LuaScript()
++{
++    if (m_threadReference != LUA_NOREF) {
++        luaL_unref(
++            m_mainState,
++            LUA_REGISTRYINDEX,
++            m_threadReference
++        );
++
++        m_threadReference = LUA_NOREF;
++    }
++}
++
++/**
++ * Load a lua script.
++ */
++bool LuaScript::Load()
++{
++    /*
++     * lua_newthread pushes the new coroutine onto m_mainState's stack.
++     */
++    m_luaThread = lua_newthread(m_mainState);
++
++    /*
++     * Store the coroutine in the registry. luaL_ref pops it from the
++     * main state's stack and keeps it alive.
++     */
++    m_threadReference =
++        luaL_ref(m_mainState, LUA_REGISTRYINDEX);
++
++    /*
++     * Load the Lua file onto the coroutine's stack.
++     */
++    int result = luaL_loadfile(
++        m_luaThread,
++        m_filename.c_str()
++    );
++
++    if (result != LUA_OK) {
++        LogFunctions::LogError(Defines::luaLogFile, "Error: Could not load Lua script.");
++        ReportError("Could not load Lua script");
++        m_finished = true;
++        return false;
++    }
++
++    /*
++     * Start immediately, or set this to the current time if you want
++     * the script to start on the next frame.
++     */
++    m_wakeTime = 0;
++
++    return true;
++}
++
++/**
++ * Report an error from lua.
++ */
++void LuaScript::ReportError(const char* reason)
++{
++    const char* error =
++        lua_tostring(m_luaThread, -1);
++
++    printf(
++        "[Lua] %s: %s\n",
++        reason,
++        error ? error : "unknown error"
++    );
++
++    lua_settop(m_luaThread, 0);
++}
++
++/**
++ * Process the lua scripts.
++ * 
++ * TODO Call this from where the other game processing is and my lua OnTick function is.
++ */
++void LuaScript::Process()
++{
++    for (auto it = gLuaScripts.begin();
++         it != gLuaScripts.end();) {
++        LuaScript& script = **it;
++
++        script.Process();
++
++        if (script.IsFinished()) {
++            it = gLuaScripts.erase(it);
++        } else {
++            ++it;
++        }
++    }
++}
++
++/**
++ * Implementation of COMMAND_WAIT
++ * 
++ * Sleeps the game for this amount of time like in the scripts.
++ * 
++ * Runs sleep like the original game scripts.
++ * 
++ * Usage (Time in miliseconds):
++ * game.wait(ms)
++ * 
++ * TODO Implement this, I might have this working with the CTimer class.
++ */
++int waitLua(lua_State* L)
++{
++    int milliseconds = 0;
++
++    if (lua_gettop(L) >= 1) {
++        milliseconds =
++            static_cast<int>(
++                luaL_checkinteger(L, 1)
++            );
++    }
++
++    if (milliseconds < 0)
++        milliseconds = 0;
++
++    lua_pushinteger(L, milliseconds);
++
++    /*
++     * Yield one value: the requested wait duration.
++     */
++    return lua_yield(L, 1);
++}
+diff --git a/src/extras/lua/lua_script.h b/src/extras/lua/lua_script.h
+new file mode 100644
+index 00000000..5d645ddf
+--- /dev/null
++++ b/src/extras/lua/lua_script.h
+@@ -0,0 +1,46 @@
++// LuaScript.h
++#pragma once
++
++extern "C" {
++#include "lua.h"
++#include "lauxlib.h"
++#include "lualib.h"
++}
++
++#include <cstdint>
++#include <string>
++
++extern "C" {
++
++    extern int waitLua(lua_State *L);
++
++}
++
++class LuaScript
++{
++public:
++    LuaScript(lua_State* mainState, const std::string& filename);
++    ~LuaScript();
++
++    bool Load();
++    void Process();
++
++    bool IsFinished() const {
++        return m_finished;
++    }
++
++private:
++    lua_State* m_mainState;
++    lua_State* m_luaThread;
++
++    void ReportError(const char* reason);
++
++    // Keeps the coroutine alive in Lua's registry.
++    int m_threadReference;
++
++    // Game time at which this script may resume.
++    uint32_t m_wakeTime;
++
++    bool m_finished;
++    std::string m_filename;
++};
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 3584ce36..131cae88 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -520,16 +520,6 @@ LuaTest::RemoveFinishedThreads()
+     }
+ }
+ 
+-
+-//-------------------------------------------
+-// New coroutine testing
+-// TODO Fix this for waits and coroutines in my scripts.
+-// So I can set this up to have waits like the original game.
+-// That way I can run a function every second or a set amount of time.
+-//-------------------------------------------
+-
+-
+-
+ //------- End init functions --------//
+ 
+ //------- Begin cheat functions --------//
+@@ -1270,6 +1260,18 @@ LuaTest::SetupFreeroamScript()
+ 
+ 		lua_pop(m_luaVM, 1);
+ 
++		// If the screen fades when wasted/busted, by default in the game this is enabled.
++
++		lua_getglobal(m_luaVM, "gbFadeOnDeath");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool fadeOnDeathToggle = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbFadeOnDeath = fadeOnDeathToggle;
++		}
++
++		lua_pop(m_luaVM, 1);
++
++		// gbFadeOnDeath
++
+ 	}
+ #endif // DISABLE_GAME_SCRIPTS - Disable free roam script with main mission scripts.
+ }
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index f9b4856b..372c65be 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -139,6 +139,8 @@ public:
+     // void StartScript(const char *script);
+     void RemoveFinishedThreads();
+ 
++	void ProcessWaitTest();
++
+ 	// These might work for getting the m_luaVM variable in the private class above.
+ 	static LuaTest& GetInstance()
+ 	{ 
+diff --git a/src/extras/lua/lua_vehicle.cpp b/src/extras/lua/lua_vehicle.cpp
+index 4021b0cc..5564271b 100644
+--- a/src/extras/lua/lua_vehicle.cpp
++++ b/src/extras/lua/lua_vehicle.cpp
+@@ -145,6 +145,96 @@ extern "C"
+ 		return 1;
+ 	}
+ 
++	/**
++	 * TODO Implement these below commands
++	 * I am probably missing some of these.
++	 * https://library.sannybuilder.com/#/vc/script/classes/Car
++	 * BURST_CAR_TYRE
++	 * 
++	 * CLOSE_ALL_CAR_DOORS 
++	 * DISARM_CAR_BOMB 
++	 * 
++	 * 
++	 * GET_CAR_COLOURS
++	 * CHANGE_CAR_COLOUR
++	 * GET_CAR_COORDINATES
++	 * GET_CAR_CURRENT_GEAR
++	 * GET_DRIVER_OF_CAR
++	 * 
++	 * GET_CAR_FORWARD_X
++	 * GET_CAR_FORWARD_Y
++	 * GET_CAR_HEADING
++	 * 
++	 * GET_CAR_HEALTH
++	 * GET_MAXIMUM_NUMBER_OF_PASSENGERS 
++	 * GET_CAR_MODEL 
++	 * 
++	 * GET_CAR_NUMBER_OF_GEARS 
++	 * GET_NUMBER_OF_PASSENGERS
++	 * GET_CAR_SPEED
++	 * 
++	 * CAR_GOTO_COORDINATES 
++	 * CAR_GOTO_COORDINATES_ACCURATE 
++	 * HAS_CAR_BEEN_DAMAGED_BY_WEAPON
++	 *
++	 * IS_CAR_ENGINE_ON
++	 * IS_CAR_HEALTH_GREATER 
++	 * IS_ICECREAM_JINGLE_ON - I could blow someone up with this lol.
++	 * 
++	 * IS_CAR_IN_AIR_PROPER
++	 * IS_CAR_IN_AREA_2D
++	 * IS_CAR_IN_AREA_3D
++	 * IS_CAR_IN_WATER
++	 * IS_CAR_LIGHTS_ON 
++	 * 
++	 * IS_CAR_MODEL  - Useful for checking if the car is a specific model.
++	 * IS_CAR_ON_FIRE
++	 * IS_CAR_ON_SCREEN
++	 * IS_CAR_PASSENGER_SEAT_FREE 
++	 * 
++	 * IS_CAR_STOPPED 
++	 * IS_CAR_TYRE_BURST
++	 * 
++	 * SET_CAR_PROOFS - For setting the specific proofs like bullet proof and such.
++	 * 
++	 * SET_CAR_RAM_CAR - Set the AI vehicle driver to ram another car.
++	 * 
++	 * 
++	 * SET_CAR_CAN_BE_DAMAGED
++	 * SET_CAN_BURST_CAR_TYRES
++	 * SET_CAN_RESPRAY_CAR
++	 * SET_CAR_CHANGE_LANE
++	 * SET_CAR_COORDINATES
++	 * SET_CAR_CRUISE_SPEED
++	 * SET_CAR_DRIVING_STYLE
++	 * SET_CAR_ENGINE_ON
++	 * 
++	 * SET_CAR_FORWARD_SPEED
++	 * 
++	 * SET_CAR_HEADING
++	 * SET_CAR_HEALTH
++	 * SET_CAR_HEAVY
++	 * 
++	 * CAR_SET_IDLE 
++	 * SET_LOAD_COLLISION_FOR_CAR_FLAG
++	 * SET_CAR_MISSION - Set the mission of the AI vehicles driver.
++	 * 
++	 * SET_JAMES_CAR_ON_PATH_TO_PLAYER - Teleports the vehicle nearby the player's location.
++	 * 
++	 * SET_CAR_ONLY_DAMAGED_BY_PLAYER - Make the car only able to be damaged by the player.
++	 * 
++	 * SET_CAR_STATUS
++	 * SET_CAR_STRONG
++	 * SET_TAXI_LIGHTS
++	 * SET_CAR_TEMP_ACTION 
++	 * SET_VEHICLE_TO_FADE_IN 
++	 * SET_CAR_TRACTION - Overrides the default AI controlled vehicle traction value of 1.0.
++	 * SET_UPSIDEDOWN_CAR_NOT_DAMAGED - Disables the car from exploding when it is upside down, as long as the player is not in the vehicle
++	 * SET_CAR_WATERTIGHT - Makes the vehicle watertight, meaning characters inside will not be harmed if the vehicle is submerged in water.
++	 * SWITCH_CAR_SIREN - Set if the car's alarm can be activated.
++	 * 
++	 */
++
+ }
+ 
+ 
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 94b8fdfe..64f52198 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -361,6 +361,42 @@ extern "C"
+ 		return 1;
+ 	}
+ 
++
++	/**
++	 * TODO Implement these below commands
++	 * I am probably missing some of these.
++	 * https://library.sannybuilder.com/#/vc/script/classes/World
++	 
++	 * CLEAR_EXTRA_COLOURS - Clears the extra color for the sky.
++
++	 * CREATE_RANDOM_CAR_FOR_CAR_PARK - Create a random car for the area.
++
++	 * CREATE_SCRIPT_ROADBLOCK  - I may be able to create road blocks with this.
++	 * CLEAR_ALL_SCRIPT_ROADBLOCKS - This should clear the roadblocks created.
++
++	 * GET_RANDOM_CAR_OF_TYPE_IN_AREA_NO_SAVE 
++	 * GET_RANDOM_COP_IN_AREA 
++
++	 * HAS_GLASS_BEEN_SHATTERED_NEARBY 
++	 * IS_ANY_PICKUP_AT_COORDS 
++	 * IS_AREA_OCCUPIED 
++	 * IS_POINT_OBSCURED_BY_A_MISSION_ENTITY 
++	 * IS_SNIPER_BULLET_IN_AREA 
++	 * 
++	 * REMOVE_ALL_SCRIPT_FIRES 
++	 * REMOVE_PARTICLE_EFFECTS_IN_AREA 
++	 * SET_EXTRA_COLOURS - Sets the extra color of the sky, can be 1 to 24.
++	 *
++	 * SET_TONIGHTS_EVENT - For the scrolling ticker at the stadium, not sure if I can use this.
++	 * SET_VISIBILITY_OF_CLOSEST_OBJECT_OF_TYPE
++	 * 
++	 * 
++
++	 * 
++
++
++	 */
++
+ }
+ 
+ //
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index aeb44228..270dd42a 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-2a";
++std::string Defines::programVersion = "1.2.13-3a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

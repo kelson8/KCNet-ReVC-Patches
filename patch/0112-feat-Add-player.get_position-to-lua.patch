@@ -1,0 +1,151 @@
+From ad8cb337fe0569b753b938328016f3f89c150115 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 04:26:53 -0400
+Subject: [PATCH 112/161] feat: Add player.get_position to lua
+
+* Now I can pass the CVector of the player to lua.
+
+* Update changelog, switch version to 1.2.12-7a
+---
+ Changelog.md                     | 16 ++++++++++++++++
+ src/extras/lua/lua_functions.cpp |  2 +-
+ src/extras/lua/lua_player.cpp    | 23 ++++++++++++++++++++---
+ src/extras/lua/lua_player.h      |  2 ++
+ src/extras/utils/defines.cpp     |  2 +-
+ 5 files changed, 40 insertions(+), 5 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index cd519afc..62b6be77 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -159,6 +159,8 @@ fix: Actually make the function only create one player.
+ 
+ * Update changelog.
+ 
++# 1.2.9a
++
+ ### 1.2.9a
+ 
+ **Commit 1**
+@@ -238,6 +240,8 @@ Misc changes:---
+ 
+ * Update changelog.md, bump version to 1.2.9-2a.
+ 
++# 1.2.10a
++
+ ### 1.2.10-1a
+ 
+ **Commit 1**
+@@ -327,6 +331,8 @@ feat: Add unlock all car doors function to lua
+ 
+ * Update changelog, bump version to 1.2.10-6a.
+ 
++# 1.2.11a
++
+ ### 1.2.11-1a
+ 
+ feat: Add some lua functions
+@@ -415,6 +421,8 @@ feat: Add missing lua functions changes
+ 
+ * Update changelog.
+ 
++# 1.12.12a
++
+ ### 1.2.12-1a
+ 
+ feat: Setup basic save/load system with json
+@@ -500,3 +508,11 @@ feat: Make ped objective test work in mod menu
+ * Add custom set ped density and set vehicle density functions for my lua scripts.
+ 
+ * Update changelog, change version to 1.2.12-6a.
++
++### 1.2.12-7a
++
++feat: Add player.get_position to lua
++
++* Now I can pass the CVector of the player to lua.
++
++* Update changelog, switch version to 1.2.12-7a.
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index f992e04e..62fde627 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -163,7 +163,7 @@ void pushFloatToLua(lua_State *L, float value)
+ /**
+  * Push a CVector to lua.
+  * 
+- * TODO Test this, I haven't tried to use this just yet since I already have a function that is getting the player coordinates.
++ * Tested working with v1.2.12-7a
+  * 
+  * Usage:
+  * CVector playerPosition = FindPlayerCoors();
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 589015d4..f255a3cb 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -64,9 +64,9 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+     lua_pushcfunction(L, SetPlayerPositionLua);
+     lua_setfield(L, -2, "set_position");
+ 
+-	// TODO Figure out where this is.
+-    // lua_pushcfunction(L, GetPlayerPositionLua);
+-    // lua_setfield(L, -2, "get_position");
++	// This works for getting the players position in lua with the CVector.
++    lua_pushcfunction(L, GetPlayerPositionLua);
++    lua_setfield(L, -2, "get_position");
+ 
+ 	// Heal/get health
+     lua_pushcfunction(L, GetPlayerHealthLua);
+@@ -231,6 +231,23 @@ SetPlayerPositionLua(lua_State *L)
+ 	return 1;
+ }
+ 
++/**
++ * Get the players position.
++ * This works, I can now access the x y and z from this instead of passing three floats.
++ * 
++ * Added in: v1.2.12-7a
++ * 
++ * Usage:
++ * player.get_position().x, y or z.
++ */
++int
++GetPlayerPositionLua(lua_State *L)
++{
++	pushCVectorAsTableLua(L, PlayerFunctions::GetPosition());
++
++	return 1;
++}
++
+ // Well this toggles the players control on/off
+ // Could be useful for ImGui.
+ bool playerControl = true;
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index d400ddee..6d04415c 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -24,6 +24,8 @@ extern "C" {
+     extern int blowUpAllVehiclesLua(lua_State *L);
+ 
+ 	extern int SetPlayerPositionLua(lua_State *L);
++	extern int GetPlayerPositionLua(lua_State *L);
++
+ 	extern int TogglePlayerControlLua(lua_State *L);
+ 	extern int HealPlayerLua(lua_State *L);
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 6d29dc44..908cd185 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-6a";
++std::string Defines::programVersion = "1.2.12-7a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

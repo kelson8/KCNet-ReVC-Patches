@@ -1,0 +1,410 @@
+From 84314c004fca7b9094c6a478d0057e19fb3719d9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 01:01:14 -0400
+Subject: [PATCH 131/161] feat: Add set health, armor and get armor functions
+
+* I needed these in lua to load my test save file, I can now load those values and the weather straight in lua.
+
+* Add toggles for ped and vehicle roads, disabled in lua due to these not working.
+
+* Add disabled toggle for creating some objects, this currently crashes in lua.
+
+* Update changelog, change version to 1.2.13-6a.
+---
+ Changelog.md                  |  12 +++
+ src/extras/lua/lua_player.cpp |  72 +++++++++++++-
+ src/extras/lua/lua_player.h   |   4 +
+ src/extras/lua/lua_world.cpp  | 181 ++++++++++++++++++++++++++++++++--
+ src/extras/lua/lua_world.h    |  14 ++-
+ src/extras/utils/defines.cpp  |   2 +-
+ 6 files changed, 276 insertions(+), 9 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index fe261e8f..395f2406 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -666,3 +666,15 @@ feat: Add weather functions into lua_game
+ * Add a CVector2D for use in lua.
+ 
+ * Update changelog, change version to 1.2.13-5a.
++
++### 1.2.13-6a
++
++feat: Add set health, armor and get armor functions
++
++* I needed these in lua to load my test save file, I can now load those values and the weather straight in lua.
++
++* Add toggles for ped and vehicle roads, disabled in lua due to these not working.
++
++* Add disabled toggle for creating some objects, this currently crashes in lua.
++
++* Update changelog, change version to 1.2.13-6a.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 8d0e0dd9..b2484a90 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -78,6 +78,18 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+     lua_pushcfunction(L, GetPlayerHealthLua);
+     lua_setfield(L, -2, "get_health");
+ 
++	// Set health
++	lua_pushcfunction(L, setPlayerHealthLua);
++    lua_setfield(L, -2, "set_health");
++
++	// Get armor
++	lua_pushcfunction(L, getPlayerArmorLua);
++    lua_setfield(L, -2, "get_armor");
++
++	// Set armor
++	lua_pushcfunction(L, setPlayerArmorLua);
++    lua_setfield(L, -2, "set_armor");
++
+     lua_pushcfunction(L, HealPlayerLua);
+     lua_setfield(L, -2, "heal");
+ 
+@@ -400,7 +412,65 @@ int
+ GetPlayerHealthLua(lua_State *L)
+ {
+ 	float playerHealth = FindPlayerPed()->m_fHealth;
+-	if(playerHealth) { pushFloatToLua(L, playerHealth); }
++	if(playerHealth && PlayerUtil::IsPlayerSafe()) { pushFloatToLua(L, playerHealth); }
++
++	return 1;
++}
++
++/**
++ * Set the players health
++ * 
++ * Usage:
++ * player.set_health(200)
++ */
++
++int setPlayerHealthLua(lua_State *L)
++{
++	int newHealth = lua_tonumber(L, 1);
++
++	if(newHealth <= 0 || newHealth > 200)
++	{
++		return luaL_error(L, "player.set_health requires a number between 1 and 200");
++	}
++
++	if(newHealth && PlayerUtil::IsPlayerSafe())
++	{
++		FindPlayerPed()->m_fHealth = newHealth;
++	}
++
++	return 1;
++}
++
++/**
++ * Get the players armor
++ */
++int getPlayerArmorLua(lua_State *L)
++{
++	float playerArmor = FindPlayerPed()->m_fArmour;
++	if(playerArmor && PlayerUtil::IsPlayerSafe()) { pushFloatToLua(L, playerArmor); }
++
++	return 1;
++}
++
++/**
++ * Set the players armor
++ * 
++ * Usage:
++ * player.set_armor(150)
++ */
++int setPlayerArmorLua(lua_State *L)
++{
++	int newArmor = lua_tonumber(L, 1);
++
++	if(newArmor <= 0 || newArmor > 200)
++	{
++		return luaL_error(L, "player.set_armor requires a number between 1 and 200");
++	}
++
++	if(newArmor && PlayerUtil::IsPlayerSafe())
++	{
++		FindPlayerPed()->m_fArmour = newArmor;
++	}
+ 
+ 	return 1;
+ }
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index 80d2166d..089e41fc 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -30,6 +30,10 @@ extern "C" {
+ 	extern int HealPlayerLua(lua_State *L);
+ 
+ 	extern int GetPlayerHealthLua(lua_State *L);
++	extern int setPlayerHealthLua(lua_State *L);
++	extern int getPlayerArmorLua(lua_State *L);
++	extern int setPlayerArmorLua(lua_State *L);
++
+ 	// 
+ 	extern int toggleNeverWantedLua(lua_State *L);
+ 	extern int toggleInfiniteHealthLua(lua_State *L);
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 64f52198..12f33392 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -103,13 +103,36 @@ extern "C"
+ 		lua_setfield(L, -2, "blow_up_all_vehicles");
+ 
+ 		// Switch the roads on and off
+-		// TODO Test these.
++		// TODO Fix these to work, I only tested switch_ped_roads_off but it wasn't working so I disabled these.
+ 
+-		lua_pushcfunction(L, switchRoadsOffLua);
+-		lua_setfield(L, -2, "switch_roads_off");
++		// lua_pushcfunction(L, switchRoadsOffLua);
++		// lua_setfield(L, -2, "switch_roads_off");
+ 
+-		lua_pushcfunction(L, switchRoadsOnLua);
+-		lua_setfield(L, -2, "switch_roads_on");
++		// lua_pushcfunction(L, switchRoadsOnLua);
++		// lua_setfield(L, -2, "switch_roads_on");
++
++		// lua_pushcfunction(L, switchPedRoadsOffLua);
++		// lua_setfield(L, -2, "switch_ped_roads_off");
++
++		// lua_pushcfunction(L, switchPedRoadsOnLua);
++		// lua_setfield(L, -2, "switch_ped_roads_on");
++
++		// Objects
++		// TODO Fix these later, I have create_object_no_offset started, but it crashes.
++		// lua_pushcfunction(L, createObjectLua);
++		// lua_setfield(L, -2, "create_object");
++
++		// lua_pushcfunction(L, createObjectNoOffsetLua);
++		// lua_setfield(L, -2, "create_object_no_offset");
++
++		// Dont remove the object
++		// lua_pushcfunction(L, dontRemoveObjectLua);
++		// lua_setfield(L, -2, "dont_remove_object");
++
++		// lua_pushcfunction(L, setObjectHeadingLua);
++		// lua_setfield(L, -2, "set_object_heading");
++		
++		//
+ 
+ 		// World namespace
+     	lua_setglobal(L, "world");
+@@ -331,7 +354,7 @@ extern "C"
+     		return luaL_error(L, "world.switch_roads_off expects two vector tables with x, y and z values." );
+ 		}
+ 
+-		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
++		ThePaths.SwitchRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
+ 										rightTop.value().x, rightTop.value().y, rightTop.value().z, true);
+ 
+ 		// SwitchRoadsOffInArea
+@@ -355,12 +378,158 @@ extern "C"
+     		return luaL_error(L, "world.switch_roads_on expects two vector tables with x, y and z values." );
+ 		}
+ 
++		ThePaths.SwitchRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
++										rightTop.value().x, rightTop.value().y, rightTop.value().z, false);
++
++		return 1;
++	}
++
++	/**
++	 * Switch the ped roads off in the area.
++	 * 
++	 * Usage:
++	 * world.switch_ped_roads_off({x = 25, y = 25, z = 25}, {x = 50, y = 50, z = 50})
++	 */
++	int switchPedRoadsOffLua(lua_State *L)
++	{
++		auto leftBottom = luaGetCVector(L, 1);
++		auto rightTop = luaGetCVector(L, 2);
++	
++		if (!leftBottom || !rightTop)
++    	{
++    		return luaL_error(L, "world.switch_ped_roads_off expects two vector tables with x, y and z values." );
++		}
++
++		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
++										rightTop.value().x, rightTop.value().y, rightTop.value().z, true);
++
++		return 1;
++	}
++
++	/**
++	 * Switch the ped roads on in the area.
++	 * 
++	 * Usage:
++	 * world.switch_ped_roads_on({x = 25, y = 25, z = 25}, {x = 50, y = 50, z = 50})
++	 */
++	int switchPedRoadsOnLua(lua_State *L)
++	{
++		auto leftBottom = luaGetCVector(L, 1);
++		auto rightTop = luaGetCVector(L, 2);
++	
++		if (!leftBottom || !rightTop)
++    	{
++    		return luaL_error(L, "world.switch_ped_roads_on expects two vector tables with x, y and z values." );
++		}
++
+ 		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
+ 										rightTop.value().x, rightTop.value().y, rightTop.value().z, false);
++		return 1;
++	}
++
++
++	//--------------
++	// Objects
++	// TODO Implement these.
++	// TODO Move into lua_objects.cpp later.
++	//--------------
++
++	/**
++	 * Create an object with an offset.
++	 * 
++	 * Usage:
++	 * world.create_object({x = 25, y = 25, z = 25})
++	 */
++	int createObjectLua(lua_State *L)
++	{
++		return 1;
++	}
++
++	/**
++	 * Create an object without an offset
++	 * TODO Test this, I'll see if it works by just setting the position in lua for now.
++	 * TODO Fix this to work, it crashes the game currently.
++	 * If this works, then I'll add an objects enum to lua.
++	 * 
++	 * Usage (Doesn't currently take a model index just yet.):
++	 * world.create_object_no_offset({x = 25, y = 25, z = 25})
++	 */
++	int createObjectNoOffsetLua(lua_State *L)
++	{
++		auto objPos = luaGetCVector(L, 1);
++
++		if(!objPos)
++		{
++			return luaL_error(L, "world.create_object_no_offset expects one vector table with x, y and z values");
++		}
++
++		// int objectModel = MI_BIN;
++		int objectModel = MI_BARRIER1;
++
++		CStreaming::RequestModel(objectModel, 0);
++
++		if(!CStreaming::HasModelLoaded(objectModel))
++		{
++			return luaL_error(L, "world.create_object_no_offset error, the object model was not loaded!");
++		}
++
++		// TODO Make this create the objects for the bridge gates and other stuff.
++		// TODO Add error handling for this, for now I'll just spawn it somewhere..
++		CObject *object = new CObject(objectModel, false);
++		object->ObjectCreatedBy = MISSION_OBJECT;
++
++		// Set the position, orientation.
++		object->SetPosition(*objPos);
++		object->SetOrientation(0.0f, 0.0f, 0.0f);
++		
++		// Update the rw values for rendering.
++		object->GetMatrix().UpdateRW();
++		object->UpdateRwFrame();
++
++		// CBaseModelInfo* objModelInfo = CModelInfo::GetModelInfo(objectModel);
++		// This check is probably not needed, I'll leave it here anyways.
++		// if (objModelInfo->IsBuilding() && ((CSimpleModelInfo*)objModelInfo)->m_isBigBuilding)
++		// {
++		// 	object->SetupBigBuilding();
++		// }
++
++		// Not used in here
++		// CTheScripts::ClearMissionSpaceForEntity(objPos, object);
++		
++		// Add the object to the world.
++		CWorld::Add(object);
++
++		// Not sure of what this is for
++		// CPools::GetObjectPool()->GetIndex
+ 
+ 		return 1;
+ 	}
+ 
++	/**
++	 * Dont remove this object, can be used for the gates between the islands.
++	 * 
++	 * Usage:
++	 * world.dont_remove_object()
++	 */
++	int dontRemoveObjectLua(lua_State *L)
++	{
++		return 1;
++	}
++
++	/**
++	 * Set the heading of an object
++	 * 
++	 * Usage:
++	 * world.set_object_heading(heading)
++	 */
++	int setObjectHeadingLua(lua_State *L)
++	{
++		return 1;
++	}
++
++
++
++	//-------------------
+ 
+ 	/**
+ 	 * TODO Implement these below commands
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 06eb82fe..5e7c69f5 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -18,6 +18,7 @@ extern "C" {
+ 	extern int disablePedsLua(lua_State *L);
+ 	extern int disableVehiclesLua(lua_State *L);
+ 
++	// Density
+ 	extern int setVehicleDensityLua(lua_State *L);
+ 	extern int setPedDensityLua(lua_State *L);
+ 
+@@ -27,8 +28,19 @@ extern "C" {
+ 
+ 	extern int setPedObjectivesInAreaLua(lua_State *L);
+ 
+-	extern int switchRoadsOnLua(lua_State *L);
++	// Roads
+ 	extern int switchRoadsOffLua(lua_State *L);
++	extern int switchRoadsOnLua(lua_State *L);
++	
++	extern int switchPedRoadsOffLua(lua_State *L);
++	extern int switchPedRoadsOnLua(lua_State *L);
++
++
++	// Objects
++	extern int createObjectLua(lua_State *L);
++	extern int createObjectNoOffsetLua(lua_State *L);
++	extern int ontRemoveObjectLua(lua_State *L);
++	extern int setObjectHeadingLua(lua_State *L);
+ 
+ 
+ #ifdef __cplusplus
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index a9a0a4f0..54579e93 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-5a";
++std::string Defines::programVersion = "1.2.13-6a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

@@ -1,0 +1,747 @@
+From ce79222bcfaf34b9f673f38c33ee2bce092d35ca Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Sep 2026 01:16:29 -0400
+Subject: [PATCH 089/161] feat: Make scroll speed in stat page able to be
+ changed
+
+* Now the stats page scroll speed can be changed
+
+* Move vehiclesDontCatchFire variable into main.h and main.cpp, and move it out of features.ini into the reVC.ini.
+
+* Add option to toggle vehicles exploding when upside down in freeroam-game.lua.
+
+* Rename bVehiclesDontCatchFireWhenTurningOver to gbVehiclesDontCatchFireWhenTurningOver.
+
+* Enable the 'DISABLE_GAME_SCRIPTS' preprocessor in config.h to run my lua scripts from now on.
+
+* Add STAT_SCROLL_SPEED into config.h.
+
+* Remove ReadAndGetFeature from ini_functions, remove features.ini from build since I no longer use it.
+
+* Add time_to_pass variable into freeroam-game.lua for later use, will be used for setting how much time passes when the player dies or is busted.
+
+* Add freeroam-locations.lua, make freeroam-game.lua load locations from the new file.
+
+* Re-enable most options running in `CTheScripts::Init()`, they work with my lua scripts besides the scm loading.
+
+* Update changelog, bump version to 1.2.9a.
+---
+ Changelog.md                                  | 26 ++++++++++
+ .../lua_scripts/freeroam-game.lua             | 44 ++++++++++-------
+ .../lua_scripts/freeroam-locations.lua        | 20 ++++++++
+ gamefiles/reVC.ini                            |  5 ++
+ src/control/Script.cpp                        | 42 +++++++++++++---
+ src/core/Frontend.cpp                         | 16 ++++++-
+ src/core/PlayerInfo.cpp                       |  2 +-
+ src/core/common.h                             |  4 --
+ src/core/config.h                             |  7 ++-
+ src/core/main.cpp                             | 35 +++++++++++++-
+ src/core/main.h                               |  4 ++
+ src/extras/functions/ini_functions.cpp        | 46 ++++++++++--------
+ src/extras/lua/lua_functions.cpp              |  4 +-
+ src/extras/lua/lua_test.cpp                   | 48 ++++++++++++++++++-
+ src/extras/utils/defines.cpp                  |  2 +-
+ src/vehicles/Automobile.cpp                   | 11 ++++-
+ 16 files changed, 261 insertions(+), 55 deletions(-)
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua
+
+diff --git a/Changelog.md b/Changelog.md
+index 0936598c..50d4b422 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -158,3 +158,29 @@ fix: Actually make the function only create one player.
+ * Update player spawn in freeroam-game.lua to the police station.
+ 
+ * Update changelog.
++
++### 1.2.9a
++
++feat: Make scroll speed in stat page able to be changed
++
++* Now the stats page scroll speed can be changed
++
++* Move vehiclesDontCatchFire variable into main.h and main.cpp, and move it out of features.ini into the reVC.ini.
++
++* Add option to toggle vehicles exploding when upside down in freeroam-game.lua.
++
++* Rename bVehiclesDontCatchFireWhenTurningOver to gbVehiclesDontCatchFireWhenTurningOver.
++
++* Enable the 'DISABLE_GAME_SCRIPTS' preprocessor in config.h to run my lua scripts from now on.
++
++* Add STAT_SCROLL_SPEED into config.h.
++
++* Remove ReadAndGetFeature from ini_functions, remove features.ini from build since I no longer use it.
++
++* Add time_to_pass variable into freeroam-game.lua for later use, will be used for setting how much time passes when the player dies or is busted. 
++
++* Add freeroam-locations.lua, make freeroam-game.lua load locations from the new file.
++
++* Re-enable most options running in `CTheScripts::Init()`, they work with my lua scripts besides the scm loading.
++
++* Update changelog, bump version to 1.2.9a.
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index 8271d79d..16f83436 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -1,3 +1,8 @@
++-- This format works with my setup! I had to have a subdirectory for it.
++-- Moved locations into this file.
++dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
++
++
+ -- TODO Attempt to make freeroam_miami.scm load a custom script called freeroam-game.lua.
+ 
+ -- I will need to figure out how to disable the game scripts which might be a bit easy to do.
+@@ -27,39 +32,46 @@
+ -- This is pretty much a basic replacement for the game scripts.
+ --------
+ 
+--- Init player, spawn them in.
+ 
+ -----------
+--- Locations
++-- Globals - These get read from the C++ code for the game scripts.
++-- I will try to keep these named like they are in C++.
++-- If these are missing the game will probably crash.
+ -----------
+--- TODO Figure out how to move these into another file
+ 
+-local spawnX = -258.1
+-local spawnY = -453.1
+-local spawnZ = 13.5
++-- true is enabled and false is disabled
+ 
+-local airportX = -1515.1
+-local airportY = -1182.1
+-local airportZ = 16.5
+-local airportHeading = 0.0
++-- If this is enabled, vehicles won't catch on fire when upside down.
++-- false = vehicles explode when upside down.
++-- true = no vehicles explode when upside down.
++-- This is in the ini, but I will load it in this freeroam script when DISABLE_GAME_SCRIPTS is toggled on.
++gbVehiclesDontCatchFireWhenTurningOver = false
+ 
+-local policeStationX = 402.371
+-local policeStationY = -463.671
+-local policeStationZ = 10.1132
+ 
+ -- Spawn in the player, mostly for spawning without the .scm scripts
+ -- This works in here now!
+ 
+ -------
+ -- REQUIRED if DISABLE_GAME_SCRIPTS is toggled on in the game code, otherwise it won't spawn the player.
++-- Locations are stored in freeroam-locations.lua, and more can be added.
+ -------
+--- create_player(0, spawnX, spawnY, spawnZ)
+--- create_player(0, airportX, airportY, airportZ)
+ 
+ -- This only runs once in the init, if there are more then one of the create_player functions they won't do anything.
+ -- Fixes some bugs I was having, which was spawning multiple players for me to control lol.
+ 
+-create_player(0, policeStationX, policeStationY, policeStationZ)
++-- Init player, spawn them in.
++
++-- Spawn at the custom spawn in the middle of the map.
++-- create_player(0, spawnX, spawnY, spawnZ)
++
++-- Spawn at the airport.
++-- create_player(0, airportX, airportY, airportZ)
++
++-- Spawn at the police station.
++-- create_player(0, policeStationX, policeStationY, policeStationZ)
++
++-- Spawn at the construction site.
++create_player(0, constructionSiteX, constructionSiteY, constructionSiteZ)
+ 
+ --------
+ -- End REQUIRED
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua
+new file mode 100644
+index 00000000..cd934d8c
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua
+@@ -0,0 +1,20 @@
++-----------
++-- Locations
++-----------
++
++spawnX = -258.1
++spawnY = -453.1
++spawnZ = 13.5
++
++airportX = -1515.1
++airportY = -1182.1
++airportZ = 16.5
++airportHeading = 0.0
++
++policeStationX = 402.371
++policeStationY = -463.671
++policeStationZ = 10.1132
++
++constructionSiteX = 261.662
++constructionSiteY = -234.038
++constructionSiteZ = 11.437
+diff --git a/gamefiles/reVC.ini b/gamefiles/reVC.ini
+index fe72d417..59ed3a32 100644
+--- a/gamefiles/reVC.ini
++++ b/gamefiles/reVC.ini
+@@ -140,6 +140,11 @@ Autosave=0
+ ; Not implemented
+ ExtraLogging=0
+ 
++; If this is enabled, vehicles won't catch on fire when upside down.
++; 0 = vehicles explode when upside down.
++; 1 = no vehicles explode when upside down.
++VehiclesDontCatchFireWhenTurningOver=0
++
+ ; Set the fast loader
+ FastLoader=0
+ ; Set the game save to load on startup
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 9961610f..b4942f8e 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -851,10 +851,9 @@ void CTheScripts::Init()
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+-#ifdef DISABLE_GAME_SCRIPTS
+-	// TODO Fix this to disable the game scripts if enabled in the ini.
+-	return;
+-#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++	//----
++	// I enabled the below again for DISABLE_GAME_SCRIPTS, if this breaks again just add a return in the above preprocessor.
++	//-----
+ 
+ 	for (int i = 0; i < SIZE_SCRIPT_SPACE; i++)
+ 		ScriptSpace[i] = 0;
+@@ -867,6 +866,9 @@ void CTheScripts::Init()
+ 	MissionCleanUp.Init();
+ 	UpsideDownCars.Init();
+ 	StuckCars.Init();
++
++#ifndef DISABLE_GAME_SCRIPTS
++
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ 	// glfwGetKey doesn't work because of CGame::Initialise is blocking
+ 	CPad::UpdatePads();
+@@ -892,6 +894,8 @@ void CTheScripts::Init()
+ 	CFileMgr::CloseFile(mainf);
+ 	CFileMgr::SetDir("");
+ 
++#endif // !DISABLE_GAME_SCRIPTS
++
+ 	StoreVehicleIndex = -1;
+ 	StoreVehicleWasRandom = true;
+ 
+@@ -1000,8 +1004,9 @@ void CRunningScript::AddScriptToList(CRunningScript** ppScript)
+ }
+ 
+ /**
+- * TODO Figure out how to not make this crash when there is no script system, can I even load without this?
+- * I may need to implement the lua loader and the script part of this but I'm not sure about this part.
++ * This is no longer used with my scripts
++ * TODO Look into using this for starting different lua scripts if I want to have multiple.
++ * Like one for freeroam, one for locations, and other files, and some custom lua functions.
+  */
+ CRunningScript* CTheScripts::StartNewScript(uint32 ip)
+ {
+@@ -1036,21 +1041,27 @@ void CTheScripts::Process()
+ 		return;
+ 	CommandsExecuted = 0;
+ 	ScriptsUpdated = 0;
++
+ 	float timeStep = CTimer::GetTimeStepInMilliseconds();
+ 	UpsideDownCars.UpdateTimers();
+ 	StuckCars.Process();
++
+ 	MissionCleanUp.CheckIfCollisionHasLoadedForMissionObjects();
+ 	DrawScriptSpheres();
++
+ 	if (FailCurrentMission)
+ 		--FailCurrentMission;
++
+ 	if (UseTextCommands){
+ 		for (int i = 0; i < MAX_NUM_INTRO_TEXT_LINES; i++)
+ 			IntroTextLines[i].Reset();
++		
+ 		NumberOfIntroTextLinesThisFrame = 0;
+ 		for (int i = 0; i < MAX_NUM_INTRO_RECTANGLES; i++){
+ 			IntroRectangles[i].m_bIsUsed = false;
+ 			IntroRectangles[i].m_bBeforeFade = false;
+ 		}
++	
+ 		NumberOfIntroRectanglesThisFrame = 0;
+ 		if (UseTextCommands == 1)
+ 			UseTextCommands = 0;
+@@ -1059,24 +1070,29 @@ void CTheScripts::Process()
+ #ifdef MISSION_REPLAY
+ 	static uint32 TimeToWaitTill;
+ 	static bool AlreadyResetHealth;
++
+ 	switch (AllowMissionReplay) {
+ 	case MISSION_RETRY_STAGE_START_PROCESSING:
+ 		AllowMissionReplay = MISSION_RETRY_STAGE_WAIT_FOR_DELAY;
+ 		TimeToWaitTill = CTimer::GetTimeInMilliseconds() + (AddExtraDeathDelay() > 1000 ? 4000 : 2500);
+ 		break;
++
+ 	case MISSION_RETRY_STAGE_WAIT_FOR_DELAY:
+ 		if (TimeToWaitTill < CTimer::GetTimeInMilliseconds())
+ 			AllowMissionReplay = MISSION_RETRY_STAGE_WAIT_FOR_MENU;
+ 		break;
++
+ 	case MISSION_RETRY_STAGE_WAIT_FOR_MENU:
+ 		AllowMissionReplay = MISSION_RETRY_STAGE_WAIT_FOR_USER;
+ 		RetryMission(MISSION_RETRY_TYPE_SUGGEST_TO_PLAYER);
+ 		break;
++
+ 	case MISSION_RETRY_STAGE_START_RESTARTING:
+ 		AllowMissionReplay = MISSION_RETRY_STAGE_WAIT_FOR_TIMER_AFTER_RESTART;
+ 		AlreadyResetHealth = false;
+ 		TimeToWaitTill = CTimer::GetTimeInMilliseconds() + 500;
+ 		break;
++
+ 	case MISSION_RETRY_STAGE_WAIT_FOR_TIMER_AFTER_RESTART:
+ 		if (!AlreadyResetHealth) {
+ 			AlreadyResetHealth = true;
+@@ -1087,12 +1103,14 @@ void CTheScripts::Process()
+ 					pPlayerPed->m_fHealth = pPlayerInfo->m_nMaxHealth;
+ 			}
+ 		}
++
+ 		if (TimeToWaitTill < CTimer::GetTimeInMilliseconds()) {
+ 			AllowMissionReplay = MISSION_RETRY_STAGE_NORMAL;
+ 			return;
+ 		}
+ 		break;
+ 	}
++
+ 	if (WaitForMissionActivate) {
+ 		if (WaitForMissionActivate > CTimer::GetTimeInMilliseconds())
+ 			return;
+@@ -1148,22 +1166,28 @@ void CRunningScript::Process()
+ #endif
+ 	if (m_bIsMissionScript)
+ 		DoDeatharrestCheck();
++
+ 	if (m_bMissionFlag && CTheScripts::FailCurrentMission == 1 && m_nStackPointer == 1)
+ 		SetIP(m_anStack[--m_nStackPointer]);
++
+ 	if (CTimer::GetTimeInMilliseconds() >= m_nWakeTime){
+ 		while (!ProcessOneCommand())
+ 			;
+ 		return;
+ 	}
++
+ 	if (!m_bSkipWakeTime)
+ 		return;
++
+ 	if (!CPad::GetPad(0)->GetCrossJustDown())
+ 		return;
++
+ 	m_nWakeTime = 0;
+ 	for (int i = 0; i < NUMBIGMESSAGES; i++){
+ 		if (CMessages::BIGMessages[i].m_Stack[0].m_pText != nil)
+ 			CMessages::BIGMessages[i].m_Stack[0].m_nStartTime = 0;
+ 	}
++
+ 	if (CMessages::BriefMessages[0].m_pText != nil)
+ 		CMessages::BriefMessages[0].m_nStartTime = 0;
+ }
+@@ -1260,11 +1284,14 @@ int8 CRunningScript::ProcessCommands0To99(int32 command)
+ 	switch (command) {
+ 	case COMMAND_NOP:
+ 		return 0;
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_WAIT:
+ 		CollectParameters(&m_nIp, 1);
+ 		m_nWakeTime = CTimer::GetTimeInMilliseconds() + ScriptParams[0];
+ 		m_bSkipWakeTime = false;
+ 		return 1;
++
+ 	case COMMAND_GOTO:
+ 		CollectParameters(&m_nIp, 1);
+ 		SetIP(ScriptParams[0] >= 0 ? ScriptParams[0] : SIZE_MAIN_SCRIPT - ScriptParams[0]);
+@@ -1274,10 +1301,13 @@ int8 CRunningScript::ProcessCommands0To99(int32 command)
+ 		/* However, it's not an issue for actual mission scripts, because they follow a structure */
+ 		/* and never start with a loop. */
+ 		return 0;
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SHAKE_CAM:
+ 		CollectParameters(&m_nIp, 1);
+ 		CamShakeNoPos(&TheCamera, ScriptParams[0] / 1000.0f);
+ 		return 0;
++
+ 	case COMMAND_SET_VAR_INT:
+ 	{
+ 		int32* ptr = GetPointerToScriptVariable(&m_nIp, VAR_GLOBAL);
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 7064256a..e73a1773 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -478,6 +478,11 @@ CMenuManager::SwitchToNewScreen(int8 screen)
+ 	m_LastScreenSwitch = CTimer::GetTimeInMillisecondsPauseMode();
+ }
+ 
++/**
++ * Menu manager setup
++ * I didn't know all of this was here, I guess most of this can be changed in the settings.
++ * Although m_StatsScollSpeed might be useful.
++ */
+ CMenuManager::CMenuManager()
+ {
+ 	m_StatsScrollSpeed = 150.0f;
+@@ -3493,7 +3498,16 @@ CMenuManager::PrintStats()
+ 
+ 	static uint32 lastCheck = 0;
+ 
+-	if (CTimer::GetTimeInMillisecondsPauseMode() - lastCheck > 40) {
++	// Move the stats page, this is what handles the scrolling for it.
++
++#ifdef CUSTOM_CODE
++
++
++		if (CTimer::GetTimeInMillisecondsPauseMode() - lastCheck > STAT_SCROLL_SPEED) {
++#else
++		if (CTimer::GetTimeInMillisecondsPauseMode() - lastCheck > 40) {
++#endif // CUSTOM_CODE - Change stats scroll speed
++	// 
+ 
+ 		if (m_StatsScrollSpeed > 0.f) {
+ 			if (m_StatsScrollDirection == 0)
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index 65159134..af24fac8 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -478,7 +478,7 @@ CPlayerInfo::Process(void)
+ 		}
+ 	}
+ #ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-	if(!bVehiclesDontCatchFireWhenTurningOver && !(CTimer::GetFrameCounter() & 31)) {
++	if(!gbVehiclesDontCatchFireWhenTurningOver && !(CTimer::GetFrameCounter() & 31)) {
+ #else
+ 	if(!(CTimer::GetFrameCounter() & 31)) {
+ #endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+diff --git a/src/core/common.h b/src/core/common.h
+index f92c47b6..ead04f3b 100644
+--- a/src/core/common.h
++++ b/src/core/common.h
+@@ -337,10 +337,6 @@ void re3_trace(const char *filename, unsigned int lineno, const char *func, cons
+ void re3_assert(const char *expr, const char *filename, unsigned int lineno, const char *func);
+ void re3_usererror(const char *format, ...);
+ 
+-#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-extern bool bVehiclesDontCatchFireWhenTurningOver;
+-#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-
+ #ifdef EX_GPS
+ extern CRGBA WaypointColor;
+ #endif // EX_GPS
+diff --git a/src/core/config.h b/src/core/config.h
+index 9b86a1a1..61385327 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -13,6 +13,11 @@
+ // ImGui not implemented in this branch.
+ #define GTAVC
+ 
++		// The speed to scroll the stats page in the pause menu, the lower this is the faster the stats page scrolls.
++		// Defaults to 40, probably shouldn't be set too low.
++#define STAT_SCROLL_SPEED 20
++
++
+ // Attempting to add new opcodes
+ // This crashes the game when loading with the new opcodes
+ // TODO Attempt to add a custom opcode and add it into gta3sc also
+@@ -120,7 +125,7 @@
+ // This doesn't make sense to have this enabled if lua is disabled.
+ // My script system requires lua.
+ #ifdef LUA_TEST
+-	// #define DISABLE_GAME_SCRIPTS
++	#define DISABLE_GAME_SCRIPTS
+ #endif // LUA_TEST
+ 
+ #endif // CUSTOM_CODE
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 9e2a8003..3f210e06 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -148,7 +148,14 @@ bool gbFalloffBike = true;
+ 
+ #ifdef _FAST_LOADER
+ bool gbFastLoader;
+-#endif
++#endif //
++
++// Moved out of common.h
++
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++bool gbVehiclesDontCatchFireWhenTurningOver;
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ 
+ #ifdef CUSTOM_CODE
+ uint8 gbScriptToLoad;
+@@ -1264,6 +1271,32 @@ DisplayGameDebugText()
+ 	}
+ #endif // #ifdef DRAW_GAME_VERSION_TEXT
+ 
++// New
++
++#ifdef DISABLE_GAME_SCRIPTS
++	// Make this draw 'KCNet - Freeroam' at the top.
++	// This is my own lua scripting system replacing the Vice City one anyways.
++	// TODO Make this not display on the pause menu, and only when the player is playing.
++
++	wchar customScriptMsgBuf[200];
++
++	const char* customScriptMsg = "KCNet - Freeroam";
++	AsciiToUnicode(customScriptMsg, customScriptMsgBuf);
++	CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.5f));
++	CFont::SetPropOn();
++	CFont::SetBackgroundOff();
++	CFont::SetFontStyle(FONT_STANDARD);
++	CFont::SetCentreOff();
++	CFont::SetRightJustifyOff();
++	CFont::SetWrapx(SCREEN_WIDTH);
++	CFont::SetJustifyOff();
++	CFont::SetBackGroundOnlyTextOff();
++	CFont::SetColor(CRGBA(255, 108, 0, 255));
++	CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(10.0f), customScriptMsgBuf);
++	
++
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	FrameSamples++;
+ #ifdef FIX_BUGS
+ 	// this is inaccurate with over 1000 fps
+diff --git a/src/core/main.h b/src/core/main.h
+index 6c287c25..0d835baa 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -107,6 +107,10 @@ extern bool gbDisplayPosn;
+ extern bool gbFastLoader;
+ #endif //_FAST_LOADER
+ 
++#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
++extern bool gbVehiclesDontCatchFireWhenTurningOver;
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
++
+ #ifdef CUSTOM_CODE
+ // The game script to load on startup.
+ extern uint8 gbScriptToLoad;
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 81fb214a..0767e218 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -57,6 +57,11 @@
+ #include <list>
+ 
+ #ifdef CUSTOM_CODE
++
++
++// Needed for some variables
++
++
+ // Extra
+ #include "Garages.h"
+ 
+@@ -762,21 +767,6 @@ readMultipleSections(const std::string &filename, const std::vector<std::string>
+ 
+ #endif // DEBUG_EXTRA_CHEATS
+ 
+-mINI::INIFile featuresIni(Defines::featuresIniFile);
+-mINI::INIStructure featuresCfg;
+-
+-uint8 bInitFeaturesIni = featuresIni.read(featuresCfg);
+-
+-uint16 ReadAndGetFeature(const char* key)
+-{
+-	mINI::INIMap<std::string> section = featuresCfg.get("Features");
+-	if (section.has(key)) {
+-		char* endPtr;
+-		return strtol(section.get(key).c_str(), &endPtr, 0);
+-	}
+-	return 0;
+-}
+-
+ ////////////////////
+ // Public definitions
+ ///////////////////
+@@ -806,10 +796,6 @@ IniFunctions::ReadIniIfExists(const char *cat, const char *key, uint8 *out)
+ }
+ #endif //_TEST1
+ 
+-#ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-extern bool bVehiclesDontCatchFireWhenTurningOver = ReadAndGetFeature("VehiclesDontCatchFireWhenTurningOver");
+-#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-
+ ////////////////////
+ // Private definitions
+ ///////////////////
+@@ -1306,8 +1292,17 @@ LoadINISettings()
+ #endif
+ 
+ #ifdef CUSTOM_CODE
++
++#ifndef DISABLE_GAME_SCRIPTS
++	// If the Explosions are toggled on/off.
++	// 0 = vehicles explode when upside down.
++	// 1 = no vehicles explode when upside down.
++	ReadIniIfExists("KCNet", "VehiclesDontCatchFireWhenTurningOver", &gbVehiclesDontCatchFireWhenTurningOver);
++#endif // ! DISABLE_GAME_SCRIPTS - Read value from lua.
++
++	// Game script to load on startup
+ 	ReadIniIfExists("KCNet", "GameScriptToLoad", &gbScriptToLoad);
+-#endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
++#endif // CUSTOM_CODE
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ 	// ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+@@ -1460,8 +1455,17 @@ SaveINISettings()
+ #endif
+ 
+ #ifdef CUSTOM_CODE
++
++#ifndef DISABLE_GAME_SCRIPTS
++	// If the Explosions are toggled on/off.
++	// 0 = vehicles explode when upside down.
++	// 1 = no vehicles explode when upside down.
++	StoreIni("KCNet", "VehiclesDontCatchFireWhenTurningOver", gbVehiclesDontCatchFireWhenTurningOver);
++#endif // ! DISABLE_GAME_SCRIPTS - Read value from lua.
++
++	// Game script to load on startup.
+ 	StoreIni("KCNet", "GameScriptToLoad", gbScriptToLoad);
+-#endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
++#endif // CUSTOM_CODE
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+ 	// StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 10e7123d..e2addbe7 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -122,7 +122,9 @@ CheckLua(lua_State *L, int r)
+ 	if(r != LUA_OK) {
+ 		std::string errorMsg = lua_tostring(L, -1);
+ 		// std::cout << errorMsg << std::endl;
+-		TRACE("KCNet - Lua Error", errorMsg);
++		// Actually put the error message into this, I was never printing it.
++		// Now it actually gives the error.
++		TRACE("KCNet - Lua Error %s", errorMsg.c_str());
+ 		return false;
+ 	} /*else {
+ 	        TRACE("KCNet - Lua Error");
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 2eb076b6..b5366fae 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -369,7 +369,18 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	
+ 	// Test for creating a vehicle, this will probably crash on invalid models.
+ 	// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
+-	// Usage: create_vehicle(145, true, true)
++	// Usage in lua script:
++	/**
++	 local constructionSiteX = 261.662
++	 local constructionSiteY = -234.038
++	 local constructionSiteZ = 11.437
++
++	 -- Vehicle ID, posX, posY, posZ, Delete last vehicle, Warp into vehicle.
++
++	 create_vehicle(145, constructionSiteX + 10.0, constructionSiteY + 10.0, constructionSiteZ + 2.0, false, false) 
++	 */
++	// TODO Make this create only one vehicle.
++	// 
+ 	lua_register(L, "create_vehicle", createVehicleLua);
+ 
+ 	//------------- Player ------------//
+@@ -677,6 +688,41 @@ LuaTest::SetupFreeroamScript()
+ 	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaFreeroamScript.c_str()))) 
+ 	{
+ 		return;
++	} else {
++
++		// Copied from the main game init script.
++
++		// https://terminalroot.com/how-to-run-lua-files-within-cpp/
++		// Test for setting the time pass variable when wasted or busted, this is what changes the time.
++		// This should allow me to change the amount of time that passes when the player dies or gets busted.
++		lua_getglobal(m_luaVM, "time_to_pass");
++		if(lua_isnumber(m_luaVM, -1)) {
++			int timeToPass = static_cast<int>(lua_tointeger(m_luaVM, -1));
++			LuaTest::timeToPass = timeToPass;
++			std::string timeToPassString = "Time to pass set to: " + std::to_string(timeToPass);
++		}
++
++		// lua_getglobal(m_luaVM, "gbVehiclesDontCatchFireWhenTurningOver");
++		// if(lua_isnumber(m_luaVM, -1)) {
++		// 	int timeToPass = static_cast<int>(lua_tointeger(m_luaVM, -1));
++		// 	LuaTest::timeToPass = timeToPass;
++		// 	std::string timeToPassString = "Time to pass set to: " + std::to_string(timeToPass);
++		// }
++
++		lua_getglobal(m_luaVM, "gbVehiclesDontCatchFireWhenTurningOver");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool toggleVehiclesDontCatchFireWhenTurningOver = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbVehiclesDontCatchFireWhenTurningOver = toggleVehiclesDontCatchFireWhenTurningOver;
++
++			// I've never really used this much before.
++			std::string toggleRespawnString = toggleVehiclesDontCatchFireWhenTurningOver ? "Vehicles can no longer blow up when upside down." : "Vehicles can now blow up when upside down";
++
++			TRACE(toggleRespawnString.c_str());
++
++			// This is spammy
++			LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
++		}
++
+ 	}
+ }
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index b949f338..c7a54ab9 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.8a";
++std::string Defines::programVersion = "1.2.9a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/vehicles/Automobile.cpp b/src/vehicles/Automobile.cpp
+index b6edf06e..4c0968f9 100644
+--- a/src/vehicles/Automobile.cpp
++++ b/src/vehicles/Automobile.cpp
+@@ -400,6 +400,15 @@ CAutomobile::ProcessControl(void)
+ 			playerRemote = true;
+ 		// fall through
+ 	case STATUS_PLAYER:
++
++// #ifdef CUSTOM_CODE
++// 			// Some fun.. and testing
++// 			// Will my cars fly with this?
++// 			// FlyingControl(FLIGHT_MODEL_HELI);
++// 			// Well this didn't do anything like I thought it would.
++// 			FlyingControl(FLIGHT_MODEL_RCPLANE);
++// #endif // CUSTOM_CODE
++
+ 		if(playerRemote ||
+ 		   pDriver && pDriver->GetPedState() != PED_EXIT_CAR && pDriver->GetPedState() != PED_DRAG_FROM_CAR && pDriver->GetPedState() != PED_ARRESTED){
+ 			// process control input if controlled by player
+@@ -4116,7 +4125,7 @@ CAutomobile::VehicleDamage(float impulse, uint16 damagedPiece)
+ 
+ 	// damage flipped over car
+ #ifdef TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-	if(!bVehiclesDontCatchFireWhenTurningOver && GetUp().z < 0.0f && this != FindPlayerVehicle()) {
++	if(!gbVehiclesDontCatchFireWhenTurningOver && GetUp().z < 0.0f && this != FindPlayerVehicle()) {
+ #else
+ 	if(GetUp().z < 0.0f && this != FindPlayerVehicle()) {
+ #endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+-- 
+2.43.0
+

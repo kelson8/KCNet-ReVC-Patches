@@ -1,0 +1,429 @@
+From 5a2edc846980f7555404e7ed5292a036828ab42b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Sep 2026 02:28:09 -0400
+Subject: [PATCH 090/161] fix: Make game not crash when new game is started
+
+* I had to set the player created variable to false before starting a new game with F5 or the pause menu, so my CreatePlayer script will run.
+
+* Add freeroam-enums.lua for later use.
+
+* Update changelog.
+---
+ Changelog.md                                  |  12 ++
+ .../lua_scripts/freeroam-enums.lua            | 202 ++++++++++++++++++
+ src/core/main.cpp                             |  16 ++
+ src/extras/custom_scripts/init_game.cpp       |  14 +-
+ src/extras/functions/misc_functions.cpp       |  12 +-
+ src/extras/functions/misc_functions.h         |   5 +-
+ src/extras/lua/lua_setup.cpp                  |   9 +
+ 7 files changed, 261 insertions(+), 9 deletions(-)
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/freeroam-enums.lua
+
+diff --git a/Changelog.md b/Changelog.md
+index 50d4b422..c120ad2e 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -161,6 +161,8 @@ fix: Actually make the function only create one player.
+ 
+ ### 1.2.9a
+ 
++**Commit 1**
++
+ feat: Make scroll speed in stat page able to be changed
+ 
+ * Now the stats page scroll speed can be changed
+@@ -184,3 +186,13 @@ feat: Make scroll speed in stat page able to be changed
+ * Re-enable most options running in `CTheScripts::Init()`, they work with my lua scripts besides the scm loading.
+ 
+ * Update changelog, bump version to 1.2.9a.
++
++**Commit 2**
++
++fix: Make game not crash when new game is started
++
++* I had to set the player created variable to false before starting a new game with F5 or the pause menu, so my CreatePlayer script will run.
++
++* Add freeroam-enums.lua for later use.
++
++* Update changelog.
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-enums.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-enums.lua
+new file mode 100644
+index 00000000..5cb1a953
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-enums.lua
+@@ -0,0 +1,202 @@
++
++-- List of enums for future use in my Lua scripts.
++
++-- Source - https://stackoverflow.com/a/77170992
++-- Posted by Maldus
++-- Retrieved 2026-09-06, License - CC BY-SA 4.0
++
++local enum = function(keys)
++    local Enum = {}
++    for _, value in ipairs(keys) do
++        Enum[value] = {} 
++    end
++    return Enum
++end
++
++local Result = enum { "Success", "Failure" }
++
++-- ReVC enums
++
++-- Ped.h
++
++-- PedState
++
++	-- PED_NONE,
++	-- PED_IDLE,
++	-- PED_LOOK_ENTITY,
++	-- PED_LOOK_HEADING,
++	-- PED_WANDER_RANGE,
++	-- PED_WANDER_PATH,
++	-- PED_SEEK_POS,
++	-- PED_SEEK_ENTITY,
++	-- PED_FLEE_POS,
++	-- PED_FLEE_ENTITY,
++	-- PED_PURSUE,
++	-- PED_FOLLOW_PATH,
++	-- PED_SNIPER_MODE,
++	-- PED_ROCKET_MODE,
++	-- PED_DUMMY,
++	-- PED_PAUSE,
++	-- PED_ATTACK,
++	-- PED_FIGHT,
++	-- PED_FACE_PHONE,
++	-- PED_MAKE_CALL,
++	-- PED_CHAT,
++	-- PED_MUG,
++	-- PED_AIM_GUN,
++	-- PED_AI_CONTROL,
++	-- PED_SEEK_CAR,
++	-- PED_SEEK_IN_BOAT,
++	-- PED_FOLLOW_ROUTE,
++	-- PED_CPR,
++	-- PED_SOLICIT,
++	-- PED_BUY_ICECREAM,
++	-- PED_INVESTIGATE,
++	-- PED_STEP_AWAY,
++	-- PED_ON_FIRE,
++	-- PED_SUN_BATHE,
++	-- PED_FLASH,
++	-- PED_JOG,
++	-- PED_ANSWER_MOBILE,
++
++	-- PED_UNKNOWN,
++
++	-- PED_STATES_NO_AI,
++
++	-- PED_ABSEIL,
++	-- PED_SIT,
++	-- PED_JUMP,
++	-- PED_FALL,
++	-- PED_GETUP,
++	-- PED_STAGGER,
++	-- PED_DIVE_AWAY,
++
++	-- PED_STATES_NO_ST,
++	-- PED_ENTER_TRAIN,
++	-- PED_EXIT_TRAIN,
++	-- PED_ARREST_PLAYER,
++
++	-- PED_DRIVING,
++	-- PED_PASSENGER,
++	-- PED_TAXI_PASSENGER,
++	-- PED_OPEN_DOOR,
++	-- PED_DIE,
++	-- PED_DEAD,
++	-- PED_CARJACK,
++	-- PED_DRAG_FROM_CAR,
++	-- PED_ENTER_CAR,
++	-- PED_STEAL_CAR,
++	-- PED_EXIT_CAR,
++	-- PED_HANDS_UP,
++	-- PED_ARRESTED,
++	-- PED_DEPLOY_STINGER
++
++-- eMoveState
++	-- PEDMOVE_NONE,
++	-- PEDMOVE_STILL,
++	-- PEDMOVE_WALK,
++	-- PEDMOVE_JOG,
++	-- PEDMOVE_RUN,
++	-- PEDMOVE_SPRINT,
++	-- PEDMOVE_THROWN
++
++-- eWaitState
++	-- WAITSTATE_FALSE,
++	-- WAITSTATE_TRAFFIC_LIGHTS,
++	-- WAITSTATE_CROSS_ROAD,
++	-- WAITSTATE_CROSS_ROAD_LOOK,
++	-- WAITSTATE_LOOK_PED,
++	-- WAITSTATE_LOOK_SHOP,
++	-- WAITSTATE_LOOK_ACCIDENT,
++	-- WAITSTATE_FACEOFF_GANG,
++	-- WAITSTATE_DOUBLEBACK,
++	-- WAITSTATE_HITWALL,
++	-- WAITSTATE_TURN180,
++	-- WAITSTATE_SURPRISE,
++	-- WAITSTATE_STUCK,
++	-- WAITSTATE_LOOK_ABOUT,
++	-- WAITSTATE_PLAYANIM_DUCK,
++	-- WAITSTATE_PLAYANIM_COWER,
++	-- WAITSTATE_PLAYANIM_TAXI,
++	-- WAITSTATE_PLAYANIM_HANDSUP,
++	-- WAITSTATE_PLAYANIM_HANDSCOWER,
++	-- WAITSTATE_PLAYANIM_CHAT,
++	-- WAITSTATE_FINISH_FLEE,
++	-- WAITSTATE_SIT_DOWN,
++	-- WAITSTATE_SIT_DOWN_RVRS,
++	-- WAITSTATE_SIT_UP,
++	-- WAITSTATE_SIT_IDLE,
++	-- WAITSTATE_USE_ATM,
++	-- WAITSTATE_SUN_BATHE_PRE,
++	-- WAITSTATE_SUN_BATHE_DOWN,
++	-- WAITSTATE_SUN_BATHE_IDLE,
++	-- WAITSTATE_RIOT,
++	-- WAITSTATE_FAST_FALL,
++	-- WAITSTATE_BOMBER,
++	-- WAITSTATE_STRIPPER,
++	-- WAITSTATE_GROUND_ATTACK,
++	-- WAITSTATE_LANCESITTING,
++	-- WAITSTATE_PLAYANIM_HANDSUP_SIMPLE,
++
++-- eObjective
++
++    -- "OBJECTIVE_NONE"
++	-- OBJECTIVE_WAIT_ON_FOOT,
++	-- OBJECTIVE_WAIT_ON_FOOT_FOR_COP,
++	-- OBJECTIVE_FLEE_ON_FOOT_TILL_SAFE,
++	-- OBJECTIVE_GUARD_SPOT,
++	-- OBJECTIVE_GUARD_AREA,
++	-- OBJECTIVE_WAIT_IN_CAR,
++	-- OBJECTIVE_WAIT_IN_CAR_THEN_GET_OUT,
++	-- OBJECTIVE_KILL_CHAR_ON_FOOT,
++	-- OBJECTIVE_KILL_CHAR_ANY_MEANS,
++	-- OBJECTIVE_FLEE_CHAR_ON_FOOT_TILL_SAFE,
++	-- OBJECTIVE_FLEE_CHAR_ON_FOOT_ALWAYS,
++	-- OBJECTIVE_GOTO_CHAR_ON_FOOT,
++	-- OBJECTIVE_GOTO_CHAR_ON_FOOT_WALKING,
++	-- OBJECTIVE_HASSLE_CHAR,
++	-- OBJECTIVE_FOLLOW_CHAR_IN_FORMATION,
++	-- OBJECTIVE_LEAVE_CAR,
++	-- OBJECTIVE_ENTER_CAR_AS_PASSENGER,
++	-- OBJECTIVE_ENTER_CAR_AS_DRIVER,
++	-- OBJECTIVE_FOLLOW_CAR_IN_CAR,
++	-- OBJECTIVE_FIRE_AT_OBJECT_FROM_VEHICLE,
++	-- OBJECTIVE_DESTROY_OBJECT,
++	-- OBJECTIVE_DESTROY_CAR,
++	-- OBJECTIVE_GOTO_AREA_ANY_MEANS,
++	-- OBJECTIVE_GOTO_AREA_ON_FOOT,
++	-- OBJECTIVE_RUN_TO_AREA,
++	-- OBJECTIVE_GOTO_AREA_IN_CAR,
++	-- OBJECTIVE_FOLLOW_CAR_ON_FOOT_WITH_OFFSET,
++	-- OBJECTIVE_GUARD_ATTACK,
++	-- OBJECTIVE_SET_LEADER,
++	-- OBJECTIVE_FOLLOW_ROUTE,
++	-- OBJECTIVE_SOLICIT_VEHICLE,
++	-- OBJECTIVE_HAIL_TAXI,
++	-- OBJECTIVE_CATCH_TRAIN,
++	-- OBJECTIVE_BUY_ICE_CREAM,
++	-- OBJECTIVE_STEAL_ANY_CAR,
++	-- OBJECTIVE_STEAL_ANY_MISSION_CAR,
++	-- OBJECTIVE_MUG_CHAR,
++	-- OBJECTIVE_LEAVE_CAR_AND_DIE,
++	-- OBJECTIVE_GOTO_SEAT_ON_FOOT,
++	-- OBJECTIVE_GOTO_ATM_ON_FOOT,
++	-- OBJECTIVE_FLEE_CAR,
++	-- OBJECTIVE_SUN_BATHE,
++	-- OBJECTIVE_GOTO_BUS_STOP_ON_FOOT,
++	-- OBJECTIVE_GOTO_PIZZA_ON_FOOT,
++	-- OBJECTIVE_GOTO_SHELTER_ON_FOOT,
++	-- OBJECTIVE_AIM_GUN_AT,
++	-- OBJECTIVE_WANDER,
++	-- OBJECTIVE_WAIT_ON_FOOT_AT_SHELTER,
++	-- OBJECTIVE_SPRINT_TO_AREA,
++	-- OBJECTIVE_KILL_CHAR_ON_BOAT,
++	-- OBJECTIVE_SOLICIT_FOOT,
++	-- OBJECTIVE_WAIT_ON_FOOT_AT_BUS_STOP,
++	-- OBJECTIVE_GOTO_ICE_CREAM_VAN_ON_FOOT,
++	-- OBJECTIVE_WAIT_ON_FOOT_AT_ICE_CREAM_VAN,
++	-- OBJ_55,
++	-- OBJ_56,
++	-- OBJ_57,
++	-- OBJ_58,
++	-- OBJ_59
+\ No newline at end of file
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 3f210e06..f45592cc 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -439,11 +439,27 @@ RwGrabScreen(RwCamera *camera, RwChar *filename)
+ void
+ DoRWStuffEndOfFrame(void)
+ {
++#ifdef CUSTOM_CODE
++	// TODO Move this into a function in my files.
++	// TODO Make this work for a timer bar in lua.
++	// TODO Add timer bar test into here
++	// This displays!
++	// Actually, I might've solved the flicker by modifying the function a bit.
++	// The function is now static, I may change that later.
++	// MiscFunctions::TimerBarTest();
++	//
++
++#endif // CUSTOM_CODE - Timer bar test, drawing to the screen.
++
+ 	CDebug::DisplayScreenStrings();	// custom
+ 	CDebug::DebugDisplayTextBuffer();
+ 	FlushObrsPrintfs();
++
++
++
+ 	RwCameraEndUpdate(Scene.camera);
+ 	RsCameraShowRaster(Scene.camera);
++
+ #ifndef MASTER
+ 	char s[48];
+ #ifdef THIS_IS_STUPID
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+index 85217d51..f1edead0 100644
+--- a/src/extras/custom_scripts/init_game.cpp
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -1,6 +1,5 @@
+ #include "pch.h"
+ 
+-
+ #include "init_game.h"
+ 
+ // ReVC
+@@ -36,9 +35,15 @@
+ // For loading models.
+ #include "Streaming.h"
+ 
++//-------------
++// KCNet ReVC Scripting system
++// Using Lua for the main.scm game script replacement.
++// This currently just sets up the player and their spawn location.
++// I need to add more to this so I can replicate some of the game script functions.
++//-------------
++
+ //----------
+-// Player
+-// TODO Move these
++// Player, Init functions
+ //----------
+ 
+ /**
+@@ -62,8 +67,11 @@ bool InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
+         
+ 
+ 	// Load the player model.
++    // I can set a specific skin to spawn in with here.
++    // I may setup an enum list of these later, it is the same as the clothes menu in my mod menu.
+ 	if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
+ 		CStreaming::RequestSpecialModel(MI_PLAYER, "player", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
++		// CStreaming::RequestSpecialModel(MI_PLAYER, "player2", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
+ 		CStreaming::LoadAllRequestedModels(false);
+ 	}
+ 
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index fcc017ef..10d9dcaa 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -265,6 +265,10 @@ MiscFunctions::CreateWeaponPickup(uint32 weaponModel)
+ //---------- Begin chaos mod timer bar test ----------//
+ 
+ /// <summary>
++/// TODO Look into using this, I forgot about it.
++/// TODO Make this not flicker in DoRWStuffEndOfFrame within main.cpp.
++/// Hookup a timer in lua and use this function with it or something.
++/// I will need to keep track of a timer like the original game scripts were.
+ /// Credit to user-grinch for this:
+ /// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
+ /// This displays on the screen but only when the imgui menu is open, I will toggle this elsewhere.
+@@ -279,6 +283,7 @@ void
+ MiscFunctions::TimerBarTest()
+ {
+ 	static uint32 m_nTimer = 0;
++	static int m_nInterval = 10;
+ 	uint32 timer = CTimer::GetTimeInMilliseconds();
+ 
+ 	if ((timer - m_nTimer) > static_cast<uint16>(m_nInterval)) 
+@@ -292,9 +297,8 @@ MiscFunctions::TimerBarTest()
+ 		}
+ 	}
+ 
+-	if(this->getChaosTimerBarToggle()) {
+-
+-		
++	// I guess this if statement makes it flicker when on, I will have to find a way to toggle this properly in a loop.
++	// if(this->getChaosTimerBarToggle()) {
+ 
+ 		int32 screenWidth = FrontEndMenuManager.m_nPrefsWidth;
+ 		int32 screenHeight = FrontEndMenuManager.m_nPrefsHeight;
+@@ -310,7 +314,7 @@ MiscFunctions::TimerBarTest()
+ 
+ 		CSprite2d::DrawRect(sizeBox, colorBG);
+ 		CSprite2d::DrawRect(sizeProgress, colorProgress);
+-	}
++	// }
+ }
+ 
+ // clang-format on
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index f3a52e7e..4d59df61 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -12,7 +12,7 @@ private:
+ 	std::string m_chaosTimerBarText;
+ 	bool m_bChaosTimerBar;
+ 
+-	int m_nInterval = 10;
++	// int m_nInterval = 10;
+ 
+ 	// If the player has been created, this should prevent the code from spawning multiple players.
+ 	// I guess I could use this for a possible multiplayer system.
+@@ -81,7 +81,8 @@ public:
+ 
+ 	// Test for timer bar, from here:
+ 	// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
+-	void TimerBarTest();
++	// void TimerBarTest();
++	static void TimerBarTest();
+ 
+ 	// Ped road toggling, this toggles the peds in the specified area like in the scripts.
+ 	void SwitchPedRoadsOn(float x1, float x2, float y1, float y2, float z1, float z2);
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 40852be2..b05be737 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -92,6 +92,8 @@
+ 
+ #include "defines.h"
+ 
++#include "init_game.h"
++
+ 
+ //****************************/
+ // Lua stuff
+@@ -145,8 +147,15 @@ LuaSetup::LuaPlayingGameLoop()
+ #ifdef DISABLE_GAME_SCRIPTS
+ 		// Start a new game directly, for debugging my new freeroam scripts.
+ 		// TODO Add toggle for this somewhere, it shouldn't always be enabled.
++		// TODO Make this always load the game audio, sometimes I have to pause and unpause to fix it.
++
++		// TODO Fix this, it seems to crash it now for some reason.
++		// It's because of me not resetting the m_bPlayerCreated back to false, I will have to do that here I guess.
+ 		if(KEYDOWN(rsF5) && CTimer::GetTimeInMilliseconds() - newTime > 500)
+ 		{
++			// Reset the players created status, otherwise this will not allow them to respawn and crash.
++			// Oops, I didn't mean to do that.
++			InitGame::GetInstance().SetPlayerCreated(false);
+ 			FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 		}
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+-- 
+2.43.0
+

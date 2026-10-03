@@ -1,0 +1,92 @@
+From 273623cca19de8c8607d63cdbf793f3d69ab2836 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 9 Sep 2026 01:27:25 -0400
+Subject: [PATCH 104/161] feat: Add missing lua functions changes
+
+* Update changelog.
+---
+ Changelog.md                     | 10 +++++++++-
+ src/extras/lua/lua_functions.cpp | 24 ++++++++++++++++++++++++
+ src/extras/lua/lua_functions.h   |  4 ++++
+ 3 files changed, 37 insertions(+), 1 deletion(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index b46ba25f..57184247 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -395,6 +395,8 @@ feat: Add test for wait in lua_game
+ 
+ ### 1.2.11-4a
+ 
++**Commit 1**
++
+ feat: Add test for wait in lua_game
+ 
+ * I added a test for a COMMAND_WAIT implementation, I'm not sure if this will work just yet though. 
+@@ -405,4 +407,10 @@ feat: Add test for wait in lua_game
+ 
+ * Add checkFloatLua and checkIntLua functions for later use.
+ 
+-* Update changelog, bump version to 1.2.11-4a
+\ No newline at end of file
++* Update changelog, bump version to 1.2.11-4a
++
++**Commit 2**
++
++feat: Add missing lua functions changes
++
++* Update changelog.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 73b6b28f..f992e04e 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -109,6 +109,30 @@ std::optional<lua_Number> luaGetNumber(lua_State* L, int index)
+     return value;
+ }
+ 
++/**
++ * Get a float from lua.
++ * 
++ * @param L
++ * @param index The index to get the float from.
++ */
++float
++checkFloatLua(lua_State *L, int index)
++{
++    return static_cast<float>(luaL_checknumber(L, index));
++}
++
++/**
++ * Get a float from lua.
++ * 
++ * @param L
++ * @param index The index to get the int from.
++ */
++int
++checkIntLua(lua_State *L, int index)
++{
++    return static_cast<int>(luaL_checkinteger(L, index));
++}
++
+ /// <summary>
+ /// Push a boolean to lua.
+ /// </summary>
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 481e28df..a7377d76 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -18,6 +18,10 @@ extern "C" {
+ 
+ 	//------------- Functions -----------//
+ 	extern std::optional<lua_Number> luaGetNumber(lua_State* L, int index);
++
++	extern float checkFloatLua(lua_State *L, int index);
++	extern int checkIntLua(lua_State *L, int index);
++
+ 	extern void pushBooleanToLua(lua_State *L, bool value);
+ 	extern void pushIntToLua(lua_State *L, int value);
+ 	extern void pushFloatToLua(lua_State *L, float value);
+-- 
+2.43.0
+

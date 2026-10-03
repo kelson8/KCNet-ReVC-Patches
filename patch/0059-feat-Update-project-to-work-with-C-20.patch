@@ -1,0 +1,236 @@
+From 4007b678c0a5a3e3279d44390e4f303be11e2e43 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 12 Aug 2026 11:53:23 -0400
+Subject: [PATCH 059/161] feat: Update project to work with C++20
+
+* This may need more testing on Windows, but works fine on Linux.
+
+* Fix ImGui font loading on Linux.
+* Make ImGui font loading not crash the game if the font file doesn't exist, now uses default font instead.
+---
+ .vscode/c_cpp_properties.json            |  6 ++--
+ CMakeLists.txt                           |  1 +
+ premake5.lua                             |  3 ++
+ src/extras/functions/file_functions.cpp  | 42 +++++++++++++++++++++---
+ src/extras/functions/file_functions.h    | 16 ++++++++-
+ src/extras/functions/imgui_functions.cpp | 20 +++++++++--
+ 6 files changed, 78 insertions(+), 10 deletions(-)
+
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+index 029ffc87..460b021e 100644
+--- a/.vscode/c_cpp_properties.json
++++ b/.vscode/c_cpp_properties.json
+@@ -10,7 +10,7 @@
+       "compilerPath": "/opt/local/bin/clang",
+       "compilerArgs": ["-g"],
+       "cStandard": "gnu11",
+-      "cppStandard": "gnu++14",
++      "cppStandard": "gnu++20",
+       "browse": {
+         "path": [
+           "/opt/local/include",
+@@ -28,7 +28,7 @@
+       "compilerPath": "/usr/bin/gcc",
+       "compilerArgs": ["-ggdb"],
+       "cStandard": "gnu11",
+-      "cppStandard": "gnu++14"
++      "cppStandard": "gnu++20"
+     },
+     {
+       "name": "devkitPro aarch64 (Nintendo Switch)",
+@@ -56,7 +56,7 @@
+       "windowsSdkVersion": "10.0.22621.0",
+       "compilerPath": "cl.exe",
+       "cStandard": "c17",
+-      "cppStandard": "c++17",
++      "cppStandard": "c++20",
+       "intelliSenseMode": "windows-msvc-x64",
+       "configurationProvider": "ms-vscode.makefile-tools"
+     }
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5d29a834..77ca44f2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -5,6 +5,7 @@ set(PROJECT REVC)
+ 
+ project(${EXECUTABLE} C CXX)
+ set(${PROJECT}_AUTHOR "${PROJECT} Team")
++set(CMAKE_CXX_STANDARD 20)
+ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+ 
+ include(GetGitRevisionDescription)
+diff --git a/premake5.lua b/premake5.lua
+index 36b7bbfe..9223bcfb 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -93,6 +93,7 @@ end
+ 
+ workspace "reVC"
+ 	language "C++"
++	cppdialect "C++20"
+ 	configurations { "Debug", "Release" }
+ 	startproject "reVC"
+ 	location "build"
+@@ -602,6 +603,8 @@ project "reVC"
+ 
+ 	filter "platforms:linux*gl3_glfw*"
+ 		links { "GL", "glfw" }
++		-- Added for custom GLFW.
++		libdirs { "/usr/local/lib" }
+ 
+ 	filter "platforms:bsd*gl3_glfw*"
+ 		links { "GL", "glfw", "sysinfo" }
+diff --git a/src/extras/functions/file_functions.cpp b/src/extras/functions/file_functions.cpp
+index e13f2b80..1d2bb9f5 100644
+--- a/src/extras/functions/file_functions.cpp
++++ b/src/extras/functions/file_functions.cpp
+@@ -1,5 +1,6 @@
+ #include "file_functions.h"
+ 
++#include <filesystem>
+ #include <iostream>
+ #include <fstream>
+ 
+@@ -22,15 +23,48 @@
+ // This may be very useful:
+ // https://www.geeksforgeeks.org/logging-system-in-cpp/
+ 
+-//------------- File functions ---------------/
++FileFunctions::FileFunctions() 
++{
++
++}
+ 
+ 
+-bool FileFunctions::DoesFileExist(const std::string& fileName)
++//------------- File functions ---------------/
++
++/**
++ * Check if a file exists
++ * 
++ * @param fileName The name of the file to check.
++ */
++bool FileFunctions::DoesFileExist(const std::string &fileName)
+ {
+-	std::ifstream file(fileName);
+-	return file.good();
++    return std::filesystem::exists(fileName);
+ }
+ 
++/**
++ * Get the current program directory
++ * Taken from my local testing projects.
++ */
++std::string FileFunctions::GetWorkingDirectory()
++{
++    const size_t size = 1024;
++    char buffer1[size];
++
++    // Call _getcwd to get the current working directory and store it in buffer
++#ifdef _WIN32
++    if (_getcwd(buffer1, size) != NULL)
++#else
++    if (getcwd(buffer1, size) != NULL)
++#endif
++    {
++        return std::string(buffer1);
++    }
++    else
++    {
++        // std::cerr << "Error getting current working directory" << std::endl;
++        return "";
++    }
++}
+ 
+ // TODO Test for Linux
+ std::string FileFunctions::CurrentDirectory()
+diff --git a/src/extras/functions/file_functions.h b/src/extras/functions/file_functions.h
+index ff06275a..8dd7a70b 100644
+--- a/src/extras/functions/file_functions.h
++++ b/src/extras/functions/file_functions.h
+@@ -8,12 +8,20 @@
+ 
+ class FileFunctions {
+ public:
++    static FileFunctions &getInstance()
++    {
++        static FileFunctions instance; // Guaranteed to be destroyed.
++        return instance;
++    }
+ 
+-	// TODO Fix all this for Linux
+ 	// Folder stuff
+ 	static bool DoesFileExist(const std::string& fileName);
++	std::string GetWorkingDirectory();
++
++	// Doesn't work on Linux/untested.
+ 	static std::string CurrentDirectory();
+ 
++
+ #ifdef _WIN32
+ 
+ 
+@@ -24,4 +32,10 @@ public:
+ #else 
+ 	static bool CheckDirectoryExists(std::string folderPath);
+ #endif
++
++private:
++    FileFunctions();
++    // ~Commands(); // Optional deconstructor
++    FileFunctions(const FileFunctions &) = delete;            // Prevent copy-construction
++    FileFunctions &operator=(const FileFunctions &) = delete; // Prevent assignment
+ };
+\ No newline at end of file
+diff --git a/src/extras/functions/imgui_functions.cpp b/src/extras/functions/imgui_functions.cpp
+index b5ac27f6..17054961 100644
+--- a/src/extras/functions/imgui_functions.cpp
++++ b/src/extras/functions/imgui_functions.cpp
+@@ -35,6 +35,7 @@
+ #include <sstream>
+ 
+ #include "log_functions.h"
++#include "file_functions.h"
+ 
+ #ifdef _WIN32
+ #include <direct.h>
+@@ -173,11 +174,17 @@ ImGuiFunctions::PrintToOutput(const char* text)
+ void
+ ImGuiFunctions::SetupFonts(ImGuiIO &io)
+ {
++	FileFunctions &fileFunctions = FileFunctions::getInstance();
++
+ 	//std::string viceExtendedPath = "ViceExtended\\";
+ 	// Add fonts to the path.
+ 	//std::string fontsPath = viceExtendedPath + "fonts\\";
+-	std::string fontsPath = "fonts\\";
+ 
++#ifdef _WIN32
++	std::string fontsPath = "fonts\\";
++#else
++	std::string fontsPath = "fonts/";
++#endif // _WIN32
+ 
+ 	Defines defines = Defines();
+ 
+@@ -194,7 +201,16 @@ ImGuiFunctions::SetupFonts(ImGuiIO &io)
+ 
+ 	io.Fonts->AddFontDefault();
+ 	std::string fontFilePath = fontsPath + defines.fontFile;
+-	io.Fonts->AddFontFromFileTTF(fontFilePath.c_str(), 1.15f);
++
++    // Check if the font exists, if not fallback to the default fonts.
++    if(fileFunctions.DoesFileExist(fontFilePath)) {
++        std::cout << fontFilePath << " exists, loading cheat_menu font." << std::endl;
++        io.Fonts->AddFontFromFileTTF(fontFilePath.c_str(), 1.15f);
++    } else {
++        std::cout << fontFilePath << " doesn't exist! Loading default fonts." << std::endl;
++    }
++
++	// io.Fonts->AddFontFromFileTTF(fontFilePath.c_str(), 1.15f);
+ }
+ 
+ /// <summary>
+-- 
+2.43.0
+

@@ -1,0 +1,409 @@
+From 2dd7654725766b86b0e0664c3030829095209b1b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 19 Sep 2026 12:15:28 -0400
+Subject: [PATCH 172/176] feat: Finally fix mouse crashing and going out of
+ bounds with ImGui mod menu.
+
+* Make freeroam save loading toggleable
+
+* Add some cheats to the cheat menu.
+
+* Add gbLoadFreeroamSave global for use in lua.
+
+* Update changelog.
+---
+ Changelog.md                         | 14 ++++++
+ src/core/Frontend.cpp                | 15 ++++++
+ src/core/main.cpp                    |  5 ++
+ src/core/main.h                      |  4 ++
+ src/extras/functions/imgui_setup.cpp | 74 ++++++++++++++++------------
+ src/extras/lua/lua_setup.cpp         | 20 ++++++--
+ src/extras/lua/lua_test.cpp          | 19 +++++++
+ src/extras/menus/cheat_menu.cpp      | 21 +++++++-
+ src/extras/utils/freeroam_util.cpp   | 14 ++++++
+ 9 files changed, 150 insertions(+), 36 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 7639dd03..abd836c1 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1123,6 +1123,8 @@ feat: Add json logging for coords
+ 
+ ### 1.2.15-1a
+ 
++**Commit 1**
++
+ feat: Add audio management for use in my lua scripts.
+ 
+ * Add lua_ped file for later use.
+@@ -1134,3 +1136,15 @@ feat: Add audio management for use in my lua scripts.
+ * Add loading and saving the game from my C++ code into lua.
+ 
+ * Update changelog, change version to 1.2.15-1a.
++
++**Commit 2**
++
++feat: Finally fix mouse crashing and going out of bounds with ImGui mod menu.
++
++* Make freeroam save loading toggleable
++
++* Add some cheats to the cheat menu.
++
++* Add gbLoadFreeroamSave global for use in lua.
++
++* Update changelog.
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index e2b8e152..6077dec6 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -60,6 +60,10 @@
+ #include "fast_loader.h"
+ #endif // DISABLE_GAME_SCRIPTS - Fix for audio bug on new game.
+ 
++#ifdef _IMGUI_TEST
++#include "imgui_functions.h"
++#endif // _IMGUI_TEST
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -663,9 +667,20 @@ CMenuManager::Initialise(void)
+ 	CTimer::StartUserPause();
+ }
+ 
++/**
++ * TODO Look into this for my ImGui shit, try to make it not crash and break the fucking mouse...
++ * 
++ */
+ void
+ CMenuManager::CentreMousePointer()
+ {
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++	imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
++	if(imGuiFunctions.ImGuiActive)
++		return;
++#endif // _IMGUI_TEST
++
+ 	if (SCREEN_WIDTH * 0.5f != 0.0f && 0.0f != SCREEN_HEIGHT * 0.5f) {
+ #if defined RW_D3D9 || defined RWLIBS
+ 		tagPOINT Point;
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 32a2ae1c..825334c7 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -205,6 +205,11 @@ bool gbTimerBarDisplay = false;
+ #endif // DISABLE_GAME_SCRIPTS - Toggle timer bar on top off screen.
+ 
+ 
++// This should be set in the lua scripts.
++#ifdef DISABLE_GAME_SCRIPTS
++bool gbLoadFreeroamSave;
++#endif // DISABLE_GAME_SCRIPTS - Make save loading toggleable with lua.
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/core/main.h b/src/core/main.h
+index bff30c5e..5a93d9cd 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -140,6 +140,10 @@ extern bool gbFadeOnDeath;
+ extern bool gbTimerBarDisplay;
+ #endif // DISABLE_GAME_SCRIPTS - Toggle timer bar on top off screen.
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++extern bool gbLoadFreeroamSave;
++#endif // DISABLE_GAME_SCRIPTS - Make save loading toggleable with lua.
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/extras/functions/imgui_setup.cpp b/src/extras/functions/imgui_setup.cpp
+index 043b235f..f6417ad7 100644
+--- a/src/extras/functions/imgui_setup.cpp
++++ b/src/extras/functions/imgui_setup.cpp
+@@ -6,6 +6,8 @@
+ 
+ #include "imgui.h"
+ 
++#include "Screen.h"
++
+ #if defined(_WIN32) && defined(RW_D3D9)
+ #include "imgui_impl_dx9.h"
+ #else
+@@ -25,7 +27,6 @@
+ #include <format>
+ #include <cstdlib>
+ 
+-
+ #include "main.h"
+ 
+ // Begin win.cpp headers
+@@ -99,6 +100,8 @@
+ #include "Pad.h"
+ #include "Timer.h"
+ 
++#include "Frontend.h"
++
+ // New for disabling menu on pause
+ #include "Camera.h"
+ 
+@@ -345,6 +348,34 @@ ImGuiSetup::GetGlfwWindow()
+ }
+ #endif // RW_GL3
+ 
++/**
++ * Set the cursor mode for ImGui.
++ * 
++ * @param window The GLFW window.
++ * @param menuOpen Is the ImGui menu open.
++ * 
++ */
++void SetMenuCursorMode(GLFWwindow* window, bool menuOpen)
++{
++    static bool previousMenuOpen = false;
++
++    if (menuOpen == previousMenuOpen)
++        return;
++
++    previousMenuOpen = menuOpen;
++
++    if (menuOpen)
++    {
++        // Show and release the OS cursor for ImGui.
++        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
++    }
++    else
++    {
++        // Hide and capture the cursor for the game/camera.
++        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
++    }
++}
++
+ /**
+  * This runs the loop for ImGui under GS_PLAYING_GAME
+  * TODO Test running this in gl3device under endUpdate.
+@@ -379,7 +410,6 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 
+ 	// Check if this is enabled in the ini config, if so run the keybind.
+ 	if(gbImGuiToggle) {
+-
+ 		if(KEYJUSTDOWN(rsF8)) {
+ 			// if(CTRLJUSTDOWN('N')) {
+ 			// newTime = CTimer::GetTimeInMilliseconds();
+@@ -387,16 +417,7 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 				imGuiFunctions.ImGuiActive = !imGuiFunctions.ImGuiActive;
+ 			}
+ 
+-		// Resize check
+-		// TODO Figure out how to get this.
+-		// This should fix the resize being buggy in D3D9 but other then that this menu seems to work.
+-		// if(g_ResizeWidth != 0 && g_ResizeHeight != 0) {
+-		//         rw::d3d::d3ddevice.BackBufferWidth = g_ResizeWidth;
+-		//         g_d3dpp.BackBufferHeight = g_ResizeHeight;
+-		//         g_ResizeWidth = g_ResizeHeight = 0;
+-		//         ResetDevice();
+-		//       }
+-		
++
+ 		// First, check if the game is paused, if so disable the menu.
+ 		// This works right here.
+ 		this->DisableImGuiOnGamePause();
+@@ -404,32 +425,23 @@ void ImGuiSetup::ImGuiPlayingGameLoop()
+ 		this->HandleControllerInput();
+ 		if(imGuiFunctions.ImGuiActive) {
+ 
+-			// Disable the players control and movement.
+-			this->DisablePlayerControl();
+-
+-			// TODO Try to make this work, taken from debugmenu.cpp.
+-			// This might fix the mouse going out of bounds and crashing with ImGui and OpenGL.
+ 
++			// ImGuiIO &io = ImGui::GetIO();
++			// auto mousePos = ImGui::GetIO().MousePos;
+ 
+-			// Well this did nothing...
+-			// Although it might help with something a bit.
+-			// if(MousePointerStateHelper.bInvertHorizontally) dirX = -1;
+-			// if(MousePointerStateHelper.bInvertVertically) dirY = -1;
+-
+-			// mouseX += pad->NewMouseControllerState.x*dirX;
+-			// mouseY += pad->NewMouseControllerState.y*dirY;
++			// Disable the players control and movement.
++			this->DisablePlayerControl();
+ 
+-			// // TODO Look into using this for my ImGui mouse code.
+-			// // Sometimes it crashes or goes off of the screen.
+-			// // Although I'm not sure where I would put that.
+-			// if(mouseX < 0.0f) mouseX = 0.0f;
+-			// if(mouseY < 0.0f) mouseY = 0.0f;
+-			// if(mouseX >= screenWidth) mouseX = screenWidth;
+-			// if(mouseY >= screenHeight) mouseY = screenHeight;
++			// This seems to fix the mouse going out of the window!!!!!!
++			// It uses the OS cursor instead!!
++			// Finally, after so long I fixed this damn mouse bug.
++			SetMenuCursorMode(PSGLOBAL(window), true);
++	
+ 
+ 		} else {
+ 			// Enable the players control and movement.
+ 			this->EnablePlayerControl();
++			SetMenuCursorMode(PSGLOBAL(window), false);
+ 		}
+ 	}
+ }
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 51786a94..7a80e755 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -161,13 +161,25 @@ LuaSetup::LuaPlayingGameLoop()
+ 			// Moved into LoadFreeroamScript.
+ 			// InitGame::GetInstance().SetPlayerCreated(false);
+ 
+-			// Fix for audio bug when pressing F5.
+-			// If I do the normal settings before a game my audio won't work until I pause/unpause.
+-			FastLoader::LoadFreeroamScript();
++
++			
++			if(gbLoadFreeroamSave)
++			{
++				// Fix for audio bug when pressing F5.
++				// If I do the normal settings before a game my audio won't work until I pause/unpause.
++				FastLoader::LoadFreeroamScript();
++			} 
++			else 
++			{
++				// Just load normally.
++				FastLoader::RestartMenus();
++				// FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++			}
++			
+ 
+ 			// FreeroamUtil::LoadFreeroamJson();
+ 
+-			// FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++			// 
+ 
+ 			// Well changing to this just reloads the game.
+ 			// This is kind of like my F9 keybind but for reloading the 'freeroam-game.lua' script.
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 215d67c8..e8b6db0c 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -1238,6 +1238,25 @@ LuaTest::SetupFreeroamScript()
+ 		}
+ 
+ 		lua_pop(m_luaVM, 1);
++
++		// If this is enabled, the game will load the freeroam json save.
++		// Otherwise it'll just place the player in the spawn set in the lua file.
++		lua_getglobal(m_luaVM, "gbLoadFreeroamSave");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool loadFreeroamSave = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbLoadFreeroamSave = loadFreeroamSave;
++		}
++
++		lua_pop(m_luaVM, 1);
++		
++		// Set the gravity in the game, I wonder if this will work.
++		// TODO Try and fix this to work, this current method doesn't work.
++		// lua_getglobal(m_luaVM, "gbGravity");
++		// if(lua_isboolean(m_luaVM, -1)) {
++		// 	auto newGravity = luaL_checknumber(m_luaVM, -1);
++		// 	GRAVITY = newGravity;
++		// }
++		// lua_pop(m_luaVM, 1);
+ 	}
+ #endif // DISABLE_GAME_SCRIPTS - Disable free roam script with main mission scripts.
+ }
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index d573f2df..855b1f55 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -21,6 +21,7 @@
+ 
+ 
+ // ReVC
++#include "Automobile.h"
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+@@ -43,6 +44,9 @@
+ 
+ // I didn't like the idea of collapsing headers being everywhere so I disabled them in here.
+ 
++// From Pad.cpp.
++extern bool gGravityCheat;
++
+ // Booleans
+ bool neverWanted = false;
+ bool betterHandling = false;
+@@ -288,7 +292,10 @@ void CheatMenu::CheatTab()
+ 	// Some of these were taken from Pad.cpp.
+ 	//----------
+ 	ImGui::Separator();
+-		ImGui::Text("Original Cheats");
++		if(ImGui::CollapsingHeader("Original Cheats")) {
++
++		
++		// ImGui::Text("Original Cheats");
+ 
+ 		ImGui::Checkbox("All traffic lights green", &CTrafficLights::bGreenLightsCheat);
+ 
+@@ -317,8 +324,20 @@ void CheatMenu::CheatTab()
+ 		ImGui::NewLine();
+ 
+ 		ImGui::Checkbox("Vehicles Hover", &CVehicle::bHoverCheat);
++		ImGui::Checkbox("Wallride Cheat", &gGravityCheat);
++
++		ImGui::NewLine();
++		ImGui::Checkbox("All cars are helis", &bAllCarCheat);
++		// TODO Implement these
++		// KANGAROO
++		// ImGui::Checkbox("Jump higher", &)
++		// ImGui::Checkbox("Ped Debug");
++		// WATERLAYERSCHEAT
++		
+ 
+ 
++		}
++
+ 		// Full list of car cheats, from Script6 'COMMAND_ARE_ANY_CAR_CHEATS_ACTIVATED'
+ 
+ 		// CVehicle::bAllDodosCheat || CVehicle::bCheat3 || CVehicle::bHoverCheat || CVehicle::bCheat8 || CVehicle::bCheat9
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index d1ce2fda..e060dccb 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -1,6 +1,7 @@
+ #include "pch.h"
+ 
+ #include "freeroam_util.h"
++#include "fast_loader.h"
+ 
+ #include "defines.h"
+ #include "log_functions.h"
+@@ -400,6 +401,19 @@ FreeroamUtil::SaveFreeroamJson()
+ bool
+ FreeroamUtil::LoadFreeroamJson()
+ {
++
++	// TODO Add a global check here for lua
++	// If this is set, just exit out of this function
++	// This will make the value be obtained from lua instead of always running.
++	if(!gbLoadFreeroamSave)
++	{
++		// Load a new game instead
++		// TODO Figure this out, it'll break the rest of the loading sequence if I do this..
++		// The F5 keybind may need to be moved to another function.
++
++		return false;
++	}
++
+ 	try {
+ 		std::ifstream input(GetFreeroamSavePath());
+ 
+-- 
+2.43.0
+

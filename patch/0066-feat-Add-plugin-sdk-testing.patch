@@ -1,0 +1,694 @@
+From 084af5b73cdaf475b6e3101a24f83b92be6c1e8d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Aug 2026 16:56:08 -0400
+Subject: [PATCH 066/161] feat: Add plugin sdk testing
+
+* Attempt to call script commands in C++ like with plugin-sdk using the Misc Menu in my mod menu.
+
+* Add src/extras/test to premake.
+---
+ premake5.lua                            |   8 +-
+ src/core/config.h                       |   9 +-
+ src/extras/functions/misc_functions.cpp |   2 +-
+ src/extras/menus/misc_menu.cpp          |  34 ++-
+ src/extras/test/script_commands.cpp     | 322 ++++++++++++++++++++++++
+ src/extras/test/script_commands.h       | 212 ++++++++++++++++
+ 6 files changed, 581 insertions(+), 6 deletions(-)
+ create mode 100644 src/extras/test/script_commands.cpp
+ create mode 100644 src/extras/test/script_commands.h
+
+diff --git a/premake5.lua b/premake5.lua
+index 42472430..c2a4a1c8 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -247,7 +247,7 @@ project "librw"
+ 		includedirs { ("src/extras/functions") }
+ 		includedirs { ("src/extras/menus") }
+ 
+-		-- includedirs { ("src/extras/test") }
++		
+ 
+ 		includedirs { "src/core" }
+ 		includedirs { "src/extras/kcnet" }
+@@ -257,8 +257,6 @@ project "librw"
+ 
+ 		-- Src folders - ImGui
+ 		files { addSrcFiles("lib/imgui") }
+-
+-		-- files { addSrcFiles("src/extras/test") }
+ 	
+ 		-- I don't want all ImGui backend files in here
+ 	
+@@ -319,6 +317,10 @@ project "reVC"
+ 	files { "lib/imgui/backends/imgui_impl_glfw.cpp" }
+ 	files { "lib/imgui/backends/imgui_impl_opengl3.cpp" }
+ 
++	-- Test folder
++	includedirs { ("src/extras/test") }
++	files { addSrcFiles("src/extras/test") }
++
+ 
+ 	-- Extras from miami master branch on Local Gitea.
+ 	files { addSrcFiles("src/extras/cheats") }
+diff --git a/src/core/config.h b/src/core/config.h
+index 09313db6..53a9fd85 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -18,13 +18,20 @@
+ // TODO Attempt to add a custom opcode and add it into gta3sc also
+ // #define NEW_OPCODES
+ 
++// Enable the plugin sdk early alpha test.
++// If I can get this working, I will be able to run the script commands directly in C++.
++// Just like the plugin sdk is doing.
++// TODO Fix this to work later, 
++//  it tries to run a command but I don't have it implemented properly so it crashes.
++// #define PLUGIN_SDK_TEST
++
+ // I added a toggle for the no pause on focus loss
+ // If this is disabled on Re3 and you press the Windows key without pausing,
+ // the mouse gets locked to the top left side and you have to taskkill the Re3 process.
+ // Well this is different with GLFW, so I will have to come up with another solution for this.
+ // #define DISABLE_PAUSE_FOCUS_LOSS
+ 
+-// Toggle the fast loader, not implemented yet
++// Toggle the fast loader.
+ #define _FAST_LOADER
+ 
+ #ifdef _FAST_LOADER
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 4271513b..682e8b6b 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -52,7 +52,7 @@
+ 
+ // TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
+ #ifdef PLUGIN_SDK_TEST
+-#include "../test/scriptcommands_test.h"
++#include "script_commands.h"
+ #endif
+ 
+ // ReVC
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 7c514aef..9284e6b1 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -44,7 +44,7 @@
+ 
+ // TODO Try to make this work, to run the script commands in the C++ code so I don't have to replicate each command.
+ #ifdef PLUGIN_SDK_TEST
+-#include "../test/scriptcommands_test.h"
++#include "script_commands.h"
+ #endif
+ 
+ // ReVC
+@@ -500,6 +500,38 @@ void MiscMenu::MiscTab()
+ 		// DrawKCNetTextBox();
+ 		miscFunctions.DrawKCNetTextBoxImGui();
+ 
++
++		// TODO Fix this to work.
++#ifdef PLUGIN_SDK_TEST
++		if(ImGui::Button("Script test"))
++		{
++			// Well this doesn't do anything
++			// This actually crashes somewhere..
++			// Holy shit this is crashing on GET_CHAR_HEALTH, is trying to run the command??
++			// Now it's crashing on CRunningScript::StoreParameters(uint32* pIp, int16 number)
++			// Giving the assert failed errors.
++			CPed *player;
++			float plyrHealth;
++			if(plugin::Command<COMMAND_IS_PLAYER_PLAYING>(0))
++			{
++				// plugin::Command<COMMAND_GET_CHAR_HEALTH>(0, &plyrHealth);
++				plugin::Command<COMMAND_GET_PLAYER_CHAR>(&player);
++				// plugin::Command<COMMAND_GET_CHAR_HEALTH>(0, &plyrHealth);
++				plugin::Command<COMMAND_GET_CHAR_HEALTH>(player, &plyrHealth);
++				TRACE("Player health: %f", plyrHealth);
++				// TRACE("Player: %f", player);
++				TRACE("Player is playing, script is working");
++			}
++			else
++			{
++				TRACE("Error, script test failed.");
++			}
++
++			// plugin::Command<COMMAND_SET_CHAR_PROOFS>();
++		}
++#endif // PLUGIN_SDK_TEST
++		
++
+ 		// TODO Fix for Linux
+ 		// Disabling this allows me to use this menu on Linux until I switch these over.
+ #ifdef _WIN32
+diff --git a/src/extras/test/script_commands.cpp b/src/extras/test/script_commands.cpp
+new file mode 100644
+index 00000000..f6e765b2
+--- /dev/null
++++ b/src/extras/test/script_commands.cpp
+@@ -0,0 +1,322 @@
++/*
++    Plugin-SDK (Grand Theft Auto) SHARED source file
++    Authors: GTA Community. See more here
++    https://github.com/DK22Pac/plugin-sdk
++    Do not delete this comment block. Respect others' work!
++*/
++
++
++// I got this to build by adding something from the plugin-sdk into the script.h
++// It still doesn't work though.
++// This now crashes to the error under Read2BytesFromScript in Script.h, instead of refusing to build
++
++// TODO Fix this to work on my latest copy of ReVC
++// It would be nice to be able to run the commands like the plugin-sdk does.
++
++// I think I almost have this working.
++// Now it's crashing on CRunningScript::StoreParameters(uint32* pIp, int16 number)
++// Giving the assert failed errors.
++
++// Test running under MiscMenu within Debug Functions sub menu.
++
++#include "script_commands.h"
++
++#ifdef PLUGIN_SDK_TEST
++
++#define GTAVC
++
++// #define WITHDINPUT
++#include "common.h"
++#include "crossplatform.h"
++#include "platform.h"
++
++#if defined(GTA3) || defined(GTAVC) || defined(GTALCS)
++
++#include "Pools.h"
++//#include "Error.h"
++//#include "CPools.h"
++// #include "Script.h"
++
++using namespace plugin;
++
++#ifdef GTASA
++#define SCRIPT_COMMANDS_LVAR_MAX_INDEX 31
++#else
++#define SCRIPT_COMMANDS_LVAR_MAX_INDEX 15
++#endif
++
++scripting::ScriptCode::VarToSet::VarToSet(unsigned int _varIndex, void *_pVar, ScriptResultVarType _varType) {
++    varIndex = _varIndex;
++    pVar = _pVar;
++    varType = _varType;
++}
++
++scripting::ScriptCode::ScriptCode(short commandId) {
++    capacity = 32;
++    data = new unsigned char[32];
++    size = 0;
++    varIndexCounter = 0;
++    if (commandId != -1) {
++        AddBytes(reinterpret_cast<unsigned char *>(&commandId), 2);
++    }
++}
++
++scripting::ScriptCode::~ScriptCode() {
++    delete[] data;
++}
++
++void scripting::ScriptCode::AddParameterDescription(unsigned char paramType) {
++    AddBytes(&paramType, 1);
++}
++
++void scripting::ScriptCode::AddBytes(unsigned char *bytes, unsigned int count) {
++    unsigned int newSize = size + count;
++    if (newSize > capacity) {
++        while (newSize > capacity)
++            capacity += 32;
++        unsigned char *newData = new unsigned char[capacity];
++        memcpy(newData, data, size);
++        delete[] data;
++        data = newData;
++    }
++    memcpy(&data[size], bytes, count);
++    size = newSize;
++}
++
++unsigned char *scripting::ScriptCode::GetData() { return data; };
++
++// TODO Fix this, this looks like the final piece to possibly getting a beta build of the plugin-sdk working in ReVC!
++// 
++
++// void scripting::ScriptCode::SaveResultVariables(CRunningScript *script) {
++// //#define LocalVar (*(tScriptParam*)&script->m_aLocalVars[varToSet.varIndex])
++// #define LocalVar (*(tScriptParam *)&script->m_anLocalVariables[varToSet.varIndex])
++// // #define LocalVar (*(ScriptParams *)&script->m_anLocalVariables[varToSet.varIndex])
++//     for (auto &varToSet : varsToSet) {
++//         if (varToSet.varType == SCRIPT_RESULT_VAR_NUMBER) {
++//             *reinterpret_cast<unsigned int *>(varToSet.pVar) = LocalVar.uParam;
++//         }
++//         else if (varToSet.varType == SCRIPT_RESULT_VAR_STRING) {
++//             char *pStr = reinterpret_cast<char *>(varToSet.pVar);
++//             strncpy(pStr, reinterpret_cast<char *>(&LocalVar.iParam), 15);
++//             pStr[15] = '\0';
++//         }
++//         else if (varToSet.varType == SCRIPT_RESULT_VAR_PED) {
++//             CPed *result = nullptr;
++//             if (LocalVar.iParam != -1)
++//                 result = CPools::GetPed(LocalVar.iParam);
++//             *reinterpret_cast<CPed **>(varToSet.pVar) = result;
++//         }
++//         else if (varToSet.varType == SCRIPT_RESULT_VAR_VEHICLE) {
++//             CVehicle *result = nullptr;
++//             if (LocalVar.iParam != -1)
++//                 result = CPools::GetVehicle(LocalVar.iParam);
++//             *reinterpret_cast<CVehicle **>(varToSet.pVar) = result;
++//         }
++//         // It breaks with this
++//         //else if (varToSet.varType == SCRIPT_RESULT_VAR_OBJECT) {
++//         //    CObject *result = nullptr;
++//         //    if (LocalVar.iParam != -1)
++//         //        result = CPools::GetObject(LocalVar.iParam);
++//         //    *reinterpret_cast<CObject **>(varToSet.pVar) = result;
++//         //}
++//     }
++// }
++
++/*
++
++        ARGUMENT_END = 0,
++        ARGUMENT_INT32,
++        ARGUMENT_GLOBALVAR,
++        ARGUMENT_LOCALVAR,
++        ARGUMENT_INT8,
++        ARGUMENT_INT16,
++        ARGUMENT_FLOAT
++*/
++
++void
++scripting::ScriptCode::operator<<(char n)
++{
++	AddParameterDescription(ARGUMENT_INT8);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 1);
++}
++void
++scripting::ScriptCode::operator<<(unsigned char n)
++{
++	AddParameterDescription(ARGUMENT_INT8);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 1);
++}
++void
++scripting::ScriptCode::operator<<(short n)
++{
++	AddParameterDescription(ARGUMENT_INT16);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 2);
++}
++void
++scripting::ScriptCode::operator<<(unsigned short n)
++{
++	AddParameterDescription(ARGUMENT_INT16);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 2);
++}
++void
++scripting::ScriptCode::operator<<(int n)
++{
++	AddParameterDescription(ARGUMENT_INT32);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 4);
++}
++void
++scripting::ScriptCode::operator<<(unsigned int n)
++{
++	AddParameterDescription(ARGUMENT_INT32);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 4);
++}
++#ifdef GTA3
++void scripting::ScriptCode::operator<<(float n) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_FLOAT);
++    short s = static_cast<short>(n * 16);
++    AddBytes(reinterpret_cast<unsigned char *>(&s), 2);
++}
++
++void scripting::ScriptCode::operator<<(double n) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_FLOAT);
++    short s = static_cast<short>(static_cast<float>(n) * 16);
++    AddBytes(reinterpret_cast<unsigned char *>(&s), 2);
++}
++#else
++void
++scripting::ScriptCode::operator<<(float n)
++{
++	AddParameterDescription(ARGUMENT_FLOAT);
++	AddBytes(reinterpret_cast<unsigned char *>(&n), 4);
++}
++void
++scripting::ScriptCode::operator<<(double n)
++{
++	AddParameterDescription(ARGUMENT_FLOAT);
++	float f = static_cast<float>(n);
++	AddBytes(reinterpret_cast<unsigned char *>(&f), 4);
++}
++#endif
++void
++scripting::ScriptCode::operator<<(ScriptCommandEndParameter)
++{
++	AddParameterDescription(ARGUMENT_END);
++}
++
++#ifdef GTASA
++void scripting::ScriptCode::operator<<(char *str) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_PASCAL_STRING);
++    unsigned int length = strlen(str);
++    AddParameterDescription(length);
++    AddBytes(reinterpret_cast<unsigned char *>(str), length);
++}
++
++void scripting::ScriptCode::operator<<(const char *str) {
++    AddParameterDescription(SCRIPTPARAM_STATIC_PASCAL_STRING);
++    unsigned int length = strlen(str);
++    AddParameterDescription(length);
++    AddBytes(reinterpret_cast<unsigned char *>(const_cast<char *>(str)), length);
++}
++
++void scripting::ScriptCode::operator<<(char(*p)[16]) {
++    AddParameterDescription(SCRIPTPARAM_LOCAL_LONG_STRING_VARIABLE);
++    if (varIndexCounter >= 28)
++        Error("ScriptCode::operator<<(char **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(*p), SCRIPT_RESULT_VAR_STRING);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    varIndexCounter += 4;
++}
++#else
++void scripting::ScriptCode::operator<<(char *str) {
++    static char tmpString[8];
++    strncpy(tmpString, str, 7);
++    tmpString[7] = '\0';
++    AddBytes(reinterpret_cast<unsigned char *>(tmpString), 8);
++}
++
++void scripting::ScriptCode::operator<<(const char *str) {
++    static char tmpString[8];
++    strncpy(tmpString, str, 7);
++    tmpString[7] = '\0';
++    AddBytes(reinterpret_cast<unsigned char *>(const_cast<char *>(tmpString)), 8);
++}
++#endif
++
++void scripting::ScriptCode::operator<<(float *p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        //Error("ScriptCode::operator<<(float *p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_NUMBER);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(int *p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        //Error("ScriptCode::operator<<(int *p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_NUMBER);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(unsigned int *p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++    //    Error("ScriptCode::operator<<(unsigned int *p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_NUMBER);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(CPed *n) {
++    if (!n)
++        operator<<(-1);
++    else
++        operator<<(CPools::GetPedRef(n));
++}
++
++void scripting::ScriptCode::operator<<(CVehicle *n) {
++    if (!n)
++        operator<<(-1);
++    else
++        operator<<(CPools::GetVehicleRef(n));
++}
++
++void scripting::ScriptCode::operator<<(CObject *n) {
++    if (!n)
++        operator<<(-1);
++    else
++        operator<<(CPools::GetObjectRef(n));
++}
++
++void scripting::ScriptCode::operator<<(CPed **p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    //if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++    //    Error("ScriptCode::operator<<(CPed **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_PED);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(CVehicle **p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        Error("ScriptCode::operator<<(CVehicle **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_VEHICLE);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++void scripting::ScriptCode::operator<<(CObject **p) {
++	AddParameterDescription(ARGUMENT_LOCALVAR);
++    if (varIndexCounter >= SCRIPT_COMMANDS_LVAR_MAX_INDEX)
++        Error("ScriptCode::operator<<(CObject **p): reached local var limit");
++    varsToSet.emplace_back(varIndexCounter, reinterpret_cast<void *>(p), SCRIPT_RESULT_VAR_OBJECT);
++    AddBytes(reinterpret_cast<unsigned char *>(&varIndexCounter), 2);
++    ++varIndexCounter;
++}
++
++#endif
++
++#endif //PLUGIN_SDK_TEST
+\ No newline at end of file
+diff --git a/src/extras/test/script_commands.h b/src/extras/test/script_commands.h
+new file mode 100644
+index 00000000..6bdb852e
+--- /dev/null
++++ b/src/extras/test/script_commands.h
+@@ -0,0 +1,212 @@
++#pragma once
++#include "ScriptCommandNames.h"
++
++
++// New
++#include <vector>
++#include <string.h>
++
++#include "config.h"
++
++
++// class Script;
++
++/*
++    Plugin-SDK (Grand Theft Auto) SHARED header file
++    Authors: GTA Community. See more here
++    https://github.com/DK22Pac/plugin-sdk
++    Do not delete this comment block. Respect others' work!
++*/
++
++#ifdef PLUGIN_SDK_TEST
++///
++#include "common.h"
++#include "Script.h"
++#include "ScriptCommands.h"
++
++// #include "main.h"
++
++// class CRunningScript;
++
++//
++
++#include <stdio.h>
++// #include "rwcore.h"
++
++// #include "skeleton.h"
++
++
++///
++
++
++// Parts of this file were obtained from the Plugin SDK, this is a very early work in progress and may not work at all yet.
++namespace plugin
++{
++
++class scripting
++{
++
++enum ScriptCommandEndParameter { END_PARAMETER };
++
++private:
++	enum ScriptResultVarType {
++		SCRIPT_RESULT_VAR_NUMBER,
++		SCRIPT_RESULT_VAR_STRING,
++		SCRIPT_RESULT_VAR_PED,
++		SCRIPT_RESULT_VAR_VEHICLE,
++		SCRIPT_RESULT_VAR_OBJECT
++	};
++
++class ScriptCode
++{
++	unsigned char *data;
++	unsigned int capacity;
++	unsigned int size;
++
++private:
++	enum ScriptResultVarType {
++		SCRIPT_RESULT_VAR_NUMBER,
++		SCRIPT_RESULT_VAR_STRING,
++		SCRIPT_RESULT_VAR_PED,
++		SCRIPT_RESULT_VAR_VEHICLE,
++		SCRIPT_RESULT_VAR_OBJECT
++	};
++
++	    struct VarToSet {
++		unsigned int varIndex;
++		void *pVar;
++		ScriptResultVarType varType;
++
++		VarToSet(unsigned int _varIndex, void *_pVar, ScriptResultVarType _varType);
++	};
++
++	std::vector<VarToSet> varsToSet;
++	unsigned short varIndexCounter;
++	
++	public:
++	ScriptCode(short commandId = -1);
++	~ScriptCode();
++	void AddParameterDescription(unsigned char paramType);
++	void AddBytes(unsigned char *bytes, unsigned int count);
++	unsigned char *GetData();
++
++	// void SaveResultVariables(CRunningScript *script);
++	void operator<<(char n);
++	void operator<<(unsigned char n);
++	void operator<<(short n);
++	void operator<<(unsigned short n);
++	void operator<<(int n);
++	void operator<<(unsigned int n);
++	void operator<<(float n);
++	void operator<<(double n);
++	void operator<<(ScriptCommandEndParameter);
++	void operator<<(char *str);
++	void operator<<(const char *str);
++	void operator<<(float *p);
++	void operator<<(int *p);
++	void operator<<(unsigned int *p);
++#ifdef GTASA
++	void operator<<(char (*p)[16]);
++#endif
++	void operator<<(CPed *n);
++	void operator<<(CVehicle *n);
++	void operator<<(CObject *n);
++	void operator<<(CPed **p);
++	void operator<<(CVehicle **p);
++	void operator<<(CObject **p);
++
++	template <typename T> void Pack(T value) { operator<<(value); }
++
++	template <typename First, typename... Rest> void Pack(First firstValue, Rest... rest)
++	{
++		Pack(firstValue);
++		Pack(rest...);
++	}
++
++	void Pack() {}
++};
++
++	/// </summary>
++
++
++
++
++	public:
++		template <typename... ArgTypes> static bool CallCommandById(unsigned int commandId, ArgTypes... arguments)
++		{
++			// create our 'script' object
++			static CRunningScript script;
++			memset(&script, 0, sizeof(CRunningScript));
++			//script.m_bWastedBustedCheck = true;
++		    script.m_bDeatharrestEnabled = true;
++
++			//strcpy(script.m_szName, "plg-sdk");
++		    strcpy(script.m_abScriptName, "plg-sdk");
++			//script.m_bIsMission = false;
++		    script.m_bMissionFlag = false;
++			//script.m_bUseMissionCleanup = false;
++			script.m_bNotFlag = (commandId >> 15) & 1;
++			// our script code
++			ScriptCode code(commandId);
++			// for all arguments: add them to script code
++			code.Pack(arguments...);
++
++			//script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CRunningScript::GetScriptSpaceBase());
++		        //script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CTheScripts::ScriptSpace(163840));
++		        
++				// script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CTheScripts::ScriptSpace);
++
++				// Almost works, crashes.
++		        script.m_nIp = reinterpret_cast<unsigned char*>(code.GetData()) - reinterpret_cast<unsigned char*>(CTheScripts::ScriptSpace);
++		        
++				// script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CTheScripts::ScriptSpace);
++			script.ProcessOneCommand();
++			// I hope this isn't needed...
++			// I think not having this implemented could be causing crashes.
++			// code.SaveResultVariables(&script);
++			return script.m_bCondResult ? true : false;
++		}
++
++		template <typename... ArgTypes> static bool CallCommandById(plugin::Commands commandId, ArgTypes... arguments)
++		{
++			return CallCommandById(static_cast<unsigned int>(commandId) - 0x10000, arguments...);
++		}
++		//};
++		unsigned char *data;
++		unsigned int capacity;
++		unsigned int size;
++
++		struct VarToSet {
++			unsigned int varIndex;
++			void *pVar;
++			ScriptResultVarType varType;
++
++			VarToSet(unsigned int _varIndex, void *_pVar, ScriptResultVarType _varType);
++		};
++
++		std::vector<VarToSet> varsToSet;
++		unsigned short varIndexCounter;
++
++
++
++
++};
++
++template <plugin::Commands CommandId, typename... ArgTypes>
++bool
++Command(ArgTypes... arguments)
++{
++	return scripting::CallCommandById(static_cast<unsigned int>(CommandId) - 0x10000, arguments...);
++}
++
++template <int CommandId, typename... ArgTypes>
++bool
++Command(ArgTypes... arguments)
++{
++	return scripting::CallCommandById(CommandId, arguments...);
++}
++
++
++}
++
++#endif //_TEST
+\ No newline at end of file
+-- 
+2.43.0
+

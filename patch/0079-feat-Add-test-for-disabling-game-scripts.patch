@@ -1,0 +1,735 @@
+From 53429fcf1e00134065939ecc6a228e72e83b8498 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 17:36:35 -0400
+Subject: [PATCH 079/161] feat: Add test for disabling game scripts
+
+* This is a very early alpha work in progress and is disabled, this can be toggled with the DISABLE_GAME_SCRIPTS preprocessor.
+
+* Once I get this working, it'll allow me to create a freeroam script for ReVC in lua instead of using the scm langauge, and I'll be able to reload it in game with a keybind instead of rebuilding scm scripts.
+
+DISABLE_GAME_SCRIPTS preprocessor info
+* Disable game loading/saving if this is enabled.
+* Disable the fast loader, shut down the scm script system.
+
+* Disable CScriptPaths::Init
+* Disable CTheScripts::StartTestScript and CTheScripts::Process
+* Disable CTheScripts::LoadAllScripts and CTheScripts::Init
+* Disable CRunningScript::ProcessOneCommand
+
+Extra changes
+* Disable an assert under LoadAllScripts, seems to crash.
+* Add COMMAND_INVALID into ScriptCommands.h.
+
+* Add Changelog.md
+
+* Bump project version from 1.2.2a to 1.2.3a.
+* Add freeroam-game.lua script under `gamefiles/ViceExtended/lua_scripts`, I will use this once I figure out how to redirect the game scripts to lua.
+
+* Update c_cpp_properties, fix some errors in VSCode.
+* Add TODO.md for a list of things to do for this project.
+* Add DISABLE_GAME_SCRIPTS to config.h and document the option a bit more.
+
+* Move FastLoader and GameSaveOnStartup ini values out of General and into KCNet options.
+* Update reVC.ini with new changes, disable fast loader by default since it might crash on invalid saves.
+---
+ .vscode/c_cpp_properties.json                 |  3 +-
+ Changelog.md                                  | 32 +++++++++++
+ TODO.md                                       | 48 ++++++++++++++++
+ .../lua_scripts/freeroam-game.lua             | 34 +++++++++++
+ gamefiles/reVC.ini                            |  9 +--
+ src/control/GameLogic.cpp                     |  8 +++
+ src/control/Script.cpp                        | 56 +++++++++++++++++++
+ src/control/Script5.cpp                       | 16 ++++++
+ src/control/ScriptCommands.h                  |  8 +++
+ src/core/Game.cpp                             | 14 ++++-
+ src/core/config.h                             | 14 +++++
+ src/core/main.cpp                             |  3 +
+ src/extras/functions/ini_functions.cpp        | 12 ++--
+ src/extras/utils/defines.cpp                  |  2 +-
+ src/save/GenericGameStorage.cpp               | 34 +++++++++++
+ src/skel/glfw/glfw.cpp                        | 10 ++--
+ 16 files changed, 287 insertions(+), 16 deletions(-)
+ create mode 100644 Changelog.md
+ create mode 100644 TODO.md
+ create mode 100644 gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+index 88822653..66c1656a 100644
+--- a/.vscode/c_cpp_properties.json
++++ b/.vscode/c_cpp_properties.json
+@@ -31,7 +31,8 @@
+             ],
+             "defines": [
+                 "XDG_ROOT",
+-                "RW_GL3"
++                "RW_GL3",
++                "LIBRW"
+             ],
+             "compilerPath": "/usr/bin/gcc",
+             "compilerArgs": [
+diff --git a/Changelog.md b/Changelog.md
+new file mode 100644
+index 00000000..f0305be6
+--- /dev/null
++++ b/Changelog.md
+@@ -0,0 +1,32 @@
++# KCNet ReVC changelog
++
++I have just recently started this, so I'll only have new changes for the ReVC code in here.
++
++### 1.2.3a
++Created on 9-4-2026
++
++New commit:
++feat: Add test for disabling game scripts
++
++* This is a very early alpha work in progress and is disabled, this can be toggled with the DISABLE_GAME_SCRIPTS preprocessor.
++
++* Once I get this working, it'll allow me to create a freeroam script for ReVC in lua instead of using the scm langauge, and I'll be able to reload it in game with a keybind instead of rebuilding scm scripts.
++
++DISABLE_GAME_SCRIPTS preprocessor info
++* Disable game loading/saving if this is enabled.
++* Disable the fast loader, shut down the scm script system.
++
++* Disable CScriptPaths::Init
++* Disable CTheScripts::StartTestScript and CTheScripts::Process
++* Disable CTheScripts::LoadAllScripts and CTheScripts::Init
++* Disable CRunningScript::ProcessOneCommand
++
++Extra changes
++* Disable an assert under LoadAllScripts, seems to crash.
++* Add COMMAND_INVALID into ScriptCommands.h.
++* Bump project version from 1.2.2a to 1.2.3a.
++* Add freeroam-game.lua script under `gamefiles/ViceExtended/lua_scripts`, I will use this once I figure out how to redirect the game scripts to lua.
++
++* Update c_cpp_properties, fix some errors in VSCode.
++* Add TODO.md for a list of things to do for this project.
++* Add DISABLE_GAME_SCRIPTS to config.h and document the option a bit more.
+diff --git a/TODO.md b/TODO.md
+new file mode 100644
+index 00000000..85964e81
+--- /dev/null
++++ b/TODO.md
+@@ -0,0 +1,48 @@
++## TODO For project
++
++### High priority
++* If player gets out of vehicle, store last vehicle they were in, for use with the `CustomCheats::LockDoors()` and `CustomCheats::UnlockDoors()` functions so I can unlock the players last vehicle.
++
++* Look into modifying functions like this with the lua code.
++```c++
++CTrafficLights::ShouldCarStopForLight(CVehicle *vehicle, bool alwaysStop)
++```
++
++* Look into calling some of these functions in my C++ code, such as from Pad.cpp, I may have to move some cheats into my mod menu. I plan on adding all cheats like the `all traffic lights green` cheat into my mod menu.
++
++```c++
++// Toggle for green lights cheat is 
++CTrafficLights::bGreenLightsCheat
++
++// I could probably modify this in my code instead of creating a brand new function.
++```
++
++* Try to make the game scripts load from lua scripts for the freeroam ones, so I can just disable the mission logic and run my own custom script logic, if I can figure this out I can pretty much recreate the scripting langauge for Vice City in lua, instead of using the `.scm` files.
++
++### Low priority
++
++**Multiplayer test**
++Actually, I might be able to look into using the code from this project for some type of multiplayer, they seem to have a possible working multiplayer implementation that I will have to test out later with this commit.
++* https://github.com/Insomniak313/vicecity-mp/commit/5b7982c34274b78ffe1a3da29092b9dccef1deac
++
++Well after some fighting with that code I was not able to get the multiplayer working, it was just throwing me into story mode no matter what I tried, and I even tried pressing host on the desktop and join on the Steam Deck.
++
++**Adding multiplayer to ReVC**
++
++These in the below list will take me a little while to figure out how to get the game to support two players, sync the weapon shots, vehicle movement, player health and a bunch of other features.
++
++With the first alpha release of this I plan on at least having the players able to drive and shoot each other, there will be no peds or traffic since I'll need to shut down the script system.
++
++I will have to shut down the games script system so it doesn't try to run the missions, and if I can figure out how to call the game script commands in lua, I might be able to redirect the scripts for multiplayer to use a custom lua script instead of the `.scm` format.
++
++It would be easy to keep the same format and use something like `GET_CHAR_COORDINATES` in the lua code to match what is used in the game.
++
++Here is a full list of the commands for GTA 3, Vice City, and San Andreas.
++* https://gtamods.com/wiki/List_of_opcodes
++
++1. Setup a server for the ReVC client to connect to, have the server receive commands such as /stop or /kill with specific permissions, I will need to check on the server if the user is an admin or normal user but that shouldn't be too hard to setup, also I'm not sure how I'll send the commands from the server back to the client just yet.
++2. Setup the game to work with more then one player, this will be the hardest part most likely.
++3. Setup a very basic multiplayer using ENet and a TCP client on ReVC.
++4. Setup a basic chat system to send messages and commands, press the `T` key to open the chat.
++5. Force game to use freeroam_miami.scm if MULTIPLAYER_TEST is enabled in the miami-tcp-test branch.
++
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+new file mode 100644
+index 00000000..455c7004
+--- /dev/null
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -0,0 +1,34 @@
++-- TODO Attempt to make freeroam_miami.scm load a custom script called freeroam-game.lua.
++
++-- I will need to figure out how to disable the game scripts which might be a bit easy to do.
++
++-- TODO Switch game from using .scm to lua. 
++-- Reimplement the init player and other required startup functions into my player cheats for lua.
++-- Or just call functions like that if I can.
++
++-- TODO Make this able to be toggled in the ini, with a flag such as gbDisableGameScripts.
++-- It should shut down the game scm scripting engine, return and exit out of some script functions.
++-- Also this should do some things to prevent the game from crashing without the scripts in place.
++
++-- Look into my Vice City scm scripts repo for setting up the player and other scm script examples.
++-- https://git.internal.kelsoncraft.net/kelson8/GTAVC-ScmScripts
++
++--------
++-- REQUIRED
++-- If you remove these functions out of the freeroam script you will most likely crash!
++-- They are needed for the game to know what to do without the '.scm' scripts. 
++--------
++
++-- Init player, spawn them in.
++
++--------
++-- End REQUIRED
++--------
++
++--------
++-- Custom functions go below
++--------
++
++-- Create some vehicles
++
++-- Spawn some peds
+diff --git a/gamefiles/reVC.ini b/gamefiles/reVC.ini
+index 6795bfb6..fe72d417 100644
+--- a/gamefiles/reVC.ini
++++ b/gamefiles/reVC.ini
+@@ -68,10 +68,6 @@ SkinFile=$$""
+ Language=0
+ DrawVersionText=0
+ NoMovies=1
+-; Set the fast loader
+-FastLoader=1
+-; Set the game save to load on startup
+-GameSaveOnStartup=2
+ [CustomPipesValues]
+ PostFXIntensity=1.000000
+ NeoVehicleShininess=1.000000
+@@ -144,6 +140,11 @@ Autosave=0
+ ; Not implemented
+ ExtraLogging=0
+ 
++; Set the fast loader
++FastLoader=0
++; Set the game save to load on startup
++GameSaveOnStartup=2
++
+ ; The game script to load
+ ; If using the fast loader, make sure to set this to 0.
+ ; 0 = Release (main.scm)
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index e4f303d7..81f1e67e 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -129,6 +129,10 @@ CGameLogic::Update()
+ 	// what a place to check!
+ 
+ 	// TODO Try to use this format to start a script.
++
++#ifndef DISABLE_GAME_SCRIPTS
++	// TODO Toggle this with the ini.
++
+ 	if (gbTryingPorn4Again) {
+ 		CRunningScript* pScript = CTheScripts::pActiveScripts;
+ 		//pScript->AddScriptToList
+@@ -141,6 +145,8 @@ CGameLogic::Update()
+ 	}
+ #endif
+ 
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	if (CCutsceneMgr::IsCutsceneProcessing()) return;
+ 
+ 	UpdateShortCut();
+@@ -163,6 +169,7 @@ CGameLogic::Update()
+ 	// If player is wasted
+ 	case WBSTATE_WASTED:
+ #ifdef MISSION_REPLAY
++		// 0x800 = 2048
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > AddExtraDeathDelay() + 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= AddExtraDeathDelay() + 0x800)) {
+ #else
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= 0x800)) {
+@@ -178,6 +185,7 @@ CGameLogic::Update()
+ 		}
+ 
+ #ifdef MISSION_REPLAY
++		// 0x1000 = 4096
+ 		if (CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime >= AddExtraDeathDelay() + 0x1000) {
+ #else
+ 		if (CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime >= 0x1000) {
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 1a2ab28e..ce69c4ab 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -735,6 +735,23 @@ int32 *CRunningScript::GetPointerToScriptVariable(uint32* pIp, int16 type)
+  */
+ void CRunningScript::Init()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to load the lua script variables instead of main.scm when this is enabled in the ini.
++	// TODO Disable the game save/loading system if DISABLE_GAME_SCRIPTS is enabled.
++	// TODO Disable fast loader loading saves in release if DISABLE_GAME_SCRIPTS is enabled.
++
++	// These are some new variables for my lua tests, and I'm going to reuse some game script variables here
++	// m_bLuaScriptActive = false;
++
++	// These might not even be needed in the lua scripts
++	// They seem to only be in use in CRunningScript::DoDeatharrestCheck() under Script5.cpp.
++	// m_bDeatharrestEnabled = true;
++	// m_bDeatharrestExecuted = false;
++
++	return;
++	
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	strcpy(m_abScriptName, "noname");
+ 	next = prev = nil;
+ 	SetIP(0);
+@@ -775,6 +792,12 @@ int CTheScripts::ScriptToLoad = 0;
+  */
+ int CTheScripts::OpenScript()
+ {
++	
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to load the lua script instead of main.scm when this is enabled in the ini.
++	return 0;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	CFileMgr::ChangeDir("\\");
+ 	switch (ScriptToLoad) {
+ 
+@@ -809,6 +832,11 @@ int CTheScripts::OpenScript()
+  */
+ void CTheScripts::Init()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to disable the game scripts if enabled in the ini.
++	return;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	for (int i = 0; i < SIZE_SCRIPT_SPACE; i++)
+ 		ScriptSpace[i] = 0;
+ 	pActiveScripts = pIdleScripts = nil;
+@@ -952,8 +980,21 @@ void CRunningScript::AddScriptToList(CRunningScript** ppScript)
+ 	*ppScript = this;
+ }
+ 
++/**
++ * TODO Figure out how to not make this crash when there is no script system, can I even load without this?
++ * I may need to implement the lua loader and the script part of this but I'm not sure about this part.
++ */
+ CRunningScript* CTheScripts::StartNewScript(uint32 ip)
+ {
++
++	// This always crashes here, although I'm not sure what else could be calling this.
++// #ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to start my custom lua scripts, currently this never runs if DISABLE_GAME_SCRIPTS is setup.
++	// I will fix that later, for now I'm working on trying to make the lua scripting system work.
++	// Only run this if enabled in ini, otherwise just run the normal game scripts.
++	// return nullptr;
++// #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	CRunningScript* pNew = pIdleScripts;
+ 	script_assert(pNew);
+ 	pNew->RemoveScriptFromList(&pIdleScripts);
+@@ -966,6 +1007,12 @@ CRunningScript* CTheScripts::StartNewScript(uint32 ip)
+ 
+ void CTheScripts::Process()
+ {
++
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to work with my custom lua scripts, I should just have a OnTick method for the game ticks.
++	// Only run this if enabled in ini, otherwise just run the normal game scripts.
++	return;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	if (CReplay::IsPlayingBack())
+ 		return;
+ 	CommandsExecuted = 0;
+@@ -1104,7 +1151,16 @@ void CRunningScript::Process()
+ 
+ int8 CRunningScript::ProcessOneCommand()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to disable the game scripts if enabled in ini.
++	return COMMAND_INVALID;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
++#ifdef CUSTOM_CODE
++	int8 retval = COMMAND_INVALID;
++#else
+ 	int8 retval = -1;
++#endif
+ 	++CTheScripts::CommandsExecuted;
+ 	int32 command = (uint16)CTheScripts::Read2BytesFromScript(&m_nIp);
+ 
+diff --git a/src/control/Script5.cpp b/src/control/Script5.cpp
+index e9f0967e..8bb5fbdc 100644
+--- a/src/control/Script5.cpp
++++ b/src/control/Script5.cpp
+@@ -2185,6 +2185,11 @@ VALIDATESAVEBUF(*size)
+ 
+ void CTheScripts::LoadAllScripts(uint8* buf, uint32 size)
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to disable loading of the game scripts if enabled in the ini.
++	return;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	Init();
+ INITSAVEBUF
+ 	CheckSaveHeader(buf, 'S', 'C', 'R', '\0', size - SAVE_HEADER_SIZE);
+@@ -2244,9 +2249,13 @@ INITSAVEBUF
+ 		if (InvisibilitySettingArray[i])
+ 			InvisibilitySettingArray[i]->bIsVisible = false;
+ 	}
++
+ 	bool tmpBool;
+ 	ReadSaveBuf(&tmpBool, buf);
++
++#ifndef CUSTOM_CODE
+ 	script_assert(tmpBool == bUsingAMultiScriptFile);
++#endif // !CUSTOM_CODE - Disabled script_assert here, seems to break my game.
+ 	ReadSaveBuf(&bPlayerHasMetDebbieHarry, buf);
+ 	SkipSaveBuf(buf, 2);
+ 	ReadSaveBuf(&tmp, buf);
+@@ -2630,6 +2639,11 @@ void CTheScripts::SetObjectiveForAllPedsInCollective(int colIndex, eObjective ob
+ }
+ #endif //GTA_SCRIPT_COLLECTIVE
+ 
++//-----------
++// Check if ped, player or vehicle is stopped
++// TODO Call these in my lua and ImGui code to check these values, I didn't know these were here.
++//-----------
++
+ bool CTheScripts::IsPedStopped(CPed* pPed)
+ {
+ 	if (pPed->InVehicle())
+@@ -2657,6 +2671,8 @@ bool CTheScripts::IsVehicleStopped(CVehicle* pVehicle)
+ 	return 0.01f * CTimer::GetTimeStep() >= pVehicle->m_fDistanceTravelled;
+ }
+ 
++//-------
++
+ void CTheScripts::RemoveThisPed(CPed* pPed)
+ {
+ 	if (pPed) {
+diff --git a/src/control/ScriptCommands.h b/src/control/ScriptCommands.h
+index 9cb39e23..a8cc347e 100644
+--- a/src/control/ScriptCommands.h
++++ b/src/control/ScriptCommands.h
+@@ -1,6 +1,9 @@
+ #pragma once
+ 
+ enum {
++#ifdef CUSTOM_CODE
++	COMMAND_INVALID = -1,
++#endif // CUSTOM_CODE
+ 	COMMAND_NOP = 0,
+ 	COMMAND_WAIT,
+ 	COMMAND_GOTO,
+@@ -1474,6 +1477,11 @@ enum {
+ 	COMMAND_MARK_CUTSCENE_END,
+ 	COMMAND_CUTSCENE_SCROLL,
+ #endif
++
++#ifdef NEW_OPCODES
++		COMMAND_KCNET_TEST,
++#endif
++
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 	LAST_SCRIPT_COMMAND
+ #endif
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 1205b991..2136bc74 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -117,7 +117,7 @@
+ #endif // CUSTOM_CODE - LUA_TEST
+ 
+ // search for TExtender to see changes
+-#include "TExtender.h"
++// #include "TExtender.h"
+ 
+ eLevelName CGame::currLevel;
+ int32 CGame::currArea;
+@@ -403,6 +403,9 @@ CGame::FinalShutdown(void)
+ /// <summary>
+ /// Looks like the main loading for the game.
+ /// Hmm I could play with this and stop certain features from being enabled.
++/// TODO Figure out how to disable the starting of the scm scripts so I can load up my lua scripts
++/// I'll replace freeroam_miami.scm with a freeroam-game.lua in and custom design it for
++/// KCNet ReVC.
+ /// </summary>
+ /// <param name="datFile"></param>
+ /// <returns>TODO Possibly if the game is loaded?</returns>
+@@ -456,8 +459,12 @@ bool CGame::Initialise(const char* datFile)
+ 	CDebug::DebugInitTextBuffer();
+ 	ThePaths.Init();
+ 	ThePaths.AllocatePathFindInfoMem(4500);
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 	CScriptPaths::Init();
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	CWeather::Init();
++
+ 	CCullZones::Init();
+ 	COcclusion::Init();
+ 	CCollision::Init();
+@@ -615,8 +622,11 @@ bool CGame::Initialise(const char* datFile)
+ 	if ( !TheMemoryCard.m_bWantToLoad )
+ #endif
+ 	{
++	
++#ifndef DISABLE_GAME_SCRIPTS
+ 		CTheScripts::StartTestScript();
+ 		CTheScripts::Process();
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		TheCamera.Process();
+ 	}
+ 
+@@ -877,7 +887,9 @@ void CGame::InitialiseWhenRestarting(void)
+ 			ShutDownForRestart();
+ 			CTimer::Stop();
+ 			CTimer::Initialise();
++
+ 			FrontEndMenuManager.m_bWantToLoad = false;
++			
+ 			ReInitGameObjectVariables();
+ 			currLevel = LEVEL_GENERIC;
+ 			CCollision::SortOutCollisionAfterLoad();
+diff --git a/src/core/config.h b/src/core/config.h
+index 53a9fd85..190c2b8f 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -78,6 +78,7 @@
+ 
+ // Moves some lua functions out of lua_test, I'm nearly done with this.
+ // I will possibly separate this out like lua_player_functions.cpp, lua_world_functions.cpp, and more.
++// FIXME: Remove this! It is no longer in use.
+ #define MOVE_LUA_FUNCTIONS
+ #endif // LUA_TEST
+ 
+@@ -99,6 +100,19 @@
+ // Places the vehicle near the player instead of on a node.
+ #define NEW_VEHICLE_SPAWN_CHEAT
+ 
++
++// Toggle the game scripts, if this is enabled this will shut down the .scm scripting system.
++// This will also switch the game to a version of freeroam_miami.scm that I recreate in lua.
++// I have part of this implemented, the game still crashes when loading but I placed this in enough
++//  places that it will shut down the game script loading, script init, processing of commands and mostly
++//  everything related to the scripts.
++
++// Now onto making fixing this to work with my lua code, I'll need to init the lua scripts instead of the scm scripts.
++// Then, if I can get this to run once I can replicate the player init code, I should be able to run custom
++//  lua scripts with the freeroam-game.lua file.
++// TODO Implement this later, I should be able to possibly figure it out.
++// #define DISABLE_GAME_SCRIPTS
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 6f6c7319..9e2a8003 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -1858,6 +1858,7 @@ FrontendIdle(void)
+ void
+ InitialiseGame(void)
+ {
++
+ #ifdef IMPROVED_MENU_AND_INPUT // Random splash screen, customized a bit
+ 	// The other random number function seemed to always get the same loading screen.
+ 	int index = MiscUtil::GenerateRandomNumber(1, 13);
+@@ -1868,6 +1869,8 @@ InitialiseGame(void)
+ #else
+ 	LoadingScreen(nil, nil, "loadsc0");
+ #endif
++
++	// Well I guess I have to run some of this stuff with DISABLE_GAME_SCRIPTS, I seem to crash between GS_INIT_FRONTEND and GS_FRONTEND.
+ 	CGame::Initialise("DATA\\GTA_VC.DAT");
+ }
+ 
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 33f38753..81fb214a 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1297,7 +1297,8 @@ LoadINISettings()
+ //--------
+ 
+ #ifdef _FAST_LOADER
+-	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
++	// ReadIniIfExists("General", "FastLoader", &gbFastLoader);
++	ReadIniIfExists("KCNet", "FastLoader", &gbFastLoader);
+ #endif //_FAST_LOADER
+ 
+ #ifdef EXTRA_LOGGING
+@@ -1309,7 +1310,8 @@ LoadINISettings()
+ #endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+-	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++	// ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++	ReadIniIfExists("KCNet", "GameSaveOnStartup", &gbGameSaveOnStartup);
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
+ //--------
+@@ -1449,7 +1451,8 @@ SaveINISettings()
+ //--------
+ 
+ #ifdef _FAST_LOADER
+-	StoreIni("General", "FastLoader", gbFastLoader);
++	// StoreIni("General", "FastLoader", gbFastLoader);
++	StoreIni("KCNet", "FastLoader", gbFastLoader);
+ #endif //_FAST_LOADER
+ 
+ #ifdef EXTRA_LOGGING
+@@ -1461,7 +1464,8 @@ SaveINISettings()
+ #endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+-	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
++	// StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
++	StoreIni("KCNet", "GameSaveOnStartup", gbGameSaveOnStartup);
+ #endif
+ 
+ //--------
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 24215766..8d2e8038 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.2a";
++std::string Defines::programVersion = "1.2.3a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/save/GenericGameStorage.cpp b/src/save/GenericGameStorage.cpp
+index b68b805a..9af3d1f7 100644
+--- a/src/save/GenericGameStorage.cpp
++++ b/src/save/GenericGameStorage.cpp
+@@ -41,6 +41,12 @@
+ #include "Timecycle.h"
+ #include "Fluff.h"
+ 
++#ifdef CUSTOM_CODE
++#include "log_functions.h"
++#include "defines.h"
++#endif // CUSTOM_CODE
++
++
+ #define BLOCK_COUNT 22
+ #define SIZE_OF_SIMPLEVARS 0xE4
+ 
+@@ -128,6 +134,13 @@ do {\
+ bool
+ GenericSave(int file)
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to disable loading of the game if enabled in the ini.
++	// Early exit out of this, game scripts are disabled and this will crash.
++	return true;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
++
+ 	uint8 *buf, *presize, *postsize;
+ 	uint32 size;
+ 	uint32 reserved;
+@@ -202,6 +215,8 @@ GenericSave(int file)
+ 	f = TheCamera.PedZoomIndicator;
+ 	WriteDataToBufferPointer(buf, f);
+ #else
++	// What did I do here?
++	// WriteDataToBufferPointer(buf, ThesendmessageCamera.CarZoomIndicator);
+ 	WriteDataToBufferPointer(buf, TheCamera.CarZoomIndicator);
+ 	WriteDataToBufferPointer(buf, TheCamera.PedZoomIndicator);
+ #endif
+@@ -285,6 +300,12 @@ GenericSave(int file)
+ bool
+ GenericLoad()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Fix this to disable loading of the game if enabled in the ini.
++	// Early exit out of this, game scripts are disabled and this will crash.
++	return true;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	uint8 *buf;
+ 	int32 file;
+ 	uint32 size;
+@@ -299,15 +320,28 @@ GenericLoad()
+ 	CheckSum = 0;
+ 	CDate dummy; // unused
+ 	CPad::ResetCheats();
++
++	// Read the save file
+ 	if (!ReadInSizeofSaveFileBuffer(file, size))
+ 		return false;
++
+ 	size = align4bytes(size);
+ 	ReadDataFromFile(file, work_buff, size);
+ 	buf = (work_buff + 0x40);
+ 	ReadDataFromBufferPointer(buf, saveSize);
++	
++	
++#ifdef CUSTOM_CODE
++	// New for testing.
++	std::string messageToLog = "Save size: " + std::to_string(saveSize);
++	LogFunctions::LogInfo(Defines::logFile, messageToLog);
++#endif // CUSTOM_CODE
++
+ #ifdef MISSION_REPLAY // a hack to keep compatibility but get new data from save
+ 	qs = saveSize >> 24;
+ #endif
++
++	// All save file data
+ 	ReadDataFromBufferPointer(buf, CGame::currLevel);
+ 	ReadDataFromBufferPointer(buf, TheCamera.GetMatrix().GetPosition().x);
+ 	ReadDataFromBufferPointer(buf, TheCamera.GetMatrix().GetPosition().y);
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index f1eb4e64..698f76ea 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -2078,13 +2078,11 @@ void GameStateFrontend()
+ 	if(!WindowIconified)
+ 		RsEventHandler(rsFRONTENDIDLE, nil);
+ 
+-#if defined(_FAST_LOADER) && defined(EX_LOADING_GAME_SAVE_ON_STARTUP)
++#if defined(_FAST_LOADER) && defined(EX_LOADING_GAME_SAVE_ON_STARTUP) && !defined(DISABLE_GAME_SCRIPTS)
+ 	FastLoader fastLoader = FastLoader();
+-#endif
+-
+-#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ 	fastLoader.FastLoad();
+-#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++#endif // _FAST_LOADER && EX_LOADING_GAME_SAVE_ON_STARTUP && !DISABLE_GAME_SCRIPTS
++
+ #ifdef PS2_MENU
+ 	if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+ #else
+@@ -2650,8 +2648,10 @@ main(int argc, char *argv[])
+ #else
+ 		if ( FrontEndMenuManager.m_bWantToLoad )
+ 		{
++#ifndef DISABLE_GAME_SCRIPTS
+ 			CGame::ShutDownForRestart();
+ 			CGame::InitialiseWhenRestarting();
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 			DMAudio.ChangeMusicMode(MUSICMODE_GAME);
+ 			LoadSplash(GetLevelSplashScreen(CGame::currLevel));
+ 			FrontEndMenuManager.m_bWantToLoad = false;
+-- 
+2.43.0
+

@@ -1,0 +1,245 @@
+From 98685bfd5764c49d7f1fe48ea5205efe182edd38 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Aug 2026 19:22:45 -0400
+Subject: [PATCH 067/161] feat: Try to fix plugin sdk test, it still doesnt
+ work
+
+---
+ src/extras/menus/misc_menu.cpp      | 14 +++++-
+ src/extras/test/script_commands.cpp | 68 +++++++++++++-------------
+ src/extras/test/script_commands.h   | 74 ++++++++++++++++++++++-------
+ 3 files changed, 102 insertions(+), 54 deletions(-)
+
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 9284e6b1..4ec9ae1f 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -511,11 +511,21 @@ void MiscMenu::MiscTab()
+ 			// Now it's crashing on CRunningScript::StoreParameters(uint32* pIp, int16 number)
+ 			// Giving the assert failed errors.
+ 			CPed *player;
++			plugin::Command<COMMAND_GET_PLAYER_CHAR>(&player);
++			
++			if(player == NULL)
++			{
++				return;
++			}
++			TRACE("Player Health: %f", player->m_fHealth);
++
++			// TRACE("Player Health: %f", player->m_fHealth);
++
+ 			float plyrHealth;
+-			if(plugin::Command<COMMAND_IS_PLAYER_PLAYING>(0))
++			if(plugin::Command<COMMAND_IS_PLAYER_PLAYING>(player))
+ 			{
+ 				// plugin::Command<COMMAND_GET_CHAR_HEALTH>(0, &plyrHealth);
+-				plugin::Command<COMMAND_GET_PLAYER_CHAR>(&player);
++				
+ 				// plugin::Command<COMMAND_GET_CHAR_HEALTH>(0, &plyrHealth);
+ 				plugin::Command<COMMAND_GET_CHAR_HEALTH>(player, &plyrHealth);
+ 				TRACE("Player health: %f", plyrHealth);
+diff --git a/src/extras/test/script_commands.cpp b/src/extras/test/script_commands.cpp
+index f6e765b2..8099f80e 100644
+--- a/src/extras/test/script_commands.cpp
++++ b/src/extras/test/script_commands.cpp
+@@ -88,40 +88,40 @@ unsigned char *scripting::ScriptCode::GetData() { return data; };
+ // TODO Fix this, this looks like the final piece to possibly getting a beta build of the plugin-sdk working in ReVC!
+ // 
+ 
+-// void scripting::ScriptCode::SaveResultVariables(CRunningScript *script) {
+-// //#define LocalVar (*(tScriptParam*)&script->m_aLocalVars[varToSet.varIndex])
+-// #define LocalVar (*(tScriptParam *)&script->m_anLocalVariables[varToSet.varIndex])
+-// // #define LocalVar (*(ScriptParams *)&script->m_anLocalVariables[varToSet.varIndex])
+-//     for (auto &varToSet : varsToSet) {
+-//         if (varToSet.varType == SCRIPT_RESULT_VAR_NUMBER) {
+-//             *reinterpret_cast<unsigned int *>(varToSet.pVar) = LocalVar.uParam;
+-//         }
+-//         else if (varToSet.varType == SCRIPT_RESULT_VAR_STRING) {
+-//             char *pStr = reinterpret_cast<char *>(varToSet.pVar);
+-//             strncpy(pStr, reinterpret_cast<char *>(&LocalVar.iParam), 15);
+-//             pStr[15] = '\0';
+-//         }
+-//         else if (varToSet.varType == SCRIPT_RESULT_VAR_PED) {
+-//             CPed *result = nullptr;
+-//             if (LocalVar.iParam != -1)
+-//                 result = CPools::GetPed(LocalVar.iParam);
+-//             *reinterpret_cast<CPed **>(varToSet.pVar) = result;
+-//         }
+-//         else if (varToSet.varType == SCRIPT_RESULT_VAR_VEHICLE) {
+-//             CVehicle *result = nullptr;
+-//             if (LocalVar.iParam != -1)
+-//                 result = CPools::GetVehicle(LocalVar.iParam);
+-//             *reinterpret_cast<CVehicle **>(varToSet.pVar) = result;
+-//         }
+-//         // It breaks with this
+-//         //else if (varToSet.varType == SCRIPT_RESULT_VAR_OBJECT) {
+-//         //    CObject *result = nullptr;
+-//         //    if (LocalVar.iParam != -1)
+-//         //        result = CPools::GetObject(LocalVar.iParam);
+-//         //    *reinterpret_cast<CObject **>(varToSet.pVar) = result;
+-//         //}
+-//     }
+-// }
++void scripting::ScriptCode::SaveResultVariables(CRunningScript *script) {
++//#define LocalVar (*(tScriptParam*)&script->m_aLocalVars[varToSet.varIndex])
++#define LocalVar (*(tScriptParam *)&script->m_anLocalVariables[varToSet.varIndex])
++// #define LocalVar (*(ScriptParams *)&script->m_anLocalVariables[varToSet.varIndex])
++    for (auto &varToSet : varsToSet) {
++        if (varToSet.varType == SCRIPT_RESULT_VAR_NUMBER) {
++            *reinterpret_cast<unsigned int *>(varToSet.pVar) = LocalVar.uParam;
++        }
++        else if (varToSet.varType == SCRIPT_RESULT_VAR_STRING) {
++            char *pStr = reinterpret_cast<char *>(varToSet.pVar);
++            strncpy(pStr, reinterpret_cast<char *>(&LocalVar.iParam), 15);
++            pStr[15] = '\0';
++        }
++        else if (varToSet.varType == SCRIPT_RESULT_VAR_PED) {
++            CPed *result = nullptr;
++            if (LocalVar.iParam != -1)
++                result = CPools::GetPed(LocalVar.iParam);
++            *reinterpret_cast<CPed **>(varToSet.pVar) = result;
++        }
++        else if (varToSet.varType == SCRIPT_RESULT_VAR_VEHICLE) {
++            CVehicle *result = nullptr;
++            if (LocalVar.iParam != -1)
++                result = CPools::GetVehicle(LocalVar.iParam);
++            *reinterpret_cast<CVehicle **>(varToSet.pVar) = result;
++        }
++        // It breaks with this
++        //else if (varToSet.varType == SCRIPT_RESULT_VAR_OBJECT) {
++        //    CObject *result = nullptr;
++        //    if (LocalVar.iParam != -1)
++        //        result = CPools::GetObject(LocalVar.iParam);
++        //    *reinterpret_cast<CObject **>(varToSet.pVar) = result;
++        //}
++    }
++}
+ 
+ /*
+ 
+diff --git a/src/extras/test/script_commands.h b/src/extras/test/script_commands.h
+index 6bdb852e..d72b1584 100644
+--- a/src/extras/test/script_commands.h
++++ b/src/extras/test/script_commands.h
+@@ -38,6 +38,14 @@
+ 
+ ///
+ 
++// TODO Fix this, I'm not sure what these variables are supposed to be.
++union tScriptParam {
++    unsigned int uParam;
++    int iParam;
++    float fParam;
++    void *pParam;
++    char *szParam;
++};
+ 
+ // Parts of this file were obtained from the Plugin SDK, this is a very early work in progress and may not work at all yet.
+ namespace plugin
+@@ -63,14 +71,14 @@ class ScriptCode
+ 	unsigned int capacity;
+ 	unsigned int size;
+ 
+-private:
+-	enum ScriptResultVarType {
+-		SCRIPT_RESULT_VAR_NUMBER,
+-		SCRIPT_RESULT_VAR_STRING,
+-		SCRIPT_RESULT_VAR_PED,
+-		SCRIPT_RESULT_VAR_VEHICLE,
+-		SCRIPT_RESULT_VAR_OBJECT
+-	};
++// private:
++// 	enum ScriptResultVarType {
++// 		SCRIPT_RESULT_VAR_NUMBER,
++// 		SCRIPT_RESULT_VAR_STRING,
++// 		SCRIPT_RESULT_VAR_PED,
++// 		SCRIPT_RESULT_VAR_VEHICLE,
++// 		SCRIPT_RESULT_VAR_OBJECT
++// 	};
+ 
+ 	    struct VarToSet {
+ 		unsigned int varIndex;
+@@ -90,7 +98,7 @@ private:
+ 	void AddBytes(unsigned char *bytes, unsigned int count);
+ 	unsigned char *GetData();
+ 
+-	// void SaveResultVariables(CRunningScript *script);
++	void SaveResultVariables(CRunningScript *script);
+ 	void operator<<(char n);
+ 	void operator<<(unsigned char n);
+ 	void operator<<(short n);
+@@ -134,6 +142,8 @@ private:
+ 	public:
+ 		template <typename... ArgTypes> static bool CallCommandById(unsigned int commandId, ArgTypes... arguments)
+ 		{
++			CRunningScript* pScript = CTheScripts::pActiveScripts;
++
+ 			// create our 'script' object
+ 			static CRunningScript script;
+ 			memset(&script, 0, sizeof(CRunningScript));
+@@ -151,25 +161,53 @@ private:
+ 			// for all arguments: add them to script code
+ 			code.Pack(arguments...);
+ 
+-			//script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CRunningScript::GetScriptSpaceBase());
+-		        //script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CTheScripts::ScriptSpace(163840));
+-		        
+-				// script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CTheScripts::ScriptSpace);
+-
++			// Well this seems to work for setting the m_nIp value, although I don't know if it will work.
++			// script.m_nIp = pScript->m_nIp;
++			// script.m_nIp = reinterpret_cast<uint32>(code.GetData()) - reinterpret_cast<uint32>(pScript->m_nIp);
++			
++			script.m_nIp = reinterpret_cast<uint8*>(code.GetData()) - reinterpret_cast<uint8*>(CTheScripts::ScriptSpace);
++			// script.m_nIp = reinterpret_cast<uint32>(pScript->m_nIp);
++			// script.m_nIp = reinterpret_cast<uint32>(code.GetData()) - reinterpret_cast<uint32>(pScript->m_nIp);
++			// script.m_nIp = reinterpret_cast<unsigned char*>(code.GetData()) - reinterpret_cast<unsigned char*>(pScript->m_nIp);
++
++			// https://stackoverflow.com/questions/10193675/converting-from-unsigned-char-to-unsigned-int
++			// This crashes somewhere so it tries to execute it I'm quite sure.
++			// script.m_nIp = reinterpret_cast<int*>(code.GetData()) - reinterpret_cast<int*>(pScript->m_nIp);
++			TRACE("script.m_nIp: %i", script.m_nIp);
++			
++			// Game crashes after this point,
++			/*
++			REVC ASSERT FAILED
++        	File: ../src/control/Script.cpp
++        	Line: 650
++        	Function: CollectParameters
++        	Expression: 0
++
++			*/
++
++			// TODO Figure out the script m_nIp value.
+ 				// Almost works, crashes.
+-		        script.m_nIp = reinterpret_cast<unsigned char*>(code.GetData()) - reinterpret_cast<unsigned char*>(CTheScripts::ScriptSpace);
++		        // script.m_nIp = reinterpret_cast<unsigned char*>(code.GetData()) - reinterpret_cast<unsigned char*>(CTheScripts::ScriptSpace);
++		        
++				// This just gives a segfault for some reason.
++				// TRACE("&&&&&&&&&&&&& &CTheScripts::ScriptSpace %f", &CTheScripts::ScriptSpace[SIZE_MAIN_SCRIPT], SIZE_MISSION_SCRIPT);
++				// script.m_nIp = reinterpret_cast<unsigned char*>(code.GetData()) - reinterpret_cast<unsigned char*>(&CTheScripts::ScriptSpace[SIZE_MAIN_SCRIPT], SIZE_MISSION_SCRIPT);
++				// script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(&CTheScripts::ScriptSpace[SIZE_MAIN_SCRIPT], SIZE_MISSION_SCRIPT);
+ 		        
+ 				// script.m_nIp = reinterpret_cast<int>(code.GetData()) - reinterpret_cast<int>(CTheScripts::ScriptSpace);
++			
++			pScript->CollectParameters(&script.m_nIp, 1);
+ 			script.ProcessOneCommand();
+ 			// I hope this isn't needed...
+ 			// I think not having this implemented could be causing crashes.
+-			// code.SaveResultVariables(&script);
++			code.SaveResultVariables(&script);
+ 			return script.m_bCondResult ? true : false;
+ 		}
+-
++	
+ 		template <typename... ArgTypes> static bool CallCommandById(plugin::Commands commandId, ArgTypes... arguments)
+ 		{
+-			return CallCommandById(static_cast<unsigned int>(commandId) - 0x10000, arguments...);
++			// return CallCommandById(static_cast<unsigned int>(commandId) - 0x10000, arguments...);
++			return CallCommandById(static_cast<unsigned int>(commandId), arguments...);
+ 		}
+ 		//};
+ 		unsigned char *data;
+-- 
+2.43.0
+

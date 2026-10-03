@@ -1,0 +1,25 @@
+From f3711d6f59034463acccad7b16606ef799d479ce Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 9 Sep 2026 20:51:03 -0400
+Subject: [PATCH 108/161] fix: Removed broken code in ped_menu.cpp
+
+---
+ src/extras/menus/ped_menu.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index eb004046..3730f00c 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -77,7 +77,7 @@ PedMenu::PedTab()
+ 	if(ImGui::Button("Objective Test"))
+ 	{
+ 		// miscUtil
+-		pedFunctions.SetObjective();
++		// pedFunctions.SetObjective();
+ 	}
+ 
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,298 @@
+From ab61b608f190468a84c3f26dbad4052d3b4eb6e6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 15 Aug 2026 13:39:44 -0400
+Subject: [PATCH 064/161] Add misc_enums for extra items to label
+
+* Make Script.cpp use enums instead of numbers for Script loader.
+
+* Add new opcode testing.
+---
+ src/control/Script.cpp           | 42 ++++++++++++++++++
+ src/control/Script.h             |  5 +++
+ src/control/Script9.cpp          | 74 ++++++++++++++++++++++++++++++++
+ src/core/config.h                |  5 +++
+ src/extras/enums/misc_enums.h    |  8 ++++
+ src/extras/utils/fast_loader.cpp | 18 +++++---
+ 6 files changed, 145 insertions(+), 7 deletions(-)
+ create mode 100644 src/control/Script9.cpp
+ create mode 100644 src/extras/enums/misc_enums.h
+
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 92b18d9d..12dca427 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -53,6 +53,12 @@
+ #include <stdarg.h>
+ #endif
+ 
++#ifdef CUSTOM_CODE
++#include <iostream>
++#include <string>
++#include "misc_enums.h"
++#endif // CUSTOM_CODE
++
+ uint8 CTheScripts::ScriptSpace[SIZE_SCRIPT_SPACE];
+ CRunningScript CTheScripts::ScriptsArray[MAX_NUM_SCRIPTS];
+ intro_text_line CTheScripts::IntroTextLines[MAX_NUM_INTRO_TEXT_LINES];
+@@ -725,15 +731,28 @@ void CRunningScript::Init()
+ }
+ 
+ #ifdef USE_DEBUG_SCRIPT_LOADER
++
++#ifdef CUSTOM_CODE
++int CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
++
++#else
+ int CTheScripts::ScriptToLoad = 0;
++#endif // CUSTOM_CODE
+ 
+ int CTheScripts::OpenScript()
+ {
+ 	CFileMgr::ChangeDir("\\");
+ 	switch (ScriptToLoad) {
++
++#ifdef CUSTOM_CODE
++	case SCRIPT_RELEASE: return CFileMgr::OpenFile("data\\main.scm", "rb");
++	case SCRIPT_FREEROAM_MIAMI: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
++	case SCRIPT_DEBUG: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
++#else
+ 	case 0: return CFileMgr::OpenFile("data\\main.scm", "rb");
+ 	case 1: return CFileMgr::OpenFile("data\\freeroam_miami.scm", "rb");
+ 	case 2: return CFileMgr::OpenFile("data\\main_d.scm", "rb");
++#endif // CUSTOM_CODE
+ 	}
+ 	return CFileMgr::OpenFile("data\\main.scm", "rb");
+ }
+@@ -757,9 +776,15 @@ void CTheScripts::Init()
+ 
+ 	// I'm not sure how to change these, holding 'D' doesn't load in debug but holding 'R' loads in freeroam_miami.scm
+ 
++#ifdef CUSTOM_CODE
++	if(CPad::GetPad(0)->GetChar('G')) ScriptToLoad = SCRIPT_RELEASE;
++	if(CPad::GetPad(0)->GetChar('R')) ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
++	if(CPad::GetPad(0)->GetChar('D')) ScriptToLoad = SCRIPT_DEBUG;
++#else
+ 	if(CPad::GetPad(0)->GetChar('G')) ScriptToLoad = 0;
+ 	if(CPad::GetPad(0)->GetChar('R')) ScriptToLoad = 1;
+ 	if(CPad::GetPad(0)->GetChar('D')) ScriptToLoad = 2;
++#endif // CUSTOM_CODE
+ 
+ 	int mainf = OpenScript();
+ #else
+@@ -1010,6 +1035,11 @@ int8 CRunningScript::ProcessOneCommand()
+ 	int8 retval = -1;
+ 	++CTheScripts::CommandsExecuted;
+ 	int32 command = (uint16)CTheScripts::Read2BytesFromScript(&m_nIp);
++#ifdef CUSTOM_CODE
++	// Well this just spams this with random
++	// numbers, is that all the commands are?
++	// std::cout << "Command: " << command << std::endl;
++#endif // CUSTOM_CODE
+ 	m_bNotFlag = (command & 0x8000);
+ 	command &= 0x7FFF;
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+@@ -1045,6 +1075,18 @@ int8 CRunningScript::ProcessOneCommand()
+ 		retval = ProcessCommands1300To1399(command);
+ 	else if (command < 1500)
+ 		retval = ProcessCommands1400To1499(command);
++
++
++// https://git.internal.kelsoncraft.net/kelson8/re3/src/branch/miami/src/control/Script.cpp#L1267-L1273
++// These are going to be test opcodes that I mess around with.
++#ifdef NEW_OPCODES
++	//else if(command >= 1700 && command < 1799)
++	else if(command >= 1700 && command < 1701)
++		//retval = ProcessCommands1700To1799(command);
++		retval = ProcessCommands1700To1701(command);
++#endif
++
++
+ #ifdef USE_MISSION_REPLAY_OVERRIDE_FOR_NON_MOBILE_SCRIPT
+ 	if (!AlreadySavedGame) // we need to ignore first "fake" command which actually just saves the game
+ #endif
+diff --git a/src/control/Script.h b/src/control/Script.h
+index 7f9a7717..6483a823 100644
+--- a/src/control/Script.h
++++ b/src/control/Script.h
+@@ -341,6 +341,11 @@ public:
+ 	int8 ProcessCommands1300To1399(int32);
+ 	int8 ProcessCommands1400To1499(int32);
+ 
++#ifdef NEW_OPCODES
++		//int8 ProcessCommands1700To1799(int32 command);
++		int8 ProcessCommands1700To1701(int32 command);
++#endif
++
+ 	void LocatePlayerCommand(int32, uint32*);
+ 	void LocatePlayerCharCommand(int32, uint32*);
+ 	void LocatePlayerCarCommand(int32, uint32*);
+diff --git a/src/control/Script9.cpp b/src/control/Script9.cpp
+new file mode 100644
+index 00000000..a2d4b2c8
+--- /dev/null
++++ b/src/control/Script9.cpp
+@@ -0,0 +1,74 @@
++#include "common.h"
++
++#include "Script.h"
++#include "ScriptCommands.h"
++
++#include "DMAudio.h"
++#if ((defined GTAVC_JP_PATCH || defined SUPPORT_JAPANESE_SCRIPT) && defined MORE_LANGUAGES)
++#include "Frontend.h"
++#endif
++#include "GameLogic.h"
++#include "Garages.h"
++#ifdef MISSION_REPLAY
++#include "GenericGameStorage.h"
++#endif
++#if (defined GTA_PC && !defined GTAVC_JP_PATCH || defined GTA_XBOX || defined SUPPORT_XBOX_SCRIPT || defined GTA_MOBILE || defined SUPPORT_MOBILE_SCRIPT)
++#include "General.h"
++#include "maths.h"
++#endif
++#include "Hud.h"
++#include "Pad.h"
++#include "PedAttractor.h"
++#include "Population.h"
++#include "Pools.h"
++#include "RpAnimBlend.h"
++#include "Stats.h"
++#include "VisibilityPlugins.h"
++#include "Wanted.h"
++#include "WaterLevel.h"
++#include "World.h"
++#include "Zones.h"
++
++// This is new for my script testing
++
++// TODO Fix this to work
++
++// TODO Possibly replicate the cleo commands like dll loading and run those
++// TODO Make a plugin-sdk alternative with C++.
++
++// From this commit
++// https://git.internal.kelsoncraft.net/kelson8/re3/src/commit/1147df4f7aa480da64f8fd943eed122f19f9754d/src/control/Script9.cpp
++
++#ifdef NEW_OPCODES
++
++
++
++// clang-format off
++int8
++//CRunningScript::ProcessCommands1700To1799(int32 command)
++CRunningScript::ProcessCommands1700To1701(int32 command)
++{
++
++	switch(command) {
++	// TODO Test this if I can get it working in gta3sc.
++	// If this works, I can make my own custom events directly in the freeroam_miami.scm
++	case COMMAND_KCNET_TEST:
++	{
++		CollectParameters(&m_nIp, 2);
++		CPed *pPed = CPools::GetPedPool()->GetAt(ScriptParams[0]);
++		script_assert(pPed);
++
++		float playerHealth = *(float*)&ScriptParams[1];
++		pPed->m_fHealth = playerHealth;
++		//break;
++		return 0;
++	}
++	
++	default:
++		script_assert(0);
++	}
++
++	return -1;
++}
++
++#endif
+\ No newline at end of file
+diff --git a/src/core/config.h b/src/core/config.h
+index 9e0c3ce1..09313db6 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -13,6 +13,11 @@
+ // ImGui not implemented in this branch.
+ #define GTAVC
+ 
++// Attempting to add new opcodes
++// This crashes the game when loading with the new opcodes
++// TODO Attempt to add a custom opcode and add it into gta3sc also
++// #define NEW_OPCODES
++
+ // I added a toggle for the no pause on focus loss
+ // If this is disabled on Re3 and you press the Windows key without pausing,
+ // the mouse gets locked to the top left side and you have to taskkill the Re3 process.
+diff --git a/src/extras/enums/misc_enums.h b/src/extras/enums/misc_enums.h
+new file mode 100644
+index 00000000..27c6162e
+--- /dev/null
++++ b/src/extras/enums/misc_enums.h
+@@ -0,0 +1,8 @@
++/**
++ * The types of scripts for loading.
++ */
++enum ScriptType {
++    SCRIPT_RELEASE = 0,
++    SCRIPT_FREEROAM_MIAMI = 1,
++    SCRIPT_DEBUG = 2,
++};
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 3b73b09f..1808ac33 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -1,6 +1,7 @@
+ #include "pch.h"
+ 
+ #include "fast_loader.h"
++#include "misc_enums.h"
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ #include "GenericGameStorage.h"
+@@ -18,16 +19,15 @@
+ 
+ // Keybinds
+ #define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
+-#define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-#define CTRLJUSTDOWN(key)                                                                                                                                      \
+-	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+-#define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++// #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
++// #define CTRLJUSTDOWN(key)                                                                                                                                      \
++// 	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
++// #define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ //
+ 
+ void
+ FastLoader::FastLoad()
+ {
+-	// TODO Move into misc_utils file or something outside of win.cpp
+ 	//************
+ 	// Begin Fast Loader
+ 	// ************/
+@@ -42,7 +42,6 @@ FastLoader::FastLoad()
+ 	// I am now able to cancel my fast loader with left control now.
+ 	// This works! When the game starts if you hold left control this disables the fast loader
+ 	// and puts the user on the main menu! This is perfect for testing.
+-	// TODO Copy changes into Re3 and ReLCS.
+ 	if (KEYJUSTDOWN(rsLCTRL) && gbFastLoader) 
+ 	{
+ 		gbFastLoader = false;
+@@ -66,8 +65,13 @@ FastLoader::FastLoad()
+ 
+ 		FrontEndMenuManager.m_bWantToLoad = true;
+ 
++
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+-		CTheScripts::ScriptToLoad = 0;
++		// TODO Fix this to be able to be changed.
++		// So if I want to test scripts, switch over to FREEROAM_MIAMI in the options.
++		CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
++		// Hmm, well since freeroam_miami tries to load a save, this just crashes on load.
++		// CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+ #endif
+ 
+ #ifdef XBOX_MESSAGE_SCREEN
+-- 
+2.43.0
+

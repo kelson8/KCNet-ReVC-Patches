@@ -1,0 +1,662 @@
+From 8ff658e8022d1c8e854bebfda543febc567885e1 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 12:03:49 -0400
+Subject: [PATCH 133/161] feat: Add untested SetStat function in
+ player_util.cpp
+
+* I should now be able to set all the stats I want to load or save to my custom json save format.
+
+* Added a new eStatType enum in my misc_enums.h for the list of stats.
+
+* Add test for making item pickups such as a save pickup which works using the mod menu.
+
+* Add test for pushing blip id to lua, and for removing a blip in lua.
+
+* Update changelog, change version to 1.2.13-8a.
+---
+ Changelog.md                     |  16 +-
+ src/extras/enums/misc_enums.h    | 106 ++++++++++
+ src/extras/lua/lua_game.cpp      |  35 ++++
+ src/extras/lua/lua_game.h        |   1 +
+ src/extras/menus/misc_menu.cpp   |  15 ++
+ src/extras/utils/defines.cpp     |   2 +-
+ src/extras/utils/player_util.cpp | 331 ++++++++++++++++++++++++++++++-
+ src/extras/utils/player_util.h   |   4 +
+ 8 files changed, 507 insertions(+), 3 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index b7d19000..4ce4c924 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -687,4 +687,18 @@ feat: Add more stats to freeroam_util
+ 
+ * Fix add blip for coord to now take a custom parameter for the blip sprite, and if the blip should have a route.
+ 
+-* Update changelog, change version to 1.2.13-7a.
+\ No newline at end of file
++* Update changelog, change version to 1.2.13-7a.
++
++### 1.2.13-8a
++
++feat: Add untested SetStat function in player_util.cpp
++
++* I should now be able to set all the stats I want to load or save to my custom json save format.
++
++* Added a new eStatType enum in my misc_enums.h for the list of stats.
++
++* Add test for making item pickups such as a save pickup which works using the mod menu.
++
++* Add test for pushing blip id to lua, and for removing a blip in lua.
++
++* Update changelog, change version to 1.2.13-8a.
+\ No newline at end of file
+diff --git a/src/extras/enums/misc_enums.h b/src/extras/enums/misc_enums.h
+index 27c6162e..a0fe39a6 100644
+--- a/src/extras/enums/misc_enums.h
++++ b/src/extras/enums/misc_enums.h
+@@ -6,3 +6,109 @@ enum ScriptType {
+     SCRIPT_FREEROAM_MIAMI = 1,
+     SCRIPT_DEBUG = 2,
+ };
++
++/**
++ * The types for the stats
++ * Mostly used for my lua scripts
++ */
++enum eStatType {
++    SEAGULLS_KILLED = 0,
++    DAYS_PASSED,
++    HEADS_POPPED,
++    COMMERCIAL_PASSED,
++    INDUSTRIAL_PASSED,
++    SUBURBAN_PASSED,
++    NUMBER_KILL_FRENZIES_PASSED,
++    PEOPLE_KILLED_BY_OTHERS,
++    HELIS_DESTROYED,
++    TIMES_DIED,
++    TIMES_ARRESTED,
++    KILLS_SINCE_LAST_CHECKPOINT,
++
++    DISTANCE_TRAVELLED_BY_CAR,
++    DISTANCE_TRAVELLED_BY_HELICOPTOR,
++    DISTANCE_TRAVELLED_BY_BIKE,
++    DISTANCE_TRAVELLED_BY_BOAT,
++    DISTANCE_TRAVELLED_BY_PLANE,
++    DISTANCE_TRAVELLED_BY_GOLF_CART,
++    DISTANCE_TRAVELLED_ON_FOOT,
++
++    FLIGHT_TIME,
++    TIMES_DROWNED,
++    PHOTOS_TAKEN,
++
++    LOAN_SHARKS,
++    STORES_KNOCKED_OFF,
++    MOVIE_STUNTS,
++    ASSASSINATIONS,
++    PIZZAS_DELIVERED,
++    GARBAGE_PICKUPS,
++    ICE_CREAM_SOLD,
++    TOP_SHOOTING_RANGE_SCORE,
++    SHOOTING_RANK,
++
++    CARS_EXPLODED,
++    BOATS_EXPLODED,
++    WANTED_STARS_ATTAINED,
++    WANTED_STARS_EVADED,
++    PEOPLE_KILLED_BY_PLAYER,
++
++    PROGRESS_MADE,
++    TOTAL_PROGRESS_IN_GAME,
++    MAXIMUM_JUMP_DISTANCE,
++    MAXIMUM_JUMP_HEIGHT,
++    MAXIMUM_JUMP_FLIPS,
++    MAXIMUM_JUMP_SPINS,
++    BEST_STUNT_JUMP,
++    NUMBER_OF_UNIQUE_JUMPS_FOUND,
++    TOTAL_NUMBER_OF_UNIQUE_JUMPS,
++
++    PASSENGERS_DROPPED_OFF_WITH_TAXI,
++    MONEY_MADE_WITH_TAXI,
++
++    MISSIONS_GIVEN,
++    MISSIONS_PASSED,
++
++    TOTAL_LEGITIMATE_KILLS,
++    LIVES_SAVED_WITH_AMBULANCE,
++    CRIMINALS_CAUGHT,
++    HIGHEST_LEVEL_AMBULANCE_MISSION,
++    HIGHEST_LEVEL_VIGILANTE_MISSION,
++    HIGHEST_LEVEL_FIRE_MISSION,
++    FIRES_EXTINGUISHED,
++
++    TOTAL_NUMBER_KILL_FRENZIES,
++    TOTAL_NUMBER_MISSIONS,
++    ROUNDS_FIRED_BY_PLAYER,
++    KGS_OF_EXPLOSIVES_USED,
++    BULLETS_THAT_HIT,
++    BEST_TIME_BOMB_DEFUSAL,
++
++    NUM_PROPERTY_OWNED,
++    PROPERTY_DESTROYED,
++    HIGHEST_CHASE_VALUE,
++    CHEATED_COUNT,
++    SHOW_CHASE_STAT_ON_SCREEN,
++    PAMPHLET_MISSION_PASSED,
++
++    BLOOD_RING_KILLS,
++    BLOOD_RING_TIME,
++
++    SPRAYINGS,
++    AUTO_PAINTING_BUDGET,
++    NO_MORE_HURRICANES,
++    FASHION_BUDGET,
++    PROPERTY_BUDGET,
++    WEAPON_BUDGET,
++    SAFE_HOUSE_VISITS,
++    TYRES_POPPED,
++
++    LONGEST_WHEELIE,
++    LONGEST_STOPPIE,
++    LONGEST_2_WHEEL,
++    LONGEST_WHEELIE_DIST,
++    LONGEST_STOPPIE_DIST,
++    LONGEST_2_WHEEL_DIST,
++
++    COUNT
++};
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 74bfc291..6c73125e 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -178,6 +178,10 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, addBlipForCoordOldLua);
+ 	lua_setfield(L, -2, "add_blip_for_coord");
+ 
++	// Remove a blip in lua
++	lua_pushcfunction(L, removeBlipLua);
++	lua_setfield(L, -2, "remove_blip");
++
+ 	// TODO Set a garage here once I get the functions implemented in lua
+ 	// SET_GARAGE (-886.157 -115.158 9.992) (-882.699 -108.312) (-876.7 -119.83) (15.58) GARAGE_RESPRAY respray_garage3//haiti
+ 
+@@ -711,6 +715,11 @@ int addBlipForCoordOldLua(lua_State *L)
+ 	// This works now!
+ 	// int blip = radar.SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
+ 	int blip = CRadar::SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++
++    if (blip < 0)
++    {
++        return luaL_error(L, "game.add_blip_for_coord Failed to create blip.");
++    }
+ 	
+ 	// Set the blip icon here.
+ 	// Icons are from eRadarSprite
+@@ -718,13 +727,39 @@ int addBlipForCoordOldLua(lua_State *L)
+ 
+ 	// Set a blip route
+ 	CRadar::SetBlipRoute(blip, setBlipRoute);
++
++	// TODO Make this push the blip int back to lua.
++	// I may be able to modify it like this in lua
++	// This is the format I will eventually use once I figure it out.
++	// It will allow me to call these options like the original scripts does.
++	// local blip = game.add_blip_for_coord()
++	// blip.set_sprite(blip, blipSprite)
+ 	
+ 	// I'm not sure what the blip array index is for, this mostly seems to be used in the scripts.
+ 	// int blipIndex = CRadar::GetActualBlipArrayIndex(blip);
++
++	// Return the blip handle in lua.
++	// Well this didn't work or I'm just not pushing this value into lua properly.
++	lua_pushinteger(L, static_cast<lua_Integer>(blip));
+ 	
+ 	return 1;
+ }
+ 
++/**
++ * Remove a blip
++ * 
++ * Usage:
++ * game.remove_blip(blip)
++ */
++int removeBlipLua(lua_State *L)
++{
++    int blip = static_cast<int>(luaL_checkinteger(L, 1));
++
++    CRadar::ClearBlip(blip);
++
++	return 1;
++}
++
+ //------
+ // TODO Implement these below
+ //------
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 98fd1c00..18a2e647 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -47,6 +47,7 @@ extern "C" {
+     extern int addBlipForCoordOldLua(lua_State *L);
+     extern int addBlipForPedLua(lua_State *L);
+     extern int addBlipForVehicleLua(lua_State *L);
++    extern int removeBlipLua(lua_State *L);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 7a966107..20f6c08a 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -60,6 +60,7 @@
+ #include "PlayerInfo.h"
+ 
+ #include "Physical.h"
++#include "Pickups.h"
+ 
+ #include "Frontend.h"
+ #include "Text.h"
+@@ -652,6 +653,20 @@ void MiscMenu::MiscTab()
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Custom json save/load system.
+ 
++		ImGui::Separator();
++		// This works for spawning pickups!
++		// I didn't expect this format to work.
++		// I'll need to figure out the timers and run a wait to check if the player has picked one of these up in lua.
++		// Also, I'll need to store this in lua so I can run actions such as saving to my json file.
++		ImGui::Text("Pickups test");
++		if(ImGui::Button("Spawn save pickup"))
++		{
++			CVector playerPosOffset = CVector(FindPlayerCoors().x + 3, FindPlayerCoors().y + 3, FindPlayerCoors().z);
++
++			CPickups::GenerateNewOne(playerPosOffset, MI_PICKUP_SAVEGAME, ePickupType::PICKUP_ON_STREET, 1);
++		}
++		//CPickups::GenerateNewOne
++
+ 
+ 		//
+ 	}
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 26c38d29..f4144c2a 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-7a";
++std::string Defines::programVersion = "1.2.13-8a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 9d59a3b1..da0f1325 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -8,6 +8,7 @@
+ #include "vehicle_functions.h"
+ 
+ // ReVC
++#include "Stats.h"
+ #include "CutsceneMgr.h"
+ #include "Entity.h"
+ #include "Placeable.h"
+@@ -314,4 +315,332 @@ PlayerUtil::IsPlayerSafe()
+ 	return true;
+ 
+ 
+-}
+\ No newline at end of file
++}
++
++/**
++ * Set a stat for the player.
++ * 
++ * TODO Fix this to work, currently it's just filled in and not doing anything.
++ * 
++ * @param statType The type of stat to set from my eStatType enum.
++ * @param value The value to set the stat to, can either be an int or float.
++ */
++void PlayerUtil::SetStat(eStatType statType, float value)
++{
++	// https://www.geeksforgeeks.org/cpp/how-to-convert-float-to-int-in-cpp/
++	// This is here so I can convert to ints, and use floats for stats that need it.
++	int statInt = static_cast<int>(round(value));
++
++	switch(statType)
++	{
++		// Unused.
++		case eStatType::ASSASSINATIONS:
++			// CStats::Assassinations = value;
++			break;
++		case eStatType::AUTO_PAINTING_BUDGET:
++			// CStats::AutoPaintingBudget = value;
++			break;
++		case eStatType::BEST_STUNT_JUMP:
++			// CStats::BestStuntJump = statInt;
++			break;
++		case eStatType::BEST_TIME_BOMB_DEFUSAL:
++			// CStats::BestTimeBombDefusal = statInt;
++			break;
++
++		// Unused
++		case eStatType::BLOOD_RING_KILLS:
++			// CStats::BloodRingKills = statInt;
++			break;
++		case eStatType::BLOOD_RING_TIME:
++			// CStats::BloodRingTime = statInt;
++			break;
++		//
++
++		// Exploded vehicles.
++		case eStatType::BOATS_EXPLODED:
++			CStats::BoatsExploded = statInt;
++			break;
++		case eStatType::CARS_EXPLODED:
++			CStats::CarsExploded = statInt;
++			break;
++		case eStatType::HELIS_DESTROYED:
++			CStats::HelisDestroyed = statInt;
++			break;
++		case eStatType::TYRES_POPPED:
++			CStats::TyresPopped = statInt;
++			break;
++
++		case eStatType::BULLETS_THAT_HIT:
++			CStats::BulletsThatHit = statInt;
++			break;
++		case eStatType::CHEATED_COUNT:
++			CStats::CheatedCount = statInt;
++			break;
++
++		// Islands passed
++		case eStatType::COMMERCIAL_PASSED:
++			CStats::CommercialPassed = statInt;
++			break;
++		case eStatType::SUBURBAN_PASSED:
++			CStats::SuburbanPassed = statInt;
++			break;
++		case eStatType::INDUSTRIAL_PASSED:
++			CStats::IndustrialPassed = statInt;
++			break;
++		
++		case eStatType::CRIMINALS_CAUGHT:
++			CStats::CriminalsCaught = statInt;
++			break;			
++		case eStatType::DAYS_PASSED:
++			CStats::DaysPassed = statInt;
++			break;
++
++		// Distance travelled
++		case eStatType::DISTANCE_TRAVELLED_BY_BIKE:
++			CStats::DistanceTravelledByBike = value;
++			break;
++		case eStatType::DISTANCE_TRAVELLED_BY_BOAT:
++			CStats::DistanceTravelledByBoat = value;
++			break;
++		case eStatType::DISTANCE_TRAVELLED_BY_CAR:
++			CStats::DistanceTravelledByCar = value;
++			break;
++		case eStatType::DISTANCE_TRAVELLED_BY_GOLF_CART:
++			CStats::DistanceTravelledByGolfCart = value;
++			break;
++		case eStatType::DISTANCE_TRAVELLED_BY_HELICOPTOR:
++			CStats::DistanceTravelledByHelicoptor = value;
++			break;
++		case eStatType::DISTANCE_TRAVELLED_BY_PLANE:
++			CStats::DistanceTravelledByPlane = value;
++			break;
++		case eStatType::DISTANCE_TRAVELLED_ON_FOOT:
++			CStats::DistanceTravelledOnFoot = value;
++			break;
++		//
++
++		// Unused
++		case eStatType::FASHION_BUDGET:
++			// CStats::FashionBudget = value;
++			break;
++		//
++
++		case eStatType::FIRES_EXTINGUISHED:
++			CStats::FiresExtinguished = statInt;
++			break;
++
++		case eStatType::FLIGHT_TIME:
++			CStats::FlightTime = statInt;
++			break;
++
++		//
++		case eStatType::GARBAGE_PICKUPS:
++			// CStats::GarbagePickups = value;
++			break;
++		//
++		case eStatType::HEADS_POPPED:
++			CStats::HeadsPopped = statInt;
++			break;
++
++		// Highest levels for side missions and other misc, won't be used.
++		case eStatType::HIGHEST_CHASE_VALUE:
++			// CStats::HighestChaseValue = value;
++			break;
++
++		case eStatType::HIGHEST_LEVEL_AMBULANCE_MISSION:
++			// CStats::HighestLevelAmbulanceMission = statInt;
++			break;
++		case eStatType::HIGHEST_LEVEL_FIRE_MISSION:
++			// CStats::HighestLevelFireMission = statInt;
++			break;
++		case eStatType::HIGHEST_LEVEL_VIGILANTE_MISSION:
++			// CStats::HighestLevelVigilanteMission = statInt;
++			break;
++		case eStatType::LIVES_SAVED_WITH_AMBULANCE:
++			// CStats::LivesSavedWithAmbulance = statInt;
++			break;
++		case eStatType::ICE_CREAM_SOLD:
++			// CStats::IceCreamSold = value;
++			break;
++		case eStatType::LOAN_SHARKS:
++			// CStats::LoanSharks = value;
++			break;
++		//
++
++		// Exploives used.
++		case eStatType::KGS_OF_EXPLOSIVES_USED:
++			CStats::KgsOfExplosivesUsed = statInt;
++			break;
++		
++		
++
++		// Longest wheelies, stoppies and 2 wheels with times and distances.
++		case eStatType::LONGEST_2_WHEEL:
++			CStats::Longest2Wheel = statInt;
++			break;
++		case eStatType::LONGEST_2_WHEEL_DIST:
++			CStats::Longest2WheelDist = value;
++			break;
++		case eStatType::LONGEST_STOPPIE:
++			CStats::LongestStoppie = statInt;
++			break;
++		case eStatType::LONGEST_STOPPIE_DIST:
++			CStats::LongestStoppieDist = value;
++			break;
++		case eStatType::LONGEST_WHEELIE:
++			CStats::LongestWheelie = statInt;
++			break;
++		case eStatType::LONGEST_WHEELIE_DIST:
++			CStats::LongestWheelieDist = value;
++			break;
++
++		// Max jump distance, seems to be for stunt jumps.
++		case eStatType::MAXIMUM_JUMP_DISTANCE:
++			CStats::MaximumJumpDistance = value;
++			break;
++		case eStatType::MAXIMUM_JUMP_FLIPS:
++			CStats::MaximumJumpFlips = statInt;
++			break;
++		case eStatType::MAXIMUM_JUMP_HEIGHT:
++			CStats::MaximumJumpHeight = value;
++			break;
++		case eStatType::MAXIMUM_JUMP_SPINS:
++			CStats::MaximumJumpSpins = statInt;
++			break;
++
++		// Misc that won't be used in my scripts.
++		case eStatType::MISSIONS_GIVEN:
++			// CStats::MissionsGiven = statInt;
++		case eStatType::MISSIONS_PASSED:
++			// CStats::MissionsPassed = statInt;
++		case eStatType::MONEY_MADE_WITH_TAXI:
++			// CStats::MoneyMadeWithTaxi = statInt;
++		case eStatType::MOVIE_STUNTS:
++			// CStats::MovieStunts = value;
++			break;
++
++		// I think this one opens the bridges in the main scripts, although I'm not too sure.
++		case eStatType::NO_MORE_HURRICANES:
++			CStats::NoMoreHurricanes = statInt;
++
++		// Unused
++		case eStatType::NUM_PROPERTY_OWNED:
++			CStats::NumPropertyOwned = statInt;
++			break;
++		case eStatType::NUMBER_KILL_FRENZIES_PASSED:
++			CStats::NumberKillFrenziesPassed = statInt;
++			break;
++		case eStatType::NUMBER_OF_UNIQUE_JUMPS_FOUND:
++			CStats::NumberOfUniqueJumpsFound = statInt;
++			break;
++		//
++
++		// Unused
++		case eStatType::PAMPHLET_MISSION_PASSED:
++			CStats::PamphletMissionPassed = statInt;
++			break;
++		case eStatType::PASSENGERS_DROPPED_OFF_WITH_TAXI:
++			CStats::PassengersDroppedOffWithTaxi = statInt;
++			break;
++		//
++
++		// People killed by others and the player.
++		case eStatType::KILLS_SINCE_LAST_CHECKPOINT:
++			CStats::KillsSinceLastCheckpoint = statInt;
++			break;
++		case eStatType::PEOPLE_KILLED_BY_OTHERS:
++			CStats::PeopleKilledByOthers = statInt;
++			break;
++		case eStatType::PEOPLE_KILLED_BY_PLAYER:
++			CStats::PeopleKilledByPlayer = statInt;
++			break;
++
++		case eStatType::PHOTOS_TAKEN:
++			CStats::PhotosTaken = statInt;
++			break;
++		case eStatType::PIZZAS_DELIVERED:
++			CStats::PizzasDelivered = value;
++			break;
++		case eStatType::PROGRESS_MADE:
++			CStats::ProgressMade = value;
++			break;
++		case eStatType::PROPERTY_BUDGET:
++			CStats::PropertyBudget = value;
++			break;
++		case eStatType::PROPERTY_DESTROYED:
++			CStats::PropertyDestroyed = statInt;
++			break;
++
++		case eStatType::ROUNDS_FIRED_BY_PLAYER:
++			CStats::RoundsFiredByPlayer = statInt;
++			break;
++
++		case eStatType::SEAGULLS_KILLED:
++			CStats::SeagullsKilled = statInt;
++			break;
++	
++		// Unused for my stuff
++		case eStatType::SAFE_HOUSE_VISITS:
++			CStats::SafeHouseVisits = statInt;
++			break;
++		case eStatType::SHOOTING_RANK:
++			CStats::ShootingRank = value;
++			break;
++		case eStatType::SHOW_CHASE_STAT_ON_SCREEN:
++			CStats::ShowChaseStatOnScreen = statInt;
++			break;
++		case eStatType::SPRAYINGS:
++			CStats::Sprayings = statInt;
++			break;
++		case eStatType::STORES_KNOCKED_OFF:
++			CStats::StoresKnockedOff = value;
++			break;
++
++		// Arrested/died/drowned
++		case eStatType::TIMES_ARRESTED:
++			CStats::TimesArrested = statInt;
++			break;
++		case eStatType::TIMES_DIED:
++			CStats::TimesDied = statInt;
++			break;
++		case eStatType::TIMES_DROWNED:
++			CStats::TimesDrowned = statInt;
++			break;
++
++		case eStatType::TOTAL_LEGITIMATE_KILLS:
++			CStats::TotalLegitimateKills = statInt;
++			break;
++
++		// Misc that will probably not be used.
++		case eStatType::TOP_SHOOTING_RANGE_SCORE:
++			CStats::TopShootingRangeScore = statInt;
++			break;
++
++		case eStatType::TOTAL_NUMBER_KILL_FRENZIES:
++			CStats::TotalNumberKillFrenzies = statInt;
++			break;
++		case eStatType::TOTAL_NUMBER_MISSIONS:
++			CStats::TotalNumberMissions = statInt;
++			break;
++		case eStatType::TOTAL_NUMBER_OF_UNIQUE_JUMPS:
++			CStats::TotalNumberOfUniqueJumps = statInt;
++			break;
++		case eStatType::TOTAL_PROGRESS_IN_GAME:
++			CStats::TotalProgressInGame = value;
++			break;
++
++		
++		// Wanted stars gained and lost.
++		case eStatType::WANTED_STARS_ATTAINED:
++			CStats::WantedStarsAttained = statInt;
++			break;
++		case eStatType::WANTED_STARS_EVADED:
++			CStats::WantedStarsEvaded = statInt;
++			break;
++
++		case eStatType::WEAPON_BUDGET:
++			CStats::WeaponBudget = value;
++			break;
++	}
++}
++
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+index f741c111..5943d7b3 100644
+--- a/src/extras/utils/player_util.h
++++ b/src/extras/utils/player_util.h
+@@ -3,6 +3,8 @@
+ #include "common.h"
+ #include "platform.h"
+ 
++#include "misc_enums.h"
++
+ #include "Ped.h"
+ #include "Entity.h"
+ #include "Placeable.h"
+@@ -53,4 +55,6 @@ public:
+ 
+ 	static std::string GetClothingDisplayName(const char *internalName);
+ 
++	static void SetStat(eStatType statType, float value);
++
+ };
+-- 
+2.43.0
+

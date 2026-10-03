@@ -1,0 +1,383 @@
+From 3ffec66e11a8f63dc99bfa4e2962536a84e0a9a6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 02:51:29 -0400
+Subject: [PATCH 111/161] feat: Make ped objective test work in mod menu
+
+* Add world.switch_roads_on and world.switch_roads_off to lua functions.
+
+* Add custom set ped density and set vehicle density functions for my lua scripts.
+
+* Update changelog, change version to 1.2.12-6a.
+---
+ Changelog.md                               |  10 ++
+ src/extras/functions/ped_functions.cpp     |   9 +-
+ src/extras/functions/ped_functions.h       |   3 +-
+ src/extras/functions/vehicle_functions.cpp |   7 +-
+ src/extras/functions/vehicle_functions.h   |   9 ++
+ src/extras/lua/lua_world.cpp               | 120 +++++++++++++++++++++
+ src/extras/lua/lua_world.h                 |   6 ++
+ src/extras/menus/ped_menu.cpp              |  45 +++++++-
+ src/extras/utils/defines.cpp               |   2 +-
+ 9 files changed, 200 insertions(+), 11 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 4773d7fb..cd519afc 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -490,3 +490,13 @@ feat: Add get player coords and heading functions
+ * Disable cheat message for BlowUpAllVehicles cheat.
+ 
+ * Update changelog, change version to 1.2.12-5a.
++
++### 1.2.12-6a
++
++feat: Make ped objective test work in mod menu
++
++* Add world.switch_roads_on and world.switch_roads_off to lua functions.
++
++* Add custom set ped density and set vehicle density functions for my lua scripts.
++
++* Update changelog, change version to 1.2.12-6a.
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 84590437..181f030f 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -469,13 +469,14 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed* ped, CVehicle* vehicle
+  * @param pos The position to go to.
+  */
+ void
+-PedFunctions::SetObjective(eObjective posObjective, CPed *ped, CVector *pos)
++// PedFunctions::SetObjective(eObjective posObjective, CPed *ped, CVector *pos)
++PedFunctions::SetObjective(eObjective posObjective, CPed *ped, CVector pos)
+ {
+ 	switch(posObjective)
+ 	{
+-		case OBJECTIVE_GOTO_AREA_ANY_MEANS:
+-			ped->SetObjective(OBJECTIVE_GOTO_AREA_ANY_MEANS, pos);
+-			break;
++		// case OBJECTIVE_GOTO_AREA_ANY_MEANS:
++		// 	ped->SetObjective(OBJECTIVE_GOTO_AREA_ANY_MEANS, pos);
++		// 	break;
+ 
+ 		// case OBJECTIVE_GOTO_AREA_IN_CAR:
+ 			// break;
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+index 8c0e7b06..dfe89066 100644
+--- a/src/extras/functions/ped_functions.h
++++ b/src/extras/functions/ped_functions.h
+@@ -39,7 +39,8 @@ public:
+ 
+ 	void SetObjective(eObjective pedObjective, CPed* ped);
+ 	void SetObjective(eObjective pedObjective, CPed* ped, CVehicle* vehicle);
+-	void SetObjective(eObjective posObjective, CPed *ped, CVector *pos);
++	// void SetObjective(eObjective posObjective, CPed *ped, CVector *pos);
++	void SetObjective(eObjective posObjective, CPed *ped, CVector pos);
+ 	void SetObjective(eObjective pedObjective, CPed *ped, CPed *target);
+ 
+ 
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 96f8e04c..2fecfe78 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -661,11 +661,12 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 	// TODO Make this place the vehicle on the ground.
+ 
+ 	// Remove the previous vehicle created by this system.
++	// I'll just make this always run for now, it should only spawn one anyways.
+ 	// This now works in lua!
+-	if(deleteCurrentVehicle)
+-	{
++	// if(deleteCurrentVehicle)
++	// {
+ 		RemoveLastCreatedVehicle();
+-	}
++	// }
+ 
+ 	// CVector vehiclePos = CVector(posX, posY, posZ);
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 7efe3aa4..600a224f 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -27,6 +27,15 @@ private:
+ 	static CVehicle *m_pLastCreatedVehicle;
+ 
+ public:
++
++	/**
++	 * Get the last spawned vehicle created with CreateVehicle().
++	 */
++	static CVehicle* GetSpawnedVehicle()
++	{
++		return m_pLastCreatedVehicle;
++	}
++
+ 	// TODO Remove this later, its not in use so I disabled it
+ 	//void SpawnVehicle();
+ 	static void ToggleVehicleInvincible(CVehicle *veh);
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 129cbeda..94b8fdfe 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -70,6 +70,13 @@ extern "C"
+ 
+ 		lua_pushcfunction(L, disableVehiclesLua);
+ 		lua_setfield(L, -2, "disable_vehicles");
++
++		// Set the vehicle and ped density, I may remove the above functions later.
++		lua_pushcfunction(L, setPedDensityLua);
++		lua_setfield(L, -2, "set_ped_density");
++
++		lua_pushcfunction(L, setVehicleDensityLua);
++		lua_setfield(L, -2, "set_vehicle_density");
+ 		//
+ 
+ 
+@@ -95,6 +102,15 @@ extern "C"
+ 		lua_pushcfunction(L, blowUpAllVehiclesLua);
+ 		lua_setfield(L, -2, "blow_up_all_vehicles");
+ 
++		// Switch the roads on and off
++		// TODO Test these.
++
++		lua_pushcfunction(L, switchRoadsOffLua);
++		lua_setfield(L, -2, "switch_roads_off");
++
++		lua_pushcfunction(L, switchRoadsOnLua);
++		lua_setfield(L, -2, "switch_roads_on");
++
+ 		// World namespace
+     	lua_setglobal(L, "world");
+ 	}
+@@ -136,6 +152,63 @@ extern "C"
+ 		return 1;
+ 	}
+ 
++	/**
++	 * Set the ped density
++	 * 
++	 * Usage:
++	 * world.set_ped_density(0.5)
++	 */
++	int setPedDensityLua(lua_State *L)
++	{
++		float pedDensity = (float)lua_tonumber(L, 1);
++
++		// Make sure each of the values are numbers.
++		if (!lua_isnumber(L, 1))
++		{
++        	return luaL_error(L,
++            "world.set_ped_density expects a float for the ped_density, either 0 or 1.0.");
++		}
++
++		if(pedDensity < 0.0f || pedDensity > 1.0f)
++		{
++			return luaL_error(L,
++			"world.set_ped_density requires a float between 0 and 1.0, such as 0.5 or 1.0");
++		}
++
++		// 
++		CPopulation::PedDensityMultiplier = pedDensity;
++
++		return 1;
++	}
++
++	/**
++	 * Set the ped density
++	 * 
++	 * Usage:
++	 * world.set_vehicle_density(0.5)
++	 */
++	int setVehicleDensityLua(lua_State *L)
++	{
++		float vehicleDensity = (float)lua_tonumber(L, 1);
++
++		// Make sure each of the values are numbers.
++		if (!lua_isnumber(L, 1))
++		{
++        	return luaL_error(L,
++            "world.set_vehicle_density expects a float for the vehicle_density, either 0 or 1.0.");
++		}
++
++		if(vehicleDensity < 0.0f || vehicleDensity > 1.0f)
++		{
++			return luaL_error(L,
++			"world.set_vehicle_density requires a float between 0 and 1.0, such as 0.5 or 1.0");
++		}
++
++		CCarCtrl::CarDensityMultiplier = vehicleDensity;
++
++		return 1;
++	}
++
+ 	/// <summary>
+ 	/// Blow up all vehicles, lua function.
+ 	/// </summary>
+@@ -241,6 +314,53 @@ extern "C"
+ 		return 1;
+ 	}
+ 
++	/**
++	 * Switch the roads off.
++	 * 
++	 * Usage (Takes two vectors for a leftBottom, and rightTop values):
++	 * https://library.sannybuilder.com/#/vc/script/extensions/default/01E8
++	 * world.switch_roads_off({x = 25, y = 25, z = 25}, {x = 50, y = 50, z = 50})
++	 */
++	int switchRoadsOffLua(lua_State *L)
++	{
++		auto leftBottom = luaGetCVector(L, 1);
++		auto rightTop = luaGetCVector(L, 2);
++	
++		if (!leftBottom || !rightTop)
++    	{
++    		return luaL_error(L, "world.switch_roads_off expects two vector tables with x, y and z values." );
++		}
++
++		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
++										rightTop.value().x, rightTop.value().y, rightTop.value().z, true);
++
++		// SwitchRoadsOffInArea
++		return 1;
++	}
++
++	/**
++	 * Switch the roads on.
++	 * 
++	 * Usage (Takes two vectors for a leftBottom, and rightTop values):
++	 * https://library.sannybuilder.com/#/vc/script/extensions/default/01E7
++	 * world.switch_roads_on({x = 25, y = 25, z = 25}, {x = 50, y = 50, z = 50})
++	 */
++	int switchRoadsOnLua(lua_State *L)
++	{
++		auto leftBottom = luaGetCVector(L, 1);
++		auto rightTop = luaGetCVector(L, 2);
++	
++		if (!leftBottom || !rightTop)
++    	{
++    		return luaL_error(L, "world.switch_roads_on expects two vector tables with x, y and z values." );
++		}
++
++		ThePaths.SwitchPedRoadsOffInArea(leftBottom.value().x, leftBottom.value().y, leftBottom.value().z,
++										rightTop.value().x, rightTop.value().y, rightTop.value().z, false);
++
++		return 1;
++	}
++
+ }
+ 
+ //
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 66e73cf8..06eb82fe 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -18,12 +18,18 @@ extern "C" {
+ 	extern int disablePedsLua(lua_State *L);
+ 	extern int disableVehiclesLua(lua_State *L);
+ 
++	extern int setVehicleDensityLua(lua_State *L);
++	extern int setPedDensityLua(lua_State *L);
++
+ 	extern int blowUpAllVehiclesLua(lua_State *L);
+ 
+ 	extern int unlockDoorsInAreaLua(lua_State *L);
+ 
+ 	extern int setPedObjectivesInAreaLua(lua_State *L);
+ 
++	extern int switchRoadsOnLua(lua_State *L);
++	extern int switchRoadsOffLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index fd7d3a15..607ece54 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -22,6 +22,7 @@
+ #include "model_ids.h"
+ 
+ #include "ped_functions.h"
++#include "player_functions.h"
+ 
+ // ReVC
+ #include "Entity.h"
+@@ -45,6 +46,7 @@ void
+ PedMenu::PedTab()
+ {
+ 	PedFunctions &pedFunctions = PedFunctions::GetInstance();
++	// VehicleFunctions &vehicleFunctions = VehicleFunctions::GetInstance();
+ 	MiscUtil miscUtil = MiscUtil();
+ 
+ 	//----------- Ped Spawning -----------//
+@@ -73,13 +75,52 @@ PedMenu::PedTab()
+ 		pedFunctions.RemovePed();
+ 	}
+ 
++	
+ 	ImGui::Text("Run objective on ped");
+ 	if(ImGui::Button("Objective Test"))
+ 	{
++		CPed* customPed = pedFunctions.GetPed();
++
+ 		// miscUtil
+-		if(pedFunctions.GetPed())
++		if(customPed)
+ 		{
+-			pedFunctions.SetObjective(OBJECTIVE_GOTO_AREA_ANY_MEANS, pedFunctions.GetPed());
++
++			// This works! I can now make the peds go to the player.
++			// TODO Modify vehicle functions in vehicle_functions.cpp so I can put the ped in a car and have them drive off.
++			pedFunctions.SetObjective(OBJECTIVE_GOTO_AREA_ON_FOOT, customPed, PlayerFunctions::GetPosition());
++
++			// Create a vehicle for the ped to get into.
++			CVector vehiclePos = CVector(PlayerFunctions::GetPosition().x + 3, 
++									PlayerFunctions::GetPosition().y + 3, 
++									PlayerFunctions::GetPosition().z);
++
++			// The position to attempt to drive to.
++			CVector destPos = CVector(PlayerFunctions::GetPosition().x + 10, 
++									PlayerFunctions::GetPosition().y + 10, 
++									PlayerFunctions::GetPosition().z);
++
++			VehicleFunctions::CreateVehicle(145, vehiclePos, false, false);
++			
++			// This works! Now the ped will get into a vehicle.
++			if(VehicleFunctions::GetSpawnedVehicle())
++			{
++				pedFunctions.SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, customPed, VehicleFunctions::GetSpawnedVehicle());
++
++				// TODO Test this.
++				// Set a 5 second wait time.
++				// Wait this won't work here anyways, it'll only run this timer when the button is pressed.
++				// customPed->SetObjectiveTimer(5000);
++
++				// Try to make them kill the player.
++				// pedFunctions.SetObjective(OBJECTIVE_KILL_CHAR_ANY_MEANS, customPed, FindPlayerPed());
++				// Try to make them go to the new desination.
++				// pedFunctions.SetObjective(OBJECTIVE_GOTO_AREA_ANY_MEANS, customPed, destPos);
++
++				// pedFunctions.SetObjective(OBJECTIVE_LEAVE_CAR, customPed, VehicleFunctions::GetSpawnedVehicle());
++			}
++
++			// This objective works, makes the ped attack the player.
++			// pedFunctions.SetObjective(OBJECTIVE_KILL_CHAR_ANY_MEANS, customPed, FindPlayerPed());
+ 		}
+ 	}
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index bb731067..6d29dc44 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-5a";
++std::string Defines::programVersion = "1.2.12-6a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

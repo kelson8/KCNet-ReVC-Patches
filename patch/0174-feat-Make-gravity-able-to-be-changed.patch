@@ -1,0 +1,242 @@
+From cd470ce5bcd1debc4777b6cda5dccc2a97e80b9f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 20 Sep 2026 19:21:19 -0400
+Subject: [PATCH 174/176] feat: Make gravity able to be changed
+
+* Now I can change the gravity in my mod menu and with Lua.
+
+* New lua commands added
+game.set_gravity
+game.get_gravity
+
+* Update changelog.
+---
+ Changelog.md                   | 12 ++++++++
+ src/entities/Physical.cpp      |  6 ++++
+ src/entities/Physical.h        |  9 +++++-
+ src/extras/lua/lua_game.cpp    | 50 ++++++++++++++++++++++++++++++----
+ src/extras/lua/lua_game.h      |  3 ++
+ src/extras/lua/lua_test.cpp    | 23 ++++++++++++++++
+ src/extras/menus/misc_menu.cpp | 25 +++++++++++++++++
+ 7 files changed, 121 insertions(+), 7 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index bd0c551e..048233e9 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1164,3 +1164,15 @@ game.has_model_loaded - Untested
+ * Make freeroam load system restore the max health for the player, instead of the previous saved health.
+ 
+ * Update changelog.
++
++**Commit 4**
++
++feat: Make gravity able to be changed
++
++* Now I can change the gravity in my mod menu and with Lua.
++
++* New lua commands added
++game.set_gravity
++game.get_gravity
++
++* Update changelog.
+\ No newline at end of file
+diff --git a/src/entities/Physical.cpp b/src/entities/Physical.cpp
+index fb796fcd..fc18c073 100644
+--- a/src/entities/Physical.cpp
++++ b/src/entities/Physical.cpp
+@@ -25,6 +25,12 @@
+ bool gGravityCheat;
+ #endif
+ 
++#ifdef CUSTOM_CODE
++// Default value is 0.008f, moving into here I can more easily change this.
++// Now that I can change it in my ImGui mod menu, I can add this value to lua as a gravity option.
++float GRAVITY = 0.008f;
++#endif // CUSTOM_CODE
++
+ 
+ CPhysical::CPhysical(void)
+ {
+diff --git a/src/entities/Physical.h b/src/entities/Physical.h
+index f552da6c..9ecc02c3 100644
+--- a/src/entities/Physical.h
++++ b/src/entities/Physical.h
+@@ -8,7 +8,14 @@ enum {
+ 	PHYSICAL_MAX_COLLISIONRECORDS = 6
+ };
+ 
+-#define GRAVITY (0.008f)
++
++#ifdef CUSTOM_CODE
++	// Default game gravity is 0.008f.
++	// This can now be changed in my lua scripts and ImGui mod menu.
++	extern float GRAVITY;
++#else
++	#define GRAVITY (0.008f)
++#endif // CUSTOM_CODE - Move gravity toggle
+ 
+ class CTreadable;
+ 
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 442ee8c5..11d92938 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -278,8 +278,11 @@ void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+ 	lua_pushcfunction(L, hasModelLoadedLua);
+ 	lua_setfield(L, -2, "has_model_loaded");
+ 
+-	
+-	
++	// Gravity options
++	lua_pushcfunction(L, setGravityLua);
++	lua_setfield(L, -2, "set_gravity");
++	lua_pushcfunction(L, getGravityLua);
++	lua_setfield(L, -2, "get_gravity");
+ 
+     // Game namespace
+     lua_setglobal(L, "game");
+@@ -1019,10 +1022,10 @@ int gameWaitLua(lua_State* L)
+ 
+     thread->waiting = true;
+ 
+-    LogFunctions::LogError(
+-        Defines::logFile,
+-        "game.wait(): coroutine suspended"
+-    );
++    // LogFunctions::LogError(
++        // Defines::logFile,
++        // "game.wait(): coroutine suspended"
++    // );
+ 
+     return lua_yield(L, 0);
+ }
+@@ -1208,6 +1211,41 @@ int hasModelLoadedLua(lua_State *L)
+ // 	return 0;
+ // }
+ 
++/**
++ * Set the current gravity value
++ * 
++ * Usage (0.008 is the default gravity):
++ * game.set_gravity(0.008)
++ */
++int setGravityLua(lua_State *L)
++{
++	lua_Number newGravity = lua_tonumber(L, 1);
++
++	if(newGravity < 0.0f || newGravity >= 1.0f)
++	{
++		return luaL_error(L, "game.set_gravity requires a value between 0.0 and 0.9");
++	}
++
++	GRAVITY = newGravity;
++	return 0;
++}
++
++/**
++ * Get the current gravity value
++ * 
++ * Usage:
++ * game.get_gravity()
++ */
++int getGravityLua(lua_State *L)
++{
++	if(GRAVITY)
++	{
++		lua_pushnumber(L, GRAVITY);
++	}
++
++	return 1;
++}
++
+ 
+ /**
+  * TODO Implement these for pickups later.
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index b004b9d4..659c8e3f 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -76,6 +76,9 @@ extern "C" {
+     extern int requestModelLua(lua_State *L);
+     extern int hasModelLoadedLua(lua_State *L);
+ 
++    extern int setGravityLua(lua_State *L);
++    extern int getGravityLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index e8b6db0c..761bf50e 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -1257,6 +1257,29 @@ LuaTest::SetupFreeroamScript()
+ 		// 	GRAVITY = newGravity;
+ 		// }
+ 		// lua_pop(m_luaVM, 1);
++
++		// https://jariou.gitbooks.io/comprehensive-lua/content/calling_lua_from_c/accessing_lua_tables_from_c.html
++		// https://eliasdaler.wordpress.com/2016/01/07/using-lua-with-c-in-practice-part4/
++
++		// TODO Try to fix this
++		// I might have figured out why this doesn't work, these are in the config.lua not the freeroam script..
++
++		// Check if the window should be smaller when starting up.
++		// This will be for debugging
++		// lua_getglobal(m_luaVM, "config");
++		// if(lua_istable(m_luaVM, -1))
++		// {
++		// 	lua_gettable(m_luaVM, -2);
++		// 	if(lua_isnumber(m_luaVM, -1))
++		// 	{
++		// 		float windowHeight = lua_tonumber(m_luaVM, -1);
++		// 		std::string logMsg = "Window height: " + std::to_string(windowHeight);
++		// 		LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
++		// 	}
++		// 	// return luaL_error(m_luaVM, "'config' is not a table");
++		// }
++
++		// lua_pop(m_luaVM, 1);
+ 	}
+ #endif // DISABLE_GAME_SCRIPTS - Disable free roam script with main mission scripts.
+ }
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 887aaf65..2807bc9d 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -747,6 +747,31 @@ void MiscMenu::MiscTab()
+ 			pedModel2, pedModel3, pedModel4, true, false);
+ 	}
+ 
++	// I made the GRAVITY variable extern in Physical.h instead of static.
++	// This works now! I can set this in the lua code and here.
++
++	if(ImGui::CollapsingHeader("Gravity"))
++	{
++		if(ImGui::Button("Moon gravity"))
++		{
++			GRAVITY = 0.001f;
++			// LogFunctions::LogInfo(Defines::logFile, "Gravity set to " + std::to_string(GRAVITY));
++		}
++
++		if(ImGui::Button("Normal gravity"))
++		{
++			GRAVITY = 0.008f;
++			// LogFunctions::LogInfo(Defines::logFile, "Gravity set to " + std::to_string(GRAVITY));
++		}
++
++		if(ImGui::Button("Heavy gravity"))
++		{
++			GRAVITY = 0.018f;
++			// LogFunctions::LogInfo(Defines::logFile, "Gravity set to " + std::to_string(GRAVITY));
++		}
++	}
++	// if(ImGui::Button(""))
++
+ 	// ImGui::EndDisabled();
+ 	
+ 
+-- 
+2.43.0
+

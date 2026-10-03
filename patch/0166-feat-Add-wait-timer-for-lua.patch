@@ -1,0 +1,480 @@
+From fe37ba4b8cdb74335034b48cba128795b3a44df3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 16 Sep 2026 15:56:18 -0400
+Subject: [PATCH 166/176] feat: Add wait timer for lua
+
+* I finally got this wait timer working! Now I can run things just like the original game scripts!
+
+* Update changelog, change version to 1.2.14-7a.
+---
+ Changelog.md                 |   8 ++
+ src/extras/lua/lua_game.cpp  |  67 ++++++++++-
+ src/extras/lua/lua_game.h    |   8 +-
+ src/extras/lua/lua_test.cpp  | 210 ++++++++++++++++++++++-------------
+ src/extras/utils/defines.cpp |   2 +-
+ 5 files changed, 212 insertions(+), 83 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 64a0dadb..f587b5de 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1058,3 +1058,11 @@ feat: Fix objects to spawn with lua
+ * Update Garages code a bit, move pay n spray code into its own function.
+ 
+ * Update changelog, change verison to 1.2.14-6a.
++
++### 1.2.14-7a
++
++feat: Add wait timer for lua
++
++* I finally got this wait timer working! Now I can run things just like the original game scripts!
++
++* Update changelog, change version to 1.2.14-7a.
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 835df3bb..84cf1f8d 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -66,7 +66,8 @@ extern "C" {
+  * 
+  * game.cheat("KILLME")
+  */
+-void RegisterGameFunctionsLua(lua_State* L)
++// void RegisterGameFunctionsLua(lua_State* L)
++void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+ {
+     lua_newtable(L); // Stack: game table
+ 
+@@ -206,6 +207,21 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	// TODO Set a garage here once I get the functions implemented in lua
+ 	// SET_GARAGE (-886.157 -115.158 9.992) (-882.699 -108.312) (-876.7 -119.83) (15.58) GARAGE_RESPRAY respray_garage3//haiti
+ 
++	// Register the wait command
++	// This works like the original scripts
++	/*
++	-- Example for OnTick in lua, put this in freeroam-game.lua.
++	function OnTick()
++		while true do
++			game.wait(5000)
++			game.set_time(10, 55)
++		end
++	end
++
++	*/
++    lua_pushlightuserdata(L, owner);
++    lua_pushcclosure(L, gameWaitLua, 1);
++    lua_setfield(L, -2, "wait");
+ 
+     // Game namespace
+     lua_setglobal(L, "game");
+@@ -901,6 +917,55 @@ int addBlipForVehicleLua(lua_State *L)
+ }
+ 
+ 
++/**
++ * Implementation of COMMAND_WAIT
++ */
++int gameWaitLua(lua_State* L)
++{
++    LuaTest* instance =
++        static_cast<LuaTest*>(
++            lua_touserdata(L, lua_upvalueindex(1))
++        );
++
++    if (!instance) {
++        return luaL_error(
++            L,
++            "game.wait(): LuaTest instance is null"
++        );
++    }
++
++    LuaThread* thread =
++        instance->FindThread(L);
++
++    if (!thread) {
++        return luaL_error(
++            L,
++            "game.wait(): coroutine not found"
++        );
++    }
++
++    lua_Integer milliseconds =
++        luaL_checkinteger(L, 1);
++
++    if (milliseconds < 0)
++        milliseconds = 0;
++
++    const uint32_t now =
++        CTimer::GetTimeInMilliseconds();
++
++    thread->wakeTime =
++        now + static_cast<uint32_t>(milliseconds);
++
++    thread->waiting = true;
++
++    LogFunctions::LogError(
++        Defines::logFile,
++        "game.wait(): coroutine suspended"
++    );
++
++    return lua_yield(L, 0);
++}
++
+ }
+ 
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 93f12312..ab93a734 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -8,13 +8,17 @@ extern "C" {
+ #include <lualib.h>
+ }
+ 
++#include "lua_test.h"
++
+ // clang-format off
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+ 
+     //------------- Game ------------//
+-    extern void RegisterGameFunctionsLua(lua_State* L);
++    // extern void RegisterGameFunctionsLua(lua_State* L);
++    extern void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner);
++    // extern void RegisterGameWaitFunctionLua(lua_State* L, LuaTest* owner);
+     extern int cheatCodesLua(lua_State *L);
+ 
+     // Respawns
+@@ -54,6 +58,8 @@ extern "C" {
+     extern int addBlipForVehicleLua(lua_State *L);
+     extern int removeBlipLua(lua_State *L);
+ 
++    extern int gameWaitLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 4b34b81f..45201b6f 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -118,7 +118,6 @@ extern "C" {
+ /// Create a new VM, fixes the null issue in imgui_commands
+ /// </summary>
+ 
+-
+ /**
+  * Constructor for Lua
+  * 
+@@ -260,11 +259,11 @@ void LuaTest::OnTick()
+ 	// To run forever
+ 	//---------
+ 
+-	lua_State* L = GetLuaState();
+-    lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
+-    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+-        // Handle error
+-    }
++	// lua_State* L = GetLuaState();
++    // lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
++    // if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
++    //     // Handle error
++    // }
+ 
+ 	//---------
+ 	// To run with a timer
+@@ -277,64 +276,92 @@ void LuaTest::OnTick()
+ 
+ 	// If I can get this working, I should be able to run the wait command like in the original scripts.
+ 
+-//     const uint32_t now =
+-//         CTimer::GetTimeInMilliseconds();
+-
+-//     for (LuaThread& thread : m_threads)
+-//     {
+-//         if (thread.finished)
+-//             continue;
+-
+-//         if (!thread.waiting)
+-//             continue;
++	// LogFunctions::LogError(
++    //     Defines::luaLogFile,
++    //     "LuaTest::OnTick called"
++    // );
++
++	const uint32_t now =
++        CTimer::GetTimeInMilliseconds();
++
++    for (LuaThread& thread : m_threads) {
++        if (thread.finished) {
++			// LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Skipping finished Lua thread"
++            // );
++			continue;
++		}
++            
++        if (!thread.waiting) {
++			// LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Lua thread is not waiting"
++            // );
++			continue;
++		} 
++
++        // This subtraction handles uint32_t timer wraparound correctly
++        // as long as waits are shorter than approximately 2^31 ms.
++        if (static_cast<int32_t>(now - thread.wakeTime) < 0)
++            continue;
+ 
+-//         if (now < thread.wakeTime)
+-//             continue;
++		// LogFunctions::LogError(
++        //     Defines::luaLogFile,
++        //     "Resuming Lua thread"
++        // );
+ 
+-//         thread.waiting = false;
++        thread.waiting = false;
+ 
+-//         int result = 0;
++        int result = 0;
++        int resultCount = 0;
+ 
+-// #if LUA_VERSION_NUM >= 504
+-//         int resultCount = 0;
++        result = lua_resume(
++            thread.state,
++            nullptr,
++            0,
++            &resultCount
++        );
+ 
+-//         result = lua_resume(
+-//             thread.state,
+-//             nullptr,
+-//             0,
+-//             &resultCount
+-//         );
+-// #else
+-//         result = lua_resume(
+-//             thread.state,
+-//             nullptr,
+-//             0
+-//         );
+-// #endif
++        if (result == LUA_YIELD) {
++            /*
++             * The resumed Lua code called game.wait() again.
++             *
++             * Lua_GameWait() has already set:
++             *   thread.waiting = true
++             *   thread.wakeTime = ...
++             */
++            // LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Lua thread yielded again"
++            // );
++            continue;
++        }
+ 
+-//         if (result == LUA_YIELD) {
+-//             // The coroutine called wait() again.
+-//             continue;
+-//         }
++        if (result == LUA_OK) {
++            // LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Lua thread finished"
++            // );
+ 
+-//         if (result == LUA_OK) {
+-//             thread.finished = true;
+-//             continue;
+-//         }
++            thread.finished = true;
++            lua_settop(thread.state, 0);
++            continue;
++        }
+ 
+-//         const char* error =
+-//             lua_tostring(thread.state, -1);
++        const char* error =
++            lua_tostring(thread.state, -1);
+ 
+-//         LogFunctions::LogError(
+-//             Defines::logFile,
+-//             error ? error : "Lua coroutine failed"
+-//         );
++        LogFunctions::LogError(
++            Defines::luaLogFile,
++            error ? error : "Lua resume failed"
++        );
+ 
+-//         lua_settop(thread.state, 0);
+-//         thread.finished = true;
+-//     }
++        lua_settop(thread.state, 0);
++        thread.finished = true;
++    }
+ 
+-//     RemoveFinishedThreads();
++    RemoveFinishedThreads();
+ }
+ 
+ /**
+@@ -345,15 +372,25 @@ void LuaTest::OnTick()
+  */
+ void LuaTest::StartOnTick()
+ {
+-    lua_State* threadState = lua_newthread(m_luaVM);
++	LogFunctions::LogInfo(
++        Defines::luaLogFile,
++        "StartOnTick entered"
++    );
++
++    lua_State* threadState =
++        lua_newthread(m_luaVM);
+ 
+-    // Keep the coroutine alive through the registry.
+-    int reference = luaL_ref(m_luaVM, LUA_REGISTRYINDEX);
++    // lua_newthread pushes the thread on m_luaVM's stack.
++    const int reference =
++        luaL_ref(m_luaVM, LUA_REGISTRYINDEX);
+ 
+-    // Get the global OnTick function from the main Lua state.
+     lua_getglobal(m_luaVM, "OnTick");
+ 
+     if (!lua_isfunction(m_luaVM, -1)) {
++		LogFunctions::LogError(
++            Defines::luaLogFile,
++            "OnTick is not a global Lua function"
++        );
+         lua_pop(m_luaVM, 1);
+ 
+         luaL_unref(
+@@ -370,7 +407,12 @@ void LuaTest::StartOnTick()
+         return;
+     }
+ 
+-    // Move OnTick from the main state's stack to the coroutine stack.
++	LogFunctions::LogError(
++        Defines::luaLogFile,
++        "OnTick found"
++    );
++
++    // Move the function onto the coroutine stack.
+     lua_xmove(m_luaVM, threadState, 1);
+ 
+     LuaThread thread;
+@@ -378,41 +420,46 @@ void LuaTest::StartOnTick()
+     thread.registryReference = reference;
+     thread.waiting = false;
+     thread.finished = false;
++    thread.wakeTime = 0;
+ 
+     m_threads.push_back(thread);
+ 
+-    LuaThread& addedThread = m_threads.back();
+-
+-    int result = 0;
++    LuaThread& current =
++        m_threads.back();
+ 
+-#if LUA_VERSION_NUM >= 504
+     int resultCount = 0;
+ 
+-    result = lua_resume(
+-        threadState,
+-        nullptr,
+-        0,
+-        &resultCount
+-    );
+-#else
+-    result = lua_resume(
+-        threadState,
+-        nullptr,
+-        0
+-    );
+-#endif
++    const int result =
++        lua_resume(
++            threadState,
++            nullptr,
++            0,
++            &resultCount
++        );
+ 
+     if (result == LUA_YIELD) {
+-        // wait() normally brings execution here.
++        /*
++         * Expected if OnTick immediately calls game.wait().
++         */
++        LogFunctions::LogError(
++            Defines::luaLogFile,
++            "OnTick yielded"
++        );
+         return;
+     }
+ 
+     if (result == LUA_OK) {
+-        addedThread.finished = true;
++        // current.finished = true;
++		LogFunctions::LogError(
++            Defines::luaLogFile,
++            "OnTick finished immediately"
++        );
++		m_threads.back().finished = true;
+         return;
+     }
+ 
+-    const char* error = lua_tostring(threadState, -1);
++    const char* error =
++        lua_tostring(threadState, -1);
+ 
+     LogFunctions::LogError(
+         Defines::logFile,
+@@ -420,7 +467,7 @@ void LuaTest::StartOnTick()
+     );
+ 
+     lua_settop(threadState, 0);
+-    addedThread.finished = true;
++    current.finished = true;
+ }
+ 
+ /**
+@@ -657,7 +704,7 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// This is using namespaces for all of my stuff now.
+ 	//----
+ 
+-	RegisterGameFunctionsLua(L);
++	RegisterGameFunctionsLua(L, this);
+ 	RegisterGarageFunctionsLua(L);
+ 	RegisterHudFunctionsLua(L);
+ 	RegisterLogFunctionsLua(L);
+@@ -677,6 +724,9 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_pushstring(L, SAVE_FILE_FORMAT);
+ 	lua_setglobal(L, "EXPECTED_SAVE_FORMAT");
+ 	//
++	
++	// New for wait.
++
+ 
+ 	//
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index d976fa61..14992a8a 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-6a";
++std::string Defines::programVersion = "1.2.14-7a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

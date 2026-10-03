@@ -1,0 +1,86 @@
+From 692be3086063516db72869fcf6fd6ddf261dde51 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 21:32:43 -0400
+Subject: [PATCH 143/161] feat: Make target marker get saved to the save file
+
+* Now the target marker position will get saved to the custom json file.
+
+* Update changelog, change version to 1.2.13-11a.
+---
+ Changelog.md                       |  7 +++++++
+ src/extras/utils/defines.cpp       |  2 +-
+ src/extras/utils/freeroam_util.cpp | 23 +++++++++++++++++++++++
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index c85ab2be..a74fa8eb 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -786,3 +786,10 @@ feat: Add frontend-guides for modifying the menus
+ 
+ * Update changelog.
+ 
++### 1.2.13-11a
++
++feat: Make target marker get saved to the save file
++
++* Now the target marker position will get saved to the custom json file.
++
++* Update changelog, change version to 1.2.13-11a.
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 724be599..d5498c7a 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-10a";
++std::string Defines::programVersion = "1.2.13-11a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 59c98f71..5e63ea86 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -181,6 +181,19 @@ bool FreeroamUtil::SaveFreeroamJson()
+ 
+         // save["stats"][""] = CStats::;       
+ 
++        // New - Added in v1.2.13-11a
++        // For saving the marker on the map if it exists.
++        // First, make sure the target marker is on the map.
++        if(CRadar::TargetMarkerId != -1)
++        {
++            // Now, save the marker position
++            // This doesn't have a Z value, so I just save the X and Y.
++            save["map"]["target_marker"]["pos_x"] = CRadar::TargetMarkerPos.x;
++            save["map"]["target_marker"]["pos_y"] = CRadar::TargetMarkerPos.y;
++        }
++        // 
++        //
++
+ 
+         /*
+          * Write to a temporary file first. If the game crashes while
+@@ -416,6 +429,16 @@ bool FreeroamUtil::LoadFreeroamJson()
+             }
+         }
+ 
++        // New for loading the target marker position.
++        // TODO Fix this to work.
++        // It doesn't put the marker back on the map, I will probably have to add the sprite back also.
++        // if(save.contains("map") && save["map"].contains("target_marker"))
++        // {
++        //     const json& mapInfo = save["map"]["target_marker"];
++        //     CRadar::TargetMarkerPos.x = mapInfo.value("pos_x", CRadar::TargetMarkerPos.x);
++        //     CRadar::TargetMarkerPos.y = mapInfo.value("pos_y", CRadar::TargetMarkerPos.y);
++        // }
++
+         return true;
+     }
+     catch (const json::parse_error&) {
+-- 
+2.43.0
+

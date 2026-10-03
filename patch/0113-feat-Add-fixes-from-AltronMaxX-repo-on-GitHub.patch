@@ -1,0 +1,423 @@
+From ce2b2a6fc3e92f2f23950f2aefb7fd58cbe4688f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 11:29:05 -0400
+Subject: [PATCH 113/161] feat: Add fixes from AltronMaxX repo on GitHub
+
+* Fix for car engine sound.
+* Added Borderless game window option for video settings.
+
+* Update readme.
+
+* Update changelog, switch version to 1.2.12-8a.
+---
+ Changelog.md                           |  12 +++
+ README.md                              |  13 +++
+ src/core/Frontend.cpp                  |  13 ++-
+ src/core/Frontend.h                    |  11 +++
+ src/core/MenuScreensCustom.cpp         |  15 ++-
+ src/extras/functions/ini_functions.cpp |   6 ++
+ src/peds/Ped.cpp                       |   5 +-
+ src/skel/glfw/glfw.cpp                 | 126 ++++++++++++++++++++++++-
+ utils/gxt/american.txt                 |   3 +
+ 9 files changed, 199 insertions(+), 5 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 62b6be77..dc19880c 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -516,3 +516,15 @@ feat: Add player.get_position to lua
+ * Now I can pass the CVector of the player to lua.
+ 
+ * Update changelog, switch version to 1.2.12-7a.
++
++### 1.2.12-8a
++
++feat: Add fixes from AltronMaxX repo on GitHub
++
++* Fix for car engine sound.
++* Added Borderless game window option for video settings.
++
++* Update readme.
++
++
++* Update changelog, switch version to 1.2.12-8a.
+diff --git a/README.md b/README.md
+index cf7b8258..e67dd459 100644
+--- a/README.md
++++ b/README.md
+@@ -32,6 +32,19 @@ I have disabled D3D9 and DirectX builds for this ReVC build, I didn't want to su
+ 
+ By default, this uses C++20 instead of C++11, but it runs fine with C++20 setup.
+ 
++## Added from other ReVC projects
++
++I have added the Windowless mode and vehicle audio fix from these GitHub commits in v1.2.12-8a.
++
++Credit to AltronMaxX on GitHub for these below changes.
++
++Borderless mode:
++* https://github.com/AltronMaxX/reVC/commit/7dc6dc6b22ddd21eee0882ad095d8b822cca8856
++
++Vehicle engine sound fix:
++* https://github.com/AltronMaxX/reVC/commit/4b549866ddcf4dd21c57f74af538f96d1bde7090
++
++
+ ## ImGui info
+ This project has an ImGui mod menu, which can be opened with `F8` on the keyboard, or `RB` + `A` on an Xbox controller.
+ 
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 4148844a..230cfa56 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -3219,13 +3219,22 @@ CMenuManager::LoadSettings()
+ 			CFileMgr::Read(fileHandle, (char*)&m_nPrefsDepth, sizeof(m_nPrefsDepth));
+ 			CFileMgr::Read(fileHandle, (char*)&m_nPrefsWindowed, sizeof(m_nPrefsWindowed));
+ 			CFileMgr::Read(fileHandle, (char*)&m_nPrefsSubsystem, sizeof(m_nPrefsSubsystem));
++			
++#ifdef CUSTOM_CODE
++			if(m_nPrefsWindowed != 0 && m_nPrefsWindowed != NUM_WINDOW_MODES){
++#else
+ 			if(m_nPrefsWindowed != 0 && m_nPrefsWindowed != 1){
++#endif // CUSTOM_CODE - Borderless window
+ 				// garbage data from vanilla settings file
+ 				// let skeleton find something
+ 				m_nPrefsWidth = 0;
+ 				m_nPrefsHeight = 0;
+ 				m_nPrefsDepth = 0;
++#ifdef CUSTOM_CODE
++				m_nPrefsWindowed = WINDOWMODE_FULLSCREEN;
++#else
+ 				m_nPrefsWindowed = 0;
++#endif // CUSTOM_CODE - Borderless window
+ 				m_nPrefsSubsystem = 0;
+ 			}
+ 			m_nSelectedScreenMode = m_nPrefsWindowed;
+@@ -5524,7 +5533,9 @@ CMenuManager::ProcessOnOffMenuOptions()
+ 
+ 		// Temporary fix, this disables toggling the fast loader on the main menu but it can still be toggled when a save is loaded.
+ 		// TODO Come up with a better solution for this
+-		if(!m_bGameNotLoaded) { 
++		
++		// TODO Fix it to work without this, add a check to see if the player is on a few spots on the menu.
++		if(!m_bGameNotLoaded) {
+ 			gbFastLoader = !gbFastLoader;
+ 			SaveSettings();
+ 		}
+diff --git a/src/core/Frontend.h b/src/core/Frontend.h
+index 1a77ac24..5c458ad1 100644
+--- a/src/core/Frontend.h
++++ b/src/core/Frontend.h
+@@ -116,6 +116,17 @@
+ #define CONTSETUP_BACK_BOTTOM 82.0f
+ #define CONTSETUP_BACK_HEIGHT 25.0f
+ 
++
++#ifdef IMPROVED_VIDEOMODE
++enum eWindowMode
++{
++	WINDOWMODE_FULLSCREEN = 0,
++	WINDOWMODE_WINDOWED,
++	WINDOWMODE_BORDERLESS,
++	NUM_WINDOW_MODES
++};
++#endif
++
+ enum
+ {
+ 	MENUALIGN_LEFT = 1,
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 8553ce25..29b7a359 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -38,10 +38,17 @@
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 
+ #if defined(IMPROVED_VIDEOMODE) && !defined(GTA_HANDHELD)
++
++#ifdef CUSTOM_CODE
++	#define VIDEOMODE_SELECTOR MENUACTION_CFO_SELECT, "FEM_SCF", { new CCFOSelect((int8*)&FrontEndMenuManager.m_nPrefsWindowed, "VideoMode", "Windowed", screenModes, ARRAY_SIZE(screenModes), true, ScreenModeAfterChange, true) }, 0, 0, MENUALIGN_LEFT,
++#else
+ 	#define VIDEOMODE_SELECTOR MENUACTION_CFO_SELECT, "FEM_SCF", { new CCFOSelect((int8*)&FrontEndMenuManager.m_nPrefsWindowed, "VideoMode", "Windowed", screenModes, 2, true, ScreenModeAfterChange, true) }, 0, 0, MENUALIGN_LEFT,
++
++#endif // CUSTOM_CODE - Borderless window
++
+ #else
+ 	#define VIDEOMODE_SELECTOR
+-#endif
++#endif // IMPROVED_VIDEOMODE && !GTA_HANDHELD
+ 
+ #ifdef MULTISAMPLING
+ 	#define MULTISAMPLING_SELECTOR MENUACTION_CFO_DYNAMIC, "FED_AAS", { new CCFODynamic((int8*)&FrontEndMenuManager.m_nPrefsMSAALevel, "Graphics", "MultiSampling", MultiSamplingDraw, MultiSamplingButtonPress) }, 0, 0, MENUALIGN_LEFT,
+@@ -280,7 +287,13 @@ wchar* MultiSamplingDraw(bool *disabled, bool userHovering) {
+ #endif
+ 
+ #ifdef IMPROVED_VIDEOMODE
++
++#ifdef CUSTOM_CODE
++const char* screenModes[] = { "FED_FLS", "FED_WND", "FED_BDL" };
++#else
+ const char* screenModes[] = { "FED_FLS", "FED_WND" };
++#endif // CUSTOM_CODE - Borderless window
++
+ void ScreenModeAfterChange(int8 before, int8 after)
+ {
+ 	_psSelectScreenVM(FrontEndMenuManager.m_nPrefsVideoMode); // apply same resolution
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 0767e218..b7c42c17 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1351,6 +1351,12 @@ LoadINISettings()
+ 	}
+ #endif
+ 
++#ifdef CUSTOM_CODE
++	if (FrontEndMenuManager.m_nPrefsWindowed < 0 || FrontEndMenuManager.m_nPrefsWindowed >= NUM_WINDOW_MODES)
++		FrontEndMenuManager.m_nPrefsWindowed = WINDOWMODE_FULLSCREEN;
++	FrontEndMenuManager.m_nSelectedScreenMode = FrontEndMenuManager.m_nPrefsWindowed;
++#endif // CUSTOM_CODE - Borderless window
++
+ 	// Fetched in above block, but needs evaluation
+ #ifdef PED_CAR_DENSITY_SLIDERS
+ 	CPopulation::MaxNumberOfPedsInUse = DEFAULT_MAX_NUMBER_OF_PEDS * CIniFile::PedNumberMultiplier;
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 36d99b2e..0b67d3e8 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -4380,7 +4380,10 @@ CPed::PedSetInCarCB(CAnimBlendAssociation *animAssoc, void *arg)
+ 
+ 		if (!veh->bEngineOn) {
+ 			veh->bEngineOn = true;
+-			DMAudio.PlayOneShot(ped->m_audioEntityId, SOUND_CAR_ENGINE_START, 1.0f);
++			// Fix for car engine sound
++			// TODO Test this later.
++			// https://github.com/AltronMaxX/reVC/commit/4b549866ddcf4dd21c57f74af538f96d1bde7090
++			DMAudio.PlayOneShot(veh->m_audioEntityId, SOUND_CAR_ENGINE_START, 1.0f);
+ 		}
+ 		if (ped->m_objective == OBJECTIVE_ENTER_CAR_AS_DRIVER && ped->CharCreatedBy == RANDOM_CHAR
+ 			&& ped != FindPlayerPed() && ped->m_nPedType != PEDTYPE_EMERGENCY) {
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index bf38eec0..42db868d 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -379,7 +379,24 @@ psMouseSetPos(RwV2d *pos)
+ #ifdef _IMGUI_TEST
+ 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+ 
++
++#ifdef _IMGUI_TEST
++
++	// TODO Try to fix buggy mouse movement, sometimes the mouse dissappears with my ImGui mod menu in OpenGL.
++	// Well putting any of these here hard crashes it.
++	// Maybe this mouse code is running too early in the init for the game or something..
++
++	// ImGuiIO &io = ImGui::GetIO();
++	// if(io)
++	// io.MousePos.x = (RwInt32)pos->x;
++	// io.MousePos.y = (RwInt32)pos->y;
++	//
++
++#endif // _IMGUI_TEST - Try to fix mouse from escaping and glitching with the mod menu.
++
+ 	// This disables the mouse in game if ImGui is active.
++	// My new stuff would've never ran anyways, since this is here... oops
++	// Turning this off doesn't seem to break the menu, but I'll leave it on.
+ 	if(imGuiFunctions.ImGuiActive) {
+ 		return;
+ 	}
+@@ -391,6 +408,8 @@ psMouseSetPos(RwV2d *pos)
+ 
+ 	PSGLOBAL(lastMousePos.y) = (RwInt32)pos->y;
+ 
++
++
+ 	return;
+ }
+ 
+@@ -800,6 +819,39 @@ RwBool IsForegroundApp()
+ {
+ 	return !!ForegroundApp;
+ }
++
++#if defined(IMPROVED_VIDEOMODE) && defined(CUSTOM_CODE)
++static void
++GetBorderlessMonitorInfo(int *x, int *y, int *width, int *height)
++{
++	int numMonitors;
++	GLFWmonitor **monitors = glfwGetMonitors(&numMonitors);
++	GLFWmonitor *monitor = nil;
++
++	if (monitors != nil && GcurSel >= 0 && GcurSel < numMonitors)
++		monitor = monitors[GcurSel];
++	if (monitor == nil)
++		monitor = glfwGetPrimaryMonitor();
++
++	if (monitor != nil) {
++		const GLFWvidmode *mode = glfwGetVideoMode(monitor);
++		glfwGetMonitorPos(monitor, x, y);
++
++		if (mode != nil) {
++			*width = mode->width;
++			*height = mode->height;
++			return;
++		}
++	}
++
++	*x = 0;
++	*y = 0;
++	*width = FrontEndMenuManager.m_nPrefsWidth;
++	*height = FrontEndMenuManager.m_nPrefsHeight;
++}
++#endif // IMPROVED_VIDEOMODE && CUSTOM_CODE - Borderless window.
++
++
+ /*
+ UINT GetBestRefreshRate(UINT width, UINT height, UINT depth)
+ {
+@@ -948,7 +1000,11 @@ psSelectDevice()
+ 			FrontEndMenuManager.m_nPrefsWidth = mode->width;
+ 			FrontEndMenuManager.m_nPrefsHeight = mode->height;
+ 			FrontEndMenuManager.m_nPrefsDepth = 32;
++#ifdef CUSTOM_CODE
++			FrontEndMenuManager.m_nPrefsWindowed = WINDOWMODE_FULLSCREEN;
++#else
+ 			FrontEndMenuManager.m_nPrefsWindowed = 0;
++#endif // CUSTOM_CODE - Borderless window
+ 		}
+ 
+ 		// Find the videomode that best fits what we got from the settings file
+@@ -990,10 +1046,18 @@ psSelectDevice()
+ 	RwEngineGetVideoModeInfo(&vm, GcurSelVM);
+ 
+ #ifdef IMPROVED_VIDEOMODE
++
++#ifdef CUSTOM_CODE
++	if (FrontEndMenuManager.m_nPrefsWindowed != WINDOWMODE_FULLSCREEN)
++#else
+ 	if (FrontEndMenuManager.m_nPrefsWindowed)
++#endif // CUSTOM_CODE - Borderless window
++
+ 		GcurSelVM = bestWndMode;
+ 
++	
+ 	// Now GcurSelVM is 0 but vm has sizes(and fullscreen flag) of the video mode we want, that's why we changed the rwVIDEOMODEEXCLUSIVE conditions below
++	// Windowed modes use the non-exclusive device mode, but vm keeps the requested resolution.
+ 	FrontEndMenuManager.m_nPrefsWidth = vm.width;
+ 	FrontEndMenuManager.m_nPrefsHeight = vm.height;
+ 	FrontEndMenuManager.m_nPrefsDepth = vm.depth;
+@@ -1002,9 +1066,14 @@ psSelectDevice()
+ #ifndef PS2_MENU
+ 	FrontEndMenuManager.m_nCurrOption = 0;
+ #endif
+-	
+ 	/* Set up the video mode and set the apps window
+ 	* dimensions to match */
++
++#if defined(IMPROVED_VIDEOMODE) && defined(CUSTOM_CODE) 
++	glfwWindowHint(GLFW_DECORATED, FrontEndMenuManager.m_nPrefsWindowed == WINDOWMODE_BORDERLESS ? GLFW_FALSE : GLFW_TRUE);
++#endif // IMPROVED_VIDEOMODE && CUSTOM_CODE - Borderless window
++
++
+ 	if (!RwEngineSetVideoMode(GcurSelVM))
+ 	{
+ 		return FALSE;
+@@ -1035,12 +1104,37 @@ psSelectDevice()
+ 		PSGLOBAL(fullScreen) = TRUE;
+ 	}
+ #else
++
++#ifdef CUSTOM_CODE
++	if (FrontEndMenuManager.m_nPrefsWindowed == WINDOWMODE_BORDERLESS) {
++		int x, y, width, height;
++		GetBorderlessMonitorInfo(&x, &y, &width, &height);
++
++		RsGlobal.maximumWidth = width;
++		RsGlobal.maximumHeight = height;
++		RsGlobal.width = width;
++		RsGlobal.height = height;
++	} else {
+ 		RsGlobal.maximumWidth = FrontEndMenuManager.m_nPrefsWidth;
+ 		RsGlobal.maximumHeight = FrontEndMenuManager.m_nPrefsHeight;
+ 		RsGlobal.width = FrontEndMenuManager.m_nPrefsWidth;
+ 		RsGlobal.height = FrontEndMenuManager.m_nPrefsHeight;
++	}
++#else
++		RsGlobal.maximumWidth = FrontEndMenuManager.m_nPrefsWidth;
++		RsGlobal.maximumHeight = FrontEndMenuManager.m_nPrefsHeight;
++		RsGlobal.width = FrontEndMenuManager.m_nPrefsWidth;
++		RsGlobal.height = FrontEndMenuManager.m_nPrefsHeight;
++
++#endif // CUSTOM_CODE - Borderless window
+ 		
+-		PSGLOBAL(fullScreen) = !FrontEndMenuManager.m_nPrefsWindowed;
++#ifdef CUSTOM_CODE
++	PSGLOBAL(fullScreen) = FrontEndMenuManager.m_nPrefsWindowed == WINDOWMODE_FULLSCREEN;
++#else
++	PSGLOBAL(fullScreen) = !FrontEndMenuManager.m_nPrefsWindowed;
++
++#endif // CUSTOM_CODE - Borderless window
++
+ #endif
+ 
+ #ifdef MULTISAMPLING
+@@ -1182,9 +1276,28 @@ void psPostRWinit(void)
+ 	_InputInitialiseJoys();
+ 	_InputInitialiseMouse(false);
+ 
++#if  defined(IMPROVED_VIDEOMODE) && defined(CUSTOM_CODE)
++		if(!(vm.flags & rwVIDEOMODEEXCLUSIVE)) {
++		if (FrontEndMenuManager.m_nPrefsWindowed == WINDOWMODE_BORDERLESS) {
++			int x, y, width, height;
++			GetBorderlessMonitorInfo(&x, &y, &width, &height);
++
++			glfwSetWindowAttrib(PSGLOBAL(window), GLFW_DECORATED, GLFW_FALSE);
++			glfwSetWindowPos(PSGLOBAL(window), x, y);
++			glfwSetWindowSize(PSGLOBAL(window), width, height);
++		} else {
++			glfwSetWindowAttrib(PSGLOBAL(window), GLFW_DECORATED, GLFW_TRUE);
++			glfwSetWindowSize(PSGLOBAL(window), RsGlobal.maximumWidth, RsGlobal.maximumHeight);
++		}
++#else
+ 	if(!(vm.flags & rwVIDEOMODEEXCLUSIVE))
++#endif // IMPROVED_VIDEOMODE && CUSTOM_CODE - Borderless window
+ 		glfwSetWindowSize(PSGLOBAL(window), RsGlobal.maximumWidth, RsGlobal.maximumHeight);
+ 
++#if  defined(IMPROVED_VIDEOMODE) && defined(CUSTOM_CODE)
++	}
++#endif // IMPROVED_VIDEOMODE && CUSTOM_CODE - Borderless window
++
+ 	// Make sure all keys are released
+ 	CPad::GetPad(0)->Clear(true);
+ 	CPad::GetPad(1)->Clear(true);
+@@ -2255,6 +2368,15 @@ main(int argc, char *argv[])
+ #endif
+ #endif
+ 
++// This might fix this error I get on the Steam Deck in desktop mode
++// Game exits with `GLFW Error: X11: Platform not initialized`. 
++// https://github.com/Hezkore/hez-gta-re3/commit/b583a11ad7b9a336bd04518189d6cb627321715a
++#if defined(GET_KEYBOARD_INPUT_FROM_X11) && defined(GLFW_PLATFORM)
++	// Keyboard input comes from the X server, so GLFW must not give us a Wayland window.
++	// GLFW_PLATFORM is 3.4 and up, older versions are X11 only.
++	glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);
++#endif
++
+ 	/* 
+ 	 * Initialize the platform independent data.
+ 	 * This will in turn initialize the platform specific data...
+diff --git a/utils/gxt/american.txt b/utils/gxt/american.txt
+index d017ce8f..6adfad8d 100644
+--- a/utils/gxt/american.txt
++++ b/utils/gxt/american.txt
+@@ -14378,6 +14378,9 @@ TRILINEAR
+ [FED_WND]
+ WINDOWED
+ 
++[FED_BDL]
++BORDERLESS
++
+ [FED_FLS]
+ FULLSCREEN
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,170 @@
+From 9dcf11f32d0315c5540c8fa133b3673e1eeecdbe Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Aug 2026 15:30:39 -0400
+Subject: [PATCH 069/161] feat: Add more changes to disable ImGui menu
+
+---
+ src/extras/functions/ini_functions.cpp | 16 +++++++++++++---
+ src/extras/functions/ini_functions.h   |  3 +++
+ src/extras/lua/lua_test.cpp            | 23 ++++++++++++++++++++++-
+ 3 files changed, 38 insertions(+), 4 deletions(-)
+
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 58f4e6cd..6937806f 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -125,6 +125,8 @@ ReadAndGetImGuiConfig(const char* key)
+ 	return 0;
+ }
+ 
++#endif // _IMGUI_TEST
++
+ // Function to split a string by delimiter
+ std::vector<std::string>
+ IniFunctions::SplitString(const std::string &str, char delimiter)
+@@ -289,6 +291,8 @@ IniFunctions::DisplayVehicles(const std::vector<IniFunctions::VehicleCategory> &
+ 
+ 
+ 
++
++
+ //------------------
+ // Warps
+ //------------------
+@@ -485,6 +489,8 @@ IniFunctions::DisplayLocations(const std::vector<IniFunctions::Category> &catego
+ 	}
+ }
+ 
++#endif // _IMGUI_TEST
++
+ //clang-format on
+ 
+ // Setup loading for Game init
+@@ -503,11 +509,13 @@ IniFunctions::LoadLocations()
+ /// <summary>
+ /// Display the warp locations and teleport buttons
+ /// </summary>
++#ifdef _IMGUI_TEST
+ void
+ IniFunctions::DisplayLocationsImGui()
+ {
+ 	DisplayLocations(loadedLocations);
+ }
++#endif // _IMGUI_TEST
+ 
+ // From ReLCS
+ /// <summary>
+@@ -655,6 +663,8 @@ IniFunctions::LoadWarpIni()
+ 
+ //
+ 
++#ifdef _IMGUI_TEST
++
+ /// <summary>
+ /// Display the current updated warp list, TODO Figure out how to move this to warp_menu.cpp or warp_functions.
+ /// Old function without categories.
+@@ -702,6 +712,8 @@ IniFunctions::ImGuiWarpList()
+ 	}
+ }
+ 
++#endif // _IMGUI_TEST
++
+ 
+ 
+ //std::vector<WarpData>
+@@ -750,8 +762,6 @@ readMultipleSections(const std::string &filename, const std::vector<std::string>
+ 
+ #endif // DEBUG_EXTRA_CHEATS
+ 
+-#endif // _IMGUI_TEST
+-
+ mINI::INIFile featuresIni(Defines::featuresIniFile);
+ mINI::INIStructure featuresCfg;
+ 
+@@ -1456,7 +1466,7 @@ SaveINISettings()
+ 	ini.write(cfg);
+ }
+ 
+-#endif
++// #endif
+ 
+ /////////////////////
+ // End ini functions
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index 7ceefc0f..68a85e26 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -76,7 +76,10 @@ public:
+ 
+ 	// New load locations
+ 	void LoadLocations();
++
++#ifdef _IMGUI_TEST
+ 	void DisplayLocationsImGui();
++#endif // _IMGUI_TEST
+ 	//
+ 
+ 	// Append to locations
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index a9eb917c..51dfb001 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -63,11 +63,13 @@ extern "C" {
+ #include "lua_world.h"
+ 
+ // ImGui test
+-#define _IMGUI_TEST
++// #define _IMGUI_TEST
+ #ifdef _IMGUI_TEST
+ #include "imgui_functions.h"
+ #endif
+ 
++// #include "tcp_client.h"
++
+ // TODO Fix this include, add this folder into premake if this builds and works.
+ #include "../vendor/LuaBridge3/Distribution/LuaBridge/LuaBridge.h"
+ 
+@@ -325,6 +327,14 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 		.endNamespace();
+ 	//
+ 
++	// Table test
++	// TODO Figure this out.
++	// https://stackoverflow.com/questions/20147027/creating-a-simple-table-with-lua-tables-c-api
++	// lua_createtable(L, 0, 4);
++
++	// lua_pushstring(L)
++
++
+ 	// Cheat test
+ 	lua_register(L, "cheat_test", CheatTestNew);
+ 
+@@ -332,7 +342,9 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_register(L, "toggle_control", TogglePlayerControlLua);
+ 
+ 	// Test for ImGui
++#ifdef _IMGUI_TEST
+ 	lua_register(L, "toggle_imgui", toggleImGuiLua);
++#endif // _IMGUI_TEST
+ 
+ 
+ 
+@@ -635,6 +647,15 @@ LuaTest::InitLua()
+ 	Defines defines = Defines();
+ 	LuaTest luaTest = LuaTest();
+ 
++	// This requires my custom TcpClient and OpensslTest files from the internal Git repos.
++	// This does send a message to the TcpServer from here.
++	// Well I fixed the crashing, in OpensslTest i was using 'exit' instead of return in the 
++	//  'create_tcp_client' for errors and that was causing a hard crash.
++	// TODO Move this elsewhere.
++	// TcpClient &tcpClient = TcpClient::getInstance();
++	// tcpClient.ConnectToServer();
++	//
++
+ 	// Create a new VM, moved into constructor
+ 	//m_luaVM = luaL_newstate();
+ 	// TODO Implement this from MTA
+-- 
+2.43.0
+

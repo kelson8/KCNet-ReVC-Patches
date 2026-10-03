@@ -1,0 +1,136 @@
+From 98179300dc61234c3d9e00f95aa6820fc69127e4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 15 Sep 2026 18:12:00 -0400
+Subject: [PATCH 163/176] fix: Add a few changes from other ReVC repos
+
+* Update changelog
+---
+ Changelog.md           |  9 ++++++++
+ src/skel/glfw/glfw.cpp | 52 ++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 59 insertions(+), 2 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 3868b1b3..65561f57 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1029,3 +1029,12 @@ Commit 2:
+ https://github.com/AltronMaxX/reVC/commit/81f62c4d31e76ff87d9ddd24e459be4b4100526c
+ 
+ * Update changelog.
++
++**Commit 5**
++
++fix: Add a few changes from some commits
++
++Taken from this commit
++* https://github.com/AltronMaxX/reVC/commit/f08da5aa9534c1c0698454074ce4bd2370bab2dd
++
++* Update changelog
+\ No newline at end of file
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index a6858c7c..e209e5d6 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -162,6 +162,11 @@ static RwBool		  ForegroundApp = TRUE;
+ static RwBool		  WindowIconified = FALSE;
+ static RwBool		  WindowFocused = TRUE;
+ 
++#ifdef CUSTOM_CODE
++static RwBool		  WindowAudioSuspended = FALSE;
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
++
+ static RwBool		  RwInitialised = FALSE;
+ 
+ static RwSubSystemInfo GsubSysInfo[MAX_SUBSYSTEMS];
+@@ -189,19 +194,56 @@ static psGlobalType PsGlobal;
+ // Fix full screen
+ // https://github.com/AltronMaxX/reVC/commit/81f62c4d31e76ff87d9ddd24e459be4b4100526c
+ 
++// TODO Implement this from one of the commits.
++
++// IsFullscreenLikeWindowMode()
++
++// Seems to be from here
++// https://github.com/AltronMaxX/reVC/commit/f08da5aa9534c1c0698454074ce4bd2370bab2dd
++// SetWindowAudioSuspended(RwBool suspend)
++
+ static RwBool
+ IsWindowMinimizedPauseActive(void)
+ {
+ 	return WindowIconified || (PSGLOBAL(fullScreen) && !WindowFocused);
+ }
+ 
++// From this commit
++// https://github.com/AltronMaxX/reVC/commit/f08da5aa9534c1c0698454074ce4bd2370bab2dd 
++static void
++SetWindowAudioSuspended(RwBool suspend)
++{
++	if (WindowAudioSuspended == suspend)
++		return;
++
++	WindowAudioSuspended = suspend;
++	if (suspend)
++	{
++		DMAudio.SetMusicMasterVolume(0);
++		DMAudio.SetEffectsMasterVolume(0);
++		DMAudio.Service();
++		RsEventHandler(rsACTIVATE, (void *)FALSE);
++	}
++	else
++	{
++		RsEventHandler(rsACTIVATE, (void *)TRUE);
++		DMAudio.SetMusicMasterVolume(FrontEndMenuManager.m_PrefsMusicVolume);
++		DMAudio.SetEffectsMasterVolume(FrontEndMenuManager.m_PrefsSfxVolume);
++		DMAudio.Service();
++	}
++}
++
+ static void
+ UpdateWindowMinimizedPause(void)
+ {
+ 	RwBool pause = IsWindowMinimizedPauseActive();
+ 	CTimer::SetWindowMinimizedPause(pause);
+ 	if (pause)
++	{
+ 		ForegroundApp = FALSE;
++		SetWindowAudioSuspended(TRUE);
++	}
++		
+ }
+ 
+ static void
+@@ -307,6 +349,7 @@ psCameraBeginUpdate(RwCamera *camera)
+ 
+ #ifdef CUSTOM_CODE
+ 		RefreshWindowActivityState();
++		SetWindowAudioSuspended(TRUE);
+ #endif // CUSTOM_CODE - Auto pause when switching windows
+ 
+ 		RsEventHandler(rsACTIVATE, (void *)FALSE);
+@@ -576,7 +619,11 @@ psInitialize(void)
+ 	PsGlobal.cursorIsInWindow = FALSE;
+ 	WindowFocused = TRUE;
+ 	WindowIconified = FALSE;
+-	
++
++#ifdef CUSTOM_CODE
++	WindowAudioSuspended = FALSE;
++#endif // CUSTOM_CODE - Auto pause when switching windows
++
+ 	PsGlobal.joy1id	= -1;
+ 	PsGlobal.joy2id	= -1;
+ 
+@@ -2767,7 +2814,8 @@ main(int argc, char *argv[])
+ 					if (!CTimer::GetIsWindowMinimizedPaused())
+ 						{
+ 							ForegroundApp = TRUE;
+-							RsEventHandler(rsACTIVATE, (void *)TRUE);
++							SetWindowAudioSuspended(FALSE);
++							// RsEventHandler(rsACTIVATE, (void *)TRUE);
+ 						}
+ #else
+ 					ForegroundApp = TRUE;
+-- 
+2.43.0
+

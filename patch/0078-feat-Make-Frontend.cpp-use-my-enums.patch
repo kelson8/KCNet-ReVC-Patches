@@ -1,0 +1,68 @@
+From ce8195c6a9571c813e74567519c49387032310c9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 01:59:57 -0400
+Subject: [PATCH 078/161] feat: Make Frontend.cpp use my enums
+
+---
+ src/core/Frontend.cpp | 23 ++++++++++++++++++++++-
+ 1 file changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 0d29235c..c18412f1 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -41,6 +41,10 @@
+ #include "misc_functions.h"
+ #endif // CUSTOM_CODE - Export stats using html template
+ 
++#ifdef CUSTOM_CODE
++#include "misc_enums.h"
++#endif // CUSTOM_CODE - For new script enums
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -134,6 +138,9 @@ bool CMenuManager::m_PrefsDisableTutorials = false;
+ uint32 TimeToStopPadShaking;
+ #endif
+ 
++/**
++ * Music file names and other items.
++ */
+ const char* FrontendFilenames[][2] = {
+ 	{"background", ""},
+ 	{"vc_logo", "vc_logom"},
+@@ -4858,7 +4865,13 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ 	if (m_nCurrScreen == MENUPAGE_START_MENU || m_nCurrScreen == MENUPAGE_NEW_GAME || m_nCurrScreen == MENUPAGE_NEW_GAME_RELOAD) {
+ 		if (CPad::GetPad(0)->GetChar('R')) {
++			// SCRIPT_RELEASE
++#ifdef CUSTOM_CODE
++			CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
++#else
+ 			CTheScripts::ScriptToLoad = 1;
++#endif // CUSTOM_CODE - For new script enums
++
+ 			DoSettingsBeforeStartingAGame();
+ 			return;
+ 		}
+@@ -5736,7 +5749,15 @@ CMenuManager::ProcessFileActions()
+ #endif
+ 			if (CheckSlotDataValid(m_nCurrSaveSlot)) {
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+-				CTheScripts::ScriptToLoad = 0;
++				// TODO Change this in here, I didn't know this was also set here.
++				// Make this use a new variable that can be changed in the ini.
++
++#ifdef CUSTOM_CODE
++			// CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
++			CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
++#else
++			CTheScripts::ScriptToLoad = 0;
++#endif // CUSTOM_CODE - For new script enums
+ #endif
+ 
+ #ifdef XBOX_MESSAGE_SCREEN
+-- 
+2.43.0
+

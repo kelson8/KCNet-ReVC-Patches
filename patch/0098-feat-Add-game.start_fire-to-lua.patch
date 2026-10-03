@@ -1,0 +1,186 @@
+From 735f61e219b68afa205039348d1dc77793fdb8ab Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 7 Sep 2026 21:24:33 -0400
+Subject: [PATCH 098/161] feat: Add game.start_fire to lua
+
+* Now you can start fires in the game.
+
+Lua usage:
+* game.start_fire({x = 20, y = 20, z = 20})
+
+* Update changelog, bump version to 1.2.10-5a.
+---
+ Changelog.md                 | 11 ++++++++
+ src/extras/lua/lua_game.cpp  | 51 ++++++++++++++++++++++++++++++------
+ src/extras/lua/lua_game.h    |  2 ++
+ src/extras/lua/lua_world.cpp |  6 +++++
+ src/extras/utils/defines.cpp |  2 +-
+ 5 files changed, 63 insertions(+), 9 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 7cdb667d..19e4399a 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -307,3 +307,14 @@ feat: Make some log lines disabled without EXTRA_LOGGING
+ * Fix camera mode when removing old vehicle for warping into new ones.
+ 
+ * Update changelog, bump version to 1.2.10-4a
++
++### 1.2.10-5a
++
++feat: Add game.start_fire to lua
++
++* Now you can start fires in the game.
++
++Lua usage:
++* game.start_fire({x = 20, y = 20, z = 20})
++
++* Update changelog, bump version to 1.2.10-5a.
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 1f0e49a8..47ea47ad 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -36,6 +36,8 @@
+ 
+ #include "Pad.h"
+ 
++#include "Fire.h"
++
+ //-----------------------
+ // Game options/Settings/setup
+ //-----------------------
+@@ -67,6 +69,17 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	// lua_pushcfunction(L, setPoliceStationRespawnLua);
+ 	// lua_setfield(L, -2, "set_police_respawn");
+ 	
++	// Start a fire
++	// TODO Fix this to only start one fire, this can be spammed for a fun effect.
++	lua_pushcfunction(L, startFireLua);
++    lua_setfield(L, -2, "start_fire");
++
++	//----------
++	// TODO Implement these below
++	//----------
++	// Add an explosion
++	// lua_pushcfunction(L, addExplosionLua);
++    // lua_setfield(L, -2, "add_explosion");
+ 
+     // Game namespace
+     lua_setglobal(L, "game");
+@@ -180,10 +193,7 @@ int setHospitalRespawnLua(lua_State *L)
+ 	
+ 	if (!pos)
+     {
+-    	return luaL_error(
+-    	L,
+-        	"vehicle.create expects a vector table with numeric x, y, and z fields"
+-		);
++    	return luaL_error(L, "game.set_hospital_respawn expects a vector table with numeric x, y, and z fields" );
+ 	}
+ 
+ 	CRestart::AddHospitalRestartPoint(*pos, angle);
+@@ -195,6 +205,8 @@ int setHospitalRespawnLua(lua_State *L)
+ 	// LogFunctions::LogInfo(Defines::luaLogFile, )
+ 
+ #endif // EXTRA_LOGGING
++
++	return 1;
+ }
+ 
+ /**
+@@ -215,15 +227,36 @@ int setPoliceStationRespawnLua(lua_State *L)
+ 
+ 	if (!pos)
+     {
+-    	return luaL_error(
+-    	L,
+-        	"vehicle.create expects a vector table with numeric x, y, and z fields"
+-		);
++    	return luaL_error(L, "game.set_police_respawn expects a vector table with numeric x, y, and z fields" );
+ 	}
+ 
+ 	CRestart::AddPoliceRestartPoint(*pos, angle);
++
++	return 1;
+ }
+ 
++/**
++ * Start a fire
++ * 
++ * Usage in lua:
++ * game.start_fire({x = 2, y = 2, z = 2})
++ */
++int startFireLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++
++	if (!pos)
++    {
++    	return luaL_error(L, "game.start_fire expects a vector table with numeric x, y, and z fields");
++	}
++
++	gFireManager.m_nTotalFires++;
++	gFireManager.StartFire(*pos, 1.0f, false);
++
++	return 1;
++}
++
++
+ /**
+  * Implementation of COMMAND_WAIT
+  * 
+@@ -240,6 +273,8 @@ int waitLua(lua_State *L)
+ 		miliseconds = 0;
+ 	}
+ 
++	return 1;
++
+ 	
+ }
+ 
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index b3ca29ac..2d44bd1a 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -19,6 +19,8 @@ extern "C" {
+ 
+     extern int setHospitalRespawnLua(lua_State *L);
+     extern int setPoliceStationRespawnLua(lua_State *L);
++    
++    extern int startFireLua(lua_State *L);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 2ae1bc1d..700fd62c 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -51,6 +51,12 @@
+ //-----------------------
+ extern "C"
+ {
++	/**
++	 * Register the lua vehicle functions namespace
++	 * 
++	 * Usage:
++	 * world.disable_peds()
++	 */
+ 	void RegisterWorldFunctionsLua(lua_State* L)
+ 	{
+ 		lua_newtable(L); // New stack: world
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 8a85a4fd..3ad4f37f 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.10-3a";
++std::string Defines::programVersion = "1.2.10-5a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

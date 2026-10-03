@@ -1,0 +1,194 @@
+From 2eb641855ffb23f45a1fd7208abac2717f3168f6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 15 Sep 2026 20:15:24 -0400
+Subject: [PATCH 164/176] feat: Make garages work in lua
+
+* I got the garage system to work in lua, now I can return the garage ID in lua.
+
+* I can open/close the garages, and check if they are open/closed now.
+
+* Update changelog, change version to 1.2.14-5a.
+---
+ Changelog.md                   | 12 +++++-
+ src/extras/lua/lua_garages.cpp | 78 +++++++++++++++-------------------
+ src/extras/utils/defines.cpp   |  2 +-
+ 3 files changed, 46 insertions(+), 46 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 65561f57..798afc3d 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1037,4 +1037,14 @@ fix: Add a few changes from some commits
+ Taken from this commit
+ * https://github.com/AltronMaxX/reVC/commit/f08da5aa9534c1c0698454074ce4bd2370bab2dd
+ 
+-* Update changelog
+\ No newline at end of file
++* Update changelog
++
++### 1.2.14-5a
++
++feat: Make garages work in lua
++
++* I got the garage system to work in lua, now I can return the garage ID in lua.
++
++* I can open/close the garages, and check if they are open/closed now.
++
++* Update changelog, change version to 1.2.14-5a.
+diff --git a/src/extras/lua/lua_garages.cpp b/src/extras/lua/lua_garages.cpp
+index 150a1feb..9a93424e 100644
+--- a/src/extras/lua/lua_garages.cpp
++++ b/src/extras/lua/lua_garages.cpp
+@@ -43,6 +43,8 @@ extern "C"
+         // There has to be a way to store the current blips in C++, to be obtained from lua.
+         // I would like to do this without creating more then one blip in an area and make it easily modifiable.
+ 
++        // I got this working! I was able to return the garage ID and this starts them at 0.
++
+         // Open garage
+         lua_pushcfunction(L, openGarageLua);
+ 		lua_setfield(L, -2, "open");
+@@ -75,6 +77,9 @@ extern "C"
+ 	 * Set the garage
+      *
+      * This works! It opens the garage that I have a spawn location for in my freeroam.
++     * 
++     * This has a max amount of garages set by 'NUM_GARAGES' in config.h, which is 32.
++     * Maybe I should check for that value in this code as a failsafe.
+      * 
+ 	 * Usage:
+ 	 * garage.set(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, type)
+@@ -94,20 +99,29 @@ extern "C"
+         int garageType = static_cast<int>(lua_tointeger(L, 9));
+ 	
+         // Long list to check all of these, but it's here..
+-        if (!leftBottomX || 
+-            !leftBottomY || 
+-            !leftBottomZ || 
+-            !frontX || 
+-            !frontY || 
+-            !rightTopX || 
+-            !rightTopY || 
+-            !rightTopZ || 
+-            !garageType)
++        // if (!leftBottomX || 
++        //     !leftBottomY || 
++        //     !leftBottomZ || 
++        //     !frontX || 
++        //     !frontY || 
++        //     !rightTopX || 
++        //     !rightTopY || 
++        //     !rightTopZ || 
++        //     !garageType)
++        // {
++    	//     return luaL_error(L, "garage.set requires these values: garage.set(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, type)" );
++	    // }
++
++        int newGarage = CGarages::AddOne(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, garageType, 0);
++
++        // This makes sure the garage isn't above the max, if it is this won't return the garage Id back.
++        if(newGarage > NUM_GARAGES)
+         {
+-    	    return luaL_error(L, "garage.set requires these values: garage.set(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, type)" );
+-	    }
++            std::string errMsg = "garage.set You cannot add any more garages! The limit of " + std::to_string(NUM_GARAGES) + " has been reached";
++            return luaL_error(L, errMsg.c_str());
++        }
+ 
+-        CGarages::AddOne(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, garageType, 0);
++        pushIntToLua(L, newGarage);
+ 
+ 		return 1;
+ 	}
+@@ -121,12 +135,7 @@ extern "C"
+      */
+     int openGarageLua(lua_State *L)
+     {
+-        int garageToOpen = static_cast<int>(lua_tointeger(L, 1));
+-
+-        if(!garageToOpen)
+-        {
+-            return luaL_error(L, "garage.open requires these values: garage.open(garage_id)");
+-        }
++        lua_Number garageToOpen = lua_tonumber(L, 1);
+ 
+         CGarages::OpenGarage(garageToOpen);
+ 
+@@ -142,14 +151,9 @@ extern "C"
+      */
+     int closeGarageLua(lua_State *L)
+     {
+-        int garageToClose = static_cast<int>(lua_tointeger(L, 1));
+-
+-        if(!garageToClose)
+-        {
+-            return luaL_error(L, "garage.close requires these values: garage.close(garage_id)");
+-        }
++        lua_Number garageToClose = lua_tonumber(L, 1);
+ 
+-        CGarages::OpenGarage(garageToClose);
++        CGarages::CloseGarage(garageToClose);
+ 
+         return 1;
+     }
+@@ -168,12 +172,8 @@ extern "C"
+      */
+     int isGarageOpenLua(lua_State *L)
+     {
+-        int garageId = static_cast<int>(lua_tointeger(L, 1));
+-
+-        if(!garageId)
+-        {
+-            return luaL_error(L, "garage.is_open requires these values: garage.is_open(garage_id)");
+-        }
++        // int garageId = static_cast<int>(lua_tointeger(L, 1));
++        lua_Number garageId = lua_tonumber(L, 1);
+ 
+         pushBooleanToLua(L, CGarages::IsGarageOpen(garageId));
+ 
+@@ -188,12 +188,7 @@ extern "C"
+      */
+     int isGarageClosedLua(lua_State *L)
+     {
+-        int garageId = static_cast<int>(lua_tointeger(L, 1));
+-
+-        if(!garageId)
+-        {
+-            return luaL_error(L, "garage.is_open requires these values: garage.is_open(garage_id)");
+-        }
++        lua_Number garageId = lua_tonumber(L, 1);
+ 
+         pushBooleanToLua(L, CGarages::IsGarageClosed(garageId));
+ 
+@@ -208,13 +203,8 @@ extern "C"
+      */
+     int changeGarageTypeLua(lua_State *L)
+     {
+-        int garageId = static_cast<int>(lua_tointeger(L, 1));
+-        int garageType = static_cast<int>(lua_tointeger(L, 2));
+-
+-        if(!garageId || !garageType)
+-        {
+-            return luaL_error(L, "garage.change_type requires these values: garage.change_type(garage_id, garage_type)");
+-        }
++        lua_Number garageId = lua_tonumber(L, 1);
++        lua_Number garageType = lua_tonumber(L, 2);
+ 
+         CGarages::ChangeGarageType(garageId, garageType, 0);
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 410e743f..5d8da907 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-4a";
++std::string Defines::programVersion = "1.2.14-5a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

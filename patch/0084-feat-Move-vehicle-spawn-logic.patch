@@ -1,0 +1,1009 @@
+From 39916bbe53ee030261cc25399159889bcd090d37 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Sep 2026 12:10:31 -0400
+Subject: [PATCH 084/161] feat: Move vehicle spawn logic
+
+* I moved the vehicle spawning logic into the new VehicleFunctions::CreateVehicle function, which now takes a X, Y, and Z for a position.
+
+* Make VehicleFunctions::SpawnVehicle call the new function, mostly so I don't have to update things using this.
+* Switch lua_vehicle.cpp to using new vehicle spawn function.
+
+* Re-enable fast loader with game scripts disabled.
+
+* Fix createVehicleLua function to work, now I can spawn vehicles in lua.
+* Update lua scripts.
+
+* Update changelog.md.
+---
+ Changelog.md                                  |  15 +
+ .../lua_scripts/freeroam-game.lua             |   4 +-
+ .../lua_scripts/kcnet-keybind-events.lua      |   4 +-
+ src/extras/functions/vehicle_functions.cpp    | 552 +++++++++---------
+ src/extras/functions/vehicle_functions.h      |   1 +
+ src/extras/lua/lua_vehicle.cpp                |  46 +-
+ src/skel/glfw/glfw.cpp                        |   5 +-
+ 7 files changed, 352 insertions(+), 275 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index e2148acc..7474abd8 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -84,3 +84,18 @@ feat: Disable some menus with DISABLE_GAME_SCRIPTS
+ * Disable load, delete, and save menus with my lua script system, currently the button is still there but if I try to remove that it breaks all of the menus.
+ 
+ * Update changelog.md
++
++**Commit 3**
++feat: Move vehicle spawn logic
++
++* I moved the vehicle spawning logic into the new VehicleFunctions::CreateVehicle function, which now takes a X, Y, and Z for a position.
++
++* Make VehicleFunctions::SpawnVehicle call the new function, mostly so I don't have to update things using this.
++* Switch lua_vehicle.cpp to using new vehicle spawn function.
++
++* Re-enable fast loader with game scripts disabled.
++
++* Fix createVehicleLua function to work, now I can spawn vehicles in lua.
++* Update lua scripts.
++
++* Update changelog.md.
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index 9ad64114..a85d0a6f 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -115,8 +115,8 @@ end
+ 
+ -- Create some vehicles
+ -- TODO Fix this in here, this doesn't work just yet.
+--- create_vehicle(145, true, true)
+-
++-- For some reason this doesn't work here, it works in kcnet-keybinds-events.lua though.
++create_vehicle(145, airportX + 10.0, airportY + 10.0, airportZ + 2.0, false, false)
+ 
+ -- Spawn some peds
+ -- TODO Implement this.
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+index d8bfd6b6..b1ba9768 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+@@ -5,9 +5,9 @@
+ ------
+ -- Create a vehicle
+ -- 
+--- create_vehicle(vehicle id, delete last vehicle, warp into vehicle)
++-- create_vehicle(vehicle id, posX, posY, posZ, delete last vehicle, warp into vehicle)
+ -- Example:
+--- create_vehicle(145, true, true)
++-- create_vehicle(145, 200.0, 100.0, 10.0, true, true)
+ 
+ 
+ -- This works! Now kcnet-init.lua is just for starting the game.
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 6e2f23bf..389b6ff7 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -57,7 +57,7 @@
+ #include "Explosion.h"
+ #include "Radar.h"
+ #include "Vehicle.h"
+-//#include "vehicles/Automobile.h"
++// #include "vehicles/Automobile.h"
+ #include "Automobile.h"
+ 
+ #include "ScriptCommands.h"
+@@ -65,13 +65,16 @@
+ #include "PlayerInfo.h"
+ 
+ // My code
+-#include "model_ids.h"
+ #include "Script.h"
++#include "model_ids.h"
+ 
+ #include "player_util.h"
+ 
+ #include "thread"
+ 
++#include "log_functions.h"
++#include "defines.h"
++
+ #endif // CUSTOM_CODE
+ 
+ //
+@@ -85,7 +88,6 @@ DistanceBetweenPoints(const CVector2D &pointOne, const CVector2D &pointTwo)
+ 	return diff.Magnitude();
+ }
+ 
+-
+ // From Cheat Menu
+ // https://github.com/user-grinch/Cheat-Menu/blob/master/src/utils/util.cpp#L249-L291
+ 
+@@ -96,7 +98,8 @@ DistanceBetweenPoints(const CVector2D &pointOne, const CVector2D &pointTwo)
+ /// Try to use this for my vehicle unlock function, and make it to where I can lock vehicles using this.
+ /// </summary>
+ /// <returns></returns>
+-CVehicle* GetClosestCar()
++CVehicle *
++GetClosestCar()
+ {
+ 	CPlayerPed *player = FindPlayerPed();
+ 
+@@ -138,7 +141,7 @@ VehicleFunctions::BlowUpVehicle()
+ }
+ 
+ /// <summary>
+-/// Check if a player is in a vehicle, 
++/// Check if a player is in a vehicle,
+ /// Also, check if they are entering a vehicle and not dead.
+ /// </summary>
+ /// <returns>If the player is in a vehicle.</returns>
+@@ -153,11 +156,8 @@ VehicleFunctions::IsPlayerInVehicle()
+ 
+ 	// Add check for if player is dead
+ 
+-	//if(!pPed->EnteringCar() && pPed->bInVehicle && !((CPed*)playerEntity)->DyingOrDead())
+-	if(!pPed->EnteringCar() && pPed->bInVehicle && !pPed->DyingOrDead())
+-	{ 
+-		return true; 
+-	}
++	// if(!pPed->EnteringCar() && pPed->bInVehicle && !((CPed*)playerEntity)->DyingOrDead())
++	if(!pPed->EnteringCar() && pPed->bInVehicle && !pPed->DyingOrDead()) { return true; }
+ 
+ 	return false;
+ }
+@@ -176,24 +176,22 @@ VehicleFunctions::RepairCurrentVehicle()
+ 
+ 	// Copied this part from vehicleTest in custom_cheats.cpp
+ 	// Check if player is in a vehicle and not currently entering a vehicle.
+-	if(!pPed->EnteringCar() && pPed->bInVehicle) 
+-	{
++	if(!pPed->EnteringCar() && pPed->bInVehicle) {
+ 		CVehicle *currentVeh = pPed->m_pMyVehicle;
+ 		currentVeh->m_fHealth = 1000;
+ 
+ 		// Determine if the vehicle is a car or bike.
+ 		if(currentVeh->IsCar()) {
+-			((CAutomobile*)currentVeh)->Fix();
++			((CAutomobile *)currentVeh)->Fix();
+ 		} else {
+ 			((CBike *)currentVeh)->Fix();
+ 		}
+-		
++
+ 		CHud::SetHelpMessage(TheText.Get("CHEAT1"), false, false);
+-	// Possibly add a not in a vehicle message.
+-	//} else {
+-		//CHud::SetHelpMessage()
++		// Possibly add a not in a vehicle message.
++		//} else {
++		// CHud::SetHelpMessage()
+ 	}
+-
+ }
+ 
+ /// <summary>
+@@ -207,19 +205,16 @@ void
+ VehicleFunctions::UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY)
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+-	//while(i--) 
+-	while(i-- > 0) 
+-	{ 
++	// while(i--)
++	while(i-- > 0) {
+ 		CVehicle *pVehicle = CPools::GetVehiclePool()->GetSlot(i);
+-		if(!pVehicle) 
+-		{
++		if(!pVehicle) {
+ 			// Well this message prints, I guess the code gets stuck here.
+-			//CHud::SetHelpMessage(TheText.Get("KCCARUK"), false, false);
+-			continue; 
++			// CHud::SetHelpMessage(TheText.Get("KCCARUK"), false, false);
++			continue;
+ 		}
+ 
+-		if (pVehicle->IsWithinArea(leftBottomX, leftBottomY, topRightX, topRightY)) 
+-		{ 
++		if(pVehicle->IsWithinArea(leftBottomX, leftBottomY, topRightX, topRightY)) {
+ 			pVehicle->m_nDoorLock = CARLOCK_UNLOCKED;
+ 			// This message doesn't seem to print in the game using cleo redux
+ 			CHud::SetHelpMessage(TheText.Get("KCCARUK"), false, false);
+@@ -283,7 +278,6 @@ VehicleFunctions::DisableUpsideDownExplosions()
+ 	CPlayerInfo::vehUpsidedownExplode = false;
+ 
+ 	CHud::SetHelpMessage(TheText.Get("EXPLDIS"), false);
+-
+ }
+ 
+ /// <summary>
+@@ -292,16 +286,16 @@ VehicleFunctions::DisableUpsideDownExplosions()
+ void
+ VehicleFunctions::ToggleUpsideDownExplosions()
+ {
+-	if(CAutomobile::vehUpsidedownExplode) { 
++	if(CAutomobile::vehUpsidedownExplode) {
+ 		VehicleFunctions::DisableUpsideDownExplosions();
+ 	} else {
+ 		VehicleFunctions::EnableUpsideDownExplosions();
+ 	}
+ }
+ 
+-#endif //TOGGLE_UPSIDEDOWN_EXPLOSIONS
++#endif // TOGGLE_UPSIDEDOWN_EXPLOSIONS
+ 
+-// 
++//
+ //
+ 
+ #ifdef VEHICLE_SPAWN_TEST
+@@ -313,7 +307,7 @@ VehicleFunctions::ToggleUpsideDownExplosions()
+ /// <returns>The vehicle that was spawned.</returns>
+ /// TODO Figure out the return value for the end, I think I got close with this.
+ CVehicle
+-//VehicleFunctions::SpawnVehicle(int id, CPed *pPed)
++// VehicleFunctions::SpawnVehicle(int id, CPed *pPed)
+ VehicleFunctions::SpawnVehicle(int id)
+ {
+ 	VehicleFunctions::RequestVehicleModel(id);
+@@ -359,7 +353,7 @@ VehicleFunctions::SpawnVehicle(int id)
+ 		return *v;
+ 	}
+ }
+-#endif //VEHICLE_SPAWN_TEST
++#endif // VEHICLE_SPAWN_TEST
+ 
+ void
+ VehicleFunctions::SetColor1(int color1)
+@@ -388,17 +382,17 @@ VehicleFunctions::SetColor2(int color2)
+ /// </summary>
+ /// <param name="color1"></param>
+ /// <param name="color2"></param>
+-void VehicleFunctions::SetColors(int color1, int color2)
++void
++VehicleFunctions::SetColors(int color1, int color2)
+ {
+ 	CPlayerPed *pPlayer = FindPlayerPed();
+-	//VehicleFunctions vehicleFunctions = VehicleFunctions();
+-	//if (vehicleFunctions.IsPlayerInVehicle()) { 
+-	if (IsPlayerInVehicle()) { 
++	// VehicleFunctions vehicleFunctions = VehicleFunctions();
++	// if (vehicleFunctions.IsPlayerInVehicle()) {
++	if(IsPlayerInVehicle()) {
+ 		CVehicle *playerVeh = pPlayer->m_pMyVehicle;
+ 		playerVeh->m_currentColour1 = color1;
+ 		playerVeh->m_currentColour2 = color2;
+ 	}
+-
+ }
+ 
+ /// <summary>
+@@ -411,88 +405,85 @@ void
+ VehicleFunctions::RemovePlayerFromVehicle(CPed *pPed)
+ {
+ 
++	// Wow, this just makes the car catch on fire after the player leaves it.
++	// Sometimes the bike dissappears, I guess because of the objective?
++
++	// This makes the player exit the vehicle
++	// TODO Fix this to make the player warp out of the vehicle.
++	// pPed->SetObjective(OBJECTIVE_FLEE_CAR);
++
++	// CVector playerCoords = playerUtil.PlayerCoords();
++	// float playerX = playerCoords.x;
++	// float playerY = playerCoords.y;
++	// float playerZ = playerCoords.z;
++
++	// TODO Re-enable this
++	// pPed->SetObjective(OBJECTIVE_LEAVE_CAR);
++	// pPed->SetObjectiveTimer(10000);
++
++	// TODO Test these
++	// From Script4.cpp COMMAND_WARP_CHAR_FROM_CAR_TO_COORD
++
++	// This almost works when I disabled that objective stuff above.
++	// Sometimes doesn't position the camera right.
++	// This locks the camera to the previous vehicle sometimes.
++	if(pPed->m_pMyVehicle->pDriver == pPed) {
++		pPed->m_pMyVehicle->RemoveDriver();
++		pPed->m_pMyVehicle->SetStatus(STATUS_ABANDONED);
++		pPed->m_pMyVehicle->bEngineOn = false;
++		pPed->m_pMyVehicle->AutoPilot.m_nCruiseSpeed = 0;
++		pPed->m_pMyVehicle->SetMoveSpeed(0.0f, 0.0f, -0.00001f);
++		pPed->m_pMyVehicle->SetTurnSpeed(0.0f, 0.0f, 0.0f);
++	} else {
++		pPed->m_pMyVehicle->RemovePassenger(pPed);
++	}
+ 
+-		// Wow, this just makes the car catch on fire after the player leaves it.
+-		// Sometimes the bike dissappears, I guess because of the objective?
+-
+-		// This makes the player exit the vehicle
+-		// TODO Fix this to make the player warp out of the vehicle.
+-		// pPed->SetObjective(OBJECTIVE_FLEE_CAR);
+-
+-		// CVector playerCoords = playerUtil.PlayerCoords();
+-		// float playerX = playerCoords.x;
+-		// float playerY = playerCoords.y;
+-		// float playerZ = playerCoords.z;
+-
+-		// TODO Re-enable this
+-		// pPed->SetObjective(OBJECTIVE_LEAVE_CAR);
+-		// pPed->SetObjectiveTimer(10000);
+-
+-		// TODO Test these
+-		// From Script4.cpp COMMAND_WARP_CHAR_FROM_CAR_TO_COORD
+-
+-		// This almost works when I disabled that objective stuff above.
+-		// Sometimes doesn't position the camera right.
+-		// This locks the camera to the previous vehicle sometimes.
+-		if(pPed->m_pMyVehicle->pDriver == pPed) {
+-			pPed->m_pMyVehicle->RemoveDriver();
+-			pPed->m_pMyVehicle->SetStatus(STATUS_ABANDONED);
+-			pPed->m_pMyVehicle->bEngineOn = false;
+-			pPed->m_pMyVehicle->AutoPilot.m_nCruiseSpeed = 0;
+-			pPed->m_pMyVehicle->SetMoveSpeed(0.0f, 0.0f, -0.00001f);
+-			pPed->m_pMyVehicle->SetTurnSpeed(0.0f, 0.0f, 0.0f);
+-		} else {
+-			pPed->m_pMyVehicle->RemovePassenger(pPed);
+-		}
+-
+-		pPed->RemoveInCarAnims();
+-		pPed->bInVehicle = false;
+-		pPed->m_pMyVehicle = nil;
++	pPed->RemoveInCarAnims();
++	pPed->bInVehicle = false;
++	pPed->m_pMyVehicle = nil;
+ 
+-		//
+-		// pPed->SetPedState(PED_IDLE);
+-		// pPed->m_nLastPedState = PED_NONE;
+-		//
++	//
++	// pPed->SetPedState(PED_IDLE);
++	// pPed->m_nLastPedState = PED_NONE;
++	//
+ 
+-		pPed->bUsesCollision = true;
++	pPed->bUsesCollision = true;
+ 
+-		pPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
+-		pPed->ReplaceWeaponWhenExitingVehicle();
++	pPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
++	pPed->ReplaceWeaponWhenExitingVehicle();
+ 
+-		// if(pPed->m_pVehicleAnim)
+-		//	pPed->m_pVehicleAnim->blendDelta = -1000.0f;
++	// if(pPed->m_pVehicleAnim)
++	//	pPed->m_pVehicleAnim->blendDelta = -1000.0f;
+ 
+-		// pPed->m_pVehicleAnim = nil;
+-		// pPed->RestartNonPartialAnims();
+-		//
+-		// pPed->SetMoveState(PEDMOVE_NONE);
+-		//
++	// pPed->m_pVehicleAnim = nil;
++	// pPed->RestartNonPartialAnims();
++	//
++	// pPed->SetMoveState(PEDMOVE_NONE);
++	//
+ 
+-		// This mostly fixes the vehicle spawner when spawning into a new vehicle
+-		// Set the camera back to the player, only works when the menu gets closed though.
++	// This mostly fixes the vehicle spawner when spawning into a new vehicle
++	// Set the camera back to the player, only works when the menu gets closed though.
+ 
+-		// Force the camera to follow the player
+-		// Modified to set the camera behind the player
++	// Force the camera to follow the player
++	// Modified to set the camera behind the player
+ 
+-		// Oh, I can set this value directly
+-		// Set the camera to follow the ped
+-		TheCamera.Cams[TheCamera.ActiveCam].Mode = CCam::MODE_FOLLOWPED;
++	// Oh, I can set this value directly
++	// Set the camera to follow the ped
++	TheCamera.Cams[TheCamera.ActiveCam].Mode = CCam::MODE_FOLLOWPED;
+ 
+-		// Set the camera behind the player.
+-		TheCamera.m_bCamDirectlyBehind = true;
++	// Set the camera behind the player.
++	TheCamera.m_bCamDirectlyBehind = true;
+ 
+-		if(TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_FOLLOWPED) {
++	if(TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_FOLLOWPED) {
+ 
+-		        // Doesn't work
+-		        // TheCamera.SetCameraMode(CCam::MODE_FOLLOWPED); // Set the mode
+-	        }
++		// Doesn't work
++		// TheCamera.SetCameraMode(CCam::MODE_FOLLOWPED); // Set the mode
++	}
+ 	// Doesn't work
+-	//TheCamera.SetFollowPed(pPed); // Set the player as the target
+-
+-
++	// TheCamera.SetFollowPed(pPed); // Set the player as the target
+ 
+-	     //CCamera::GetInstance()->SetFollowPed(pPed); // Example, adjust if needed
+-	 //CCamera::GetInstance()->SetCameraMode(CAMERA_MODE_FOLLOWPED); // Example
++	// CCamera::GetInstance()->SetFollowPed(pPed); // Example, adjust if needed
++	// CCamera::GetInstance()->SetCameraMode(CAMERA_MODE_FOLLOWPED); // Example
+ 
+ 	// CAnimManager::BlendAnimation(pPed->GetClump(), pPed->m_animGroup, ANIM_STD_IDLE, 1000.0f);
+ 
+@@ -500,37 +491,159 @@ VehicleFunctions::RemovePlayerFromVehicle(CPed *pPed)
+ 	//----------------------------
+ }
+ 
+-/// <summary>
+-/// Taken idea from debug_functions.cpp
+-/// I have slightly modified this and now it has a few more features for my menu.
+-/// This will delete the current vehicle, and warp the player into the vehicle if set
+-/// </summary>
+-/// <param name="id">The vehicle to spawn</param>
+-/// //
+-/// These two are not implemented.
+-/// <param name="pPed> The ped to put into the vehicle.</param>
+-/// <param name="clearFromArea">Clear items from the area with a radius of 10</param>
+-/// //
+-/// <param name="deleteCurrentVehicle">Whether the current vehicle gets deleted or not.</param>
+-/// <param name="warpIntoVehicle">Warp the player into the vehicle.</param>
++/**
++ * Taken idea from debug_functions.cpp
++ * I have slightly modified this and now it has a few more features for my menu.
++ * This will delete the current vehicle, and warp the player into the vehicle if set
++ * Now, this just calls VehicleFunctions::CreateVehicle.
++ * I moved this so I can have a custom position set for it if needed.
++ *
++ * @param id The vehicle to spawn.
++ * @param deleteCurrentVehicle Whether the current vehicle gets deleted or not.
++ * @param warpIntoVehicle Warp the player into the vehicle.
++ * 
++ * Not implemented params:
++ * @param pPed The ped to put into the vehicle.
++ * @param clearFromArea Clear items from the area with a radius of 10.
++ */
+ void
+ // TODO Setup this later
+-//VehicleFunctions::SpawnVehicle(int id, CPlayerPed *pPed, bool clearFromArea, bool deleteCurrentVehicle, bool warpIntoVehicle)
++// VehicleFunctions::SpawnVehicle(int id, CPlayerPed *pPed, bool clearFromArea, bool deleteCurrentVehicle, bool warpIntoVehicle)
+ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle)
+ {
+-	// TODO Move this into the function body, so if I want this function to work on the player and other peds it would.
++	// CreateVehicle(id, );
++
++	CPlayerPed *pPed = FindPlayerPed();
++	CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f;
++
++	// Moved logic into this new function.
++	// Now this just calls into that function, it takes a custom X, Y, and Z.
++	CreateVehicle(id, vehiclePos.x, vehiclePos.y, vehiclePos.z, deleteCurrentVehicle, warpIntoVehicle);
++
++	// TODO Look into using this below if possible to implement into the CreateVehicle function.
++	// #define NEW_VEHICLE_SPAWN
++	//  Remove the players current vehicle if enabled, and make the player exit the vehicle.
++	//  This new method just crashes it, pretty much from COMMAND_WARP_PLAYER_FROM_CAR_TO_COORD
++	// #ifdef NEW_VEHICLE_SPAWN
++	// 			if(pPed->bInVehicle && deleteCurrentVehicle) {
++	// 				CVehicle *playerVeh = pPed->m_pMyVehicle;
++
++	// 				CVector playerCoords = pPed->GetPosition(); // Get player's current position
++
++	// 				if(pPed->m_pMyVehicle->bIsBus) pPed->bRenderPedInCar = true;
++
++	// 				if(pPed->m_pMyVehicle->pDriver == pPed) {
++	// 					pPed->m_pMyVehicle->RemoveDriver();
++	// 					pPed->m_pMyVehicle->SetStatus(STATUS_ABANDONED);
++	// 					pPed->m_pMyVehicle->bEngineOn = false;
++	// 					pPed->m_pMyVehicle->AutoPilot.m_nCruiseSpeed = 0;
++	// 				} else {
++	// 					pPed->m_pMyVehicle->RemovePassenger(pPed);
++	// 				}
++
++	// 				pPed->RemoveInCarAnims();
++	// 				pPed->bInVehicle = false;
++	// 				pPed->m_pMyVehicle = nullptr;
++	// 				pPed->SetPedState(PED_IDLE);
++	// 				pPed->bUsesCollision = true;
++	// 				pPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
++	// 				pPed->ReplaceWeaponWhenExitingVehicle();
++
++	// 				if(pPed->m_pVehicleAnim) pPed->m_pVehicleAnim->blendDelta = -1000.0f;
++
++	// 				pPed->m_pVehicleAnim = nullptr;
++	// 				pPed->SetMoveState(PEDMOVE_NONE);
++	// 				CAnimManager::BlendAnimation(pPed->GetClump(), pPed->m_animGroup, ANIM_STD_IDLE, 1000.0f);
++	// 				pPed->RestartNonPartialAnims();
++	// 				AudioManager.PlayerJustLeftCar();
++
++	// 				playerCoords.z += pPed->GetDistanceFromCentreOfMassToBaseOfModel(); // Adjust Z for model height
++	// 				pPed->Teleport(playerCoords);
++	// 				// CTheScripts::ClearSpaceForMissionEntity(playerCoords, pPed);
++
++	// 				if(chaosMode) {
++	// 					if(playerVeh) {
++	// 						playerVeh->m_fHealth = 0;
++	// 						playerVeh->ActivateBomb();
++	// 					}
++	// 				}
++
++	// 				// VehicleFunctions::RemoveCurrentVehicleFromWorld();
++	// 			}
++
++	// 			if(warpIntoVehicle) {
++	// 				if(!pPed->bInVehicle) {
++	// 					pPed->bInVehicle = true;
++	// 					pPed->m_pMyVehicle = v;
++	// 					pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
++	// 					pPed->m_nPedState = PED_DRIVING;
++	// 					pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
++	// 					pPed->WarpPedIntoCar(v);
++	// 				}
++	// 			}
++	// #else
++	// 			if(pPed->bInVehicle && deleteCurrentVehicle) {
++	// 				CVehicle *playerVeh = pPed->m_pMyVehicle;
++	// 				// TODO Test this, moved into this function.
++	// 				vehicleFunctions.RemovePlayerFromVehicle(pPed);
++
++	// 				//
++	// 				// Well this didn't work.
++	// 				// pPed->SetPosition(CVector(playerX, playerY, playerZ));
++
++	// 				// Some extra chaos features
++	// 				if(chaosMode) {
++	// 					playerVeh->m_fHealth = 0;
++	// #if defined(GTAVC)
++	// 					playerVeh->ActivateBomb();
++	// #endif
++	// 					// pPed->m_fHealth = 0;
++	// 				}
++
++	// 				// TODO Test this.
++	// 				// Oops, this just crashes it.
++	// 				// while(pPed->bInVehicle)
++	// 				//{
++	// 				//	std::this_thread::sleep_for(std::chrono::milliseconds(1000));
++	// 				//	std::this_thread::yield();
++	// 				//}
++
++	// 				// Remove the vehicle from the world
++	// 				VehicleFunctions::RemoveCurrentVehicleFromWorld();
++	// 			}
++
++	// 			}
++	// 		}
++
++}
++
++/**
++ * Create a vehicle at a specific set of coordinates.
++ * I will be moving the logic out of VehicleFunctions::SpawnVehicle into here.
++ * And this will be a new function mostly for Lua but I'll switch some other stuff to using it.
++ * This will need to have a boolean with a default value of true for setting custom coordinates and switching
++ *  to making this go near the player.
++ * TODO Make this take a Vector3, until I can pass it in Lua I'll just do floats.
++ */
++void
++VehicleFunctions::CreateVehicle(int id, float posX, float posY, float posZ, bool deleteCurrentVehicle, bool warpIntoVehicle)
++{
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++	CVector vehiclePos = CVector(posX, posY, posZ);
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
++
+ 	bool chaosMode = false;
+ 
+ 	CustomCheats *customCheats = new CustomCheats();
++	// if(clearItemsFromArea)
++	// {
++	// 	customCheats->ClearItemsFromArea(10);
++	// }
+ 
+-	//customCheats->ClearItemsFromArea(10);
+-	// Original code:
+-	// CWorld::ClearExcitingStuffFromArea(pPedCoords, 10, true);
+ 
+ 	// Request the model
+ 
+@@ -545,125 +658,39 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 		// Set the last spawn time, needed for this to work.
+ 		lastSpawnTime = CTimer::GetTimeInMilliseconds();
+ 
+-	VehicleFunctions::RequestVehicleModel(id);
++		VehicleFunctions::RequestVehicleModel(id);
+ 
+-	if(CStreaming::HasModelLoaded(id)) {
+-		CVector pPedCoords = FindPlayerCoors();
++		if(CStreaming::HasModelLoaded(id)) {
++			// If placing on player.
++			// CVector pPedCoords = FindPlayerCoors();
+ 
++			// Check if the vehicle is a boat, bike or car.
++			CVehicle *v;
++			if(CModelInfo::IsBoatModel(id))
++				v = new CBoat(id, RANDOM_VEHICLE);
+ 
+-#ifndef NEW_VEHICLE_SPAWN_CHEAT
+-		int node;
+-		if(!CModelInfo::IsBoatModel(id)) {
+-			node = ThePaths.FindNodeClosestToCoors(pPedCoords, 0, 100.0f, false, false);
+-			if(node < 0) 
+-				return;
+-		}
+-#endif // NEW_VEHICLE_SPAWN_CHEAT
++			else if(CModelInfo::IsBikeModel(id))
+ 
+-		// Check if the vehicle is a boat, bike or car.
+-		CVehicle *v;
+-		if(CModelInfo::IsBoatModel(id))
+-			v = new CBoat(id, RANDOM_VEHICLE);
++				v = new CBike(id, RANDOM_VEHICLE);
++			else
+ 
+-		else if(CModelInfo::IsBikeModel(id))
++				v = new CAutomobile(id, RANDOM_VEHICLE);
+ 
+-			v = new CBike(id, RANDOM_VEHICLE);
+-		else
++			// Set the vehicle to be owned by the player.
++			v->bHasBeenOwnedByPlayer = true;
++			v->SetPosition(vehiclePos);
++			// TODO Setup
++			// v->SetOrientation(0.0f, 0.0f, heading);
+ 
+-			v = new CAutomobile(id, RANDOM_VEHICLE);
++			// Set the vehicle status.
++			v->SetStatus(STATUS_ABANDONED);
++			v->m_nDoorLock = CARLOCK_UNLOCKED;
+ 
+-		// Set the vehicle to be owned by the player.
+-		v->bHasBeenOwnedByPlayer = true;
+-
+-		// New vehicle spawning.
+-		// This places the vehicle near the player, instead of on a node.
+-		// TODO Make this check if player is in a vehicle, if so don't set an offset too far.
+-#ifdef NEW_VEHICLE_SPAWN_CHEAT
+-		v->SetPosition(FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f);
+-		CVector leftVector = -FindPlayerPed()->GetRight();
+-		v->SetOrientation(0.0f, 0.0f, leftVector.Heading());
+-#else
+-		// Set the position of the vehicle
+-		if(CModelInfo::IsBoatModel(id))
+-			v->SetPosition(TheCamera.GetPosition() + TheCamera.GetForward() * 15.0f);
+-		else
+-			v->SetPosition(ThePaths.m_pathNodes[node].GetPosition());
+-
+-		// Set the vehicle position, orientation, status, and the door lock status
+-		// v->GetMatrix().GetPosition().z += 4.0f;
+-		v->GetMatrix().GetPosition().z += 1.0f;
+-		v->SetOrientation(0.0f, 0.0f, 3.49f);
+-#endif // NEW_VEHICLE_SPAWN_CHEAT
+-		//
+-		v->SetStatus(STATUS_ABANDONED);
+-		v->m_nDoorLock = CARLOCK_UNLOCKED;
+-
+-		// Fix for the engine not being on when warping into the vehicle.
+-		v->bEngineOn = true;
+-		// Add the vehicle to the world.
+-		CWorld::Add(v);
+-
+-// #define NEW_VEHICLE_SPAWN
+-//  Remove the players current vehicle if enabled, and make the player exit the vehicle.
+-//  This new method just crashes it, pretty much from COMMAND_WARP_PLAYER_FROM_CAR_TO_COORD
+-#ifdef NEW_VEHICLE_SPAWN
+-			if(pPed->bInVehicle && deleteCurrentVehicle) {
+-				CVehicle *playerVeh = pPed->m_pMyVehicle;
+-
+-				CVector playerCoords = pPed->GetPosition(); // Get player's current position
+-
+-				if(pPed->m_pMyVehicle->bIsBus) pPed->bRenderPedInCar = true;
+-
+-				if(pPed->m_pMyVehicle->pDriver == pPed) {
+-					pPed->m_pMyVehicle->RemoveDriver();
+-					pPed->m_pMyVehicle->SetStatus(STATUS_ABANDONED);
+-					pPed->m_pMyVehicle->bEngineOn = false;
+-					pPed->m_pMyVehicle->AutoPilot.m_nCruiseSpeed = 0;
+-				} else {
+-					pPed->m_pMyVehicle->RemovePassenger(pPed);
+-				}
+-
+-				pPed->RemoveInCarAnims();
+-				pPed->bInVehicle = false;
+-				pPed->m_pMyVehicle = nullptr;
+-				pPed->SetPedState(PED_IDLE);
+-				pPed->bUsesCollision = true;
+-				pPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
+-				pPed->ReplaceWeaponWhenExitingVehicle();
+-
+-				if(pPed->m_pVehicleAnim) pPed->m_pVehicleAnim->blendDelta = -1000.0f;
+-
+-				pPed->m_pVehicleAnim = nullptr;
+-				pPed->SetMoveState(PEDMOVE_NONE);
+-				CAnimManager::BlendAnimation(pPed->GetClump(), pPed->m_animGroup, ANIM_STD_IDLE, 1000.0f);
+-				pPed->RestartNonPartialAnims();
+-				AudioManager.PlayerJustLeftCar();
+-
+-				playerCoords.z += pPed->GetDistanceFromCentreOfMassToBaseOfModel(); // Adjust Z for model height
+-				pPed->Teleport(playerCoords);
+-				// CTheScripts::ClearSpaceForMissionEntity(playerCoords, pPed);
++			// Fix for the engine not being on when warping into the vehicle.
++			v->bEngineOn = true;
++			// Add the vehicle to the world.
++			CWorld::Add(v);
+ 
+-				if(chaosMode) {
+-					if(playerVeh) {
+-						playerVeh->m_fHealth = 0;
+-						playerVeh->ActivateBomb();
+-					}
+-				}
+-
+-				// VehicleFunctions::RemoveCurrentVehicleFromWorld();
+-			}
+-
+-			if(warpIntoVehicle) {
+-				if(!pPed->bInVehicle) {
+-					pPed->bInVehicle = true;
+-					pPed->m_pMyVehicle = v;
+-					pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
+-					pPed->m_nPedState = PED_DRIVING;
+-					pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
+-					pPed->WarpPedIntoCar(v);
+-				}
+-			}
+-#else
+ 			if(pPed->bInVehicle && deleteCurrentVehicle) {
+ 				CVehicle *playerVeh = pPed->m_pMyVehicle;
+ 				// TODO Test this, moved into this function.
+@@ -720,11 +747,18 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 					}
+ 				}
+ 			}
+-		}
+ 
+-		//
+-#endif
++			std::string logMsg = "Vehicle with ID: " 
++			+ std::to_string(id) 
++			+ " was spawned at " 
++			+ " X: " + std::to_string(posX) 
++			+ " Y: " + std::to_string(posY)
++			+ " Z: " + std::to_string(posZ);
+ 
++			// Log the spawn position.
++			LogFunctions::LogInfo(Defines::logFile, logMsg);
++
++		}
+ 	}
+ }
+ 
+@@ -755,9 +789,7 @@ VehicleFunctions::RemoveCurrentVehicleFromWorld()
+ 	if(pPed->bInVehicle) {
+ 		CVehicle *playerVeh = pPed->m_pMyVehicle;
+ 
+-
+-
+-		//This idea came from COMMAND_DELETE_CAR in Script.cpp
++		// This idea came from COMMAND_DELETE_CAR in Script.cpp
+ 
+ 		CWorld::Remove(playerVeh);
+ 		CWorld::RemoveReferencesToDeletedObject(playerVeh);
+@@ -767,10 +799,9 @@ VehicleFunctions::RemoveCurrentVehicleFromWorld()
+ 	}
+ }
+ 
+-
+ // TODO Remove this later, it's not in use so I disabled it for now.
+-//void
+-//VehicleFunctions::SpawnVehicle()
++// void
++// VehicleFunctions::SpawnVehicle()
+ //{
+ //	CPlayerPed *pPed = FindPlayerPed();
+ //	CVector pPedCoords = FindPlayerCoors();
+@@ -804,7 +835,7 @@ VehicleFunctions::RemoveCurrentVehicleFromWorld()
+ //	// Don't attempt to use CAutoMobile for a Bike, it crashes it.
+ //	// CAutomobile *vehicle = new CAutomobile(vehicleModel, RANDOM_VEHICLE);
+ //
+-//#ifdef _TEST
++// #ifdef _TEST
+ //
+ //	// I wonder how to check if the vehicle is a car, bike, boat or helicopter.
+ //	// if(veh == CAutomobile) {}
+@@ -827,9 +858,9 @@ VehicleFunctions::RemoveCurrentVehicleFromWorld()
+ ////}
+ //
+ //// CBike *vehicle = new CBike(vehicleModel, RANDOM_VEHICLE);
+-//#else
++// #else
+ //	CBike *vehicle = new CBike(vehicleModel, RANDOM_VEHICLE);
+-//#endif //_TEST1
++// #endif //_TEST1
+ //
+ //	if(vehicle != nil) {
+ //		// Add 2 to the z and y, so the vehicle doesn't crush the player.
+@@ -843,10 +874,10 @@ VehicleFunctions::RemoveCurrentVehicleFromWorld()
+ //		// Possible fix for the engine not being on
+ //		vehicle->bEngineOn = true;
+ //
+-//#ifdef _TEST
++// #ifdef _TEST
+ //		// Test below
+ //		// vehicle->BurstTyre(0, false);
+-//#endif // _TEST
++// #endif // _TEST
+ //
+ //		// vehicle->
+ //
+@@ -906,7 +937,7 @@ VehicleFunctions::RemoveCurrentVehicleFromWorld()
+ //	pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, vehicle);
+ //	// Put the player in the vehicle
+ //	pPed->WarpPedIntoCar(vehicle);
+-//}
++// }
+ 
+ // TODO Figure out what the hell broke this..
+ #ifdef _TEST1
+@@ -990,9 +1021,7 @@ VehicleFunctions::RemoveBombFromCar()
+ 
+ void
+ VehicleFunctions::LockVehicle()
+-{
+-	customCheats.LockDoors();
+-}
++{ customCheats.LockDoors(); }
+ 
+ /// <summary>
+ /// Get the current vehicles speed, I have options for Meters per second, KM/h and MP/H
+@@ -1005,8 +1034,7 @@ VehicleFunctions::GetVehicleSpeed()
+ {
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-	if (vehicleFunctions.IsPlayerInVehicle())
+-	{ 
++	if(vehicleFunctions.IsPlayerInVehicle()) {
+ 		CVehicle *pVehicle = playerUtil.GetCurrentVehicle();
+ 		// Get the vehicle speed in meters per second
+ 		float vehicleSpeedMs = pVehicle->GetSpeed().Magnitude() * GAME_SPEED_TO_METERS_PER_SECOND;
+@@ -1016,31 +1044,29 @@ VehicleFunctions::GetVehicleSpeed()
+ 		float vehicleSpeedKph = pVehicle->GetSpeed().Magnitude() * GAME_SPEED_TO_METERS_PER_SECOND * 3.6f;
+ 
+ 		return vehicleSpeedMph;
+-		//return vehicleSpeedMs;
++		// return vehicleSpeedMs;
+ 	}
+ 	// Return nothing if there is no vehicle.
+ 	return 0.0f;
+-	
+ }
+ 
+ /**
+  * Check if a vehicle model is valid.
+- * 
++ *
+  * TODO Test this, I'm not sure if it'll work.
+- * 
++ *
+  * @return If the vehicle is a spawnable vehicle.
+  */
+ bool
+ VehicleFunctions::IsModelValid(int vehicleId)
+ {
+-	// if(vehicleId < MI_LANDSTAL || vehicleId <= MI_GANGBUR 
+-	// || vehicleId >= MI_SPEEDER 
++	// if(vehicleId < MI_LANDSTAL || vehicleId <= MI_GANGBUR
++	// || vehicleId >= MI_SPEEDER
+ 	// || vehicleId <= MI_VICECHEE || vehicleId > MI_VICECHEE)
+ 
+ 	// These will either crash or need special code to work, I'm not dealing with it right now.
+-	if(vehicleId == MI_AIRTRAIN || vehicleId == MI_DEADDODO
+-	|| vehicleId == MI_RCBANDIT || vehicleId == MI_RCBARON | vehicleId == MI_RCRAIDER|| vehicleId == MI_RCGOBLIN)
+-	{
++	if(vehicleId == MI_AIRTRAIN || vehicleId == MI_DEADDODO || vehicleId == MI_RCBANDIT || vehicleId == MI_RCBARON | vehicleId == MI_RCRAIDER ||
++	   vehicleId == MI_RCGOBLIN) {
+ 		return false;
+ 	}
+ 
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index e9252ab6..c674e830 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -32,6 +32,7 @@ public:
+ 	static void RequestVehicleModel(int vehicleModel);
+ 	// static void SpawnVehicle(int id);
+ 	static void SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoVehicle);
++	static void CreateVehicle(int id, float posX, float posY, float posZ, bool deleteCurrentVehicle, bool warpIntoVehicle);
+ 
+ 	void RemovePlayerFromVehicle(CPed *pPed);
+ 
+diff --git a/src/extras/lua/lua_vehicle.cpp b/src/extras/lua/lua_vehicle.cpp
+index 6dbe4ca7..566dce5b 100644
+--- a/src/extras/lua/lua_vehicle.cpp
++++ b/src/extras/lua/lua_vehicle.cpp
+@@ -18,7 +18,8 @@
+ // clang-format off
+ extern "C"
+ {
+-	// Well this didn't seem to work.
++
++	// With my new function this does work! I had the spawn position set incorrect in lua.
+ 	int
+ 	createVehicleLua(lua_State* L)
+ 	{
+@@ -29,14 +30,47 @@ extern "C"
+ 		// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
+ 
+ 		int vehicleId = lua_tonumber(L, 1);
++		float posX = (float)lua_tonumber(L, 2);
++		float posY = (float)lua_tonumber(L, 3);
++		float posZ = (float)lua_tonumber(L, 4);
++
++		// TODO Check for invalid vehicle.
++		// TODO Move this into ImGui menu to test if this will be valid and work.
++		// This should check for all vehicles besides the Airtrain and Deaddodo.
++		// I'll probably need to make this exclude the Rc vehicles also.
++
++		// Print an invalid message for testing.
++		// if(!VehicleFunctions::IsModelValid(vehicleId))
++		// {
++		// 	const char* messageText = "Vehicle model was invalid!";
++		// 	CustomCheats::CustomHelpMessage(messageText);
++		// }
++
++		// if(vehicleId < MI_LANDSTAL || vehicleId <= MI_GANGBUR 
++		// 	|| vehicleId >= MI_SPEEDER || vehicleId <= MI_VICECHEE)
++		// {
++		// 	const char* messageText = "Vehicle model was invalid!";
++		// 	CustomCheats::CustomHelpMessage(messageText);
++		// 	return 0;
++		// }
++
++		// FIXME:
++		// Disabling for now, so I can see the output of above without crashing
++
+ 		// Why does this not work
+-		bool deleteLastVehicle = lua_toboolean(L, 2);
+-		// Oops, I had this set to float, that could've been causing a problem.
+-		bool warpIntoVehicle = lua_toboolean(L, 3);
++		bool deleteLastVehicle = lua_toboolean(L, 5);
++		// // Oops, I had this set to float, that could've been causing a problem.
++		bool warpIntoVehicle = lua_toboolean(L, 6);
++
++		// VehicleFunctions::SpawnVehicle(vehicleId, deleteLastVehicle, warpIntoVehicle);
++
++		// New function for testing.
++		VehicleFunctions::CreateVehicle(vehicleId, posX, posY, posZ, deleteLastVehicle, warpIntoVehicle);
+ 
+-		VehicleFunctions::SpawnVehicle(vehicleId, deleteLastVehicle, warpIntoVehicle);
++		// return 3;
++		//
+ 
+-		return 3;
++		return 0;
+ 	}
+ }
+ 
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index ff43d17c..bf38eec0 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -2089,10 +2089,11 @@ void GameStateFrontend()
+ 	if(!WindowIconified)
+ 		RsEventHandler(rsFRONTENDIDLE, nil);
+ 
+-#if defined(_FAST_LOADER) && defined(EX_LOADING_GAME_SAVE_ON_STARTUP) && !defined(DISABLE_GAME_SCRIPTS)
++	// With my changes, this fast loader now works with my freeroam scripts.
++#if defined(_FAST_LOADER) && defined(EX_LOADING_GAME_SAVE_ON_STARTUP)
+ 	FastLoader fastLoader = FastLoader();
+ 	fastLoader.FastLoad();
+-#endif // _FAST_LOADER && EX_LOADING_GAME_SAVE_ON_STARTUP && !DISABLE_GAME_SCRIPTS
++#endif // _FAST_LOADER && EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
+ #ifdef PS2_MENU
+ 	if ( !FrontEndMenuManager.m_bMenuActive || TheMemoryCard.m_bWantToLoad )
+-- 
+2.43.0
+

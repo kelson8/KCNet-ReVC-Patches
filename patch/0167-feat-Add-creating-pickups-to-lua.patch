@@ -1,0 +1,305 @@
+From 44018eb84a5f44de88d6c4bba7f5c7ed82768050 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 16 Sep 2026 18:24:25 -0400
+Subject: [PATCH 167/176] feat: Add creating pickups to lua
+
+* I added creating, removing, and checking if pickups have been collected.
+
+* Add missing change into Game.cpp.
+
+* Disable some extra logging.
+
+* Update changelog, change version to 1.2.14-8a.
+---
+ Changelog.md                 |  12 ++++
+ src/core/Game.cpp            |   3 +
+ src/extras/lua/lua_game.cpp  | 136 +++++++++++++++++++++++++++++++++++
+ src/extras/lua/lua_game.h    |   8 +++
+ src/extras/lua/lua_test.cpp  |  24 +++----
+ src/extras/utils/defines.cpp |   2 +-
+ 6 files changed, 172 insertions(+), 13 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index f587b5de..64f0c806 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1066,3 +1066,15 @@ feat: Add wait timer for lua
+ * I finally got this wait timer working! Now I can run things just like the original game scripts!
+ 
+ * Update changelog, change version to 1.2.14-7a.
++
++### 1.2.14-8a
++
++feat: Add creating pickups to lua
++
++* I added creating, removing, and checking if pickups have been collected.
++
++* Add missing change into Game.cpp.
++
++* Disable some extra logging.
++
++* Update changelog, change version to 1.2.14-8a.
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 17f56fe8..3ce135af 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -637,6 +637,9 @@ bool CGame::Initialise(const char* datFile)
+ 	// Moved here, should run the lua OnInit function on startup.
+ #ifdef NEW_LUA_FORMAT
+ 	LuaTest::GetInstance().OnInit();
++	// Startup the new tick system
++	// This is currently working here.
++	LuaTest::GetInstance().StartOnTick();
+ #endif // NEW_LUA_FORMAT
+ 
+ 
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 84cf1f8d..6c622867 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -40,6 +40,7 @@
+ #include "Text.h"
+ 
+ #include "Phones.h"
++#include "Pickups.h"
+ 
+ #include "Pad.h"
+ #include "Stats.h"
+@@ -223,6 +224,39 @@ void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+     lua_pushcclosure(L, gameWaitLua, 1);
+     lua_setfield(L, -2, "wait");
+ 
++	//-------
++	// Pickups
++	//-------
++
++	// Create a pickup
++	lua_pushcfunction(L, createPickupLua);
++	lua_setfield(L, -2, "create_pickup");
++
++	// Create a money pickup
++	lua_pushcfunction(L, createMoneyPickupLua);
++	lua_setfield(L, -2, "create_money_pickup");
++	// 
++
++	// Remove a pickup
++	lua_pushcfunction(L, removePickupLua);
++	lua_setfield(L, -2, "remove_pickup");
++
++	// Check if a pickup has been collected
++	lua_pushcfunction(L, hasPickupBeenCollectedLua);
++	lua_setfield(L, -2, "has_pickup_been_colleted");
++
++	// Check if any pickup is at the coords
++	// 
++	lua_pushcfunction(L, isAnyPickupAtCoordsLua);
++	lua_setfield(L, -2, "is_any_pickup_at_coords");
++
++	// Create a hidden package
++	// 
++	lua_pushcfunction(L, createHiddenPackageLua);
++	lua_setfield(L, -2, "create_hidden_package");
++
++	//
++
+     // Game namespace
+     lua_setglobal(L, "game");
+ }
+@@ -919,6 +953,9 @@ int addBlipForVehicleLua(lua_State *L)
+ 
+ /**
+  * Implementation of COMMAND_WAIT
++ * 
++ * Usage:
++ * game.wait(miliseconds)
+  */
+ int gameWaitLua(lua_State* L)
+ {
+@@ -966,6 +1003,105 @@ int gameWaitLua(lua_State* L)
+     return lua_yield(L, 0);
+ }
+ 
++
++/**
++ * Create a pickup
++ * 
++ * Usage:
++ * game.create_pickup({x = 25, y = 25, z = 25}, pickup_model, pickup_type)
++ */
++int createPickupLua(lua_State *L)
++{
++	// pushIntToLua(L, pickup);
++
++	auto pos = luaGetCVector(L, 1);
++	lua_Number pickupModel = lua_tonumber(L, 2);
++	lua_Number pickupType = lua_tonumber(L, 3);
++
++	// CPickups::GenerateNewOne(*pos, MI_PICKUP_SAVEGAME, pickupType, 1);
++	int pickup = CPickups::GenerateNewOne(*pos, pickupModel, pickupType, 1);
++	pushIntToLua(L, pickup);
++	return 1;
++}
++
++/**
++ * Create a money pickup
++ * 
++ * Usage:
++ * game.create_money_pickup({x = 25, y = 25, z = 25}, 2000)
++ */
++int createMoneyPickupLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++	auto moneyAmount = lua_tonumber(L, 2);
++
++	int moneyPickup = CPickups::GenerateNewOne(*pos, MI_MONEY, PICKUP_MONEY, moneyAmount);
++	pushIntToLua(L, moneyPickup);
++	return 1;
++}
++
++/**
++ * Remove a pickup with the specified handle.
++ * 
++ * game.remove_pickup(pickup_handle)
++ */
++int removePickupLua(lua_State *L)
++{
++	lua_Number pickupId = lua_tonumber(L, 1);
++	CPickups::RemovePickUp(pickupId);
++	return 0;
++}
++
++/**
++ * Check if a pickup has been collected
++ * 
++ * Usage:
++ * game.has_pickup_been_colleted(pickup_handle)
++ */
++int hasPickupBeenCollectedLua(lua_State *L)
++{
++	lua_Number pickupId = lua_tonumber(L, 1);
++	bool pickupCollected = CPickups::IsPickUpPickedUp(pickupId);
++	pushBooleanToLua(L, pickupCollected);
++
++	return 1;
++}
++
++/**
++ * Check if a pickup is at a set of coords
++ * 
++ * Usage:
++ * game.is_any_pickup_at_coords({x = 25, y = 25, z = 25})
++ */
++int isAnyPickupAtCoordsLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++
++	// TODO Finish this.
++
++	return 1;
++}
++
++/**
++ * Create a hidden package.
++ * 
++ * Usage:
++ * game.create_hidden_package({x = 25, y = 25, z = 25})
++ */
++int createHiddenPackageLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++	CPickups::GenerateNewOne(*pos, MI_COLLECTABLE1, PICKUP_COLLECTABLE1, 0);
++	return 0;
++}
++
++/**
++ * TODO Implement these for pickups later.
++ * IS_ANY_PICKUP_AT_COORDS
++ * CREATE_COLLECTABLE1 - Create hidden package pickups.
++ */
++
++
+ }
+ 
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index ab93a734..e88fbecc 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -60,6 +60,14 @@ extern "C" {
+ 
+     extern int gameWaitLua(lua_State *L);
+ 
++    // Pickups
++    extern int createPickupLua(lua_State *L);
++    extern int createMoneyPickupLua(lua_State *L);
++    extern int removePickupLua(lua_State *L);
++    extern int hasPickupBeenCollectedLua(lua_State *L);
++    extern int isAnyPickupAtCoordsLua(lua_State *L);
++    extern int createHiddenPackageLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 45201b6f..8b4c5227 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -407,10 +407,10 @@ void LuaTest::StartOnTick()
+         return;
+     }
+ 
+-	LogFunctions::LogError(
+-        Defines::luaLogFile,
+-        "OnTick found"
+-    );
++	// LogFunctions::LogError(
++    //     Defines::luaLogFile,
++    //     "OnTick found"
++    // );
+ 
+     // Move the function onto the coroutine stack.
+     lua_xmove(m_luaVM, threadState, 1);
+@@ -441,19 +441,19 @@ void LuaTest::StartOnTick()
+         /*
+          * Expected if OnTick immediately calls game.wait().
+          */
+-        LogFunctions::LogError(
+-            Defines::luaLogFile,
+-            "OnTick yielded"
+-        );
++        // LogFunctions::LogError(
++        //     Defines::luaLogFile,
++        //     "OnTick yielded"
++        // );
+         return;
+     }
+ 
+     if (result == LUA_OK) {
+         // current.finished = true;
+-		LogFunctions::LogError(
+-            Defines::luaLogFile,
+-            "OnTick finished immediately"
+-        );
++		// LogFunctions::LogError(
++        //     Defines::luaLogFile,
++        //     "OnTick finished immediately"
++        // );
+ 		m_threads.back().finished = true;
+         return;
+     }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 14992a8a..50b645ae 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-7a";
++std::string Defines::programVersion = "1.2.14-8a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

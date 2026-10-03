@@ -1,0 +1,1099 @@
+From 1f4fda214b399c2b35a6fcdae3ce452e7325659d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 8 Sep 2026 01:35:18 -0400
+Subject: [PATCH 100/161] feat: Add some lua functions
+
+Lua functions added:
+
+* Added game.pass_time, game.set_time, and game.set_time_scale into lua_game.cpp.
+
+Other changes:
+
+* Label some more code and document some files.
+
+* Move lua library loading into another function.
+
+* Update InitGame::CreatePlayer function to now take a CVector instead of floats.
+
+* Make busted and wasted time to pass variable be obtained from my busted and wasted event scripts in lua.
+
+* Update changelog, bump version to 1.2.11-1a.
+---
+ Changelog.md                               |  30 +++++
+ src/audio/MusicManager.cpp                 |   6 +
+ src/control/CarAI.cpp                      |  28 ++++-
+ src/control/CarCtrl.cpp                    |  10 ++
+ src/control/GameLogic.cpp                  |  24 +++-
+ src/control/Script.cpp                     |  15 +++
+ src/core/Fire.cpp                          |   4 +-
+ src/core/Game.cpp                          |  27 +++++
+ src/entities/Entity.cpp                    |  22 ++++
+ src/extras/custom_scripts/init_game.cpp    |   8 +-
+ src/extras/custom_scripts/init_game.h      |   3 +-
+ src/extras/functions/log_functions.cpp     |   6 +
+ src/extras/functions/log_functions.h       |   9 ++
+ src/extras/functions/vehicle_functions.cpp |  30 +++--
+ src/extras/lua/lua_game.cpp                | 126 +++++++++++++++++++++
+ src/extras/lua/lua_game.h                  |   4 +
+ src/extras/lua/lua_player.cpp              |  25 ++--
+ src/extras/lua/lua_test.cpp                |  65 +++++++++--
+ src/extras/lua/lua_test.h                  |   3 +
+ src/extras/utils/defines.cpp               |   2 +-
+ src/extras/utils/fast_loader.cpp           |  13 +++
+ src/peds/Ped.cpp                           |   7 ++
+ 22 files changed, 421 insertions(+), 46 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 6f7dbf20..e0672069 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -326,3 +326,33 @@ feat: Add unlock all car doors function to lua
+ * I added the world.unlock_all_car_doors_in_area() function into lua, this can unlock all car doors in a specified area.
+ 
+ * Update changelog, bump version to 1.2.10-6a.
++
++### 1.2.11-1a
++
++feat: Add some lua functions
++
++Lua functions added:
++
++* Added game.pass_time, game.set_time, and game.set_time_scale into lua_game.cpp.
++
++Breaking lua changes:
++
++* player.create now takes a vector list of arguments instead of floats now
++
++Old usage:
++* player.create(0, 25, 25, 25)
++
++New usage:
++* player.create(0, {x = 25, y = 25, z = 25})
++
++Other changes:
++
++* Label some more code and document some files.
++
++* Move lua library loading into another function.
++
++* Update InitGame::CreatePlayer function to now take a CVector instead of floats.
++
++* Make busted and wasted time to pass variable be obtained from my busted and wasted event scripts in lua.
++
++* Update changelog, bump version to 1.2.11-1a.
+diff --git a/src/audio/MusicManager.cpp b/src/audio/MusicManager.cpp
+index c97b9c24..ebb1e3ff 100644
+--- a/src/audio/MusicManager.cpp
++++ b/src/audio/MusicManager.cpp
+@@ -48,6 +48,12 @@ uint32 NewGameRadioTimers[10] =
+ 	0
+ };
+ 
++/**
++ * Music manager
++ * 
++ * TODO Make audio work without needing to be paused and unpaused,
++ * I guess disabling the scripts I am also stopping something else when I use the fast loader.
++ */
+ cMusicManager::cMusicManager()
+ {
+ 	m_bIsInitialised = FALSE;
+diff --git a/src/control/CarAI.cpp b/src/control/CarAI.cpp
+index c8230d4d..187cbab3 100644
+--- a/src/control/CarAI.cpp
++++ b/src/control/CarAI.cpp
+@@ -507,6 +507,11 @@ void CCarAI::CarHasReasonToStop(CVehicle* pVehicle)
+ 	pVehicle->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
+ }
+ 
++/**
++ * Make a car go to a specific set of coordinates.
++ * 
++ * TODO Add this into my lua scripts and test it once I can.
++ */
+ float CCarAI::GetCarToGoToCoors(CVehicle* pVehicle, CVector* pTarget)
+ {
+ 	if (pVehicle->AutoPilot.m_nCarMission != MISSION_GOTOCOORDS && pVehicle->AutoPilot.m_nCarMission != MISSION_GOTOCOORDS_STRAIGHT){
+@@ -524,6 +529,11 @@ float CCarAI::GetCarToGoToCoors(CVehicle* pVehicle, CVector* pTarget)
+ 	return (pVehicle->GetPosition() - *pTarget).Magnitude2D();
+ }
+ 
++/**
++ * Make a car park at a specific set of coordinates.
++ * 
++ * TODO Add this into my lua scripts and test it once I can.
++ */
+ float CCarAI::GetCarToParkAtCoors(CVehicle* pVehicle, CVector* pTarget)
+ {
+ 	GetCarToGoToCoors(pVehicle, pTarget);
+@@ -532,6 +542,10 @@ float CCarAI::GetCarToParkAtCoors(CVehicle* pVehicle, CVector* pTarget)
+ 	return (pVehicle->GetPosition() - *pTarget).Magnitude2D();
+ }
+ 
++/**
++ * Add cops to the police vehicles.
++ * 
++ */
+ void CCarAI::AddPoliceCarOccupants(CVehicle* pVehicle)
+ {
+ 	if (pVehicle->bOccupantsHaveBeenGenerated)
+@@ -634,6 +648,11 @@ void CCarAI::TellOccupantsToFleeCar(CVehicle* pVehicle)
+ 	}
+ }
+ 
++/**
++ * Make a car ram another car.
++ * 
++ * TODO Add this into my lua scripts and test it once I can.
++ */
+ void CCarAI::TellCarToRamOtherCar(CVehicle* pVehicle, CVehicle* pTarget)
+ {
+ 	pVehicle->AutoPilot.m_pTargetCar = pTarget;
+@@ -751,6 +770,11 @@ void CCarAI::MellowOutChaseSpeedBoat(CVehicle* pVehicle)
+ 	}
+ }
+ 
++/**
++ * Make the peds move when they hear a siren.
++ * TODO Make this able to be changed.
++ * Possibly redirect specific functions like this to a custom lua one in the future.
++ */
+ void CCarAI::MakeWayForCarWithSiren(CVehicle *pVehicle)
+ {
+ 	float flatSpeed = pVehicle->GetMoveSpeed().Magnitude2D();
+@@ -769,8 +793,8 @@ void CCarAI::MakeWayForCarWithSiren(CVehicle *pVehicle)
+ 			continue;
+ 		if (vehicle->VehicleCreatedBy != RANDOM_VEHICLE)
+ 			continue;
+-		if (vehicle->bIsLawEnforcer || vehicle->bIsAmbulanceOnDuty || vehicle->bIsFireTruckOnDuty)
+-			continue;
++		// if (vehicle->bIsLawEnforcer || vehicle->bIsAmbulanceOnDuty || vehicle->bIsFireTruckOnDuty)
++		// 	continue;
+ 		if (vehicle == pVehicle)
+ 			continue;
+ 		if (vehicle->AutoPilot.m_nDrivingStyle == DRIVINGSTYLE_AVOID_CARS)
+diff --git a/src/control/CarCtrl.cpp b/src/control/CarCtrl.cpp
+index cfbb2d73..a206bc9c 100644
+--- a/src/control/CarCtrl.cpp
++++ b/src/control/CarCtrl.cpp
+@@ -109,6 +109,11 @@ int32 CCarCtrl::LoadedCarsArray[TOTAL_CUSTOM_CLASSES][MAX_CAR_MODELS_IN_ARRAY];
+ CVehicle* apCarsToKeep[MAX_CARS_TO_KEEP];
+ uint32 aCarsToKeepTime[MAX_CARS_TO_KEEP];
+ 
++/**
++ * Generate random cars, hmm I wonder what happens if I change this.
++ * 
++ * TODO Modify this in lua scripts.
++ */
+ void
+ CCarCtrl::GenerateRandomCars()
+ {
+@@ -3175,6 +3180,11 @@ void CCarCtrl::FindLinksToGoWithTheseNodes(CVehicle* pVehicle)
+ 	pVehicle->AutoPilot.m_nCurrentDirection = (ThePaths.ConnectedNode(curLink + pCurNode->firstLink) >= pVehicle->AutoPilot.m_nCurrentRouteNode) ? 1 : -1;
+ }
+ 
++/**
++ * Generate an emergency services car.
++ * 
++ * TODO Modify this, disable it if world.disable_vehicles() is called in lua.
++ */
+ void CCarCtrl::GenerateEmergencyServicesCar(void)
+ {
+ 	if (FindPlayerPed()->m_pWanted->GetWantedLevel() > 3)
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 81f1e67e..38274184 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -62,6 +62,9 @@ bool CGameLogic::MissionDropOffReadyToBeUsed;
+ #define SHORTCUT_TAXI_COST (9)
+ #define TOTAL_BUSTED_AUDIO (28)
+ 
++/**
++ * Set the active players, shortcut state, and shortcut taxi.
++ */
+ void
+ CGameLogic::InitAtStartOfGame()
+ {
+@@ -195,6 +198,9 @@ CGameLogic::Update()
+ 				pPlayerInfo.m_bGetOutOfHospitalFree = false;
+ 			} else {
+ 				pPlayerInfo.m_nMoney = Max(0, pPlayerInfo.m_nMoney - 100);
++
++				// TODO Disable this with global in lua code.
++				// Actually, that might be pointless since I can just set m_bGetOutOfHospitalFree.
+ 				pPlayerInfo.m_pPed->ClearWeapons();
+ 			}
+ 
+@@ -271,7 +277,15 @@ CGameLogic::Update()
+ 			// I had to init lua before this.
+ 			//PassTime(luaTest.timeToPass);
+ 			// Reverted back to normal
++			// TODO Make this value able to be changed in my new freeroam scripts, or even be disabled with 0.
++
++#ifndef DISABLE_GAME_SCRIPTS
++
++			// Moved pass time variable into here.
++			// Now this always gets handled by kcnet-wasted.lua and kcnet-busted.lua.
+ 			PassTime(720);
++#endif // !DISABLE_GAME_SCRIPTS
++
+ #else
+ 			PassTime(720);
+ #endif
+@@ -294,6 +308,7 @@ CGameLogic::Update()
+ 			CPad::GetPad(CWorld::PlayerInFocus)->DisablePlayerControls = PLAYERCONTROL_ENABLED;
+ 			// Fade the camera in
+ 			// TODO Add a toggle for this and fading the camera out, I didn't know these could be changed
++			// TODO Add toggle into the freeroam lua scripts for this.
+ 
+ //#ifndef CUSTOM_CODE
+ 			if (CRestart::bFadeInAfterNextDeath) { 
+@@ -429,10 +444,13 @@ CGameLogic::Update()
+ //			}
+ //#endif
+ 
+-			// I had to init lua before this.
+-			//PassTime(luaTest.timeToPass);
+-			// Reverted back to normal
++#ifndef DISABLE_GAME_SCRIPTS
++
++			// Moved pass time variable into here.
++			// Now this always gets handled by kcnet-wasted.lua and kcnet-busted.lua.
+ 			PassTime(720);
++#endif // !DISABLE_GAME_SCRIPTS
++
+ #else
+ 			PassTime(720);
+ #endif
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index dd4515ec..f0ebe5b8 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -2619,15 +2619,20 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 		if (CModelInfo::IsBoatModel(ScriptParams[0])) {
+ 			CBoat* boat = new CBoat(ScriptParams[0], MISSION_VEHICLE);
+ 			CVector pos = *(CVector*)&ScriptParams[1];
++
+ 			if (pos.z <= MAP_Z_LOW_LIMIT)
+ 				pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
+ 			pos.z += boat->GetDistanceFromCentreOfMassToBaseOfModel();
+ 			boat->SetPosition(pos);
++
+ 			CTheScripts::ClearSpaceForMissionEntity(pos, boat);
+ 			boat->SetStatus(STATUS_ABANDONED);
+ 			boat->bIsLocked = true;
++
+ 			boat->AutoPilot.m_nCarMission = MISSION_NONE;
+ 			boat->AutoPilot.m_nTempAction = TEMPACT_NONE;
++
+ 			boat->AutoPilot.m_nCruiseSpeed = boat->AutoPilot.m_fMaxTrafficSpeed = 20.0f;
+ 			if (m_bIsMissionScript)
+ 				boat->bIsStaticWaitingForCollision = true;
+@@ -2644,24 +2649,31 @@ int8 CRunningScript::ProcessCommands100To199(int32 command)
+ 				((CBike*)(car))->bIsStanding = true;
+ 			}
+ 			CVector pos = *(CVector*)&ScriptParams[1];
++
+ 			if (pos.z <= MAP_Z_LOW_LIMIT)
+ 				pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+ 			pos.z += car->GetDistanceFromCentreOfMassToBaseOfModel();
++
+ 			car->SetPosition(pos);
+ 			CTheScripts::ClearSpaceForMissionEntity(pos, car);
+ 			car->SetStatus(STATUS_ABANDONED);
++
+ 			car->bIsLocked = true;
+ 			CCarCtrl::JoinCarWithRoadSystem(car);
++
+ 			car->AutoPilot.m_nCarMission = MISSION_NONE;
+ 			car->AutoPilot.m_nTempAction = TEMPACT_NONE;
+ 			car->AutoPilot.m_nDrivingStyle = DRIVINGSTYLE_STOP_FOR_CARS;
++
+ 			car->AutoPilot.m_nCruiseSpeed = car->AutoPilot.m_fMaxTrafficSpeed = 9.0f;
+ 			car->AutoPilot.m_nCurrentLane = car->AutoPilot.m_nNextLane = 0;
+ 			car->bEngineOn = false;
++
+ 			car->m_nZoneLevel = CTheZones::GetLevelFromPosition(&pos);
+ 			car->bHasBeenOwnedByPlayer = true;
+ 			if (m_bIsMissionScript)
+ 				car->bIsStaticWaitingForCollision = true;
++
+ 			CWorld::Add(car);
+ 			handle = CPools::GetVehiclePool()->GetIndex(car);
+ 		}
+@@ -3074,6 +3086,9 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 		StoreParameters(&m_nIp, 1);
+ 		return 0;
+ 	}
++
++	// TODO Implement this into my freeroam scripts
++	// player.store_car_player_is_in()
+ 	case COMMAND_STORE_CAR_PLAYER_IS_IN:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+diff --git a/src/core/Fire.cpp b/src/core/Fire.cpp
+index 562e2daa..3ac5e681 100644
+--- a/src/core/Fire.cpp
++++ b/src/core/Fire.cpp
+@@ -217,7 +217,7 @@ CFire::Extinguish(void)
+ /// <param name="fleeFrom"></param>
+ /// <param name="strength">Strength of the fire</param>
+ /// TODO Figure out what below is.
+-/// <param name="propagation">Possibly how far the fire spreads.</param>
++/// <param name="propagation">Possibly if the the fire spreads.</param>
+ void
+ CFireManager::StartFire(CVector pos, float size, uint8 propagation)
+ {
+@@ -248,7 +248,7 @@ CFireManager::StartFire(CVector pos, float size, uint8 propagation)
+ /// <param name="fleeFrom"></param>
+ /// <param name="strength">Strength of the fire</param>
+ /// TODO Figure out what below is.
+-/// <param name="propagation">Possibly how far the fire spreads.</param>
++/// <param name="propagation">Possibly if the the fire spreads.</param>
+ /// <returns>The fire that was just started possibly.</returns>
+ CFire *
+ CFireManager::StartFire(CEntity *entityOnFire, CEntity *fleeFrom, float strength, uint8 propagation)
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index e76ce023..5a4d30e7 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -991,9 +991,12 @@ void CGame::Process(void)
+ 		CSprite2d::SetRecipNearClip();
+ 		CSprite2d::InitPerFrame();
+ 		CFont::InitPerFrame();
++
+ 		CRecordDataForGame::SaveOrRetrieveDataForThisFrame();
+ 		CRecordDataForChase::SaveOrRetrieveDataForThisFrame();
++
+ 		CPad::DoCheats();
++
+ 		CClock::Update();
+ 		CWeather::Update();
+ 
+@@ -1002,21 +1005,31 @@ void CGame::Process(void)
+ 		POP_MEMID();
+ 
+ 		CCollision::Update();
++	
+ 		CScriptPaths::Update();
+ 		CTrain::UpdateTrains();
++
+ 		CPlane::UpdatePlanes();
+ 		CHeli::UpdateHelis();
++
+ 		CDarkel::Update();
+ 		CSkidmarks::Update();
++
+ 		CAntennas::Update();
+ 		CGlass::Update();
+ #ifdef GTA_SCENE_EDIT
+ 		CSceneEdit::Update();
+ #endif
++
+ 		CSetPieces::Update();
+ 		CEventList::Update();
++
++		// Process particles
+ 		CParticle::Update();
++		
++		// Process fires
+ 		gFireManager.Update();
++		
+ 		if (processTime >= 2) {
+ 			CPopulation::Update(false);
+ 		} else {
+@@ -1024,12 +1037,17 @@ void CGame::Process(void)
+ 			CPopulation::Update(true);
+ 			processTime = CTimer::GetCurrentTimeInCycles() / CTimer::GetCyclesPerMillisecond() - startTime;
+ 		}
++		
+ 		CWeapon::UpdateWeapons();
++		
+ 		if (!CCutsceneMgr::IsRunning())
+ 			CTheCarGenerators::Process();
++		
+ 		if (!CReplay::IsPlayingBack())
+ 			CCranes::UpdateCranes();
++		
+ 		CClouds::Update();
++		
+ 		CMovingThings::Update();
+ 		CWaterCannons::Update();
+ 		CUserDisplay::Process();
+@@ -1040,24 +1058,33 @@ void CGame::Process(void)
+ 		POP_MEMID();
+ 
+ 		gAccidentManager.Update();
++		
+ 		CPacManPickups::Update();
+ 		CPickups::Update();
++		
+ 		CGarages::Update();
+ 		CRubbish::Update();
++		
+ 		CSpecialFX::Update();
+ 		CRopes::Update();
+ 		CTimeCycle::Update();
++
+ 		if (CReplay::ShouldStandardCameraBeProcessed())
+ 			TheCamera.Process();
+ 		CCullZones::Update();
++
++		// Update the game logic if the replay is not playing.
+ 		if (!CReplay::IsPlayingBack())
+ 			CGameLogic::Update();
++
+ 		CBridge::Update();
+ 		CCoronas::DoSunAndMoon();
+ 		CCoronas::Update();
++
+ 		CShadows::UpdateStaticShadows();
+ 		CShadows::UpdatePermanentShadows();
+ 		gPhoneInfo.Update();
++		
+ 		if (!CReplay::IsPlayingBack())
+ 		{
+ 			PUSH_MEMID(MEMID_CARS);
+diff --git a/src/entities/Entity.cpp b/src/entities/Entity.cpp
+index 485cc17f..f20f35b2 100644
+--- a/src/entities/Entity.cpp
++++ b/src/entities/Entity.cpp
+@@ -314,6 +314,8 @@ CEntity::HasPreRenderEffects(void)
+ /**
+  * @brief Pre render an entity
+  * 
++ * TODO Look into this, it renders the coronas for stuff like missiles and objects.
++ * 
+  */
+ void
+ CEntity::PreRender(void)
+@@ -332,15 +334,18 @@ CEntity::PreRender(void)
+ 			ModifyMatrixForTreeInWind();
+ 		}
+ 		break;
++
+ 	case ENTITY_TYPE_OBJECT:
+ 		if(GetModelIndex() == MI_COLLECTABLE1){
+ 			CPickups::DoCollectableEffects(this);
+ 			GetMatrix().UpdateRW();
+ 			UpdateRwFrame();
++			
+ 		}else if(GetModelIndex() == MI_MONEY){
+ 			CPickups::DoMoneyEffects(this);
+ 			GetMatrix().UpdateRW();
+ 			UpdateRwFrame();
++
+ 		}else if(GetModelIndex() == MI_NAUTICALMINE ||
+ 		         GetModelIndex() == MI_CARMINE ||
+ 		         GetModelIndex() == MI_BRIEFCASE){
+@@ -349,14 +354,17 @@ CEntity::PreRender(void)
+ 				GetMatrix().UpdateRW();
+ 				UpdateRwFrame();
+ 			}
++
+ 		}else if(GetModelIndex() == MI_MISSILE){
+ 			CVector pos = GetPosition();
+ 			float flicker = (CGeneral::GetRandomNumber() & 0xF)/(float)0x10;
++
+ 			CShadows::StoreShadowToBeRendered(SHADOWTYPE_ADDITIVE,
+ 				gpShadowExplosionTex, &pos,
+ 				8.0f, 0.0f, 0.0f, -8.0f,
+ 				255, 200.0f*flicker, 160.0f*flicker, 120.0f*flicker,
+ 				20.0f, false, 1.0f, nil, false);
++
+ 			CPointLights::AddLight(CPointLights::LIGHT_POINT,
+ 				pos, CVector(0.0f, 0.0f, 0.0f),
+ 				8.0f,
+@@ -364,27 +372,33 @@ CEntity::PreRender(void)
+ 				0.8f*flicker,
+ 				0.6f*flicker,
+ 				CPointLights::FOG_NONE, true);
++
+ 			CCoronas::RegisterCorona((uintptr)this,
+ 				255.0f*flicker, 220.0f*flicker, 190.0f*flicker, 255,
+ 				pos, 6.0f*flicker, 80.0f, gpCoronaTexture[CCoronas::TYPE_STAR],
+ 				CCoronas::FLARE_NONE, CCoronas::REFLECTION_ON,
+ 				CCoronas::LOSCHECK_OFF, CCoronas::STREAK_OFF, 0.0f);
++
+ 		}else if(IsGlass(GetModelIndex())){
+ 			PreRenderForGlassWindow();
++
+ 		}else if (((CObject*)this)->bIsPickup) {
+ 			CPickups::DoPickUpEffects(this);
+ 			GetMatrix().UpdateRW();
+ 			UpdateRwFrame();
++
+ 		} else if (GetModelIndex() == MI_GRENADE) {
+ 			CMotionBlurStreaks::RegisterStreak((uintptr)this,
+ 				100, 100, 100,
+ 				GetPosition() - 0.07f * TheCamera.GetRight(),
+ 				GetPosition() + 0.07f * TheCamera.GetRight());
++
+ 		} else if (GetModelIndex() == MI_MOLOTOV) {
+ 			CMotionBlurStreaks::RegisterStreak((uintptr)this,
+ 				0, 100, 0,
+ 				GetPosition() - 0.07f * TheCamera.GetRight(),
+ 				GetPosition() + 0.07f * TheCamera.GetRight());
++
+ 		}else if(GetModelIndex() == MI_BEACHBALL){
+ 			CVector pos = GetPosition();
+ 			CShadows::StoreShadowToBeRendered(SHADOWTYPE_DARK,
+@@ -401,22 +415,30 @@ CEntity::PreRender(void)
+ 		if(GetModelIndex() == MI_TRAFFICLIGHTS){
+ 			CTrafficLights::DisplayActualLight(this);
+ 			CShadows::StoreShadowForPole(this, 2.957f, 0.147f, 0.0f, 16.0f, 0.4f, 0);
++
+ 		}else if(GetModelIndex() == MI_TRAFFICLIGHTS_VERTICAL){
+ 			CTrafficLights::DisplayActualLight(this);
++
+ 		}else if(GetModelIndex() == MI_TRAFFICLIGHTS_MIAMI){
+ 			CTrafficLights::DisplayActualLight(this);
+ 			CShadows::StoreShadowForPole(this, 4.819f, 1.315f, 0.0f, 16.0f, 0.4f, 0);
++
+ 		}else if(GetModelIndex() == MI_TRAFFICLIGHTS_TWOVERTICAL){
+ 			CTrafficLights::DisplayActualLight(this);
+ 			CShadows::StoreShadowForPole(this, 7.503f, 0.0f, 0.0f, 16.0f, 0.4f, 0);
++
+ 		}else if(GetModelIndex() == MI_SINGLESTREETLIGHTS1)
+ 			CShadows::StoreShadowForPole(this, 0.744f, 0.0f, 0.0f, 16.0f, 0.4f, 0);
++		
+ 		else if(GetModelIndex() == MI_SINGLESTREETLIGHTS2)
+ 			CShadows::StoreShadowForPole(this, 0.043f, 0.0f, 0.0f, 16.0f, 0.4f, 0);
++
+ 		else if(GetModelIndex() == MI_SINGLESTREETLIGHTS3)
+ 			CShadows::StoreShadowForPole(this, 1.143f, 0.145f, 0.0f, 16.0f, 0.4f, 0);
++
+ 		else if(GetModelIndex() == MI_DOUBLESTREETLIGHTS)
+ 			CShadows::StoreShadowForPole(this, 0.0f, -0.048f, 0.0f, 16.0f, 0.4f, 0);
++
+ 		break;
+ 	}
+ }
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+index f1edead0..65800ac1 100644
+--- a/src/extras/custom_scripts/init_game.cpp
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -52,10 +52,12 @@
+  * Fixed to only spawn one player, otherwise this will spawn more then one player.
+  * I may be able to use that for some type of local coop like GTA SA had on the PS2.
+  * 
++ * @param playerIndex The index for the player, I may remove this in the future since I always set it to 0.
++ * @param pos The CVector to set the players position to.
++ * 
+  * @returns If the player was created.
+  */
+-// void InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
+-bool InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
++bool InitGame::CreatePlayer(int playerIndex, CVector pos)
+ {
+ 	// Do nothing if the player is already created.
+ 
+@@ -85,7 +87,7 @@ bool InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
+ 
+ 	// Position from script, used like this in the scripts:
+ 	// CVector pos = *(CVector*)&ScriptParams[1];
+-	CVector pos = CVector(posX, posY, posZ);
++	// CVector pos = CVector(posX, posY, posZ);
+ 
+ 	// Set the players Z coordinate.
+ 	if (pos.z <= MAP_Z_LOW_LIMIT)
+diff --git a/src/extras/custom_scripts/init_game.h b/src/extras/custom_scripts/init_game.h
+index c1f3405f..09d2e0b8 100644
+--- a/src/extras/custom_scripts/init_game.h
++++ b/src/extras/custom_scripts/init_game.h
+@@ -19,8 +19,7 @@ public:
+ 	// InitGame() : m_bPlayerCreated(false) {}
+ 
+ 	// Create the player, for the lua scripts.
+-	// void CreatePlayer(int playerIndex, float posX, float posY, float posZ);
+-	bool CreatePlayer(int playerIndex, float posX, float posY, float posZ);
++	bool CreatePlayer(int playerIndex, CVector pos);
+ 
+ 	// Singleton
+ 	static InitGame &GetInstance()
+diff --git a/src/extras/functions/log_functions.cpp b/src/extras/functions/log_functions.cpp
+index abeb16f6..b14ece51 100644
+--- a/src/extras/functions/log_functions.cpp
++++ b/src/extras/functions/log_functions.cpp
+@@ -252,7 +252,13 @@ LogFunctions::LogWarning(std::string fileName, std::string message)
+ void
+ LogFunctions::LogError(std::string fileName, std::string message)
+ {
++
++	// TODO Add KC_DEBUG preprocessor for toggling certain log actions for testing.
++#ifdef KC_DEBUG
++
++#endif // KC_DEBUG
+ 	LogToFile(LogLevels::LOG_ERROR, fileName, message + "\n");
++
+ }
+ 
+ /// <summary>
+diff --git a/src/extras/functions/log_functions.h b/src/extras/functions/log_functions.h
+index a8b09944..eea90846 100644
+--- a/src/extras/functions/log_functions.h
++++ b/src/extras/functions/log_functions.h
+@@ -17,6 +17,15 @@ enum class LogLevels {
+ 	LOG_DEBUG,
+ };
+ 
++/**
++ * The log file to use
++ * TODO Switch my Log functions to using this format.
++ * So I can easily remember which file is being selected for the logging.
++ */
++enum class LogFile {
++	
++};
++
+ class LogFunctions
+ {	
+ public:
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index aeba6ad8..96f8e04c 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -200,13 +200,16 @@ VehicleFunctions::RepairCurrentVehicle()
+ 	}
+ }
+ 
+-/// <summary>
+-/// https://library.sannybuilder.com/#/vc/script/extensions/default/0591
+-/// </summary>
+-/// <param name="leftBottomX"></param>
+-/// <param name="leftBottomY"></param>
+-/// <param name="topRightX"></param>
+-/// <param name="topRightY"></param>
++/**
++ * Unlock all car doors in a set area
++ * 
++ * https://library.sannybuilder.com/#/vc/script/extensions/default/0591
++ * 
++ * @param leftBottomX
++ * @param leftBottomY
++ * @param topRightX
++ * @param topRightY
++ */
+ void
+ VehicleFunctions::UnlockAllCarDoorsInArea(float leftBottomX, float leftBottomY, float topRightX, float topRightY)
+ {
+@@ -633,7 +636,14 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+  * Now this takes a CVector for the position instead of 3 floats, since I got
+  *  this working in lua now.
+  *
+- * TODO Make this tell the lua script that there is already a vehicle spawned, remove the old ones.
++ * TODO Fix this to not place the vehicle in a building or a wall.
++ * TODO Check if area is safe to spawn.
++ * 
++ * TODO Add a delay to this.
++ *  Spamming the vehicle spawning with either my keybind 'F9 in lua, or my mod menu sometimes causes problems.
++ * 
++ * TODO Look into this for cleaning up the vehicle:
++ * CTheScripts::MissionCleanUp.AddEntityToList(id, CLEANUP_CAR);
+  *
+  * @param id The vehicle ID to spawn in.
+  * @param pos The CVector position to spawn the vehicle.
+@@ -703,6 +713,7 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 		//---------
+ 		VehicleFunctions::RequestVehicleModel(id);
+ 
++		// TODO Should I move this check elsewhere? Or move some of the functions from it.
+ 		if(CStreaming::HasModelLoaded(id)) {
+ 			// If placing on player.
+ 			// CVector pPedCoords = FindPlayerCoors();
+@@ -786,9 +797,6 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 
+ 			//--------
+ 			// Warp into new vehicle
+-			// TODO Fix this to work in lua, when I remove the vehicle above, I guess this glitches out.
+-			// This will almost put the player in the vehicle.
+-			//  but they cannot control it and the player model isn't in the vehicle. 
+ 			//---------
+ 
+ 			// Warp the player into the new vehicle if enabled.
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 47ea47ad..e870bb6a 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -29,6 +29,8 @@
+ #include "player_cheats.h"
+ 
+ // VC Specific
++#include "Clock.h"
++#include "GameLogic.h"
+ #include "Hud.h"
+ #include "Radar.h"
+ #include "Restart.h"
+@@ -74,6 +76,18 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, startFireLua);
+     lua_setfield(L, -2, "start_fire");
+ 
++	// Pass the set amount of time.
++	lua_pushcfunction(L, passTimeLua);
++	lua_setfield(L, -2, "pass_time");
++
++	// Set the time to the hour and minute specified values
++	lua_pushcfunction(L, setTimeLua);
++	lua_setfield(L, -2, "set_time");
++	
++	// Set the time scale to the specified value
++	lua_pushcfunction(L, setTimeScaleLua);
++	lua_setfield(L, -2, "set_time_scale");
++
+ 	//----------
+ 	// TODO Implement these below
+ 	//----------
+@@ -256,6 +270,118 @@ int startFireLua(lua_State *L)
+ 	return 1;
+ }
+ 
++//--------------
++// Clock functions
++//--------------
++
++
++
++/**
++ * Pass the time in lua, mostly for use with my kcnet-wasted.lua and kcnet-busted.lua.
++ * 
++ * Usage in lua:
++ * game.pass_time(720)
++ */
++int passTimeLua(lua_State *L)
++{
++	int minTimeToPass = 0;
++	// Seems to mostly be set to 720 in the scripts.
++	int maxTimeToPass = 720;
++	// CGameLogic::PassTime(uint32 time)
++	int timeToPass = (lua_tointeger(L, 1));
++	
++
++	if (!timeToPass)
++    {
++    	return luaL_error(L, "game.pass_time expects a an int between 1 and 720" );
++	}
++
++	// TODO Set a max time for this later, for now just locking to 720.
++	if(timeToPass <= 0 || timeToPass > 720)
++	{
++		return luaL_error(L, "game.pass_time number is either 0 or higher then 720! Change the value first.");
++	}
++
++	// Pass the game time like the game originally does when being wasted/busted.
++	// Can be used anywhere else also.
++	CGameLogic::PassTime(timeToPass);
++
++	return 1;
++}
++
++/**
++ * Set the time in lua
++ * 
++ * Usage in lua:
++ * Param 1: hour
++ * Param 2: minute
++ * set_time(10, 55)
++ */
++int setTimeLua(lua_State *L)
++{
++	int hour = (lua_tointeger(L, 1));
++	int minute = (lua_tointeger(L, 2));
++
++	if (!minute || !hour)
++    {
++    	return luaL_error(L, "game.set_time a value for the hour and minute, game.set_time(10, 55)" );
++	}
++
++	// Set the game time.
++	CClock::SetGameClock(hour, minute);
++
++	return 1;
++}
++
++/**
++ * Set the time in lua
++ * 
++ * Usage in lua:
++ * Param 1: The time scale, 1 is normal game time.
++ * set_time_scale(0.5)
++ */
++int setTimeScaleLua(lua_State *L)
++{
++	float newTimeScale = static_cast<float>(lua_tointeger(L, 1));
++
++	if (!newTimeScale)
++    {
++    	return luaL_error(L, "game.set_time_scale missing argument, number required for the time scale." );
++	}
++
++	if(newTimeScale <= 0.0f || newTimeScale > 1.0f)
++	{
++		return luaL_error(L, "game.set_time_scale time is either too slow or too fast! Can either be 0.1 or 1.0 not any lower or higher.");
++	}
++
++
++	CTimer::SetTimeScale(newTimeScale);
++
++	return 1;
++}
++
++/**
++ * Get the game minute in lua.
++ * 
++ * TODO Implement this.
++ */
++int getGameMinuteLua(lua_State *L)
++{
++	return 1;
++}
++
++/**
++ * Get the game hour in lua.
++ * TODO Implement this.
++ */
++int getGameHourLua(lua_State *L)
++{
++	return 1;
++}
++
++//--------------
++// Test functions
++//--------------
+ 
+ /**
+  * Implementation of COMMAND_WAIT
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 2d44bd1a..995d0621 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -21,6 +21,10 @@ extern "C" {
+     extern int setPoliceStationRespawnLua(lua_State *L);
+     
+     extern int startFireLua(lua_State *L);
++    
++    extern int passTimeLua(lua_State *L);
++    extern int setTimeLua(lua_State *L);
++    extern int setTimeScaleLua(lua_State *L);
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 358f9a66..9882597e 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -150,26 +150,31 @@ int
+ createPlayerLua(lua_State *L)
+ {
+ 	int playerIndex = lua_tonumber(L, 1);
+-	float spawnPosX = (float)lua_tonumber(L, 2);
+-	float spawnPosY = (float)lua_tonumber(L, 3);
+-	float spawnPosZ = (float)lua_tonumber(L, 4);
++	auto playerPos = luaGetCVector(L, 2);
++	// float spawnPosX = (float)lua_tonumber(L, 2);
++	// float spawnPosY = (float)lua_tonumber(L, 3);
++	// float spawnPosZ = (float)lua_tonumber(L, 4);
+ 
+ 
+ 	// Make sure each of the values are numbers.
+-	if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2) || !lua_isnumber(L, 3) || !lua_isnumber(L, 4))
++	// if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2) || !lua_isnumber(L, 3) || !lua_isnumber(L, 4))
++	if (!playerPos)
+ 	{
+-		return 0;
++        return luaL_error(L, "player.create expects a vector table with numeric x, y, and z fields"
++        );
+ 	}
+ 
+ 	// TODO Make this give an error in the lua script somewhere, or display error in game if it loads more then once.
+-	if(!InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ))
++	// if(!InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ))
++	// if(!InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ))
++	if(!InitGame::GetInstance().CreatePlayer(playerIndex, *playerPos))
+ 	{
+ 
+ #ifdef EXTRA_LOGGING
+-				std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
+-			+ " Y: " + std::to_string(spawnPosY)
+-			+ " Z: " + std::to_string(spawnPosY);
+-		LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
++		// 		std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
++		// 	+ " Y: " + std::to_string(spawnPosY)
++		// 	+ " Z: " + std::to_string(spawnPosY);
++		// LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
+ #endif // EXTRA_LOGGING
+ 	}
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index c85ec2e8..21dc0fb5 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -124,20 +124,61 @@ extern "C" {
+ LuaTest::LuaTest() { 
+ 	m_luaVM = luaL_newstate(); 
+ 
+-	// Load LUA libraries, TODO is this needed in here?
+-	luaopen_base(m_luaVM);
+-	luaopen_math(m_luaVM);
+-	luaopen_string(m_luaVM);
+-	luaopen_table(m_luaVM);
+-	luaopen_debug(m_luaVM);
+-	luaopen_utf8(m_luaVM);
+-	luaopen_os(m_luaVM);
++	// This opens all libraries in lua.
++	luaL_openlibs(m_luaVM);
++
++	// Open the set lua libraries, required to prevent crashing.
++	this->OpenLuaLibraries(m_luaVM);
++
+ 
+ 	// This works here, just need to fix it properly in the lua_functions file.
+ 	this->RegisterLuaFunctions(m_luaVM);
+ 
+ }
+ 
++/**
++ * Open the specified lua libraries for my scripts.
++ * TODO Fix this to work.
++ */
++void LuaTest::OpenLuaLibraries(lua_State* L)
++{
++
++	// Load LUA libraries.
++	luaopen_base(L);
++	luaopen_math(L);
++	luaopen_string(L);
++	luaopen_table(L);
++	luaopen_debug(L);
++	luaopen_utf8(L);
++	luaopen_os(L);
++
++	//---------
++	// TODO Fix this below format to work
++	//---------
++
++	// Base library is special: it uses the global table name "_G".
++    // luaL_requiref(L, "_G", luaopen_base, 1);
++    // lua_pop(L, 1);
++
++    // luaL_requiref(L, LUA_MATHLIBNAME,   luaopen_math,   1);
++    // lua_pop(L, 1);
++
++    // luaL_requiref(L, LUA_STRLIBNAME,    luaopen_string, 1);
++    // lua_pop(L, 1);
++
++    // luaL_requiref(L, LUA_TABLIBNAME,    luaopen_table,  1);
++    // lua_pop(L, 1);
++
++    // luaL_requiref(L, LUA_DBLIBNAME,    luaopen_debug,  1);
++    // lua_pop(L, 1);
++
++    // luaL_requiref(L, LUA_UTF8LIBNAME,  luaopen_utf8,   1);
++    // lua_pop(L, 1);
++
++    // luaL_requiref(L, LUA_OSLIBNAME,    luaopen_os,     1);
++    // lua_pop(L, 1);
++}
++
+ //------- Begin init functions -------//
+ //------- These are for the game .scm script replacements ---------//
+ 
+@@ -444,10 +485,10 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Try to use namespace like player.set_position({2, 2, 2})
+ 	//----
+ 
+-	RegisterGameFunctionsLua(m_luaVM);
+-	RegisterPlayerFunctionsLua(m_luaVM);
+-	RegisterVehicleFunctionsLua(m_luaVM);
+-	RegisterWorldFunctionsLua(m_luaVM);
++	RegisterGameFunctionsLua(L);
++	RegisterPlayerFunctionsLua(L);
++	RegisterVehicleFunctionsLua(L);
++	RegisterWorldFunctionsLua(L);
+ 	//----
+ 
+ 	//
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 90aee3a8..35bb8b84 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -46,6 +46,9 @@ private:
+ 	// Register the lua functions
+ 	void RegisterLuaFunctions(lua_State *L);
+ 
++	// Open the lua libraries.
++	void OpenLuaLibraries(lua_State* L);
++
+ 	//LuaTest() { 
+ 	//	m_luaVM = luaL_newstate();
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 9840ad32..00656af3 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.10-6a";
++std::string Defines::programVersion = "1.2.11-1a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 98aff4fd..e3348b2a 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -76,6 +76,19 @@ FastLoader::FastLoad()
+ 		// TODO Make this also load in the audio, sometimes I have to pause and unpause for sound to work.
+ 		CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++		
++		// TODO Fix game audio to work if I fast load with my lua script engine.
++		// It works, but I have to pause and unpause the game...
++		// I must be disabling something else.
++
++		// FrontEndMenuManager.RequestFrontEndShutDown();
++		FrontEndMenuManager.m_bGameNotLoaded = false;
++
++		// This doesn't do anything.
++		// FrontEndMenuManager.m_bShowMouse = true;
++
++		// I forgot about this.
++		// FrontEndMenuManager.ChangeRadioStation()
+ 	}
+ 
+ 	return;
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 9d5c0053..36d99b2e 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -9364,18 +9364,25 @@ CPed::SetRadioStation(void)
+ 	}
+ }
+ 
++/**
++ * Warp a ped into a vehicle.
++ */
+ void
+ CPed::WarpPedIntoCar(CVehicle *car)
+ {
+ 	bInVehicle = true;
+ 	m_pMyVehicle = car;
++
+ 	m_pMyVehicle->RegisterReference((CEntity **) &m_pMyVehicle);
+ 	m_carInObjective = car;
+ 	m_carInObjective->RegisterReference((CEntity **) &m_carInObjective);
+ 	SetPedState(PED_DRIVING);
++
+ 	bUsesCollision = false;
+ 	bIsInTheAir = false;
++
+ 	bVehExitWillBeInstant = true;
++
+ 	if (m_objective == OBJECTIVE_ENTER_CAR_AS_DRIVER) {
+ 		car->SetDriver(this);
+ 		car->pDriver->RegisterReference((CEntity **) &car->pDriver);
+-- 
+2.43.0
+

@@ -1,0 +1,201 @@
+From f64845a4c1bb0d63c687a467be6123f221a77fbf Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 11 Sep 2026 16:47:45 -0400
+Subject: [PATCH 129/161] feat: Add Colors.cpp from plugin-sdk
+
+* Now I can more easily use hud colors for drawing to the screen and other functions.
+
+* Add Screen.cpp and Screen.h for getting positions on the screen from the plugin sdk.
+
+* Modify blow up vehicle function a bit.
+
+* Update changelog, change version to 1.2.13-4a.
+---
+ Changelog.md                                  | 12 ++++++
+ premake5.lua                                  |  4 ++
+ src/core/main.cpp                             | 42 +++++++++++++++++++
+ .../textender => src/extras/enums}/Colors.cpp |  0
+ .../textender => src/extras/enums}/Colors.h   |  0
+ src/extras/functions/vehicle_functions.cpp    |  4 +-
+ .../textender => src/extras/utils}/Screen.cpp |  0
+ .../textender => src/extras/utils}/Screen.h   |  0
+ src/extras/utils/defines.cpp                  |  2 +-
+ 9 files changed, 62 insertions(+), 2 deletions(-)
+ rename {vendor/TExtender/src/textender => src/extras/enums}/Colors.cpp (100%)
+ rename {vendor/TExtender/src/textender => src/extras/enums}/Colors.h (100%)
+ rename {vendor/TExtender/src/textender => src/extras/utils}/Screen.cpp (100%)
+ rename {vendor/TExtender/src/textender => src/extras/utils}/Screen.h (100%)
+
+diff --git a/Changelog.md b/Changelog.md
+index 90f76cd3..959bb85c 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -646,3 +646,15 @@ feat: Enable some items in CTheScripts::Process
+ * Add global in lua to toggle fading the game when wasted or busted.
+ 
+ * Update changelog, change version to 1.2.13-3a.
++
++### 1.2.13-4a
++
++feat: Add Colors.cpp from plugin-sdk
++
++* Now I can more easily use hud colors for drawing to the screen and other functions.
++
++* Add Screen.cpp and Screen.h for getting positions on the screen from the plugin sdk.
++
++* Modify blow up vehicle function a bit.
++
++* Update changelog, change version to 1.2.13-4a.
+diff --git a/premake5.lua b/premake5.lua
+index d5488f14..5350895d 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -326,6 +326,10 @@ project "reVC"
+ 
+ 	-- Extras from miami master branch on Local Gitea.
+ 	files { addSrcFiles("src/extras/cheats") }
++
++	-- Required for new Colors.cpp and other files from plugin-sdk.
++	files { addSrcFiles("src/extras/enums") }
++	--
+ 	files { addSrcFiles("src/extras/debug") }
+ 	files { addSrcFiles("src/extras/functions") }
+ 	files { addSrcFiles("src/extras/kcnet") }
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index d1e251b5..30db4470 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -94,6 +94,10 @@
+ 
+ // Random number generator
+ #include "misc_util.h"
++
++// Colors for the hud and text
++#include "Colors.h"
++
+ #endif
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+@@ -1359,6 +1363,12 @@ DisplayGameDebugText()
+ 	if( gbDisplayPosn )
+ 	{
+ 		CVector pos = FindPlayerCoors();
++#ifdef CUSTOM_CODE
++		// Get the players heading, store in these values.
++		// I don't think this works, this GetOrientation function is from the plugin-sdk.
++		// float playerHeadingX, playerHeadingY, playerHeadingZ = 0;
++		// FindPlayerPed()->GetOrientation(playerHeadingX, playerHeadingY, playerHeadingZ);
++#endif // CUSTOM_CODE - Change the position display format.
+ 		int32 ZoneId = ARRAY_SIZE(ZonePrint)-1; // no zone
+ 		
+ 		for ( int32 i = 0; i < ARRAY_SIZE(ZonePrint)-1; i++ )
+@@ -1372,10 +1382,20 @@ DisplayGameDebugText()
+ 			}
+ 		}
+ 
++		
++#ifdef CUSTOM_CODE
++		// I removed the FPS out of this, and may change the format later.
++		// TODO Figure out how the position for this is being set on the screen.
++		// I need to make helper functions for drawing to the screen easily with my lua scripts.
++		sprintf(str, "X:%4.0f Y:%4.0f Z:%4.0f  ZON: %s-%s", pos.x, pos.y, pos.z,
++			ZonePrint[ZoneId].name, ZonePrint[ZoneId].area);
++#else
+ 		//NOTE: fps should be 30, but its 29 due to different fp2int conversion 
+ 		sprintf(str, "X:%4.0f Y:%4.0f Z:%4.0f F-%d %s-%s", pos.x, pos.y, pos.z, (int32)FramesPerSecond,
+ 			ZonePrint[ZoneId].name, ZonePrint[ZoneId].area);
+ 
++#endif // CUSTOM_CODE - Change the position display format.
++
+ 		AsciiToUnicode(str, ustr);
+ 		
+ 		CFont::SetPropOn();
+@@ -1393,17 +1413,39 @@ DisplayGameDebugText()
+ 		CFont::SetDropColor(CRGBA(0, 0, 0, 255));
+ 		CFont::SetDropShadowPosition(2);
+ 
++		
++#ifdef CUSTOM_CODE
++		CFont::SetColor(Colors::Black);
++#else
++		// Set the shadow color to black by default.
+ 		CFont::SetColor(CRGBA(0, 0, 0, 255));
++#endif // CUSTOM_CODE - Change colors for text on HUD and for drawing to screen.
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
++		// Draw the text shadows with the color black.
+ 		CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(20.0f), ustr);
++
++		// Well this puts the shadow for the position display in the center.
++		// This is the center of the screen? I'm going to have to play with these values in lua or my imgui menu.
++		// CFont::PrintString(SCREEN_SCALE_X(DEFAULT_SCREEN_WIDTH * 0.5f)+2.f, SCREEN_SCALE_FROM_BOTTOM(20.0f)+2.f, ustr);
+ #else
+ 		CFont::PrintString(41.0f, 41.0f, ustr);
+ 	
+ #endif // - Move the position text to be under my KCNet - Freeroam text.
++
++
++		
++#ifdef CUSTOM_CODE
++		CFont::SetColor(Colors::Yellow);
++#else
++		// Set the text color to yellow by default
+ 		CFont::SetColor(CRGBA(205, 205, 0, 255));
++#endif // CUSTOM_CODE - Change colors for text on HUD and for drawing to screen.
++		
++		
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
++		// Draw the position display text with color yellow.
+ 		CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(20.0f), ustr);
+ #else
+ 		CFont::PrintString(40.0f, 40.0f, ustr);
+diff --git a/vendor/TExtender/src/textender/Colors.cpp b/src/extras/enums/Colors.cpp
+similarity index 100%
+rename from vendor/TExtender/src/textender/Colors.cpp
+rename to src/extras/enums/Colors.cpp
+diff --git a/vendor/TExtender/src/textender/Colors.h b/src/extras/enums/Colors.h
+similarity index 100%
+rename from vendor/TExtender/src/textender/Colors.h
+rename to src/extras/enums/Colors.h
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 2fecfe78..c9d4dce0 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -139,9 +139,11 @@ void
+ VehicleFunctions::BlowUpVehicle()
+ {
+ 	CPlayerPed *pPlayer = FindPlayerPed();
+-	if(IsPlayerInVehicle()) {
++	if(IsPlayerInVehicle() && pPlayer->m_pMyVehicle) {
+ 		// Get this from my new function, this should work
+ 		CVehicle *playerVeh = playerUtil.GetCurrentVehicle();
++		// Just in case, set the health to 0 also, this gurantees that the vehicle explodes.
++		playerVeh->m_fHealth = 0.0f;
+ 		playerVeh->BlowUpCar(pPlayer);
+ 	}
+ }
+diff --git a/vendor/TExtender/src/textender/Screen.cpp b/src/extras/utils/Screen.cpp
+similarity index 100%
+rename from vendor/TExtender/src/textender/Screen.cpp
+rename to src/extras/utils/Screen.cpp
+diff --git a/vendor/TExtender/src/textender/Screen.h b/src/extras/utils/Screen.h
+similarity index 100%
+rename from vendor/TExtender/src/textender/Screen.h
+rename to src/extras/utils/Screen.h
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 270dd42a..d3e886cf 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-3a";
++std::string Defines::programVersion = "1.2.13-4a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

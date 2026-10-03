@@ -1,0 +1,134 @@
+From 8a8227a2fdf9c9a3c58d7af9fb47fe26d0e6220d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 12:24:46 -0400
+Subject: [PATCH 134/161] feat: Add setting player stats to lua
+
+* Now I can set the players stats in lua, and I will use this for my save system once I get the stats saved and a pickup fixed for it.
+
+* Update changelog, change version to 1.2.13-9a.
+---
+ Changelog.md                     | 10 +++++++++-
+ src/extras/lua/lua_player.cpp    | 30 ++++++++++++++++++++++++++++++
+ src/extras/lua/lua_player.h      |  2 ++
+ src/extras/utils/defines.cpp     |  2 +-
+ src/extras/utils/player_util.cpp |  5 ++---
+ 5 files changed, 44 insertions(+), 5 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 4ce4c924..863ae100 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -701,4 +701,12 @@ feat: Add untested SetStat function in player_util.cpp
+ 
+ * Add test for pushing blip id to lua, and for removing a blip in lua.
+ 
+-* Update changelog, change version to 1.2.13-8a.
+\ No newline at end of file
++* Update changelog, change version to 1.2.13-8a.
++
++### 1.2.13-9a
++
++feat: Add setting player stats to lua
++
++* Now I can set the players stats in lua, and I will use this for my save system once I get the stats saved and a pickup fixed for it.
++
++* Update changelog, change version to 1.2.13-9a.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index b2484a90..a23b909d 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -188,6 +188,10 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	// Give the player a RC car
+ 	// lua_pushcfunction(L, givePlayerRcCarLua);
+ 	// lua_setfield(L, -2, "give_rc_car");
++
++	// Set a stat for the player
++	lua_pushcfunction(L, setPlayerStatLua);
++	lua_setfield(L, -2, "set_stat");
+ 	
+ 	// Player namespace
+     lua_setglobal(L, "player");
+@@ -872,4 +876,30 @@ givePlayerRcCarLua(lua_State *L)
+ 	return 1;
+ }
+ 
++/**
++ * Set a stat for the player
++ * 
++ * I will be adding my eStatType enum to lua for use with this later.
++ * For now, it'll just be for testing.
++ * 
++ * player.set_stat(stat_enums.eStatType.ROUNDS_FIRED_BY_PLAYER, value)
++ */
++int 
++setPlayerStatLua(lua_State *L)
++{
++	int stat = lua_tonumber(L, 1);
++	float value = lua_tonumber(L, 2);
++
++	if(!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
++	{
++		return luaL_error(L, "player.set_stat requires a stat and a value to set it to.");
++	}
++
++	// This works for setting a players stat, tested with the ROUNDS_FIRED_BY_PLAYER stat.
++	// I can now use this to load up my stats from the json save system.
++	PlayerUtil::SetStat(static_cast<eStatType>(stat), value);
++
++	return 1;
++}
++
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index 089e41fc..a5670f0a 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -63,6 +63,8 @@ extern "C" {
+ 
+ 	extern int givePlayerRcCarLua(lua_State *L);
+ 
++	extern int setPlayerStatLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index f4144c2a..3a1d25cf 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-8a";
++std::string Defines::programVersion = "1.2.13-9a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index da0f1325..09f075df 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -320,8 +320,6 @@ PlayerUtil::IsPlayerSafe()
+ /**
+  * Set a stat for the player.
+  * 
+- * TODO Fix this to work, currently it's just filled in and not doing anything.
+- * 
+  * @param statType The type of stat to set from my eStatType enum.
+  * @param value The value to set the stat to, can either be an int or float.
+  */
+@@ -329,7 +327,8 @@ void PlayerUtil::SetStat(eStatType statType, float value)
+ {
+ 	// https://www.geeksforgeeks.org/cpp/how-to-convert-float-to-int-in-cpp/
+ 	// This is here so I can convert to ints, and use floats for stats that need it.
+-	int statInt = static_cast<int>(round(value));
++	// Use this for int stat values.
++	int32 statInt = static_cast<int32>(round(value));
+ 
+ 	switch(statType)
+ 	{
+-- 
+2.43.0
+

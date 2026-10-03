@@ -1,0 +1,76 @@
+From 44bcf75a8d33da9b761683ddd0787785668c1ba4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 17 Aug 2026 16:51:03 -0400
+Subject: [PATCH 070/161] fix: Make project build on arm64
+
+* Disable extra include file that was causing issues.
+---
+ premake5.lua                | 14 ++++++++------
+ src/extras/lua/lua_test.cpp | 12 ++++++------
+ 2 files changed, 14 insertions(+), 12 deletions(-)
+
+diff --git a/premake5.lua b/premake5.lua
+index c2a4a1c8..53f91080 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -234,12 +234,7 @@ project "librw"
+ 	files { path.join(Librw, "src/*/*.*") }
+ 	files { path.join(Librw, "src/gl/*/*.*") }
+ 
+-	filter { "platforms:*x86*" }
+-		architecture "x86"
+-
+-	filter { "platforms:*amd64*" }
+-		architecture "amd64"
+-
++		-- By moving these includes out of amd64, this fixes building on arm devices such as the Rpi4.
+ 		-- Lib folders - ImGui
+ 		includedirs { "lib/imgui" }
+ 		includedirs { "lib/imgui/backends" }
+@@ -267,6 +262,13 @@ project "librw"
+ 		"lib/imgui/backends/imgui_impl_opengl3.h"
+ 		}
+ 
++	filter { "platforms:*x86*" }
++		architecture "x86"
++
++	filter { "platforms:*amd64*" }
++		architecture "amd64"
++
++
+ 	filter "platforms:win*"
+ 		defines { "_CRT_SECURE_NO_WARNINGS", "_CRT_NONSTDC_NO_DEPRECATE" }
+ 		staticruntime "on"
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 51dfb001..a0d1688a 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -71,7 +71,7 @@ extern "C" {
+ // #include "tcp_client.h"
+ 
+ // TODO Fix this include, add this folder into premake if this builds and works.
+-#include "../vendor/LuaBridge3/Distribution/LuaBridge/LuaBridge.h"
++// #include "../vendor/LuaBridge3/Distribution/LuaBridge/LuaBridge.h"
+ 
+ // VC Specific
+ #include "Hud.h"
+@@ -320,11 +320,11 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// 
+ 
+ 	// LuaBridge3 test, this seems to work well for namespaces.
+-	luabridge::getGlobalNamespace(L)
+-		.beginNamespace("newtest")
+-		// TODO Make this get a message from lua, this is for LuaBridge testing.
+-		.addProperty("loginfo", LogInfoMsg)
+-		.endNamespace();
++	// luabridge::getGlobalNamespace(L)
++	// 	.beginNamespace("newtest")
++	// 	// TODO Make this get a message from lua, this is for LuaBridge testing.
++	// 	.addProperty("loginfo", LogInfoMsg)
++	// 	.endNamespace();
+ 	//
+ 
+ 	// Table test
+-- 
+2.43.0
+

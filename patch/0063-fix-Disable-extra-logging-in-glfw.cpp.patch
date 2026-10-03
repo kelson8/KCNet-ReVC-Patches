@@ -1,0 +1,53 @@
+From e57a40ac64b91897d094c78976cf051ae9708ca8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Aug 2026 12:31:51 -0400
+Subject: [PATCH 063/161] fix: Disable extra logging in glfw.cpp
+
+* Add C++20 testing in glfw.cpp.
+---
+ src/skel/glfw/glfw.cpp | 15 ++++++++++++++-
+ 1 file changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index f8605c75..80a85022 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -115,6 +115,12 @@ static int g_ResizeWidth = 0, g_ResizeHeight = 0;
+ #include "Timer.h"
+ #include "defines.h"
+ 
++// New
++#include <iostream>
++#include <string>
++#include <format>
++//
++
+ 
+ #define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
+ #define CTRLJUSTDOWN(key)                                                                                                                                     \
+@@ -1989,6 +1995,12 @@ GameStateStartup()
+ #endif
+ 	TRACE("gGameState = GS_INIT_ONCE");
+ 
++	// C++20 testing, I had to change something in c_cpp_properties.json.
++	// I guess this project now works with C++20, time to rip out the bare lua and switch to SOL2 or LuaBridge3.
++	// Oh how fun..
++	// std::string testString = "Test";
++	// std::cout << std::format("{}", testString) << std::endl;
++
+ #ifdef _IMGUI_TEST
+ 
+ 	// Check if ImGui bool above is enabled in the ini.
+@@ -2005,7 +2017,8 @@ GameStateStartup()
+ 	LogFunctions::CreateLogFolder();
+ 
+ 	// Test for logger
+-	LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
++	// Disabled, I honestly forgot about this.
++	// LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
+ #endif // CUSTOM_CODE
+ }
+ 
+-- 
+2.43.0
+

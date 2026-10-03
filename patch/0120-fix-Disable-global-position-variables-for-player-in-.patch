@@ -1,0 +1,96 @@
+From a84b71bc818ed8df820efd151086ae5999e48267 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 14:00:42 -0400
+Subject: [PATCH 120/161] fix: Disable global position variables for player in
+ lua
+
+* Update changelog.
+---
+ Changelog.md                |  8 ++++++++
+ src/extras/lua/lua_test.cpp | 34 ++++++++++++++++++++++------------
+ 2 files changed, 30 insertions(+), 12 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index cf5b01d1..93d35c0a 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -539,6 +539,8 @@ feat: Add teleport to marker for lua scripts
+ 
+ ### 1.2.12-10a
+ 
++**Commit 1**
++
+ feat: Add more objective testing, update functions
+ 
+ * Add more checks in ped_functions
+@@ -560,3 +562,9 @@ feat: Add more objective testing, update functions
+ * Disable explosion on player with suicide cheat.
+ 
+ * Update changelog, switch version to 1.2.12-10a.
++
++**Commit 2**
++
++fix: Disable global position variables for player in lua
++
++* Update changelog.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 3bff228a..705940b5 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -950,7 +950,13 @@ LuaTest::LuaKeybindEvents()
+ 	//Defines defines = Defines();
+ 	// This seems to work.
+ 
+-		//-------------
++		//-------------------------------------------
++		// Disabled, these are now set with the player.get_position() function in lua.
++		// To use it in lua:
++		// player.get_position().x
++		// player.get_position().y
++		// player.get_position().z
++		//-------------------------------------------
+ 		// Moved out of other init lua script, oops.
+ 		// Added into here, from SetupFreeroamScript.
+ 		// I had this in the wrong init function.
+@@ -969,22 +975,26 @@ LuaTest::LuaKeybindEvents()
+ 		// https://www.codingwiththomas.com/blog/a-lua-c-api-cheat-sheet#example-4
+ 		// https://github.com/orangeduck/LuaAutoC
+ 
+-		float playerX = FindPlayerCoors().x;
+-		float playerY = FindPlayerCoors().y;
+-		float playerZ = FindPlayerCoors().z;
++		// float playerX = FindPlayerCoors().x;
++		// float playerY = FindPlayerCoors().y;
++		// float playerZ = FindPlayerCoors().z;
+ 		
+-		lua_pushnumber(m_luaVM, playerX);
+-		lua_setglobal(m_luaVM, "playerX");
++		// lua_pushnumber(m_luaVM, playerX);
++		// lua_setglobal(m_luaVM, "playerX");
+ 
+-		lua_pop(m_luaVM, 1);
++		// lua_pop(m_luaVM, 1);
+ 		
+-		lua_pushnumber(m_luaVM, playerY);
+-		lua_setglobal(m_luaVM, "playerY");
++		// lua_pushnumber(m_luaVM, playerY);
++		// lua_setglobal(m_luaVM, "playerY");
+ 
+-		lua_pop(m_luaVM, 1);
++		// lua_pop(m_luaVM, 1);
++
++		// lua_pushnumber(m_luaVM, playerZ);
++		// lua_setglobal(m_luaVM, "playerZ");
+ 
+-		lua_pushnumber(m_luaVM, playerZ);
+-		lua_setglobal(m_luaVM, "playerZ");
++		//-------------------------------------------
++		// End Disabled
++		//-------------------------------------------
+ 
+ 	//---------------
+ 
+-- 
+2.43.0
+

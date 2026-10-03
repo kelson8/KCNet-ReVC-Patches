@@ -1,0 +1,118 @@
+From bd3e060bdde3b048d05f0287b518d836f97d4e29 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 7 Sep 2026 21:42:26 -0400
+Subject: [PATCH 099/161] feat: Add unlock all car doors function to lua
+
+* I added the world.unlock_all_car_doors_in_area() function into lua, this can unlock all car doors in a specified area.
+
+* Update changelog, bump version to 1.2.10-6a.
+---
+ Changelog.md                 |  8 ++++++++
+ src/extras/lua/lua_world.cpp | 28 +++++++++++++++++++++++++++-
+ src/extras/lua/lua_world.h   |  2 ++
+ src/extras/utils/defines.cpp |  2 +-
+ 4 files changed, 38 insertions(+), 2 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 19e4399a..6f7dbf20 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -318,3 +318,11 @@ Lua usage:
+ * game.start_fire({x = 20, y = 20, z = 20})
+ 
+ * Update changelog, bump version to 1.2.10-5a.
++
++### 1.2.10-6a
++
++feat: Add unlock all car doors function to lua
++
++* I added the world.unlock_all_car_doors_in_area() function into lua, this can unlock all car doors in a specified area.
++
++* Update changelog, bump version to 1.2.10-6a.
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 700fd62c..3bf1f976 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -21,6 +21,7 @@
+ 
+ #include "custom_cheats.h"
+ #include "player_cheats.h"
++#include "vehicle_functions.h"
+ 
+ // VC Specific
+ //#include "Hud.h"
+@@ -75,12 +76,18 @@ extern "C"
+ 		lua_pushcfunction(L, clearAreaLua);
+ 		lua_setfield(L, -2, "clear_area");
+ 
++		// Unlock all vehicles in the area
++		// https://library.sannybuilder.com/#/vc/script/extensions/default/0591
++		// UNLOCK_ALL_CAR_DOORS_IN_AREA
++		// Example: world.unlock_all_car_doors_in_area(leftBottomX, leftBottomY, topRightX, topRightY)
++		lua_pushcfunction(L, unlockDoorsInAreaLua);
++		lua_setfield(L, -2, "unlock_all_car_doors_in_area");
++
+ 		// World namespace
+     	lua_setglobal(L, "world");
+ 	}
+ 
+ 	// Clear items in the specified area
+-	// TODO Test this
+ 	int
+ 	clearAreaLua(lua_State* L)
+ 	{
+@@ -127,6 +134,25 @@ extern "C"
+ 		return 1;
+ 	}
+ 
++	int
++	unlockDoorsInAreaLua(lua_State *L)
++	{
++		float leftBottomX = (float)lua_tonumber(L, 1);
++		float leftBottomY = (float)lua_tonumber(L, 2);
++		float topRightX = (float)lua_tonumber(L, 3);
++		float topRightY = (float)lua_tonumber(L, 4);
++
++
++		// Make sure each of the values are numbers.
++		if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2) || !lua_isnumber(L, 3) || !lua_isnumber(L, 4))
++		{
++        	return luaL_error(L,
++            "world.unlock_all_car_doors_in_area() expects these values: leftBottomX, leftBottomY, topRightX, topRightY as floats.");
++		}
++
++		VehicleFunctions::UnlockAllCarDoorsInArea(leftBottomX, leftBottomY, topRightX, topRightY);
++		return 1;
++	}
+ }
+ 
+ //
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 0aafc835..92e0861e 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -18,6 +18,8 @@ extern "C" {
+ 	extern int disablePedsLua(lua_State *L);
+ 	extern int disableVehiclesLua(lua_State *L);
+ 
++	extern int unlockDoorsInAreaLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 3ad4f37f..9840ad32 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.10-5a";
++std::string Defines::programVersion = "1.2.10-6a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

@@ -1,0 +1,1331 @@
+From f79d66193b20d0b16dffba6febfd6fe9edff4067 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 9 Sep 2026 22:37:21 -0400
+Subject: [PATCH 109/161] feat: Move some functions into player_functions.cpp
+
+* I made a new class in player_functions.cpp/.h, which will now contain the player functions.
+
+* Add GetPed into ped_functions, so I can try to set objectives and other stuff on the peds that I spawn in.
+
+* Rename NeverWantedCheat to SetNeverWanted, make this take a toggle value now.
+
+* Make some functions in lua into boolean toggle functions, instead of having separate enable/disable functions for everything.
+
+* Cleanup lua_player file quite a bit with new toggle functions.
+
+* Update changelog, bump version to 1.2.12-4a.
+---
+ Changelog.md                              |  18 +-
+ src/extras/cheats/player_cheats.cpp       | 280 ++++++++--------------
+ src/extras/cheats/player_cheats.h         |  21 +-
+ src/extras/debug/debug_functions.cpp      |   4 +-
+ src/extras/functions/ped_functions.cpp    |  78 ++----
+ src/extras/functions/ped_functions.h      |   1 +
+ src/extras/functions/player_functions.cpp | 251 +++++++++++++++++++
+ src/extras/functions/player_functions.h   |  39 +++
+ src/extras/kcnet/pch.h                    |   6 +
+ src/extras/lua/lua_player.cpp             | 204 ++++++----------
+ src/extras/lua/lua_player.h               |   8 +-
+ src/extras/menus/ped_menu.cpp             |   5 +-
+ src/extras/menus/player_menu.cpp          |  32 ++-
+ src/extras/menus/warp_menu.cpp            |   4 +-
+ 14 files changed, 544 insertions(+), 407 deletions(-)
+ create mode 100644 src/extras/functions/player_functions.cpp
+ create mode 100644 src/extras/functions/player_functions.h
+
+diff --git a/Changelog.md b/Changelog.md
+index 77da029c..2db59916 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -459,4 +459,20 @@ feat: Add singleton to ped functions
+ 
+ * Add missing changes to GenericGameStorage.cpp, fixes load and save to not run at all if the scripts are disabled.
+ 
+-* Update changelog, bump version to 1.2.12-3a.
+\ No newline at end of file
++* Update changelog, bump version to 1.2.12-3a.
++
++### 1.2.12-4a
++
++feat: Move some functions into player_functions.cpp
++
++* I made a new class in player_functions.cpp/.h, which will now contain the player functions.
++
++* Add GetPed into ped_functions, so I can try to set objectives and other stuff on the peds that I spawn in.
++
++* Rename NeverWantedCheat to SetNeverWanted, make this take a toggle value now.
++
++* Make some functions in lua into boolean toggle functions, instead of having separate enable/disable functions for everything.
++
++* Cleanup lua_player file quite a bit with new toggle functions.
++
++* Update changelog, bump version to 1.2.12-4a.
+diff --git a/src/extras/cheats/player_cheats.cpp b/src/extras/cheats/player_cheats.cpp
+index 11ef7624..be21cec1 100644
+--- a/src/extras/cheats/player_cheats.cpp
++++ b/src/extras/cheats/player_cheats.cpp
+@@ -192,6 +192,11 @@ PlayerCheats::IsPlayerInInterior()
+ 	return false;
+ }
+ 
++//---------------------
++// Moving into player_functions.cpp
++//---------------------
++
++
+ /// <summary>
+ /// Heal the player, give the player max health and armor.
+ /// Set the help message as cheat activated, to let the player know it was set.
+@@ -203,36 +208,12 @@ PlayerCheats::HealPlayer()
+ 	pPlayer->m_fHealth = CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth;
+ 	pPlayer->m_fArmour = CWorld::Players[CWorld::PlayerInFocus].m_nMaxArmour;
+ 	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+-
+ }
+ 
+-/// <summary>
+-/// Kill the player.
+-/// Copied from Pad.cpp
+-/// Modified to only run if the player isn't dead, should fix the spamming in lua.
+-/// </summary>
+-/// <param name=""></param>
+-void
+-PlayerCheats::SuicideCheat()
+-{
+-	CPlayerPed *pPlayer = FindPlayerPed();
+-	if (!pPlayer->DyingOrDead())
+-	{
+-		CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+-		pPlayer->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
+-#ifdef CUSTOM_CODE
+-		pPlayer->m_fArmour = 0;
+-#endif // CUSTOM_CODE
+-	}
+-}
++//---------------------
++// End Moving into player_functions.cpp
++//---------------------
+ 
+-// Give the player a shotgun as a test, untested
+-void
+-PlayerCheats::GivePlayerWeapon()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->GiveWeapon(WEAPONTYPE_SPAS12_SHOTGUN, 9999, true);
+-}
+ 
+ ////////////////////
+ void
+@@ -303,49 +284,6 @@ PlayerCheats::LowerWantedLevel()
+ #endif
+ }
+ 
+-/// <summary>
+-/// This turns infinite health on, and shows the cheat activated message.
+-/// </summary>
+-void
+-PlayerCheats::EnableInfiniteHealth()
+-{
+-#ifdef INVINCIBLE_CHEAT
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->bInvincibleCheat = true;
+-	// CHud::SetHelpMessage(TheText.Get("CHEAT1"), false);
+-	CHud::SetHelpMessage(TheText.Get("CHEATON"), false);
+-
+-#ifdef EXTRA_LOGGING
+-	if(gbExtraLogging) 
+-	{ 
+-		LogFunctions::LogInfo(Defines::logFile, "Infinite Health enabled."); 
+-	}
+-#endif // EXTRA_LOGGING
+-
+-#endif // INVINCIBLE_CHEAT
+-}
+-
+-/// <summary>
+-/// This turns infinite health off, and displays the cheat toggled off message.
+-/// </summary>
+-void
+-PlayerCheats::DisableInfiniteHealth()
+-{
+-#ifdef INVINCIBLE_CHEAT
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->bInvincibleCheat = false;
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), false);
+-
+-#ifdef EXTRA_LOGGING
+-	if(gbExtraLogging) 
+-	{ 
+-		LogFunctions::LogInfo(Defines::logFile, "Infinite Health disabled."); 
+-	}
+-#endif // EXTRA_LOGGING
+-
+-#endif // INVINCIBLE_CHEAT
+-}
+-
+ ///
+ 
+ /// <summary>
+@@ -479,52 +417,28 @@ PlayerCheats::DisableNeverWanted()
+ /// <summary>
+ /// Never wanted cheat, this toggles never wanted on/off.
+ /// </summary>
++
++/**
++ * Toggle never wanted on or off.
++ * 
++ * @param toggle Toggle value for never wanted.
++ */
+ void
+-PlayerCheats::NeverWantedCheat()
++PlayerCheats::SetNeverWanted(bool toggle)
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+ 	CWanted *cWanted = new CWanted();
+-	if(!pPed->m_pWanted->m_bIgnoredByCops) {
++	// if(!pPed->m_pWanted->m_bIgnoredByCops) {
++	if(toggle) {
+ 		PlayerCheats::EnableNeverWanted();
+ 	} else {
+ 		PlayerCheats::DisableNeverWanted();
+ 	}
+ }
+ 
+-// Idea from teleport.cpp in Cheat Menu
+-
+-/// <summary>
+-/// Warp player cheat
+-/// This teleports the player to the specified position and interior id.
+-/// Takes a CVector for the position.
+-/// Use PlayerUtil::PlayerCoords() to get the current position
+-/// Also use PlayerUtil::PlayerHeading() to get the current heading
+-/// </summary>
+-/// <param name="pos">A CVector for the position to warp to</param>
+-/// <param name="interiorID">The interior ID</param>
+-void
+-PlayerCheats::WarpPlayer(CVector pos, int interiorID)
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-
+-	CStreaming::LoadScene(pos);
+-	CStreaming::LoadSceneCollision(pos);
+-
+-	CStreaming::LoadAllRequestedModels(false);
+-
+-	if(vehicleFunctions.IsPlayerInVehicle()) 
+-	{
+-		CVehicle *pVeh = pPed->m_pMyVehicle;
+-		pVeh->m_area = interiorID;
+-		pVeh->Teleport(pos);
+-	} else {
+-		pPed->Teleport(pos);
+-	}
+-
+-	pPed->m_area = interiorID;
+-
+-}
++//---------------------
++// Moving into player_functions.cpp
++//---------------------
+ 
+ // TODO Figure out how to do these in here.
+ 
+@@ -532,79 +446,83 @@ PlayerCheats::WarpPlayer(CVector pos, int interiorID)
+ /// Enable infinite sprinting
+ /// TODO Why is this duplicated in PlayerCheats and PlayerMenu?
+ /// </summary>
+-void
+-PlayerCheats::EnableInfiniteSprint()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	pPlayerInfo.m_bInfiniteSprint = true;
+-	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-
+-}
+-
+-/// <summary>
+-/// Disable infinite sprinting
+-/// </summary>
+-void
+-PlayerCheats::DisableInfiniteSprint()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	pPlayerInfo.m_bInfiniteSprint = false;
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++// void
++// PlayerCheats::EnableInfiniteSprint()
++// {
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++// 	pPlayerInfo.m_bInfiniteSprint = true;
++// 	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++
++// }
++
++// /// <summary>
++// /// Disable infinite sprinting
++// /// </summary>
++// void
++// PlayerCheats::DisableInfiniteSprint()
++// {
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++// 	pPlayerInfo.m_bInfiniteSprint = false;
++// 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+ 	
+-}
+-
+-/// <summary>
+-/// Enable get out of hospital free
+-/// </summary>
+-void
+-PlayerCheats::EnableGetOutOfHospitalFree()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	pPlayerInfo.m_bGetOutOfHospitalFree = true;
+-	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-}
+-
+-/// <summary>
+-/// Disable get out of hospital free
+-/// </summary>
+-void
+-PlayerCheats::DisableGetOutOfHospitalFree()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	pPlayerInfo.m_bGetOutOfHospitalFree = false;
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-}
+-
+-/// <summary>
+-/// Enable get out of jail free
+-/// </summary>
+-void
+-PlayerCheats::EnableGetOutOfJailFree()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	pPlayerInfo.m_bGetOutOfJailFree = true;
+-	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
+-}
+-
+-/// <summary>
+-/// Disable get out of hospital free
+-/// </summary>
+-void
+-PlayerCheats::DisableGetOutOfJailFree()
+-{
+-	CPlayerPed *pPed = FindPlayerPed();
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	pPlayerInfo.m_bGetOutOfJailFree = false;
+-	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
+-}
+\ No newline at end of file
++// }
++
++// /// <summary>
++// /// Enable get out of hospital free
++// /// </summary>
++// void
++// PlayerCheats::EnableGetOutOfHospitalFree()
++// {
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++// 	pPlayerInfo.m_bGetOutOfHospitalFree = true;
++// 	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++// }
++
++// /// <summary>
++// /// Disable get out of hospital free
++// /// </summary>
++// void
++// PlayerCheats::DisableGetOutOfHospitalFree()
++// {
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++// 	pPlayerInfo.m_bGetOutOfHospitalFree = false;
++// 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++// }
++
++// /// <summary>
++// /// Enable get out of jail free
++// /// </summary>
++// void
++// PlayerCheats::EnableGetOutOfJailFree()
++// {
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++// 	pPlayerInfo.m_bGetOutOfJailFree = true;
++// 	CHud::SetHelpMessage(TheText.Get("CHEATON"), true);
++// }
++
++// /// <summary>
++// /// Disable get out of hospital free
++// /// </summary>
++// void
++// PlayerCheats::DisableGetOutOfJailFree()
++// {
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
++
++// 	pPlayerInfo.m_bGetOutOfJailFree = false;
++// 	CHud::SetHelpMessage(TheText.Get("CHEATOF"), true);
++// }
++
++//---------------------
++// End moving into player_functions.cpp
++//---------------------
+\ No newline at end of file
+diff --git a/src/extras/cheats/player_cheats.h b/src/extras/cheats/player_cheats.h
+index 5f7a1cc8..e9cda136 100644
+--- a/src/extras/cheats/player_cheats.h
++++ b/src/extras/cheats/player_cheats.h
+@@ -17,8 +17,6 @@ public:
+ 	static bool IsPlayerInInterior();
+ 
+ 	static void InfiniteHealthCheat();
+-	static void SuicideCheat();
+-	static void GivePlayerWeapon();
+ 
+ 	// Wanted
+ 	static void RaiseWantedLevel();
+@@ -28,25 +26,8 @@ public:
+ 	// Fix build, I guess this is using librw which complains about using the ReVC types.
+ 	int32_t GetWantedLevel();
+ 
+-
+-	// Toggles, TODO Move these into private function, I only want the Toggle functions down here if they work.
+-	void EnableInfiniteHealth();
+-	void DisableInfiniteHealth();
+-
+ 	static void EnableNeverWanted();
+ 	static void DisableNeverWanted();
+-	static void NeverWantedCheat();
+-
+-	static void EnableInfiniteSprint();
+-	static void DisableInfiniteSprint();
+-
+-	static void EnableGetOutOfHospitalFree();
+-	static void DisableGetOutOfHospitalFree();
+-
+-	static void EnableGetOutOfJailFree();
+-	static void DisableGetOutOfJailFree();
+-
+-
+ 
+-	static void WarpPlayer(CVector pos, int interiorID);
++	static void SetNeverWanted(bool toggle);
+ };
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index e828f0c9..de56eded 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -512,7 +512,9 @@ DebugMenuPopulate(void)
+ 		// DebugMenuAddCmd("Cheats", "Infinite Health", CustomCheats::InfiniteHealthCheat);
+ 		// DebugMenuAddCmd("Cheats", "Never wanted", CustomCheats::NeverWantedCheat);
+ 		DebugMenuAddCmd("Cheats", "Infinite Health", PlayerCheats::InfiniteHealthCheat);
+-		DebugMenuAddCmd("Cheats", "Never wanted", PlayerCheats::NeverWantedCheat);
++
++		// Disabled, requires new boolean parameter.
++		// DebugMenuAddCmd("Cheats", "Never wanted", PlayerCheats::NeverWantedCheat);
+ 
+ 		// DebugMenuAddCmd("Cheats", "Invincible Vehicle", customCheats->InvincibleVehicleCheat);
+ 		DebugMenuAddCmd("Cheats", "Invincible Vehicle", vehicleCheats->InvincibleVehicleCheat);
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 124ecce6..84590437 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -249,6 +249,19 @@ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+ 	// CStreaming::SetModelIsDeletable(modelIndex);
+ }
+ 
++/**
++ * Get the current ped that was created.
++ * 
++ * Make sure to check if this exists before accessing it! Or you might crash.
++ * 
++ * @returns The m_pCurrentPed if it exists, otherwise it's a null pointer.
++ */
++CPed*
++PedFunctions::GetPed()
++{
++	return m_pCurrentPed;
++}
++
+ /**
+  * Remove the currently spawned ped if there is one spawned with CreatePed.
+  * 
+@@ -552,70 +565,11 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed *ped, CPed *target)
+ 
+ }
+ 
+-
++//------------------
++// End objectives
++//------------------
+ 
+ /*
+-
+-        case COMMAND_DELETE_CHAR:
+-        {
+-                CollectParameters(&m_nIp, 1);
+-                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
+-                CTheScripts::RemoveThisPed(ped);
+-                if (m_bIsMissionScript)
+-                        CTheScripts::MissionCleanUp.RemoveEntityFromList(ScriptParams[0], CLEANUP_CHAR);
+-                return 0;
+-        }
+-
+-        case COMMAND_CHAR_WANDER_DIR:
+-        {
+-                CollectParameters(&m_nIp, 2);
+-                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
+-                script_assert(ped);
+-                ped->ClearAll();
+-                int8 path = ScriptParams[1];
+-                if (ScriptParams[1] < 0 || ScriptParams[1] > 7)
+-                        // Max number GetRandomNumberInRange returns is max-1
+-#ifdef FIX_BUGS
+-                        path = CGeneral::GetRandomNumberInRange(0, 8);
+-#else
+-                        path = CGeneral::GetRandomNumberInRange(0, 7);
+-#endif
+-
+-                ped->SetWanderPath(path);
+-                return 0;
+-        }
+-        //case COMMAND_CHAR_WANDER_RANGE:
+-        case COMMAND_CHAR_FOLLOW_PATH:
+-        {
+-                CollectParameters(&m_nIp, 6);
+-                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
+-                script_assert(ped);
+-                if (ped->GetPedState() == PED_ATTACK || ped->GetPedState() == PED_FIGHT || !ped->IsPedInControl())
+-                        return 0;
+-                CVector pos = *(CVector*)&ScriptParams[1];
+-                if (pos.z <= MAP_Z_LOW_LIMIT)
+-                        pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+-                float radius = *(float*)&ScriptParams[4];
+-                eMoveState state;
+-                switch (ScriptParams[5]) {
+-                case 0: state = PEDMOVE_WALK; break;
+-                case 1: state = PEDMOVE_RUN; break;
+-                default: assert(0);
+-                }
+-                ped->ClearAll();
+-                ped->m_pathNodeTimer = 0;
+-                ped->SetFollowPath(pos, radius, state, nil, nil, 999999);
+-                return 0;
+-        }
+-        case COMMAND_CHAR_SET_IDLE:
+-        {
+-                CollectParameters(&m_nIp, 1);
+-                CPed* ped = CPools::GetPedPool()->GetAt(ScriptParams[0]);
+-                script_assert(ped);
+-                ped->bScriptObjectiveCompleted = false;
+-                ped->SetObjective(OBJECTIVE_WAIT_ON_FOOT);
+-                return 0;
+-        }
+         case COMMAND_GET_CHAR_COORDINATES:
+         {
+                 CollectParameters(&m_nIp, 1);
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+index f4efad6f..8c0e7b06 100644
+--- a/src/extras/functions/ped_functions.h
++++ b/src/extras/functions/ped_functions.h
+@@ -19,6 +19,7 @@ public:
+ 	}
+ 
+ 	void CreatePed(ePedType pedType, uint32 modelIndex);
++	CPed* GetPed();
+ 	void RemovePed();
+ 
+ 	// Test setting objectives on all peds in the area.
+diff --git a/src/extras/functions/player_functions.cpp b/src/extras/functions/player_functions.cpp
+new file mode 100644
+index 00000000..5afdc082
+--- /dev/null
++++ b/src/extras/functions/player_functions.cpp
+@@ -0,0 +1,251 @@
++#include "pch.h"
++
++#include "player_functions.h"
++#include "ped_functions.h"
++
++#include "log_functions.h"
++
++#include "vehicle_functions.h"
++
++//------
++// ReVC Headers
++//------
++
++#include "CivilianPed.h"
++#include "CopPed.h"
++#include "DMAudio.h"
++#include "EmergencyPed.h"
++
++#include "Entity.h"
++#include "PlayerInfo.h"
++#include "PlayerPed.h"
++
++#include "World.h"
++
++#include "Population.h"
++// #include "Script.h"
++#include "Zones.h"
++
++// #include "Pools.h"
++
++#include "Text.h"
++
++#include "Streaming.h"
++#include <thread>
++
++#include "Hud.h"
++
++#include "defines.h"
++
++#include "WeaponType.h"
++#include "ModelIndices.h"
++
++// Map for the weapon models
++// TODO Move this elsewhere and rename it, for now I'll leave it here.
++// This can be used for loading the specific weapons model.
++static const std::unordered_map<eWeaponType, int> WeaponModels =
++{
++    { WEAPONTYPE_BRASSKNUCKLE,       MI_BRASS_KNUCKLES },
++    { WEAPONTYPE_SCREWDRIVER,        MI_SCREWDRIVER },
++    { WEAPONTYPE_GOLFCLUB,           MI_GOLFCLUB },
++    { WEAPONTYPE_NIGHTSTICK,         MI_NIGHTSTICK },
++    { WEAPONTYPE_KNIFE,              MI_KNIFE },
++    { WEAPONTYPE_BASEBALLBAT,        MI_BASEBALL_BAT },
++    { WEAPONTYPE_HAMMER,             MI_HAMMER },
++    { WEAPONTYPE_CLEAVER,            MI_MEAT_CLEAVER },
++    { WEAPONTYPE_MACHETE,            MI_MACHETE },
++    { WEAPONTYPE_KATANA,             MI_KATANA },
++    { WEAPONTYPE_CHAINSAW,            MI_CHAINSAW },
++    { WEAPONTYPE_GRENADE,             MI_GRENADE },
++    { WEAPONTYPE_TEARGAS,             MI_TEARGAS },
++    { WEAPONTYPE_MOLOTOV,             MI_MOLOTOV },
++    { WEAPONTYPE_ROCKET,              MI_MISSILE },
++    { WEAPONTYPE_COLT45,              MI_COLT45 },
++    { WEAPONTYPE_PYTHON,              MI_PYTHON },
++    { WEAPONTYPE_SHOTGUN,             MI_SHOTGUN },
++    { WEAPONTYPE_SPAS12_SHOTGUN,      MI_SPAS12_SHOTGUN },
++    { WEAPONTYPE_STUBBY_SHOTGUN,      MI_STUBBY_SHOTGUN },
++    { WEAPONTYPE_TEC9,                MI_TEC9 },
++    { WEAPONTYPE_UZI,                 MI_UZI },
++    { WEAPONTYPE_SILENCED_INGRAM,     MI_SILENCEDINGRAM },
++    { WEAPONTYPE_MP5,                 MI_MP5 },
++    { WEAPONTYPE_M4,                  MI_M4 },
++    { WEAPONTYPE_RUGER,               MI_RUGER },
++    { WEAPONTYPE_SNIPERRIFLE,         MI_SNIPERRIFLE },
++    { WEAPONTYPE_LASERSCOPE,          MI_LASERSCOPE },
++    { WEAPONTYPE_ROCKETLAUNCHER,      MI_ROCKETLAUNCHER },
++    { WEAPONTYPE_FLAMETHROWER,        MI_FLAMETHROWER },
++    { WEAPONTYPE_M60,                 MI_M60 },
++    { WEAPONTYPE_MINIGUN,             MI_MINIGUN },
++    { WEAPONTYPE_DETONATOR,           MI_BOMB },
++    { WEAPONTYPE_CAMERA,              MI_CAMERA }
++};
++
++PlayerFunctions::PlayerFunctions()
++{
++
++}
++
++//-------------------
++// Moved out of player_cheats.cpp/.h
++//-------------------
++
++
++/**
++ * Heal the player, give the player max health and armor.
++ * Set the help message as cheat activated, to let the player know it was set.
++ */
++void
++PlayerFunctions::Heal()
++{
++    FindPlayerPed()->m_fHealth = CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth;
++	FindPlayerPed()->m_fArmour = CWorld::Players[CWorld::PlayerInFocus].m_nMaxArmour;
++}
++
++/**
++ * Kill the player.
++ * Originally Copied from Pad.cpp.
++ * Modified to only run if the player isn't dead, should fix the spamming in lua.
++ */
++void
++PlayerFunctions::Suicide()
++{
++    CPlayerPed *pPlayer = FindPlayerPed();
++	if (!pPlayer->DyingOrDead())
++	{
++        // Is this message really needed here? It's not like the player won't know they died.. Lol.
++        // I could add some explosions to this if chaos mode is enabled.
++		// CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++		pPlayer->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++#ifdef CUSTOM_CODE
++		pPlayer->m_fArmour = 0;
++#endif // CUSTOM_CODE
++	}
++}
++
++/**
++ * Give a player a weapon.
++ * 
++ * TODO Make this also request the model.
++ * I may need to make a std::map of the models to map these.
++ */
++// void
++// PlayerFunctions::GiveWeapon(eWeaponType weapon, int ammo)
++// {
++//     // CStreaming::RequestModel(MI_BRASS_KNUCKLES, STREAMFLAGS_DONT_REMOVE);
++
++
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	pPed->GiveWeapon(weapon, ammo, true);
++// }
++
++/**
++ * Give a player a weapon.
++ * This format works! It looks up the model index name from the WeaponModels std::map.
++ */
++void
++PlayerFunctions::GiveWeapon(eWeaponType weapon, int ammo)
++{
++    auto it = WeaponModels.find(weapon);
++
++    if (it == WeaponModels.end())
++    {
++        TRACE("Error: The weapon doesn't exist in the WeaponModels list.");
++        // No model exists for this weapon type.
++        return;
++    }
++
++    const int modelIndex = it->second;
++
++    CStreaming::RequestModel(modelIndex, STREAMFLAGS_DONT_REMOVE);
++
++    // while (!CStreaming::HasModelLoaded(modelIndex))
++    // {
++    CStreaming::LoadAllRequestedModels(false);
++    // }
++
++    CPlayerPed* ped = FindPlayerPed();
++
++    if (!ped)
++        return;
++
++    ped->GiveWeapon(weapon, ammo, true);
++}
++
++/**
++ * Teleport the player, named warp in here.
++ * Idea came from from teleport.cpp in the user-grinch Cheat Menu.
++ * 
++ * This teleports the player to the specified position and interior id.
++ * Takes a CVector for the position.
++ * Use PlayerUtil::PlayerCoords() to get the current position
++ * Also use PlayerUtil::PlayerHeading() to get the current heading
++ *
++ * @param pos A CVector for the position to warp to
++ * @param interiorID The interior ID, currently my custom scripts don't support interiors.
++ */
++void
++PlayerFunctions::Warp(CVector &pos, int interiorID)
++{
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++    // Load the scene
++	CStreaming::LoadScene(pos);
++	CStreaming::LoadSceneCollision(pos);
++
++    // Load all models
++	CStreaming::LoadAllRequestedModels(false);
++
++
++    // Vehicle check, teleport the players vehicle if they are in one.
++	if(vehicleFunctions.IsPlayerInVehicle()) 
++	{
++		CVehicle *pVeh = pPed->m_pMyVehicle;
++		pVeh->m_area = interiorID;
++		pVeh->Teleport(pos);
++	} else {
++		pPed->Teleport(pos);
++	}
++
++    // Set the players interior.
++	pPed->m_area = interiorID;
++}
++
++/**
++ * Toggle for infinite health.
++ */
++void
++PlayerFunctions::SetInfiniteHealth(bool toggle)
++{
++    FindPlayerPed()->bInvincibleCheat = toggle;
++}
++
++/**
++ * Toggle for infinite sprint.
++ */
++void
++PlayerFunctions::SetInfiniteSprint(bool toggle)
++{
++    CWorld::Players[CWorld::PlayerInFocus].m_bInfiniteSprint = toggle;
++    // CText *logMsg = TheText.Get("CHEATON");
++}
++
++/**
++ * Toggle get out of hospital free.
++ */
++void
++PlayerFunctions::SetGetOutOfHospitalFree(bool toggle)
++{
++    CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfHospitalFree = toggle;
++}
++
++/**
++ * Toggle get out of jail free.
++ */
++void
++PlayerFunctions::SetGetOutOfJailFree(bool toggle)
++{
++    CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfJailFree = toggle;
++}
++
+diff --git a/src/extras/functions/player_functions.h b/src/extras/functions/player_functions.h
+new file mode 100644
+index 00000000..78d3e854
+--- /dev/null
++++ b/src/extras/functions/player_functions.h
+@@ -0,0 +1,39 @@
++#pragma once
++
++#pragma once
++
++#define WITHDINPUT
++#include "common.h"
++#include "platform.h"
++
++#include "Ped.h"
++#include "PedType.h"
++
++class PlayerFunctions
++{
++public:
++
++	// Singleton
++	static PlayerFunctions &GetInstance()
++	{
++		static PlayerFunctions instance; // Static instance created once
++		return instance;
++	}
++
++    static void Heal();
++	static void Suicide();
++	static void GiveWeapon(eWeaponType weapon, int ammo);
++
++	static void Warp(CVector &pos, int interiorID);
++
++	static void SetInfiniteHealth(bool toggle);
++	static void SetInfiniteSprint(bool toggle);
++	static void SetGetOutOfHospitalFree(bool toggle);
++
++	static void SetGetOutOfJailFree(bool toggle);
++
++
++private:
++
++	PlayerFunctions();
++};
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+index b76afb32..bd03fd7c 100644
+--- a/src/extras/kcnet/pch.h
++++ b/src/extras/kcnet/pch.h
+@@ -1,12 +1,18 @@
+ #pragma once
+ 
+ // This is required to be at the top for any custom C++ files that I add, otherwise it breaks the code.
++// WARNING: Don't add anything extra in here like game function files.
++// Only put common headers, and anything that will break the build if it isn't in new files in here.
++
++// Don't put items like "Game.h" or "Streaming.h", this gets included in a lot of places.
+ 
+ #include <vector>
+ #include <string>
+ #include <sstream>
+ #include <functional>
+ 
++// I think these are the required items:
++
+ #include "common.h"
+ #include "crossplatform.h"
+ #include "platform.h"
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 9882597e..f4977e36 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -17,6 +17,7 @@
+ #include "log_functions.h"
+ 
+ #include "file_functions.h"
++#include "player_functions.h"
+ #include "vehicle_cheats.h"
+ #include "vehicle_functions.h"
+ 
+@@ -74,21 +75,21 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+     lua_pushcfunction(L, HealPlayerLua);
+     lua_setfield(L, -2, "heal");
+ 
+-	// Toggles for never wanted
+-    lua_pushcfunction(L, enableNeverWantedLua);
+-    lua_setfield(L, -2, "enable_never_wanted");
++	// Never wanted
++	lua_pushcfunction(L, toggleNeverWantedLua);
++    lua_setfield(L, -2, "set_never_wanted");
+ 
+-    lua_pushcfunction(L, disableNeverWantedLua);
+-    lua_setfield(L, -2, "disable_never_wanted");
++    // lua_pushcfunction(L, enableNeverWantedLua);
++    // lua_setfield(L, -2, "enable_never_wanted");
+ 
+-	// Auto enable infinite health in the lua script
++    // lua_pushcfunction(L, disableNeverWantedLua);
++    // lua_setfield(L, -2, "disable_never_wanted");
+ 
+-	// Toggles for infinite health
+-    lua_pushcfunction(L, enablePlayerInfiniteHealthLua);
+-    lua_setfield(L, -2, "enable_infinite_health");
++	// Auto enable infinite health in the lua script
+ 
+-    lua_pushcfunction(L, disablePlayerInfiniteHealthLua);
+-    lua_setfield(L, -2, "disable_infinite_health");
++	// Infinite health
++    lua_pushcfunction(L, toggleInfiniteHealthLua);
++    lua_setfield(L, -2, "set_infinite_health");
+ 
+ 	// This works
+ 	// TODO Get CVector for respawn from file.
+@@ -99,12 +100,9 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+     lua_pushcfunction(L, cancelOverrideNextRestartLua);
+     lua_setfield(L, -2, "cancel_override_restart");
+ 
+-	// Toggles for losing weapons when dying.
+-    lua_pushcfunction(L, enableLoseWeaponsOnDeathLua);
+-    lua_setfield(L, -2, "enable_lose_weapons_on_death");
+-
+-    lua_pushcfunction(L, disableLoseWeaponsOnDeathLua);
+-    lua_setfield(L, -2, "disable_lose_weapons_on_death");
++	// Losing weapons when dying.
++    lua_pushcfunction(L, toggleLoseWeaponsOnDeathLua);
++    lua_setfield(L, -2, "lose_weapons_on_death");
+ 
+ 	// Log the player coords and heading
+     lua_pushcfunction(L, logPlayerCoordsLua);
+@@ -257,41 +255,66 @@ TogglePlayerControlLua(lua_State *L)
+ // TODO Make these into toggle functions that take a boolean later.
+ //-------
+ 
++/**
++ * Toggle never wanted
++ * 
++ * Usage:
++ * player.set_never_wanted(true)
++ */
+ int
+-enableNeverWantedLua(lua_State *L)
++toggleNeverWantedLua(lua_State *L)
+ {
+-	PlayerCheats::EnableNeverWanted();
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
++	if(!lua_isboolean(L, 1))
++	{
++		return luaL_error(L, "player.set_never_wanted boolean required! Value can either be true or false.");
++	}
+ 
+-	return 1;
+-}
+ 
+-int
+-disableNeverWantedLua(lua_State *L)
+-{
+-	PlayerCheats::DisableNeverWanted();
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was disabled");
++	bool togglePolice = static_cast<float>(lua_toboolean(L, 1));
++
++	PlayerCheats::SetNeverWanted(togglePolice);
+ 
+ 	return 1;
+ }
+ 
+-int
+-enablePlayerInfiniteHealthLua(lua_State *L)
+-{
+-	PlayerCheats playerCheats = PlayerCheats();
+-	playerCheats.EnableInfiniteHealth();
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was enabled");
+ 
+-	return 1;
+-}
+ 
+-int
+-disablePlayerInfiniteHealthLua(lua_State *L)
+-{
+-	PlayerCheats playerCheats = PlayerCheats();
+-	playerCheats.DisableInfiniteHealth();
+-	LogFunctions::LogInfo(Defines::luaLogFile, "Infinite health was disabled");
++// int
++// enableNeverWantedLua(lua_State *L)
++// {
++// 	PlayerCheats::EnableNeverWanted();
++// 	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
++
++// 	return 1;
++// }
++
++// int
++// disableNeverWantedLua(lua_State *L)
++// {
++// 	PlayerCheats::DisableNeverWanted();
++// 	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was disabled");
+ 
++// 	return 1;
++// }
++
++// int 
++
++/**
++ * Toggle for infinite health.
++ * 
++ * Usage:
++ * player.set_infinite_health(true)
++ */
++int toggleInfiniteHealthLua(lua_State *L)
++{	
++	if(!lua_isboolean(L, 1))
++	{
++		return luaL_error(L, "player.set_infinite_health boolean required! Value can either be true or false.");
++	}
++
++
++	bool toggleInfHealth = static_cast<float>(lua_toboolean(L, 1));
++	PlayerFunctions::SetInfiniteHealth(toggleInfHealth);
+ 	return 1;
+ }
+ 
+@@ -358,92 +381,24 @@ blowUpPlayerVehicleLua(lua_State *L)
+ 
+ //------- Toggle lose weapons on death --------//
+ 
+-// Oops, I had these functions reversed, no wonder it wasn't working.. lol
+-int
+-enableLoseWeaponsOnDeathLua(lua_State *L)
+-{
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	// TODO Test with this
+-	// LuaTest& luaTestInstance = LuaTest::GetInstance();
+-
+-#ifdef LUA_HELPERS_TEST
+-	lua_State *luaVM = GetLuaVMFromSingleton();
+-	if(luaVM) return 0;
+-#endif
+-
+-	// LuaTest luaTest = LuaTest();
+-	Defines defines = Defines();
+-	pPlayerInfo.m_bGetOutOfHospitalFree = false;
+-	pPlayerInfo.m_bGetOutOfJailFree = false;
+-
+-#ifdef EXTRA_LOGGING
+-	if(gbExtraLogging) {
+-		std::string toggleWeaponsDeathString = "You will now lose weapons on death";
+-		LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+-	}
+-#endif
+-
+-	return 1;
+-}
+-
+-// Oops, I had these functions reversed, no wonder it wasn't working.. lol
+-int
+-disableLoseWeaponsOnDeathLua(lua_State *L)
+-{
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	// TODO Test with this
+-	// #ifdef LUA_HELPERS_TEST
+-	//		lua_State* luaVM = GetLuaVMFromSingleton();
+-	//		if(luaVM) return 0;
+-	// #endif
+-
+-	Defines defines = Defines();
+-	pPlayerInfo.m_bGetOutOfHospitalFree = true;
+-	pPlayerInfo.m_bGetOutOfJailFree = true;
+-
+-	// This is annoying, it runs everytime the game starts or lua inits
+-#ifdef EXTRA_LOGGING
+-	if(gbExtraLogging) {
+-		std::string toggleWeaponsDeathString = "You will no longer lose weapons on death";
+-		LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+-	}
+-
+-#endif
+-	return 1;
+-}
+-
+-// Disabled this for now.
++/**
++ * Toggle losing weapons when the player dies.
++ * 
++ * Usage:
++ * player.lose_weapons_on_death(true)
++ */
+ int
+ toggleLoseWeaponsOnDeathLua(lua_State *L)
+ {
+-	CPlayerInfo &pPlayerInfo = CWorld::Players[CWorld::PlayerInFocus];
+-
+-	LuaTest luaTest = LuaTest();
+-	// TODO Test this
+-	// LuaTest& luaTestInstance = LuaTest::GetInstance();
+-	Defines defines = Defines();
+-
+-	// TODO Test this
+-	// pPlayerInfo.m_bGetOutOfHospitalFree = luaTest.toggleLoseWeaponsOnDeath;
+-
+-	if(luaTest.toggleLoseWeaponsOnDeath)
+-	// if(luaTestInstance.toggleLoseWeaponsOnDeath)
++	// New
++	if(!lua_isboolean(L, 1))
+ 	{
+-		pPlayerInfo.m_bGetOutOfHospitalFree = true;
+-	} else {
+-		pPlayerInfo.m_bGetOutOfHospitalFree = false;
++		return luaL_error(L, "player.lose_weapons_on_death boolean required! Value can either be true or false.");
+ 	}
+ 
+-	std::string toggleWeaponsDeathString =
+-	    luaTest.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
+-	// luaTestInstance.toggleLoseWeaponsOnDeath ? "You will no longer lose weapons on death" : "You will now lose weapons on death";
+-	LogFunctions::LogInfo(defines.luaLogFile, toggleWeaponsDeathString);
+-
+-	// if (luaTest.toggleLoseWeaponsOnDeath)
+-	//{
+-	// }
++	bool toggleLoseWeapons = static_cast<float>(lua_toboolean(L, 1));
++	CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfHospitalFree = toggleLoseWeapons;
++	
+ 
+ 	return 1;
+ }
+@@ -475,7 +430,7 @@ int
+ killPlayerIfWantedLua(lua_State *L)
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+-	if(playerCheats.GetWantedLevel() > 0) { playerCheats.SuicideCheat(); }
++	if(playerCheats.GetWantedLevel() > 0) { PlayerFunctions::Suicide(); }
+ 
+ 	return 1;
+ }
+@@ -485,7 +440,7 @@ suicideCheatLua(lua_State *L)
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	CPlayerPed *pPlayer = FindPlayerPed();
+-	if(!pPlayer->DyingOrDead()) { playerCheats.SuicideCheat(); }
++	if(!pPlayer->DyingOrDead()) { PlayerFunctions::Suicide(); }
+ 	return 1;
+ }
+ 
+@@ -499,7 +454,6 @@ isPlayerAliveLua(lua_State *L)
+ }
+ 
+ // TODO Figure out how to disable certain functions in kcnet-events.lua
+-// TODO Fix this to not crash if the model is invalid.
+ int
+ changePlayerClothesLua(lua_State *L)
+ {
+@@ -580,4 +534,4 @@ cancelOverrideNextRestartLua(lua_State *L)
+ 	return 1;
+ }
+ 
+-#endif // LUA_TEST
+\ No newline at end of file
++#endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index d598608f..d400ddee 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -16,8 +16,6 @@ extern "C" {
+ 	extern void RegisterPlayerFunctionsLua(lua_State* L);
+ 	extern int createPlayerLua(lua_State *L);
+ 
+-	extern int enableLoseWeaponsOnDeathLua(lua_State *L);
+-	extern int disableLoseWeaponsOnDeathLua(lua_State *L);
+ 	extern int toggleLoseWeaponsOnDeathLua(lua_State *L);
+ 	// 
+ 	// Vehicle
+@@ -31,10 +29,8 @@ extern "C" {
+ 
+ 	extern int GetPlayerHealthLua(lua_State *L);
+ 	// 
+-	extern int enableNeverWantedLua(lua_State *L);
+-	extern int disableNeverWantedLua(lua_State *L);
+-	extern int enablePlayerInfiniteHealthLua(lua_State *L);
+-	extern int disablePlayerInfiniteHealthLua(lua_State *L);
++	extern int toggleNeverWantedLua(lua_State *L);
++	extern int toggleInfiniteHealthLua(lua_State *L);
+ 
+ 	extern int changePlayerClothesLua(lua_State *L);
+ 
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index 3730f00c..fd7d3a15 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -77,7 +77,10 @@ PedMenu::PedTab()
+ 	if(ImGui::Button("Objective Test"))
+ 	{
+ 		// miscUtil
+-		// pedFunctions.SetObjective();
++		if(pedFunctions.GetPed())
++		{
++			pedFunctions.SetObjective(OBJECTIVE_GOTO_AREA_ANY_MEANS, pedFunctions.GetPed());
++		}
+ 	}
+ 
+ 
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index 84e982b2..ae75acbc 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -12,6 +12,7 @@
+ 
+ #include "vehicle_cheats.h"
+ //#include "player_cheats.h"
++#include "player_functions.h"
+ 
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+@@ -40,9 +41,9 @@ PlayerMenu::ToggleInfiniteHealth()
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if(infiniteHealth) {
+-		playerCheats.EnableInfiniteHealth();
++		PlayerFunctions::SetInfiniteHealth(true);
+ 	} else {
+-		playerCheats.DisableInfiniteHealth();
++		PlayerFunctions::SetInfiniteHealth(false);
+ 	}
+ }
+ 
+@@ -55,9 +56,9 @@ PlayerMenu::ToggleInfiniteSprint()
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if (infiniteSprint) 
+ 	{ 
+-		playerCheats.EnableInfiniteSprint();
++		PlayerFunctions::SetInfiniteSprint(true);
+ 	} else {
+-		playerCheats.DisableInfiniteSprint();
++		PlayerFunctions::SetInfiniteSprint(false);
+ 	}
+ }
+ 
+@@ -71,9 +72,9 @@ PlayerMenu::ToggleGetOfHospitalFree()
+ {
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if(getOutOfHospitalFree) { 
+-		playerCheats.EnableGetOutOfHospitalFree();
++		PlayerFunctions::SetGetOutOfHospitalFree(true);
+ 	} else {
+-		playerCheats.DisableGetOutOfHospitalFree();
++		PlayerFunctions::SetGetOutOfHospitalFree(false);
+ 	}
+ 
+ }
+@@ -89,9 +90,9 @@ PlayerMenu::ToggleGetOfJailFree()
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 	if(getOutOfJailFree) 
+ 	{ 
+-		playerCheats.EnableGetOutOfJailFree();
++		PlayerFunctions::SetGetOutOfJailFree(true);
+ 	} else {
+-		playerCheats.DisableGetOutOfJailFree();
++		PlayerFunctions::SetGetOutOfJailFree(false);
+ 	}
+ }
+ 
+@@ -266,7 +267,7 @@ PlayerMenu::PlayerTab()
+ 		// Seems like above 100 it somewhat stops doing anything.
+ 		//int amountOfExplosions = 100;
+ 
+-		PlayerCheats::SuicideCheat();
++		PlayerFunctions::Suicide();
+ 		// Sometimes the player doesn't die from this.. I'll just cause some mayhem
+ 		// This seems to finish the player off, now it's a true suicide cheat.
+ 		//for (int i = 0; i < 5; i++)
+@@ -308,6 +309,19 @@ PlayerMenu::PlayerTab()
+ 	ChangeSkinsMenu();
+ #endif
+ 
++	ImGui::Separator();
++	// New, 
++	
++	eWeaponType weapon = WEAPONTYPE_COLT45;
++	int ammo = 24;
++
++	// This works! Now I can implement this into my lua scripts.
++	// Hmm, I should make a list of these to select from, instead of just using the cheats for them all the time.
++	if(ImGui::Button("Give weapon test"))
++	{
++		PlayerFunctions::GiveWeapon(weapon, ammo);
++	}
++
+ }
+ 
+ #endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index cded6556..ec658325 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include "vehicle_cheats.h"
+ #include "player_cheats.h"
++#include "player_functions.h"
+ 
+ #include "vehicle_functions.h"
+ #include "log_functions.h"
+@@ -222,7 +223,8 @@ WarpMenu::WarpTab()
+ 		CVector pos{0, 0, 10};
+ 		if(sscanf(m_LocationBuf, "%f, %f, %f", &pos.x, &pos.y, &pos.z) == 3) {
+ 			pos.z += 1.0f;
+-			PlayerCheats::WarpPlayer(pos, 0);
++			// PlayerCheats::WarpPlayer(pos, 0);
++			PlayerFunctions::Warp(pos, 0);
+ 
+ #ifdef EXTRA_LOGGING
+ 			CVector teleportPos{pos.x, pos.y, pos.z};
+-- 
+2.43.0
+

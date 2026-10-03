@@ -1,0 +1,133 @@
+From 4729df96f6a66c436bb3a11362aa70765d4f6c62 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 16 Sep 2026 23:14:53 -0400
+Subject: [PATCH 168/176] fix: Make toggle player controls work in lua
+
+* Add SetControl function to player_functions.
+
+* Update changelog.
+---
+ Changelog.md                              | 10 +++++++++
+ src/extras/functions/player_functions.cpp | 27 +++++++++++++++++++++++
+ src/extras/functions/player_functions.h   |  2 ++
+ src/extras/lua/lua_player.cpp             |  9 ++++++++
+ 4 files changed, 48 insertions(+)
+
+diff --git a/Changelog.md b/Changelog.md
+index 64f0c806..501ab303 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1069,6 +1069,8 @@ feat: Add wait timer for lua
+ 
+ ### 1.2.14-8a
+ 
++**Commit 1**
++
+ feat: Add creating pickups to lua
+ 
+ * I added creating, removing, and checking if pickups have been collected.
+@@ -1078,3 +1080,11 @@ feat: Add creating pickups to lua
+ * Disable some extra logging.
+ 
+ * Update changelog, change version to 1.2.14-8a.
++
++**Commit 2**
++
++fix: Make toggle player controls work in lua
++
++* Add SetControl function to player_functions.
++
++* Update changelog.
+diff --git a/src/extras/functions/player_functions.cpp b/src/extras/functions/player_functions.cpp
+index 7ae34f68..1aec97a0 100644
+--- a/src/extras/functions/player_functions.cpp
++++ b/src/extras/functions/player_functions.cpp
+@@ -21,6 +21,7 @@
+ #include "EmergencyPed.h"
+ 
+ #include "Entity.h"
++#include "Pad.h"
+ #include "PlayerInfo.h"
+ #include "PlayerPed.h"
+ 
+@@ -94,6 +95,10 @@ static const std::unordered_map<eWeaponType, int> weaponModelIndexes =
+     { WEAPONTYPE_CAMERA,              MI_CAMERA }
+ };
+ 
++// Well damn I didn't know this was a function..
++// I can now recreate the IS_CAR_IN_AREA_3D and IS_CHAR_IN_AREA_3D along with the 2D functions for this.
++// FindPlayerPed()->IsWithinArea()
++
+ PlayerFunctions::PlayerFunctions()
+ {
+ 
+@@ -233,6 +238,8 @@ PlayerFunctions::GiveWeapon(eWeaponType weapon, int ammo)
+  * Takes a CVector for the position.
+  * Use PlayerUtil::PlayerCoords() to get the current position
+  * Also use PlayerUtil::PlayerHeading() to get the current heading
++ * 
++ * TODO Make all these functions able to be called in lua, so I can re-create this in lua.
+  *
+  * @param pos A CVector for the position to warp to
+  * @param interiorID The interior ID, currently my custom scripts don't support interiors.
+@@ -434,3 +441,23 @@ PlayerFunctions::SetArmor(int value)
+         FindPlayerPed()->m_fArmour = value;
+     }
+ }
++
++/**
++ * This can toggle the players controls on or off.
++ * 
++ * Originally adapted from ImGuiSetup::EnablePlayerControl() and ImGuiSetup::DisablePlayerControl()
++ * 
++ * @param toggle If the players controls are enabled or not.
++ */
++void
++PlayerFunctions::SetControl(bool toggle)
++{
++    if(toggle)
++	{
++		CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_CUTSCENE);
++	}
++	else 
++	{
++		CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_CUTSCENE);
++	}
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/player_functions.h b/src/extras/functions/player_functions.h
+index acab4cf2..8ac16d29 100644
+--- a/src/extras/functions/player_functions.h
++++ b/src/extras/functions/player_functions.h
+@@ -48,6 +48,8 @@ public:
+ 	static void SetHealth(int value);
+ 	static void SetArmor(int value);
+ 
++	static void SetControl(bool toggle);
++
+ private:
+ 
+ 	PlayerFunctions();
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index c44832a6..f574627a 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -714,6 +714,15 @@ togglePlayerControlLua(lua_State *L)
+ 		return luaL_error(L, "player.set_control requires a boolean true or false value.");
+ 	}
+ 
++	if(toggle)
++	{
++		PlayerFunctions::SetControl(true);
++	} 
++	else 
++	{
++		PlayerFunctions::SetControl(false);
++	}
++
+ 	// I need to figure this out.
+ 	// FindPlayerPed()->MakePlayerSafe(false);
+ 
+-- 
+2.43.0
+

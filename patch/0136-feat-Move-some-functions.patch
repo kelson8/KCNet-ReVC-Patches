@@ -1,0 +1,558 @@
+From e80a39e88ebc55fb38e79d3aa03130d2649b6701 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 14:06:43 -0400
+Subject: [PATCH 136/161] feat: Move some functions
+
+* I have moved some items out of lua_player and into player_functions.
+
+* Cleanup some code in GameLogic.cpp and remove code that I was no longer using.
+
+* Update changelog.
+---
+ Changelog.md                              |  12 +-
+ src/control/GameLogic.cpp                 |  75 ++---------
+ src/extras/functions/player_functions.cpp | 144 ++++++++++++++++++++++
+ src/extras/functions/player_functions.h   |  12 ++
+ src/extras/lua/lua_game.cpp               |   6 +-
+ src/extras/lua/lua_player.cpp             |  80 ++++--------
+ 6 files changed, 202 insertions(+), 127 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 2b14d08d..a847c238 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -717,4 +717,14 @@ feat: Add setting player stats to lua
+ 
+ feat: Add a few more stats into freeroam_util
+ 
+-* Update changelog
+\ No newline at end of file
++* Update changelog
++
++**Commit 3**
++
++feat: Move some functions
++
++* I have moved some items out of lua_player and into player_functions.
++
++* Cleanup some code in GameLogic.cpp and remove code that I was no longer using.
++
++* Update changelog.
+diff --git a/src/control/GameLogic.cpp b/src/control/GameLogic.cpp
+index 15235e61..8fe9aaea 100644
+--- a/src/control/GameLogic.cpp
++++ b/src/control/GameLogic.cpp
+@@ -178,11 +178,6 @@ CGameLogic::Update()
+ 		if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > 0x800) && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= 0x800)) {
+ #endif
+ 			// This fades the camera out.
+-			// TODO Add a toggle for this and fading the camera in, I didn't know these could be changed
+-//#ifdef CUSTOM_CODE
+-//
+-//#endif
+-
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ 			if(gbFadeOnDeath)
+@@ -253,54 +248,20 @@ CGameLogic::Update()
+ 			CRestart::OverridePoliceStationLevel = LEVEL_GENERIC;
+ 
+ 			// Oops, this has to be before my time to pass value below.
+-#ifdef LUA_TEST         // Wasted, reinit lua
+-			// This works in here! I didn't think it would, I guess I added it to the wrong code before.
+-			// TODO Set this to also override the players spawn.
+-
++#ifdef LUA_TEST
++			
+ 			// Switched to new file, now loads from the wasted events instead of the init lua.
++			// Runs the kcnet-wasted.lua file for when wasted.
+ 			luaTest.WastedLuaEvents();
+-
+-			// This works!!
+-			// Setup a lua function for this.
+-			//CVector airportVector = CVector(-1515.1f, -1182.1f, 16.5f);
+-			//float airportHeading = 0.0f;
+-
+-			//vecRestartPos = airportVector;
+-			//fRestartFloat = airportHeading;
+-
+-
+-			//CRestart::OverrideNextRestart(airportVector, airportHeading);
+-			//CRestart::OverridePosition = airportVector;
+-			//CRestart::OverrideHeading = airportHeading;
+-#endif
++#endif // LUA_TEST - Wasted, reinit lua
+ 			//
+ 
+ 			// Pass the time
+-#ifdef LUA_TEST
+-
+-			// Run lua file after being wasted
+-//#ifdef EXTRA_LOGGING
+-//			if(gbExtraLogging) {
+-//				std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
+-//				LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
+-//			}
+-//#endif
+-
+-			// I had to init lua before this.
+-			//PassTime(luaTest.timeToPass);
+-			// Reverted back to normal
+-			// TODO Make this value able to be changed in my new freeroam scripts, or even be disabled with 0.
+-
+ #ifndef DISABLE_GAME_SCRIPTS
+-
+ 			// Moved pass time variable into here.
+ 			// Now this always gets handled by kcnet-wasted.lua and kcnet-busted.lua.
+ 			PassTime(720);
+ #endif // !DISABLE_GAME_SCRIPTS
+-
+-#else
+-			PassTime(720);
+-#endif
+ 			
+ 
+ 			RestorePlayerStuffDuringResurrection(pPlayerInfo.m_pPed, vecRestartPos, fRestartFloat);
+@@ -319,8 +280,6 @@ CGameLogic::Update()
+ 			// Set player controls to enabled
+ 			CPad::GetPad(CWorld::PlayerInFocus)->DisablePlayerControls = PLAYERCONTROL_ENABLED;
+ 			// Fade the camera in
+-			// TODO Add a toggle for this and fading the camera out, I didn't know these could be changed
+-			// TODO Add toggle into the freeroam lua scripts for this.
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ 			if(gbFadeOnDeath)
+@@ -454,35 +413,19 @@ CGameLogic::Update()
+ 
+ 
+ 			// Run lua file after being busted
+-#ifdef LUA_TEST // Busted, reinit lua
+-
+-			// This works when the player is busted.
+-			//  Switched to new file, now loads from the busted events instead of the init lua.
+-			luaTest.BustedLuaEvents();
+-#endif
+-			//
+-			// Get time to pass value from lua, TODO Add config option for this in lua
+ #ifdef LUA_TEST
+-			
+-
+-//#ifdef EXTRA_LOGGING
+-//			if(gbExtraLogging) {
+-//				std::string timeToPassString = "Time to pass set to: " + std::to_string(luaTest.timeToPass);
+-//				LogFunctions::LogInfo(defines.luaLogFile, timeToPassString);
+-//			}
+-//#endif
+ 
++			// Switched to new file, now loads from the busted events instead of the init lua.
++			// Runs the kcnet-busted.lua file for when busted.
++			luaTest.BustedLuaEvents();
++#endif // LUA_TEST - Busted, reinit lua
++		
+ #ifndef DISABLE_GAME_SCRIPTS
+-
+ 			// Moved pass time variable into here.
+ 			// Now this always gets handled by kcnet-wasted.lua and kcnet-busted.lua.
+ 			PassTime(720);
+ #endif // !DISABLE_GAME_SCRIPTS
+ 
+-#else
+-			PassTime(720);
+-#endif
+-
+ 			RestorePlayerStuffDuringResurrection(pPlayerInfo.m_pPed, vecRestartPos, fRestartFloat);
+ 			AfterDeathArrestSetUpShortCutTaxi();
+ 			pPlayerInfo.m_pPed->ClearWeapons();
+diff --git a/src/extras/functions/player_functions.cpp b/src/extras/functions/player_functions.cpp
+index 04224380..7ae34f68 100644
+--- a/src/extras/functions/player_functions.cpp
++++ b/src/extras/functions/player_functions.cpp
+@@ -9,6 +9,8 @@
+ 
+ #include "misc_util.h"
+ 
++#include "player_cheats.h"
++
+ //------
+ // ReVC Headers
+ //------
+@@ -24,6 +26,8 @@
+ 
+ #include "World.h"
+ 
++#include "Restart.h"
++
+ #include "Population.h"
+ // #include "Script.h"
+ #include "Zones.h"
+@@ -42,6 +46,14 @@
+ #include "WeaponType.h"
+ #include "ModelIndices.h"
+ 
++// TODO Move these elsewhere.
++// Health values
++#define MIN_HEALTH 0
++#define MAX_HEALTH 250
++
++#define MIN_ARMOR 0
++#define MAX_ARMOR 250
++
+ // Map for the weapon models
+ // I may move this in the future, for now it'll just stay here since it's not used elsewhere.
+ static const std::unordered_map<eWeaponType, int> weaponModelIndexes =
+@@ -250,7 +262,9 @@ PlayerFunctions::Warp(CVector &pos, int interiorID)
+ 	}
+ 
+     // Set the players interior.
++#ifndef DISABLE_GAME_SCRIPTS
+ 	pPed->m_area = interiorID;
++#endif // !DISABLE_GAME_SCRIPTS - Interiors are disabled with my scripts currently.
+ }
+ 
+ /**
+@@ -290,3 +304,133 @@ PlayerFunctions::SetGetOutOfJailFree(bool toggle)
+     CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfJailFree = toggle;
+ }
+ 
++//--------------
++// Moved out of lua_player.cpp
++//--------------
++
++/**
++ * Set the players wasted respawn point.
++ * 
++ * @param pos The position to set the respawn to.
++ * @param heading The heading to set the respawn to.
++ */
++void
++PlayerFunctions::SetHospitalRespawn(CVector pos, float heading)
++{
++    CRestart::AddHospitalRestartPoint(pos, heading);
++}
++
++/**
++ * Set the players busted respawn point.
++ * 
++ * @param pos The position to set the respawn to.
++ * @param heading The heading to set the respawn to.
++ */
++void
++PlayerFunctions::SetPoliceRespawn(CVector pos, float heading)
++{
++    CRestart::AddPoliceRestartPoint(pos, heading);
++}
++
++/**
++ * Set the players respawn point by overriding it.
++ * 
++ * @param pos The position to set the respawn to.
++ * @param heading The heading to set the respawn to.
++ */
++void 
++PlayerFunctions::SetRespawnPoint(CVector pos, float heading)
++{
++    CRestart::OverrideNextRestart(pos, heading);
++    CRestart::OverridePosition = pos;
++    CRestart::OverrideHeading = heading;
++}
++
++/**
++ * Check if the player is alive
++ * 
++ * @returns If the player is dying or dead.
++ */
++bool 
++PlayerFunctions::IsAlive()
++{
++    return FindPlayerPed()->DyingOrDead();
++}
++
++/**
++ * Kill the player if they have any cops.
++ */
++void 
++PlayerFunctions::KillIfWanted()
++{
++    PlayerCheats playerCheats;
++	if(playerCheats.GetWantedLevel() > 0) 
++    { 
++        PlayerFunctions::Suicide(); 
++    }
++}
++
++/**
++ * Get the players armor
++ */
++int 
++PlayerFunctions::GetArmor()
++{
++    if(PlayerUtil::IsPlayerSafe())
++    {
++        return FindPlayerPed()->m_fArmour;
++    }
++
++    return 0;
++}
++
++/**
++ * Get the players health
++ */
++int 
++PlayerFunctions::GetHealth()
++{
++    if(PlayerUtil::IsPlayerSafe())
++    {
++        return FindPlayerPed()->m_fHealth;
++    }
++    return 0;
++}
++
++/**
++ * Set the players health.
++ * 
++ * @param value The value to set the health to.
++ */
++void 
++PlayerFunctions::SetHealth(int value)
++{
++    if(value <= MIN_HEALTH || value > MAX_HEALTH)
++    {
++        return;
++    }
++
++    if(PlayerUtil::IsPlayerSafe())
++    {
++        FindPlayerPed()->m_fHealth = value;
++    }
++}
++
++/**
++ * Set the players armor.
++ * 
++ * @param value The value to set the armor to.
++ */
++void 
++PlayerFunctions::SetArmor(int value)
++{
++    if(value <= MIN_ARMOR || value > MAX_ARMOR)
++    {
++        return;
++    }
++
++    if(PlayerUtil::IsPlayerSafe())
++    {
++        FindPlayerPed()->m_fArmour = value;
++    }
++}
+diff --git a/src/extras/functions/player_functions.h b/src/extras/functions/player_functions.h
+index 18dd1bb7..acab4cf2 100644
+--- a/src/extras/functions/player_functions.h
++++ b/src/extras/functions/player_functions.h
+@@ -35,6 +35,18 @@ public:
+ 
+ 	static void SetGetOutOfJailFree(bool toggle);
+ 
++	static void SetHospitalRespawn(CVector pos, float heading);
++	static void SetPoliceRespawn(CVector pos, float heading);
++
++	static void SetRespawnPoint(CVector pos, float heading);
++	static bool IsAlive();
++	static void KillIfWanted();
++
++	static int GetArmor();
++	static int GetHealth();
++
++	static void SetHealth(int value);
++	static void SetArmor(int value);
+ 
+ private:
+ 
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 6c73125e..83012953 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -15,6 +15,8 @@
+ 
+ #include "lua_log.h"
+ 
++#include "player_functions.h"
++
+ #include "defines.h"
+ #include "log_functions.h"
+ 
+@@ -306,7 +308,7 @@ int setHospitalRespawnLua(lua_State *L)
+     	return luaL_error(L, "game.set_hospital_respawn expects a vector table with numeric x, y, and z fields and a float for the heading." );
+ 	}
+ 
+-	CRestart::AddHospitalRestartPoint(*pos, angle);
++	PlayerFunctions::SetHospitalRespawn(*pos, angle);
+ #ifdef EXTRA_LOGGING
+ 	// TODO Figure out log line.. Not sure how to log the pos here
+ 
+@@ -339,7 +341,7 @@ int setPoliceStationRespawnLua(lua_State *L)
+     	return luaL_error(L, "game.set_police_respawn expects a vector table with numeric x, y, and z fields and a float for the heading." );
+ 	}
+ 
+-	CRestart::AddPoliceRestartPoint(*pos, angle);
++	PlayerFunctions::SetPoliceRespawn(*pos, angle);
+ 
+ 	return 1;
+ }
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index a23b909d..e16f94a9 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -327,7 +327,6 @@ TogglePlayerControlLua(lua_State *L)
+ 
+ //-------
+ // Toggles
+-// TODO Make these into toggle functions that take a boolean later.
+ //-------
+ 
+ /**
+@@ -352,26 +351,6 @@ toggleNeverWantedLua(lua_State *L)
+ 	return 1;
+ }
+ 
+-
+-
+-// int
+-// enableNeverWantedLua(lua_State *L)
+-// {
+-// 	PlayerCheats::EnableNeverWanted();
+-// 	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was enabled");
+-
+-// 	return 1;
+-// }
+-
+-// int
+-// disableNeverWantedLua(lua_State *L)
+-// {
+-// 	PlayerCheats::DisableNeverWanted();
+-// 	LogFunctions::LogInfo(Defines::luaLogFile, "Never wanted was disabled");
+-
+-// 	return 1;
+-// }
+-
+ // int 
+ 
+ /**
+@@ -393,17 +372,18 @@ int toggleInfiniteHealthLua(lua_State *L)
+ 	return 1;
+ }
+ 
+-/// <summary>
+-/// Basic test for healing the player in lua, this works.
+-/// </summary>
+-/// <param name="L"></param>
+-/// <returns></returns>
++/**
++ * Heal the player
++ * 
++ * Usage:
++ * player.heal()
++ */
+ int
+ HealPlayerLua(lua_State *L)
+ {
+-	CPlayerPed *pPed = FindPlayerPed();
+-	pPed->m_fHealth = 250;
+-	pPed->m_fArmour = 100;
++	PlayerFunctions::SetHealth(250);
++	PlayerFunctions::SetArmor(250);
++
+ 	LogFunctions::LogInfo(Defines::luaLogFile, "Player was healed");
+ 
+ 	return 1;
+@@ -415,8 +395,7 @@ HealPlayerLua(lua_State *L)
+ int
+ GetPlayerHealthLua(lua_State *L)
+ {
+-	float playerHealth = FindPlayerPed()->m_fHealth;
+-	if(playerHealth && PlayerUtil::IsPlayerSafe()) { pushFloatToLua(L, playerHealth); }
++	pushIntToLua(L, PlayerFunctions::GetHealth());
+ 
+ 	return 1;
+ }
+@@ -450,9 +429,7 @@ int setPlayerHealthLua(lua_State *L)
+  */
+ int getPlayerArmorLua(lua_State *L)
+ {
+-	float playerArmor = FindPlayerPed()->m_fArmour;
+-	if(playerArmor && PlayerUtil::IsPlayerSafe()) { pushFloatToLua(L, playerArmor); }
+-
++	pushIntToLua(L, PlayerFunctions::GetArmor());
+ 	return 1;
+ }
+ 
+@@ -549,7 +526,6 @@ end
+ int
+ checkWantedLevelLua(lua_State *L)
+ {
+-	CPlayerPed *pPlayer = FindPlayerPed();
+ 	PlayerCheats playerCheats = PlayerCheats();
+ 
+ 	int wantedLevel = playerCheats.GetWantedLevel();
+@@ -562,8 +538,10 @@ checkWantedLevelLua(lua_State *L)
+ int
+ killPlayerIfWantedLua(lua_State *L)
+ {
+-	PlayerCheats playerCheats = PlayerCheats();
+-	if(playerCheats.GetWantedLevel() > 0) { PlayerFunctions::Suicide(); }
++	// PlayerCheats playerCheats = PlayerCheats();
++	// if(playerCheats.GetWantedLevel() > 0) { PlayerFunctions::Suicide(); }
++
++	PlayerFunctions::KillIfWanted();
+ 
+ 	return 1;
+ }
+@@ -635,19 +613,7 @@ setRespawnPointLua(lua_State *L)
+ 
+ 	LogFunctions::LogInfo(defines.luaLogFile, spawnVectorString);
+ 
+-	// CVector airportVector = CVector(-1515.1f, -1182.1f, 16.5f);
+-	// float airportHeading = 0.0f;
+-
+-	// vecRestartPos = airportVector;
+-	// fRestartFloat = airportHeading;
+-
+-	// CRestart::OverrideNextRestart(airportVector, airportHeading);
+-	// CRestart::OverridePosition = airportVector;
+-	// CRestart::OverrideHeading = airportHeading;
+-
+-	CRestart::OverrideNextRestart(spawnVector, spawnHeading);
+-	CRestart::OverridePosition = spawnVector;
+-	CRestart::OverrideHeading = spawnHeading;
++	PlayerFunctions::SetRespawnPoint(spawnVector, spawnHeading);
+ 
+ 	return 1;
+ }
+@@ -887,19 +853,17 @@ givePlayerRcCarLua(lua_State *L)
+ int 
+ setPlayerStatLua(lua_State *L)
+ {
+-	int stat = lua_tonumber(L, 1);
+-	float value = lua_tonumber(L, 2);
+-
+-	if(!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
+-	{
+-		return luaL_error(L, "player.set_stat requires a stat and a value to set it to.");
+-	}
++	// This seems to be a way better and quicker way to do error handling for numbers in my lua bridged code.
++	// It seems to actually give errors with this.
++	lua_Integer stat = luaL_checkinteger(L, 1);
++	lua_Number value = luaL_checknumber(L, 2);
+ 
+ 	// This works for setting a players stat, tested with the ROUNDS_FIRED_BY_PLAYER stat.
+ 	// I can now use this to load up my stats from the json save system.
+ 	PlayerUtil::SetStat(static_cast<eStatType>(stat), value);
+ 
+-	return 1;
++	// I guess I'm supposed to return 0 unless I'm pushing a value onto the stack, oops.
++	return 0;
+ }
+ 
+ #endif // LUA_TEST
+-- 
+2.43.0
+

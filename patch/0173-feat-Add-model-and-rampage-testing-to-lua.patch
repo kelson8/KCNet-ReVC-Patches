@@ -1,0 +1,350 @@
+From 46eb74de2ac5f5b50d5199ed7774ad219b7734ec Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 20 Sep 2026 18:45:14 -0400
+Subject: [PATCH 173/176] feat: Add model and rampage testing to lua
+
+* New lua commands added:
+game.start_rampage - Disabled
+game.request_model - Untested
+game.has_model_loaded - Untested
+
+* Added rampage testing to ImGui menu.
+* A Few more fixes to try to make this build without DISABLE_GAME_SCRIPTS.
+
+* Make freeroam load system restore the max health for the player, instead of the previous saved health.
+
+* Update changelog.
+---
+ Changelog.md                       | 16 ++++++
+ src/extras/lua/lua_game.cpp        | 81 +++++++++++++++++++++++++++++-
+ src/extras/lua/lua_game.h          |  5 ++
+ src/extras/menus/misc_menu.cpp     | 67 ++++++++++++++++++++++++
+ src/extras/utils/fast_loader.cpp   |  6 +++
+ src/extras/utils/freeroam_util.cpp | 24 ++++++++-
+ 6 files changed, 197 insertions(+), 2 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index abd836c1..bd0c551e 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1148,3 +1148,19 @@ feat: Finally fix mouse crashing and going out of bounds with ImGui mod menu.
+ * Add gbLoadFreeroamSave global for use in lua.
+ 
+ * Update changelog.
++
++**Commit 3**
++
++feat: Add model and rampage testing to lua
++
++* New lua commands added:
++game.start_rampage - Disabled
++game.request_model - Untested
++game.has_model_loaded - Untested
++
++* Added rampage testing to ImGui menu.
++* A Few more fixes to try to make this build without DISABLE_GAME_SCRIPTS.
++
++* Make freeroam load system restore the max health for the player, instead of the previous saved health.
++
++* Update changelog.
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 748215cc..442ee8c5 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -34,8 +34,10 @@
+ 
+ // VC Specific
+ #include "Clock.h"
++#include "Darkel.h"
+ #include "GameLogic.h"
+ #include "Hud.h"
++#include "Streaming.h"
+ #include "Radar.h"
+ #include "Restart.h"
+ #include "Text.h"
+@@ -265,6 +267,20 @@ void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+ 
+ 	//
+ 
++	// Rampages
++	// DISABLED! This needs worked on it'll just crash.
++	// lua_pushcfunction(L, startRampageLua);
++	// lua_setfield(L, -2, "start_rampage");
++
++	// Requesting and loading models
++	lua_pushcfunction(L, requestModelLua);
++	lua_setfield(L, -2, "request_model");
++	lua_pushcfunction(L, hasModelLoadedLua);
++	lua_setfield(L, -2, "has_model_loaded");
++
++	
++	
++
+     // Game namespace
+     lua_setglobal(L, "game");
+ }
+@@ -1107,7 +1123,7 @@ int createHiddenPackageLua(lua_State *L)
+  * Save the custom freeroam json for my saves.
+  * 
+  * Usage:
+- * game.save
++ * game.save()
+  */
+ int saveCustomFreeroamLua(lua_State *L)
+ {
+@@ -1129,6 +1145,69 @@ int loadCustomFreeroamLua(lua_State *L)
+ 	return 0;
+ }
+ 
++/**
++ * Start a rampage
++ * 
++ * TODO Fix this to work, it would be fun to implement.
++ * The weapon currently crashes it and I'm not sure if the peds to attack the player spawn in.
++ * 
++ * Usage:
++ * game.start_rampage(weapon_model, time, kills, pedModel1, pedModel2, pedModel3, pedModel4)
++ * 
++ */
++int startRampageLua(lua_State *L)
++{
++
++	lua_Number weaponModel = lua_tonumber(L, 1);
++	lua_Number time = lua_tonumber(L, 2);
++	lua_Number kills = lua_tonumber(L, 3);
++	lua_Number pedModel1 = lua_tonumber(L, 4);
++	lua_Number pedModel2 = lua_tonumber(L, 5);
++	lua_Number pedModel3 = lua_tonumber(L, 6);
++	lua_Number pedModel4 = lua_tonumber(L, 7);
++
++	CDarkel::StartFrenzy(static_cast<eWeaponType>(weaponModel), time, kills, pedModel1, TheText.Get("PAGE_00"),
++		pedModel2, pedModel3, pedModel4, true, false);
++	return 0;
++}
++
++/**
++ * Request  a model to load
++ * 
++ * Usage:
++ * game.request_model(model_id)
++ */
++int requestModelLua(lua_State *L)
++{
++	lua_Number model = lua_tonumber(L, 1);
++	CStreaming::RequestModel(model, 0);
++	CStreaming::LoadAllRequestedModels(false);
++
++	return 0;
++}
++
++/**
++ * Check if a model has loaded
++ * 
++ * Usage:
++ * game.has_model_loaded(model_id)
++ */
++int hasModelLoadedLua(lua_State *L)
++{
++	lua_Number model = lua_tonumber(L, 1);
++	bool hasModelLoaded = CStreaming::HasModelLoaded(model);
++	pushBooleanToLua(L, hasModelLoaded);
++
++	return 1;
++}
++
++// int markModelAsNoLongerNeededLua(lua_State *L)
++// {
++// 	lua_Number model = lua_tonumber(L, 1);
++
++// 	return 0;
++// }
++
+ 
+ /**
+  * TODO Implement these for pickups later.
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index bf63b261..b004b9d4 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -71,6 +71,11 @@ extern "C" {
+     extern int saveCustomFreeroamLua(lua_State *L);
+     extern int loadCustomFreeroamLua(lua_State *L);
+ 
++    extern int startRampageLua(lua_State *L);
++
++    extern int requestModelLua(lua_State *L);
++    extern int hasModelLoadedLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index cf327016..887aaf65 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -54,6 +54,8 @@
+ #include "ControllerConfig.h"
+ #include "Pad.h"
+ 
++
++#include "Darkel.h"
+ #include "DMAudio.h"
+ 
+ #include "CopPed.h"
+@@ -65,6 +67,7 @@
+ 
+ #include "Physical.h"
+ #include "Pickups.h"
++#include "Streaming.h"
+ 
+ #include "Frontend.h"
+ #include "Text.h"
+@@ -684,6 +687,70 @@ void MiscMenu::MiscTab()
+ 		//
+ 	}
+ 
++	// TODO Test this.
++	// TODO Add this into lua, I think I need a game.wait for this somewhere
++	// Well this shows a timer and everything!
++	// Although the weapon does crash me.
++	// It gives me a blank weapon like I've had happen before.
++	// I'm guessing it just isn't loading the model or something.
++	ImGui::Text("This currently crashes");
++	// ImGui::BeginDisabled();
++	if(ImGui::Button("Start Rampage"))
++	{
++		// eWeaponType weaponModel = WEAPONTYPE_UZI;
++		// What? The TEC9 shoots but theres no model for it.
++		// The other weapons crash it...
++		// Some of these models will not crash, but they don't show in the players hands or on the hud.
++		// I wonder if the game scripts do something else for this?
++		// eWeaponType weaponModel = WEAPONTYPE_TEC9;
++		eWeaponType weaponModel = WEAPONTYPE_SNIPERRIFLE;
++		// Time is in milliseconds.
++		// int32 time = 120000;
++		// Short time for testing.
++		int32 time = 5000;
++		int32 kills = 10;
++		int32 pedModel1 = MI_WFYG1;
++		int32 pedModel2 = MI_WFOBE;
++		int32 pedModel3 = MI_WMYGO;
++		int32 pedModel4 = MI_WFYBU;
++
++
++		// Load all models.
++		// CStreaming::RequestModel(weaponModel, 0);
++		// CStreaming::RequestModel(pedModel1, 0);
++		// CStreaming::RequestModel(pedModel2, 0);
++		// CStreaming::RequestModel(pedModel3, 0);
++		// CStreaming::RequestModel(pedModel4, 0);
++		// CStreaming::LoadAllRequestedModels(false);
++
++		// Make sure the models have loaded.
++		if(!CStreaming::HasModelLoaded(weaponModel) ||
++			!CStreaming::HasModelLoaded(pedModel1) ||
++			!CStreaming::HasModelLoaded(pedModel2) ||
++			!CStreaming::HasModelLoaded(pedModel3) ||
++			!CStreaming::HasModelLoaded(pedModel4))
++		{
++			// Load all models.
++			CStreaming::RequestModel(weaponModel, 0);
++			CStreaming::RequestModel(pedModel1, 0);
++			CStreaming::RequestModel(pedModel2, 0);
++			CStreaming::RequestModel(pedModel3, 0);
++			CStreaming::RequestModel(pedModel4, 0);
++			CStreaming::LoadAllRequestedModels(false);
++			// return;
++		}
++
++		// FindPlayerPed()->GiveWeapon(weaponModel, 9999);
++		// FindPlayerPed()->m_nSelectedWepSlot = WEAPONSLOT_SUBMACHINEGUN;
++	
++		CDarkel::StartFrenzy(weaponModel, time, kills, pedModel1, TheText.Get("PAGE_00"),
++			pedModel2, pedModel3, pedModel4, true, false);
++	}
++
++	// ImGui::EndDisabled();
++	
++
++
+ 	ImGui::Separator();
+ 
+ 	//-----------------------------------
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 4f5f1005..9bbc6096 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -121,6 +121,7 @@ FastLoader::FastLoad()
+ void
+ FastLoader::LoadFreeroamScript()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
+ 	// Probably not required here, just forcing the freeroam script anyways.
+ 	// If the game scripts are disabled this variable is probably discarded.
+ 	CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+@@ -142,7 +143,9 @@ FastLoader::LoadFreeroamScript()
+ 	// FrontEndMenuManager.SwitchMenuOnAndOff();
+ 
+ 
++
+ 	FreeroamUtil::LoadFreeroamJson();
++
+ 	//
+ 
+ 
+@@ -151,6 +154,9 @@ FastLoader::LoadFreeroamScript()
+ 	// DMAudio.SetEffectsFadeVol(0);
+ 	// DMAudio.SetMusicFadeVol(0);
+ 	//
++#else
++	return;
++#endif // DISABLE_GAME_SCRIPTS
+ }
+ 
+ /**
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index e060dccb..8e18878e 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -482,7 +482,10 @@ FreeroamUtil::LoadFreeroamJson()
+ 
+ 			CWorld::Players[CWorld::PlayerInFocus].m_nMoney = stats.value("money", CWorld::Players[CWorld::PlayerInFocus].m_nMoney);
+ 
+-			FindPlayerPed()->m_fHealth = stats.value("health", FindPlayerPed()->m_fHealth);
++			// FindPlayerPed()->m_fHealth = stats.value("health", FindPlayerPed()->m_fHealth);
++			// TODO Make this an option in lua to enable loading the health or not.
++			// I don't know if i want this value always loaded back in.
++			FindPlayerPed()->m_fHealth = CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth;
+ 
+ 			FindPlayerPed()->m_fArmour = stats.value("armor", FindPlayerPed()->m_fArmour);
+ 
+@@ -564,7 +567,26 @@ FreeroamUtil::LoadFreeroamJson()
+ 
+ 				newPosition.z = position.value("z", playerPed->GetPosition().z);
+ 
++
++				// TODO Try to adapt this in GameLogic, under my gbFadeOnDeath globals
++				// It might work for a timer for the fading, so I can do it here also.
++
++				// if ((CTimer::GetTimeInMilliseconds() - pPlayerInfo.m_nWBTime > AddExtraDeathDelay() + 0x800) 
++				// && (CTimer::GetPreviousTimeInMilliseconds() - pPlayerInfo.m_nWBTime <= AddExtraDeathDelay() + 0x800)) {
++
++				// static int newTime = 0;
++				// if(CTimer::GetTimeInMilliseconds() - newTime > 2000) { 
++				// 	newTime = CTimer::GetTimeInMilliseconds();
++				// 	TheCamera.Fade(2.0f, FADE_OUT);
++				// }
++
++				// 
+ 				playerPed->SetPosition(newPosition);
++
++				// if(CTimer::GetTimeInMilliseconds() - newTime > 2000) { 
++					// newTime = CTimer::GetTimeInMilliseconds();
++					// TheCamera.Fade(2.0f, FADE_IN);
++				// }
+ 			}
+ 		}
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,279 @@
+From bdc8575126ced944b07082557e78ff04a83c381d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Sep 2026 03:28:20 -0400
+Subject: [PATCH 091/161] feat: Add toggle for reloading lua scripts
+
+* I added the gbReloadLuaScriptWithKeybind global into freeroam-game.lua, which can enable the F5 keybind, or disable it.
+
+* Make SetupFreeroamScript load the gbReloadLuaScriptWithKeybind variable from lua.
+
+* Rename game title to KCNet ReVC in skeleton.cpp.
+
+* Switch version syntax, add a `1.2.9-1a` to it instead of incrementing the version.
+
+* Fix a crash when starting new game with the pause menu, I had to change something in Frontend.cpp.
+
+* Update changelog, bump version to 1.2.9-1a
+---
+ Changelog.md                                  | 16 +++++++
+ .../lua_scripts/freeroam-game.lua             |  3 ++
+ src/core/Frontend.cpp                         | 14 ++++++
+ src/core/main.cpp                             |  4 ++
+ src/core/main.h                               |  4 ++
+ src/extras/lua/lua_setup.cpp                  |  6 +--
+ src/extras/lua/lua_test.cpp                   | 46 ++++++++++++++++++-
+ src/extras/utils/defines.cpp                  |  2 +-
+ src/skel/skeleton.cpp                         |  4 ++
+ 9 files changed, 93 insertions(+), 6 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index c120ad2e..4edf86ad 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -196,3 +196,19 @@ fix: Make game not crash when new game is started
+ * Add freeroam-enums.lua for later use.
+ 
+ * Update changelog.
++
++### 1.2.9-1a
++
++feat: Add toggle for reloading lua scripts
++
++* I added the gbReloadLuaScriptWithKeybind global into freeroam-game.lua, which can enable the F5 keybind, or disable it.
++
++* Make SetupFreeroamScript load the gbReloadLuaScriptWithKeybind variable from lua.
++
++* Rename game title to KCNet ReVC in skeleton.cpp.
++
++* Fix a crash when starting new game with the pause menu, I had to change something in Frontend.cpp.
++
++* Switch version syntax, add a `1.2.9-1a` to it instead of incrementing the version.
++
++* Update changelog, bump version to 1.2.9-1a.
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index 16f83436..f1ced867 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -47,6 +47,9 @@ dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
+ -- This is in the ini, but I will load it in this freeroam script when DISABLE_GAME_SCRIPTS is toggled on.
+ gbVehiclesDontCatchFireWhenTurningOver = false
+ 
++-- If this is enabled, you can reload the lua script with F5 but anytime you press F5 you'll be teleported away.
++-- So this can be useful for debugging the script, otherwise you can press new game from the menu to reload the scripts.
++gbReloadLuaScriptWithKeybind = true
+ 
+ -- Spawn in the player, mostly for spawning without the .scm scripts
+ -- This works in here now!
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index e73a1773..45cf29cd 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -45,6 +45,10 @@
+ #include "misc_enums.h"
+ #endif // CUSTOM_CODE - For new script enums
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "init_game.h"
++#endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -4906,6 +4910,9 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 			CTheScripts::ScriptToLoad = 1;
+ #endif // CUSTOM_CODE - For new script enums
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++			InitGame::GetInstance().SetPlayerCreated(false);
++#endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 			DoSettingsBeforeStartingAGame();
+ 			return;
+ 		}
+@@ -4942,6 +4949,10 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 
+ 	if (optionSelected && m_nMenuFadeAlpha == 255) {
+ 		if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_TargetMenu == MENUPAGE_NEW_GAME_RELOAD && m_bGameNotLoaded) {
++
++#ifdef DISABLE_GAME_SCRIPTS
++			InitGame::GetInstance().SetPlayerCreated(false);
++#endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 			DoSettingsBeforeStartingAGame();
+ 		} else if (hasNativeList(m_nCurrScreen)) {
+ 			switch (m_nCurrExLayer) {
+@@ -5042,6 +5053,9 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 				break;
+ 			}
+ 			case MENUACTION_NEWGAME:
++#ifdef DISABLE_GAME_SCRIPTS
++				InitGame::GetInstance().SetPlayerCreated(false);
++#endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 				DoSettingsBeforeStartingAGame();
+ 				break;
+ #ifdef LEGACY_MENU_OPTIONS
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index f45592cc..dc3cca1b 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -165,6 +165,10 @@ uint8 gbScriptToLoad;
+ uint8 gbGameSaveOnStartup = 0;
+ #endif
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++bool gbReloadLuaScriptWithKeybind;
++#endif // DISABLE_GAME_SCRIPTS - Reload lua game scripts toggle 
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/core/main.h b/src/core/main.h
+index 0d835baa..40b74d40 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -120,6 +120,10 @@ extern uint8 gbScriptToLoad;
+ extern uint8 gbGameSaveOnStartup;
+ #endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++extern bool gbReloadLuaScriptWithKeybind;
++#endif // DISABLE_GAME_SCRIPTS - Reload lua game scripts toggle 
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index b05be737..b98f3b37 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -149,9 +149,9 @@ LuaSetup::LuaPlayingGameLoop()
+ 		// TODO Add toggle for this somewhere, it shouldn't always be enabled.
+ 		// TODO Make this always load the game audio, sometimes I have to pause and unpause to fix it.
+ 
+-		// TODO Fix this, it seems to crash it now for some reason.
+-		// It's because of me not resetting the m_bPlayerCreated back to false, I will have to do that here I guess.
+-		if(KEYDOWN(rsF5) && CTimer::GetTimeInMilliseconds() - newTime > 500)
++		// TODO Maybe put toggle for this as reloadGame global in the freeroam-game.lua script?
++		// if(KEYDOWN(rsF5) && CTimer::GetTimeInMilliseconds() - newTime > 500)
++		if(gbReloadLuaScriptWithKeybind && KEYDOWN(rsF5) && CTimer::GetTimeInMilliseconds() - newTime > 500)
+ 		{
+ 			// Reset the players created status, otherwise this will not allow them to respawn and crash.
+ 			// Oops, I didn't mean to do that.
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index b5366fae..6da9e331 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -709,6 +709,9 @@ LuaTest::SetupFreeroamScript()
+ 		// 	std::string timeToPassString = "Time to pass set to: " + std::to_string(timeToPass);
+ 		// }
+ 
++		//------
++		// If the vehicles catch fire when turning over.
++		//------
+ 		lua_getglobal(m_luaVM, "gbVehiclesDontCatchFireWhenTurningOver");
+ 		if(lua_isboolean(m_luaVM, -1)) {
+ 			bool toggleVehiclesDontCatchFireWhenTurningOver = static_cast<float>(lua_toboolean(m_luaVM, -1));
+@@ -719,10 +722,25 @@ LuaTest::SetupFreeroamScript()
+ 
+ 			TRACE(toggleRespawnString.c_str());
+ 
+-			// This is spammy
+ 			LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
+ 		}
+ 
++		//------
++
++		//------
++
++		// For toggling reload of the freeroam-game.lua script.
++		// By default in the lua scripts this is set to false, but can easily be turned on.
++		// gbReloadLuaScriptWithKeybind
++		lua_getglobal(m_luaVM, "gbReloadLuaScriptWithKeybind");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool canReloadLuaScripts = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbReloadLuaScriptWithKeybind = canReloadLuaScripts;
++			
++			std::string toggleReloadKeybindString = canReloadLuaScripts ? "be reloaded" : "no longer be reloaded";
++
++			LogFunctions::LogInfo(defines.luaLogFile, "Lua scripts can " + toggleReloadKeybindString);
++		}
+ 	}
+ }
+ 
+@@ -867,7 +885,7 @@ LuaTest::InitLua()
+ 
+ #endif //LUA_TABLE_TEST
+ 
+-		}
++		// }
+ 		//} else {
+ 		//	LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaLocationsScript + "Couldn't be loaded!");
+ 		//}
+@@ -949,6 +967,29 @@ LuaTest::InitLua()
+ 		// LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
+ 	}
+ 
++	//-------------
++	// TODO Figure this out, get the player position in lua.
++	// Try to get the floats as global variables for testing.
++	// Then later on try to pass in a CVector to lua.
++	//-------------
++	// lua_pushcfunction(m_luaVM, FindPlayerCoors().x);
++	// lua_setglobal(m_luaVM, "player_pos")
++
++	
++	// https://stackoverflow.com/questions/19553060/how-to-pass-a-global-value-from-c-to-lua
++	// TODO Figure out how to name these, for getting the players current position.
++	// lua_pushnumber(m_luaVM, FindPlayerCoors().x);
++	// lua_setglobal(m_luaVM, "playerX");
++		
++	// lua_pushnumber(m_luaVM, FindPlayerCoors().y);
++	// lua_setglobal(m_luaVM, "playerY");
++
++	// lua_pushnumber(m_luaVM, FindPlayerCoors().z);
++	// lua_setglobal(m_luaVM, "playerZ");
++
++	//---------------
++
++
+ 	// if(lua_isinteger(m_luaVM, -1))
+ 
+ 	// Run a function in lua
+@@ -972,6 +1013,7 @@ LuaTest::InitLua()
+ 	//		}
+ 	//	}
+ 
++	}
+ 	else
+ 	{
+ 		LogFunctions::LogError(defines.logFile, "The lua file " + defines.luaScript + "Couldn't be loaded!");
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index c7a54ab9..7cc73f1e 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.9a";
++std::string Defines::programVersion = "1.2.9-1a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/skel/skeleton.cpp b/src/skel/skeleton.cpp
+index 2bb23460..4a6262b7 100644
+--- a/src/skel/skeleton.cpp
++++ b/src/skel/skeleton.cpp
+@@ -397,7 +397,11 @@ RsInitialize(void)
+ 	 */
+ 	RwBool              result;
+ 
++#ifdef CUSTOM_CODE
++	RsGlobal.appName = RWSTRING("KCNet ReVC");
++#else
+ 	RsGlobal.appName = RWSTRING("GTA: Vice City");
++#endif // CUSTOM_CODE - Add custom title to game
+ 	RsGlobal.maximumWidth = DEFAULT_SCREEN_WIDTH;
+ 	RsGlobal.maximumHeight = DEFAULT_SCREEN_HEIGHT;
+ 	RsGlobal.width = DEFAULT_SCREEN_WIDTH;
+-- 
+2.43.0
+

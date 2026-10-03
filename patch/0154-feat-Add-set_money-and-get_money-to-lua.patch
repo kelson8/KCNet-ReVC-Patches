@@ -1,0 +1,591 @@
+From cbc4cea0310e8d1fa55df8d87e5a47267b697070 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 18:55:36 -0400
+Subject: [PATCH 154/161] feat: Add set_money and get_money to lua
+
+* Now you can set the players amount of money in my scripts.
+
+* Disable mission script starting with debug menu using my custom scripts, this will crash.
+
+* Added world.create_car_generator, and world.switch_car_generator to lua.
+
+* Add test for saving the car generators to the json file.
+
+* Add game.override_next_restart, and game.cancel_override_restart to lua.
+
+* Update changelog, change version to 1.2.14-3a.
+---
+ Changelog.md                               |  18 +-
+ src/extras/debug/debug_functions.cpp       |   2 +-
+ src/extras/functions/vehicle_functions.cpp |  10 ++
+ src/extras/lua/lua_game.cpp                |  51 ++++++
+ src/extras/lua/lua_game.h                  |   2 +
+ src/extras/lua/lua_player.cpp              |  38 ++++
+ src/extras/lua/lua_player.h                |   3 +
+ src/extras/lua/lua_world.cpp               | 197 ++++++++++++++++++++-
+ src/extras/lua/lua_world.h                 |   4 +
+ src/extras/utils/defines.cpp               |   2 +-
+ src/extras/utils/freeroam_util.cpp         |  28 ++-
+ 11 files changed, 347 insertions(+), 8 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index a6d1fb32..c3579f30 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -897,7 +897,7 @@ fix: Revert player fallback spawn
+ 
+ * Update changelog, change version to 1.2.14-1a.
+ 
+-### Latest 1.2.14-2a
++### 1.2.14-2a
+ 
+ **Commit 1**
+ 
+@@ -922,3 +922,19 @@ feat: Add get game hour and minute to lua
+ * Move save file items into preprocessor defines in freeroam_util.
+ 
+ * Update changelog.
++
++### Latest 1.2.14-3a
++
++feat: Add set_money and get_money to lua
++
++* Now you can set the players amount of money in my scripts.
++
++* Disable mission script starting with debug menu using my custom scripts, this will crash.
++
++* Added world.create_car_generator, and world.switch_car_generator to lua.
++
++* Add test for saving the car generators to the json file.
++
++* Add game.override_next_restart, and game.cancel_override_restart to lua.
++
++* Update changelog, change version to 1.2.14-3a.
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index de56eded..962b0c0a 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -818,7 +818,7 @@ DebugMenuPopulate(void)
+ #endif // CUSTOM_CODE
+ 
+ 		// Mission list
+-#ifdef MISSION_SWITCHER
++#if defined(MISSION_SWITCHER) && !defined(DISABLE_GAME_SCRIPTS)
+ 		// Hmm, this is how these are added.
+ 		DebugMenuEntry *missionEntry;
+ 		static const char *missions[] = {"Initial",
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index c9d4dce0..48a47d07 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -139,12 +139,22 @@ void
+ VehicleFunctions::BlowUpVehicle()
+ {
+ 	CPlayerPed *pPlayer = FindPlayerPed();
++
++	// Why not, make this throw the vehicle in the air as a test.
++	// This also puts the players camera in the air when they die.
++	CVector playerPosOffset = CVector(FindPlayerCoors().x, FindPlayerCoors().y, FindPlayerCoors().z + 25);
++
+ 	if(IsPlayerInVehicle() && pPlayer->m_pMyVehicle) {
+ 		// Get this from my new function, this should work
+ 		CVehicle *playerVeh = playerUtil.GetCurrentVehicle();
+ 		// Just in case, set the health to 0 also, this gurantees that the vehicle explodes.
+ 		playerVeh->m_fHealth = 0.0f;
+ 		playerVeh->BlowUpCar(pPlayer);
++		// Some extras below for screwing around with.
++		// TODO Possible chaos mode functions?
++		// I could set the vehicles position and make it flip upside down.
++		playerVeh->SetPosition(playerPosOffset);
++		// playerVeh->SetOrientation()
+ 	}
+ }
+ 
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index b78f39b3..835df3bb 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -73,6 +73,7 @@ void RegisterGameFunctionsLua(lua_State* L)
+     // Game cheat codes in Lua.
+     lua_pushcfunction(L, cheatCodesLua);
+     lua_setfield(L, -2, "cheat");
++	//
+ 
+ 	// Setting respawn points when wasted/busted
+ 	// TODO Fix these, they seem to work but I'm not sure.
+@@ -83,6 +84,16 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 
+ 	lua_pushcfunction(L, setPoliceStationRespawnLua);
+ 	lua_setfield(L, -2, "set_police_respawn");
++	//
++
++	// Overriding the respawn points for wasted/busted
++	lua_pushcfunction(L, overrideRestartLua);
++	lua_setfield(L, -2, "override_next_restart");
++
++	lua_pushcfunction(L, cancelOverrideRestartLua);
++	lua_setfield(L, -2, "cancel_override_restart");
++	//
++
+ 	
+ 	// Start a fire
+ 	// TODO Fix this to only start one fire, this can be spammed for a fun effect.
+@@ -354,6 +365,46 @@ int setPoliceStationRespawnLua(lua_State *L)
+ 	return 1;
+ }
+ 
++/**
++ * Override the respawn point for the next spawn.
++ * This is mostly used where I set the wasted and busted respawns.
++ * 
++ * Usage:
++ * 
++ * game.override_next_restart({x = 25, y = 25, z = 25}, heading)
++ */
++int overrideRestartLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++	auto heading = lua_tonumber(L, 2);
++
++	if(!pos)
++	{
++		return luaL_error(L, "game.override_next_restart requires a Vector table with an x, y, and z.");
++	}
++
++	if(heading < 0.0f || heading > 320.0f)
++	{
++		return luaL_error(L, "game.override_next_restart, heading can be between 0.0 and 320.0.");
++	}
++
++	CRestart::OverrideNextRestart(*pos, heading);
++
++	return 0;
++}
++
++/**
++ * Cancel an override for the spawn point.
++ * 
++ * Usage:
++ * game.cancel_override_restart()
++ */
++int cancelOverrideRestartLua(lua_State *L)
++{
++	CRestart::CancelOverrideRestart();
++	return 0;
++}
++
+ /**
+  * Start a fire
+  * 
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 8fa05527..93f12312 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -20,6 +20,8 @@ extern "C" {
+     // Respawns
+     extern int setHospitalRespawnLua(lua_State *L);
+     extern int setPoliceStationRespawnLua(lua_State *L);
++    extern int overrideRestartLua(lua_State *L);
++    extern int cancelOverrideRestartLua(lua_State *L);
+     
+     extern int startFireLua(lua_State *L);
+     
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index c451daf1..f66b2c18 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -195,6 +195,14 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, setPlayerStatLua);
+ 	lua_setfield(L, -2, "set_stat");
+ 	
++	// Get/set players money
++	lua_pushcfunction(L, setPlayerMoneyLua);
++	lua_setfield(L, -2, "set_money");
++
++	lua_pushcfunction(L, getPlayerMoneyLua);
++	lua_setfield(L, -2, "get_money");
++	
++
+ 	// Player namespace
+     lua_setglobal(L, "player");
+ }
+@@ -870,4 +878,34 @@ setPlayerStatLua(lua_State *L)
+ 	return 0;
+ }
+ 
++/**
++ * Set the players amount of money.
++ * 
++ * Usage:
++ * player.set_money(value)
++ */
++int 
++setPlayerMoneyLua(lua_State *L)
++{
++	lua_Integer newMoney = luaL_checkinteger(L, 1);
++	CustomCheats::MoneyCheat(newMoney);
++
++	return 0;
++}
++
++/**
++ * Get the players amount of money.
++ * 
++ * Usage:
++ * player.get_money()
++ */
++int
++getPlayerMoneyLua(lua_State *L)
++{
++	int currentMoney = CWorld::Players[CWorld::PlayerInFocus].m_nMoney;
++
++	lua_pushnumber(L, currentMoney);
++	return 1;
++}
++
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index a5670f0a..45f3407c 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -65,6 +65,9 @@ extern "C" {
+ 
+ 	extern int setPlayerStatLua(lua_State *L);
+ 
++	extern int setPlayerMoneyLua(lua_State *L);
++	extern int getPlayerMoneyLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 61bfcab0..b72bb3e7 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -4,6 +4,9 @@
+ 
+ #include "lua_world.h"
+ 
++#include <chrono>
++#include <thread>
++
+ // Lua functions
+ #include "lua_functions.h"
+ 
+@@ -50,6 +53,9 @@
+ #include "CarCtrl.h"
+ #include "Population.h"
+ #include "World.h"
++#include "Zones.h"
++
++#include "CarGen.h"
+ 
+ // clang-format off
+ 
+@@ -122,7 +128,7 @@ extern "C"
+ 		lua_setfield(L, -2, "switch_ped_roads_on");
+ 
+ 		// Objects
+-		// TODO Fix these later, I have create_object_no_offset started, but it crashes.
++		// TODO Fix these later, I have create_object_no_offset started, but now it just doesn't do anything.
+ 		// lua_pushcfunction(L, createObjectLua);
+ 		// lua_setfield(L, -2, "create_object");
+ 
+@@ -144,7 +150,17 @@ extern "C"
+ 
+ 		// Setup the target marker
+ 		lua_pushcfunction(L, setupTargetMarkerLua);
+-		lua_setfield(L, -2, "set_marker");		
++		lua_setfield(L, -2, "set_marker");
++
++		// Car generators
++
++		// Create the car generators.
++		lua_pushcfunction(L, createCarGeneratorLua);
++		lua_setfield(L, -2, "create_car_generator");
++
++		// Switch the car generators on/off.
++		lua_pushcfunction(L, switchCarGeneratorLua);
++		lua_setfield(L, -2, "switch_car_generator");
+ 
+ 		// World namespace
+     	lua_setglobal(L, "world");
+@@ -472,12 +488,41 @@ extern "C"
+ 			return luaL_error(L, "world.create_object_no_offset expects one vector table with x, y and z values");
+ 		}
+ 
++		// Well now, I found this site that has a full list of models
++		// https://gtastuff.com/models/?game=vc
++
+ 		// int objectModel = MI_BIN;
+-		int objectModel = MI_BARRIER1;
++		// 352 = Bin1
++		// int objectModel = 352;
++		// One of the gates for the islands.
++		int objectModel = 2444;
+ 
+ 		CStreaming::RequestModel(objectModel, 0);
+ 
+-		if(!CStreaming::HasModelLoaded(objectModel))
++		// std::this_thread::sleep_for(std::chrono::milliseconds(1000));
++
++		static int newTime = 0;
++		// Max time to load the object.
++		int maxTime = 2000;
++
++		// Has the model loaded.
++		bool hasModelLoaded = false;
++
++		// if(CTimer::GetTimeInMilliseconds() - newTime > maxTime) {
++			// newTime = CTimer::GetTimeInMilliseconds();
++		// }
++
++		// TODO Figure out how to try to make this delay like it would in the original scripts.
++		while(CTimer::GetTimeInMilliseconds() - newTime > maxTime)
++		{
++			newTime = CTimer::GetTimeInMilliseconds();
++
++			if(CStreaming::HasModelLoaded(objectModel))
++				hasModelLoaded = true;
++		}
++
++		// Make sure the model has loaded.
++		if(!CStreaming::HasModelLoaded(objectModel) && !hasModelLoaded)
+ 		{
+ 			return luaL_error(L, "world.create_object_no_offset error, the object model was not loaded!");
+ 		}
+@@ -611,6 +656,150 @@ extern "C"
+ 
+ 
+ 
++	//-------------------
++	// Zone info
++	//-------------------
++
++	/**
++	 * 
++	 * Set the ped zone info
++	 * 
++	 * TODO Implement this
++	 * SET_ZONE_PED_INFO
++	 * https://library.sannybuilder.com/#/vc/script/extensions/default/015C
++	 * 
++	 * Usage (gxtKey is a zone gxt key, dayOrNight is either 0 or 1.):
++	 * world.set_ped_zone_info(gxtkey, dayOrNight, density, cuban, haitian, street, diaz, security, biker, player, golfer, gang9, cop)
++	 */
++	int setPedZoneInfoLua(lua_State *L)
++	{
++		// int density = 
++		// CTheZones::SetZonePedInfo()
++
++		return 0;
++	}
++
++	// TODO Implement these below, they might fix some of the peds being in the wrong places.
++	// GET_RANDOM_CHAR_IN_ZONE
++
++	// SET_ZONE_CAR_INFO
++
++	// SET_ZONE_CIVILIAN_CAR_INFO
++
++	// SET_ZONE_GROUP
++
++	// SET_GANG_CAR_MODEL
++
++	// These will also be useful for parked cars.
++
++	// CREATE_CAR_GENERATOR
++	// SWITCH_CAR_GENERATOR
++
++	//-------------------
++
++	//-------------------
++	// Car generators
++	//-------------------
++
++	/**
++	 * Create a car generator
++	 * 
++	 * This works!
++	 * Added in v1.2.14-3a
++	 * 
++	 * CREATE_CAR_GENERATOR 
++	 * 
++	 * https://library.sannybuilder.com/#/vc/script/extensions/default/014B
++	 * 
++	 * Usage:
++	 * world.create_car_generator({x = 25, y = 25, z = 25}
++	 * 	heading, vehicle_model_id, primary_color, secondary_color, 
++	 * force_spawn, alarm_chance, 
++	 * door_lock_chance, min_delay, max_delay)
++	 */
++	int createCarGeneratorLua(lua_State *L)
++	{
++		auto carGeneratorPos = luaGetCVector(L, 1);
++		auto heading = luaL_checkinteger(L, 2);
++		auto vehicleModelId = luaL_checkinteger(L, 3);
++		
++		// Ints
++		auto primaryColor = luaL_checkinteger(L, 4);
++		auto secondaryColor = luaL_checkinteger(L, 5);
++		//
++
++		bool forceSpawn = static_cast<float>(lua_toboolean(L, 6));
++
++		auto alarmChance = luaL_checkinteger(L, 7);
++		auto doorLockChance = luaL_checkinteger(L, 8);
++		auto minDelay = luaL_checkinteger(L, 9);
++		auto maxDelay = luaL_checkinteger(L, 10);
++
++		std::string errorMsg = "world.set_marker expects these values: world.create_car_generator({x = 25, y = 25, z = 25},"
++		" heading, vehicle_model_id, primary_color, secondary_color, force_spawn, alarm_chance,"
++	 	" door_lock_chance, min_delay, max_delay)";
++
++		if(!carGeneratorPos)
++		{
++			return luaL_error(L, errorMsg.c_str());
++		}
++
++		if(!lua_isboolean(L, 6))
++		{
++			return luaL_error(L, errorMsg.c_str());
++		}
++
++		CTheCarGenerators::CreateCarGenerator(carGeneratorPos->x, carGeneratorPos->y, carGeneratorPos->z, 
++			heading, vehicleModelId, primaryColor, secondaryColor, 
++			forceSpawn, alarmChance, doorLockChance, minDelay, maxDelay);
++
++			// This works for getting the amount of car generators!
++			// TODO Make this return the current one, I'm not sure how to do that yet.
++			// TODO Make this save the vehicle generator values like in the original game.
++			// TODO Make this only spawn one car generator within a range of a set coordinates.
++			//  So don't let one be spawned within like 30-50 meters of each other or something.
++			for(int i = 0; i < CTheCarGenerators::NumOfCarGenerators; i++)
++			{
++				std::cout << "Car generator active: " << i << std::endl;
++			}
++
++		return 0;
++	}
++
++	/**
++	 * Toggle a car generator
++	 *
++	 * Added in v1.2.14-3a
++	 * 
++	 * Modifed from SWITCH_CAR_GENERATOR.
++	 * I removed the <=100 check which doesnt seem to do anything.
++	 * 
++	 * Param 1 is the id for the car generator, this is between 1 and 185.
++	 * Param2 is the value for the car generator, if it's set to 101 it is on and 0 is off.
++	 * 
++	 * Usage:
++	 * world.switch_car_generator(car_generator, value)
++	 */
++	int switchCarGeneratorLua(lua_State *L)
++	{
++		lua_Integer carGenerator = luaL_checkinteger(L, 1);
++		lua_Integer carToggle = luaL_checkinteger(L, 2);
++
++		// TODO Make this generate a random value that isn't in use for the car generator.
++		// I may just do this in my scripts, and make sure it never goes above the limit.
++		// This value will also be in the save file later on.
++		CCarGenerator* pCarGen = &CTheCarGenerators::CarGeneratorArray[carGenerator];
++		if(carToggle == 0)
++		{
++			pCarGen->SwitchOff();
++		} else
++		{
++			pCarGen->SwitchOn();
++		}
++
++		return 0;
++	}
++
+ 	//-------------------
+ 
+ 	/**
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 6d2563f0..ed0330bf 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -48,6 +48,10 @@ extern "C" {
+ 	// Target marker
+ 	extern int setupTargetMarkerLua(lua_State *L);
+ 
++	// Car generators
++	extern int createCarGeneratorLua(lua_State *L);
++	extern int switchCarGeneratorLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 555d4c9f..932f6afc 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-2a";
++std::string Defines::programVersion = "1.2.14-3a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 5f1af2a1..05d0d191 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -10,6 +10,7 @@
+ #include "vehicle_functions.h"
+ 
+ // ReVC
++#include "CarGen.h"
+ #include "Clock.h"
+ #include "Entity.h"
+ #include "Frontend.h"
+@@ -189,7 +190,8 @@ FreeroamUtil::SaveFreeroamJson()
+ 
+ 		// save["stats"][""] = CStats::;
+ 
+-		// New - Added in v1.2.13-11a
++		//----------------
++		// Added in v1.2.13-11a
+ 		// For saving the marker on the map if it exists.
+ 		// First, make sure the target marker is on the map.
+ 		if(CRadar::TargetMarkerId != -1) {
+@@ -200,6 +202,30 @@ FreeroamUtil::SaveFreeroamJson()
+ 		}
+ 		//
+ 
++		//----------------
++		// Added in 1.2.14-3a
++		// For saving car generators on the map.
++		// TODO Test this, I'm not sure if it will work for the car generators.
++
++		// Save the car generators.
++		// if(CTheCarGenerators::NumOfCarGenerators >= 0)
++		// {
++		save["car_generators"]["current_active"] = CTheCarGenerators::NumOfCarGenerators;
++		// }
++
++		// Save the active car generators and counters
++		save["car_generators"]["current_active"] = CTheCarGenerators::CurrentActiveCount;
++		save["car_generators"]["process_counter"] = CTheCarGenerators::ProcessCounter;
++		save["car_generators"]["generate_if_player_is_close_counter"] = CTheCarGenerators::GenerateEvenIfPlayerIsCloseCounter;
++
++		// TODO Figure this out, I need to save the status of these also.
++		// for (int i = 0; i < NUM_CARGENS; i++)
++			// save["car_generators"]["info"][i] = CTheCarGenerators::CarGeneratorArray[i];
++			// WriteSaveBuf(buffer, CarGeneratorArray[i]);
++
++		//
++		//----------------
++
+ 		/*
+ 		 * Write to a temporary file first. If the game crashes while
+ 		 * writing, the previous save is not immediately destroyed.
+-- 
+2.43.0
+

@@ -1,0 +1,261 @@
+From 050bc92b9c4fa19f1c6316492eb43a0ae11730b9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 17:02:24 -0400
+Subject: [PATCH 138/161] feat: Make load game option load into json save
+
+* Now load game in the menu loads into the custom json save format.
+
+* I re-enabled some menus in Frontend.cpp that I had previsouly disabled with DISABLE_GAME_SCRIPTS.
+
+* Update changelog, change version to 1.2.13-10a.
+---
+ Changelog.md                       | 10 ++++++
+ src/core/Frontend.cpp              | 50 ++++++++++++++++----------
+ src/core/MenuScreensCustom.cpp     |  1 -
+ src/extras/utils/defines.cpp       |  2 +-
+ src/extras/utils/freeroam_util.cpp | 58 ++++++++++++++++++++++++++++++
+ 5 files changed, 100 insertions(+), 21 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 037ff321..1d243d4f 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -736,3 +736,13 @@ feat: Add option to change load game slots text
+ * I figured out how to change the text that shows up on the load game slots, and only set one slot to show up.
+ 
+ * Update changelog.
++
++### 1.2.13-10a
++
++feat: Make load game option load into json save
++
++* Now load game in the menu loads into the custom json save format.
++
++* I re-enabled some menus in Frontend.cpp that I had previsouly disabled with DISABLE_GAME_SCRIPTS.
++
++* Update changelog, change version to 1.2.13-10a.
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index e405a04b..9deca109 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -52,6 +52,8 @@
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ #include "message_util.h"
++#include "freeroam_util.h"
++#include "lua_test.h"
+ #endif // DISABLE_GAME_SCRIPTS - Custom save slots.
+ 
+ 
+@@ -1048,7 +1050,6 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ #endif
+ 
+ 	switch (m_nCurrScreen) {
+-#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_CHOOSE_LOAD_SLOT:
+ 		case MENUPAGE_CHOOSE_DELETE_SLOT:
+ 		case MENUPAGE_CHOOSE_SAVE_SLOT:
+@@ -1057,7 +1058,6 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 				MENU_X_LEFT_ALIGNED(30.0f), MENU_Y(320.0f), 
+ 				MENU_X_LEFT_ALIGNED(605.0f), MENU_Y(330.0f), CRGBA(LIST_BACKGROUND_COLOR.r, LIST_BACKGROUND_COLOR.g, LIST_BACKGROUND_COLOR.b, FadeIn(LIST_BACKGROUND_COLOR.a)));
+ 			break;
+-#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		case MENUPAGE_SOUND_SETTINGS:
+ 			PrintRadioSelector();
+ 			break;
+@@ -5139,16 +5139,21 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 					m_nCurrSaveSlot = saveSlot - SAVESLOT_1;
+ 					if (Slots[m_nCurrSaveSlot] != SLOT_EMPTY)
+ 					{
+-						// TODO Switch this format in the future, so it asks for confirmation.
+-						// I'll need to adjust somethings for this to work.
+-						// SwitchToNewScreen(MENUPAGE_LOAD_SLOT_CONFIRM);
+-
+-						// TODO Make this load json save.
+-						// For now, it just loads the new game, but at least the option is now on the menu.
+-						// This needs to make sure the player is set to not created, otherwise my code will crash here.
+-						// This works! Although it breaks the delete game options, which I'll try to implement later.
+-						InitGame::GetInstance().SetPlayerCreated(false);
+-						DoSettingsBeforeStartingAGame();
++
++						//-------------------
++						// Load confirmation message
++						//-------------------
++
++						// This now loads the JSON save with a confirmation message.
++						// I just added a check after checking if the save slot is invalid.
++						// Probably not a good idea, I'll patch out that check later though.
++						// I really need to make my own save validator to check if
++						//  the save format and version are the same, if not don't attempt to load it.
++						if(m_nCurrScreen == MENUPAGE_CHOOSE_LOAD_SLOT) {
++							SwitchToNewScreen(MENUPAGE_LOAD_SLOT_CONFIRM);
++						}
++				
++						//-------------------
+ 					}
+ 				}
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+@@ -5891,7 +5896,6 @@ CMenuManager::ProcessFileActions()
+ {
+ 	switch (m_nCurrScreen) {
+ 
+-#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_LOADING_IN_PROGRESS:
+ #ifdef MISSION_REPLAY
+ 			if (MissionSkipLevel) {
+@@ -5926,15 +5930,26 @@ CMenuManager::ProcessFileActions()
+ 				if (!m_bGameNotLoaded)
+ 					MessageScreen("FELD_WR", true);
+ #endif
++				// TODO Make this also load my freeroam stats and where the player last was.
+ 				DoSettingsBeforeStartingAGame();
+ 				m_bWantToLoad = true;
+ 			} else
++#ifdef DISABLE_GAME_SCRIPTS
++			// TODO Move this out of here, and switch CheckSlotDataValid to my own functions to use.
++			// Currently this will run if the slot data is not valid, but I'm not sure how the game checks that.
++
++			// This fixes the load game! Now it'll load from my json save file.
++			// TODO Make this respawn the player with a fade effect later.
++			InitGame::GetInstance().SetPlayerCreated(false);
++			FreeroamUtil::LoadFreeroamJson();
++			DoSettingsBeforeStartingAGame();
++#else
+ 				SwitchToNewScreen(MENUPAGE_NEW_GAME);
++#endif // DISABLE_GAME_SCRIPTS - Custom save slots.
+ 
+ 			break;
+ 
+-#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+-
++		// TODO Implement this for my delete feature later.
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_DELETING_IN_PROGRESS:
+ 		{
+@@ -5963,6 +5978,7 @@ CMenuManager::ProcessFileActions()
+ 
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
++		// TODO Implement this for my save feature later.
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_SAVING_IN_PROGRESS:
+ 		{
+@@ -6049,21 +6065,17 @@ CMenuManager::SwitchMenuOnAndOff()
+ #endif
+ 			) {
+ 
+-#ifndef DISABLE_GAME_SCRIPTS
+ 			if (m_nCurrScreen != MENUPAGE_LOADING_IN_PROGRESS
+ #ifdef XBOX_MESSAGE_SCREEN
+ 				&& m_nCurrScreen != MENUPAGE_SAVING_IN_PROGRESS
+ #endif
+ 				) {
+-#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 				DoRWStuffStartOfFrame(0, 0, 0, 0, 0, 0, 255);
+ 				DoRWStuffEndOfFrame();
+ 				DoRWStuffStartOfFrame(0, 0, 0, 0, 0, 0, 255);
+ 				DoRWStuffEndOfFrame();
+ 
+-#ifndef DISABLE_GAME_SCRIPTS
+ 			}
+-#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ 			if (m_bShutDownFrontEndRequested)
+ 				m_bMenuActive = false;
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 4f7ed14e..c468eb26 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -535,7 +535,6 @@ CMenuScreenCustom aScreens[] = {
+ 	{ "FES_DEL", MENUPAGE_NEW_GAME, nil, nil,
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		MENUACTION_CHECKSAVE,	"FEM_SL1",	{nil, SAVESLOT_1,		0}, 40, 90, MENUALIGN_LEFT,
+-
+ 		MENUACTION_CHECKSAVE,	"FEM_SL2",	{nil, SAVESLOT_2,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL3",	{nil, SAVESLOT_3,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL4",	{nil, SAVESLOT_4,		0}, 0, 0, MENUALIGN_LEFT,
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 3a1d25cf..724be599 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-9a";
++std::string Defines::programVersion = "1.2.13-10a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 1c9eced4..0f8a9de8 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -325,6 +325,64 @@ bool FreeroamUtil::LoadFreeroamJson()
+             FindPlayerPed()->m_fHealth = stats.value("health", FindPlayerPed()->m_fHealth);
+ 
+ 			FindPlayerPed()->m_fArmour = stats.value("armor", FindPlayerPed()->m_fArmour);
++
++            //--------------------
++            // New stats
++            // Added in: v1.2.13-9a
++            //--------------------
++
++            CStats::PeopleKilledByPlayer = stats.value("peds_killed_by_player", CStats::PeopleKilledByPlayer);
++            CStats::PeopleKilledByOthers = stats.value("peds_killed_by_others", CStats::PeopleKilledByOthers);
++            CStats::KillsSinceLastCheckpoint = stats.value("kills_since_last_checkpoint", CStats::KillsSinceLastCheckpoint);
++
++            CStats::KgsOfExplosivesUsed = stats.value("kgs_of_explosives_used", CStats::KgsOfExplosivesUsed);
++
++            // Vehicles blown up
++            CStats::BoatsExploded = stats.value("boats_exploded", CStats::KgsOfExplosivesUsed);
++            CStats::HelisDestroyed = stats.value("helis_destroyed", CStats::HelisDestroyed);
++            CStats::CarsExploded = stats.value("vehicles_exploded", CStats::CarsExploded);
++
++            // Bullets fired and hit.
++            CStats::BulletsThatHit = stats.value("bullets_that_hit", CStats::BulletsThatHit);
++            CStats::RoundsFiredByPlayer = stats.value("rounds_fired_by_player", CStats::RoundsFiredByPlayer);
++
++            // Days passed
++            CStats::DaysPassed = stats.value("days_passed", CStats::DaysPassed);
++
++            // Distance travelled
++            CStats::DistanceTravelledByBike = stats.value("distance_traveled_by_bike", CStats::DistanceTravelledByBike);
++            CStats::DistanceTravelledByBoat = stats.value("distance_traveled_by_boat", CStats::DistanceTravelledByBoat);
++            CStats::DistanceTravelledByCar = stats.value("distance_traveled_by_car", CStats::DistanceTravelledByCar);
++            CStats::DistanceTravelledByGolfCart = stats.value("distance_traveled_by_golf_cart", CStats::DistanceTravelledByGolfCart);
++            CStats::DistanceTravelledByHelicoptor = stats.value("distance_traveled_by_helicopter", CStats::DistanceTravelledByHelicoptor);
++            CStats::DistanceTravelledByPlane = stats.value("distance_traveled_by_plane", CStats::DistanceTravelledByPlane);
++            CStats::DistanceTravelledOnFoot = stats.value("distance_traveled_on_foot", CStats::DistanceTravelledOnFoot);
++
++            // Wanted
++            CStats::WantedStarsEvaded = stats.value("wanted_stars_evaded", CStats::WantedStarsEvaded);
++            CStats::WantedStarsAttained = stats.value("wanted_stars_attained", CStats::WantedStarsAttained);
++
++            // Misc
++            CStats::TyresPopped = stats.value("tires_popped", CStats::TyresPopped);
++            CStats::TotalLegitimateKills = stats.value("total_kills", CStats::TotalLegitimateKills);
++            CStats::TimesArrested = stats.value("times_arrested", CStats::TimesArrested);
++            CStats::TimesDied = stats.value("times_died", CStats::TimesDied);
++            CStats::TimesDrowned = stats.value("times_drowned", CStats::TimesDrowned);
++            CStats::SeagullsKilled = stats.value("seagulls_killed", CStats::SeagullsKilled);
++
++
++            /// Wheelies, stoppies and other vehicle stats.
++            CStats::LongestStoppie = stats.value("longest_stoppie_time", CStats::LongestStoppie);
++            CStats::LongestStoppieDist = stats.value("longest_stoppie_distance", CStats::LongestStoppieDist);
++            CStats::Longest2Wheel = stats.value("longest_2_wheel_time", CStats::Longest2Wheel);
++            CStats::Longest2WheelDist = stats.value("longest_2_wheel_distance", CStats::Longest2WheelDist);
++            CStats::LongestWheelie = stats.value("longest_wheelie_time", CStats::LongestWheelie);
++            CStats::LongestWheelieDist = stats.value("longest_wheelie_distance", CStats::LongestWheelieDist);
++
++            CStats::FiresExtinguished = stats.value("fires_extinguished", CStats::FiresExtinguished);
++            CStats::HeadsPopped = stats.value("heads_popped", CStats::HeadsPopped);
++            //
++
+         }
+ 
+         /*
+-- 
+2.43.0
+

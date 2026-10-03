@@ -1,0 +1,131 @@
+From c548a69d50674dbc1fe1b74f48e483f8fa7438dd Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 13 Sep 2026 17:56:06 -0400
+Subject: [PATCH 149/161] feat: Make game not crash if player isn't created
+
+* Now with my lua scripts, if the player isn't created the games code will automatically set the spawn to the middle of the map.
+
+* I plan on adding random locations to spawn at using my json files later.
+
+* Update changelog.
+---
+ Changelog.md                            | 14 +++++++++++++-
+ src/control/Script.cpp                  | 19 ++++++++++---------
+ src/extras/custom_scripts/init_game.cpp | 21 +++++++++++++++++++--
+ 3 files changed, 42 insertions(+), 12 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index faf8e04b..62297f2f 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -848,7 +848,9 @@ feat: Add arrest player test option to misc menu
+ 
+ * Update changelog.
+ 
+-### 1.2.13-13a
++### Latest 1.2.13-13a
++
++**Commit 1**
+ 
+ feat: Add arrest player test option to misc menu
+ 
+@@ -861,3 +863,13 @@ feat: Add arrest player test option to misc menu
+ * I accidentally changed the version in defines.cpp with one of the last commits, so it's already changed.
+ 
+ * Update changelog, change version to 1.2.13-13a.
++
++**Commit 2**
++
++feat: Make game not crash if player isn't created
++
++* Now with my lua scripts, if the player isn't created the games code will automatically set the spawn to the middle of the map.
++
++* I plan on adding random locations to spawn at using my json files later.
++
++* Update changelog.
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 459ff148..10873001 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -62,6 +62,7 @@
+ #ifdef DISABLE_GAME_SCRIPTS
+ #include "lua_test.h"
+ #include "misc_functions.h"
++#include "init_game.h"
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ uint8 CTheScripts::ScriptSpace[SIZE_SCRIPT_SPACE];
+@@ -808,9 +809,6 @@ int32 *CRunningScript::GetPointerToScriptVariable(uint32* pIp, int16 type)
+ void CRunningScript::Init()
+ {
+ #ifdef DISABLE_GAME_SCRIPTS
+-	// TODO Fix this to load the lua script variables instead of main.scm when this is enabled in the ini.
+-	// TODO Disable the game save/loading system if DISABLE_GAME_SCRIPTS is enabled.
+-	// TODO Disable fast loader loading saves in release if DISABLE_GAME_SCRIPTS is enabled.
+ 
+ 	// These are some new variables for my lua tests, and I'm going to reuse some game script variables here
+ 	// m_bLuaScriptActive = false;
+@@ -917,12 +915,15 @@ void CTheScripts::Init()
+ 	// TODO Move this elsewhere, for testing.
+ 	// LuaTest::GetInstance().OnTick();
+ 
+-	// This works!!!!
+-
+-	// TODO Make this get an OnInit function in lua, which will create the player and set their position.
+-	
+-	// I got this moved into the InitLua now which runs under Game.cpp.
+-	// MiscFunctions::GetInstance().CreatePlayer(0, -258.1f, -453.1f, 13.5f);
++	// This works here for a fallback if the player isn't spawned in the lua scripts.
++	// TODO Make this get a default position from my future json files in my lua scripts.
++	// I will share it between the C++ and lua code for locations.
++	if(!InitGame::GetInstance().GetPlayerCreated())
++	{
++		// Middle of map, old spawn in json and scripts.
++		CVector defaultPos = CVector(-258.1, -453.1, 13.5);
++		InitGame::GetInstance().CreatePlayer(0, defaultPos);
++	}
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+index f9dda3a3..6381efac 100644
+--- a/src/extras/custom_scripts/init_game.cpp
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -53,6 +53,9 @@
+  * Fixed to only spawn one player, otherwise this will spawn more then one player.
+  * I may be able to use that for some type of local coop like GTA SA had on the PS2.
+  * 
++ * Now in 'CTheScripts::Init()', I am setting up the player if this function isn't called in the lua scripts.
++ * Otherwise if the player is created in the lua scripts it 'shouldn't' do anything but I'm not sure on that yet.
++ * 
+  * @param playerIndex The index for the player, I may remove this in the future since I always set it to 0.
+  * @param pos The CVector to set the players position to.
+  * 
+@@ -65,8 +68,22 @@ bool InitGame::CreatePlayer(int playerIndex, CVector pos)
+ 	if(m_bPlayerCreated)
+     {
+         std::cout << "[KCNET-Lua]: Player tried to be created more then once! There should only be one create_player in freeroam-game.lua." << std::endl;
+-        return true;
+-    }
++        // return true;
++    } else {
++		// TODO Test this, should fix the player loading if they weren't spawned in with lua.
++		// For now, hardcode to middle of the map.
++	}
++
++	// Make sure the Vector position exists.
++	// TODO Test this, currently it'll only check if it's 0.0 on the X, Y, and Z.
++	// TODO Make this validate if the position exists.
++	// if(pos.IsZero())
++	// {
++	// 	std::cout << "[KCNet-Lua]: Player position doesn't exist in the freeroam script or the freeroam script wasn't loaded! Setting spawn to default values..." << std::endl;
++
++	// 	// Middle of map, old spawn in json and scripts.
++	// 	pos = CVector(-258.1, -453.1, 13.5);
++	// }
+         
+ 
+ 	// Load the player model.
+-- 
+2.43.0
+

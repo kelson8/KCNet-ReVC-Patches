@@ -1,0 +1,190 @@
+From a76d495e4c1e6cc0475fe101ff27e442598894f2 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 8 Sep 2026 10:06:40 -0400
+Subject: [PATCH 102/161] feat: Add turn phone off and turn phone on to lua
+
+* I added some phone functions mostly so I can turn off the ringing phones around the map.
+
+* Update changelog, bump version to 1.2.11-3a.
+---
+ Changelog.md                 |  8 +++
+ src/extras/lua/lua_game.cpp  | 95 ++++++++++++++++++++++++++++++++++++
+ src/extras/lua/lua_game.h    |  4 ++
+ src/extras/utils/defines.cpp |  2 +-
+ 4 files changed, 108 insertions(+), 1 deletion(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index fdcc1f3d..3871008e 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -374,3 +374,11 @@ feat: Add custom text to main.cpp for KCNet freeroam
+ * Add test function to run on all peds in lua scripts, world.set_ped_objectives(), this is now setup to make all peds get weapons and shoot the player.
+ 
+ * Update changelog.md, bump version to 1.2.11-2a.
++
++### 1.2.11-3a
++
++feat: Add turn phone off and turn phone on to lua
++
++* I added some phone functions mostly so I can turn off the ringing phones around the map.
++
++* Update changelog, bump version to 1.2.11-3a.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 685a4c51..85acf847 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -36,6 +36,8 @@
+ #include "Restart.h"
+ #include "Text.h"
+ 
++#include "Phones.h"
++
+ #include "Pad.h"
+ 
+ #include "Fire.h"
+@@ -44,6 +46,11 @@
+ // Game options/Settings/setup
+ //-----------------------
+ 
++// I didn't know that 'NUMPLAYERS' was in config.h.
++// It seems this might be setup to allow for multiple players.
++// I wonder if I can use that for a multiplayer?
++// TODO Look into that. 
++
+ extern "C" {
+ 
+ /** 
+@@ -88,6 +95,21 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, setTimeScaleLua);
+ 	lua_setfield(L, -2, "set_time_scale");
+ 
++	// Turn off the game phones, I hear them ringing when I am near some of them.
++	lua_pushcfunction(L, turnPhoneOffLua);
++	lua_setfield(L, -2, "turn_phone_off");
++
++	// Turn on the game phones.
++	lua_pushcfunction(L, turnPhoneOnLua);
++	lua_setfield(L, -2, "turn_phone_on");
++
++	// Grab the game phone at the specific position
++	// WARNING, this may crash if it isn't close to the phone.
++	// I probably won't use this much
++	lua_pushcfunction(L, grabPhoneLua);
++	lua_setfield(L, -2, "grab_phone");
++	
++
+ 	//----------
+ 	// TODO Implement these below
+ 	//----------
+@@ -385,6 +407,79 @@ int getGameHourLua(lua_State *L)
+ 	return 1;
+ }
+ 
++
++//----------
++// Phone functions
++//----------
++
++/**
++ * Turn a game phone off (Stops it from ringing)
++ * 
++ * TODO Test this, look into the scripts to find the phones and use a for loop in lua on init to silence all 50.
++ * 
++ * This seems like it works, although I'm not sure if I hear the phones anymore now even when disabling them.
++ * 
++ * There is a NUMPHONES variable which is set to 50 in config.h.
++ * 
++ * Usage:
++ * game.turn_off_phone(phoneId)
++ */
++int turnPhoneOffLua(lua_State *L)
++{
++	// NUMPHONES,
++	int phoneId = lua_tointeger(L, 1);
++
++	if (!phoneId)
++    {
++    	return luaL_error(L, "game.turn_phone_off missing argument, requires a number between 0 and 50.");
++	}
++
++	gPhoneInfo.SetPhoneMessage_JustOnce(phoneId, nil, nil, nil, nil, nil, nil);
++
++	return 1;
++}
++
++/**
++ * Turn a game phone on
++ * 
++ * Usage:
++ * game.turn_phone_on(phoneId)
++ */
++int turnPhoneOnLua(lua_State *L)
++{
++	int phoneId = lua_tointeger(L, 1);
++
++	if (!phoneId)
++    {
++    	return luaL_error(L, "game.turn_phone_on missing argument, requires a number between 0 and 50." );
++	}
++
++	gPhoneInfo.m_aPhones[phoneId].m_nState = PHONE_STATE_9;
++
++	return 1;
++}
++
++/**
++ * Grab the phone
++ * 
++ * Usage (Takes an X and Y position value.):
++ * game.grab_phone(x, y)
++ */
++int grabPhoneLua(lua_State *L)
++{
++	float phoneX = static_cast<float>(lua_tointeger(L, 1));
++	float phoneY = static_cast<float>(lua_tointeger(L, 2));
++
++	if (!phoneX || !phoneY)
++    {
++    	return luaL_error(L, "game.grab_phone missing argument, requires and X and Y value on the map." );
++	}
++
++	gPhoneInfo.GrabPhone(phoneX, phoneY);
++
++	return 1;
++}
++
+ //--------------
+ // Test functions
+ //--------------
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 995d0621..a5a9d9dd 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -26,6 +26,10 @@ extern "C" {
+     extern int setTimeLua(lua_State *L);
+     extern int setTimeScaleLua(lua_State *L);
+ 
++    extern int turnPhoneOffLua(lua_State *L);
++    extern int turnPhoneOnLua(lua_State *L);
++    extern int grabPhoneLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index e496bff4..bfe66a8f 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.11-2a";
++std::string Defines::programVersion = "1.2.11-3a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

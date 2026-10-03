@@ -1,0 +1,223 @@
+From ab41e948e15e45ba1cbe700b30b6d30ed9130972 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 19:43:49 -0400
+Subject: [PATCH 141/161] fix: Make audio work on game start
+
+* I was having problems with my fast loader and the audio not working when loading the game, but I fixed that now.
+
+* Reorganize functions in fast_loader a bit.
+
+* Update changelog.
+---
+ Changelog.md                     | 10 ++++
+ src/control/Script.cpp           |  1 +
+ src/extras/menus/misc_menu.cpp   | 15 +++---
+ src/extras/utils/fast_loader.cpp | 83 +++++++++++++++++++++++---------
+ src/extras/utils/fast_loader.h   |  4 ++
+ 5 files changed, 84 insertions(+), 29 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 517d87cf..3f43f614 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -766,3 +766,13 @@ fix: Make game effects work again
+ 
+ * Update changelog.
+ 
++**Commit 4**
++
++fix: Make audio work on game start
++
++* I was having problems with my fast loader and the audio not working when loading the game, but I fixed that now.
++
++* Reorganize functions in fast_loader a bit.
++
++* Update changelog.
++
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 613a5346..459ff148 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -1215,6 +1215,7 @@ void CTheScripts::Process()
+ 	while (script != nil){
+ 		CRunningScript* next = script->GetNext();
+ 		++ScriptsUpdated;
++		// TODO Fix this to build again with DISABLE_GAME_SCRIPTS, not sure what I did.
+ 		script->UpdateTimers(timeStep);
+ 		script->Process();
+ 		script = next;
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index e19a2341..ebd5282b 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -669,6 +669,7 @@ void MiscMenu::MiscTab()
+ 		}
+ 
+ 		ImGui::Separator();
++		ImGui::Text("Audio");
+ 		// This works, I guess I wasnt' expecting it to.
+ 		ImGui::Text("Play the mission passed sound");
+ 		if(ImGui::Button("Play mission passed"))
+@@ -727,19 +728,19 @@ void MiscMenu::MiscTab()
+ 	//}
+ #endif
+ 
+-	IMGUITEXT("For now, I have disabled this.");
+-	IMGUITEXT("I need to fine tune it a bit.");
+-	IMGUI_BEGIN_DISABLED();
++	ImGui::Text("For now, I have disabled this.");
++	ImGui::Text("I need to fine tune it a bit.");
++	ImGui::BeginDisabled();
+ 
+-	IMGUITEXT("Test for saving the game");
+-	IMGUITEXT("For now saves to slot 3.");
++	ImGui::Text("Test for saving the game");
++	ImGui::Text("For now saves to slot 3.");
+ 
+-	if (IMGUIBUTTON("Save Game")) 
++	if(ImGui::Button("Save Game"))
+ 	{ 
+ 		miscUtil.SaveGame(3);
+ 	}
+ 
+-	IMGUI_END_DISABLED();
++	ImGui::EndDisabled();
+ 
+ 	//
+ 
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index bde950aa..59d6cfd0 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -9,6 +9,8 @@
+ #endif
+ 
+ #include "Frontend.h"
++#include "DMAudio.h"
++#include "AudioManager.h"
+ #include "Game.h"
+ #include "PCSave.h"
+ 
+@@ -67,23 +69,21 @@ FastLoader::FastLoad()
+ 	// Lock the game to the freeroam script, this will be used for my lua scripts once I implement them
+ 
+ 	// Starting the game! No game scripts here just freeroam
++
+ 	// TODO Make this not load if the create_player isn't setup in freeroam-game.lua.
+ 	// This will always try to load the game anyways and expect the player to be created from the scripts like normal.
+ 	// But since my script creates the player, there is no check to see if they were created I guess.
+-	if(gbFastLoader) {
+-		// Probably not required here, just forcing the freeroam script anyways.
+-		// If the game scripts are disabled this variable is probably discarded.
+-		// TODO Make this also load in the audio, sometimes I have to pause and unpause for sound to work.
+-		CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+-		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+-		
+-		// TODO Fix game audio to work if I fast load with my lua script engine.
+-		// It works, but I have to pause and unpause the game...
+-		// I must be disabling something else.
+-
+-		// FrontEndMenuManager.RequestFrontEndShutDown();
+-
+-		FrontEndMenuManager.m_bGameNotLoaded = false;
++	// This might work for toggling this.
++	if(gbFastLoader 
++		// Well this somewhat works, but I cannot get the fast loader toggled.
++		// If I try to go to the options or any other menu with this it still jumps to the fast loader
++		// Only if I have the 'if(!m_bGameNotLoaded)' check in Frontend.cpp under 'MENUACTION_FASTLOADER'.
++		// && FrontEndMenuManager.m_nCurrScreen != MENUPAGE_START_MENU
++	) {
++		LoadFreeroamScript();
++
++		// Well this will just crash here, I guess don't do this..
++		// DoGameSpecificStuffAfterSucessLoad();
+ 
+ 		// This doesn't do anything.
+ 		// FrontEndMenuManager.m_bShowMouse = true;
+@@ -93,8 +93,55 @@ FastLoader::FastLoad()
+ 	}
+ 
+ 	return;
++#else
++	LoadMainGameScripts();
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
++
++
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++
++	//
++
++	//*****************
++	// End Fast Loader
++	// ************/
++}
++
++/**
++ * Loads the freeroam script with lua and my custom scripting system.
++ * This is a modified version of FrontEndMenuManager.DoSettingsBeforeStartingAGame().
++ * What this does, is fixes the audio on game startup for my freeroam scripts.
++ * I guess when I disabled the game scripts I wasn't starting this right.
++ */
++void
++FastLoader::LoadFreeroamScript()
++{
++	// Probably not required here, just forcing the freeroam script anyways.
++	// If the game scripts are disabled this variable is probably discarded.
++	CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
++
++	// DO NOT do this here!
++	// If this is done, it breaks the audio on startup until the game is paused and unpaused.
++	// FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++
++	// Doing this in my fast loader fixes the audio glitch on first load!
++	// Now I don't have to pause and unpause to fix the sounds to work again.
++	// I guess DoSettingsBeforeStartingAGame does something that shouldn't be run here.
++	FrontEndMenuManager.m_bShutDownFrontEndRequested = true;
++	FrontEndMenuManager.m_bWantToRestart = true;
++	FrontEndMenuManager.SwitchMenuOnAndOff();
++	//
++}
++
++/**
++ * Load the main game and mission scripts.
++ * 
++ * This will load the 'main.scm' and save slots.
++ */
++void
++FastLoader::LoadMainGameScripts()
++{
+ 	// New
+ 	// Without this here sometimes holding control will send you back to the new game.
+ 	CTheScripts::ScriptToLoad = gbScriptToLoad;
+@@ -150,12 +197,4 @@ FastLoader::FastLoad()
+ 		//  using the custom freeroam_miami.scm script.
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 	}
+-
+-#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+-
+-	//
+-
+-	//*****************
+-	// End Fast Loader
+-	// ************/
+ }
+diff --git a/src/extras/utils/fast_loader.h b/src/extras/utils/fast_loader.h
+index 63b581f0..eba46e2d 100644
+--- a/src/extras/utils/fast_loader.h
++++ b/src/extras/utils/fast_loader.h
+@@ -1,6 +1,10 @@
+ #pragma once
+ class FastLoader
+ {
++private:
++	void LoadFreeroamScript();
++	void LoadMainGameScripts();
++
+ public:
+ 	void FastLoad();
+ };
+-- 
+2.43.0
+

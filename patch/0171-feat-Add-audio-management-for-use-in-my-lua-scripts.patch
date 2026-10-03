@@ -1,0 +1,923 @@
+From 64ed658bafa7623f845a5e46b20c010203b48fc7 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 18 Sep 2026 13:59:15 -0400
+Subject: [PATCH 171/176] feat: Add audio management for use in my lua scripts.
+
+* Add lua_ped file for later use.
+
+* Make json save format now load and save the audio and music volume, incomplete and disabled.
+
+* Make game auto load into the json save on startup now, instead of requiring it to be manually done.
+
+* Add loading and saving the game from my C++ code into lua.
+
+* Update changelog, change version to 1.2.15-1a.
+---
+ Changelog.md                         |  21 +++-
+ src/audio/MusicManager.cpp           |  10 ++
+ src/core/Frontend.cpp                |   9 +-
+ src/core/Game.cpp                    |  13 +++
+ src/extras/functions/ini_functions.h |   4 +
+ src/extras/lua/lua_audio.cpp         | 105 +++++++++++++++++
+ src/extras/lua/lua_audio.h           |  28 +++++
+ src/extras/lua/lua_game.cpp          |  35 ++++++
+ src/extras/lua/lua_game.h            |   3 +
+ src/extras/lua/lua_ped.cpp           | 162 +++++++++++++++++++++++++++
+ src/extras/lua/lua_ped.h             |  26 +++++
+ src/extras/lua/lua_setup.cpp         |   3 +
+ src/extras/lua/lua_test.cpp          |   5 +
+ src/extras/lua/lua_vehicle.cpp       |  27 ++++-
+ src/extras/utils/defines.cpp         |   2 +-
+ src/extras/utils/fast_loader.cpp     |  26 +++--
+ src/extras/utils/fast_loader.h       |   1 +
+ src/extras/utils/freeroam_util.cpp   |  17 ++-
+ src/save/GenericGameStorage.cpp      |  11 +-
+ 19 files changed, 488 insertions(+), 20 deletions(-)
+ create mode 100644 src/extras/lua/lua_audio.cpp
+ create mode 100644 src/extras/lua/lua_audio.h
+ create mode 100644 src/extras/lua/lua_ped.cpp
+ create mode 100644 src/extras/lua/lua_ped.h
+
+diff --git a/Changelog.md b/Changelog.md
+index 2f1de0b6..7639dd03 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -981,7 +981,7 @@ feat: Move version stuff into header
+ 
+ * Update changelog.
+ 
+-### Latest 1.2.14-4a
++### 1.2.14-4a
+ 
+ **Commit 1**
+ 
+@@ -1114,6 +1114,23 @@ feat: Add json logging for coords
+ * Make my freeroam text only draw when not paused.
+ * Fix freeroam text to use the Screen.cpp classes from TExtender.
+ 
+-* Add more cheats into cheat_menu
++* Add more cheats into cheat_menu.
+ 
+ * Update changelog, change version to 1.2.14-9a.
++
++
++# 1.2.15a
++
++### 1.2.15-1a
++
++feat: Add audio management for use in my lua scripts.
++
++* Add lua_ped file for later use.
++
++* Make json save format now load and save the audio and music volume, incomplete and disabled.
++
++* Make game auto load into the json save on startup now, instead of requiring it to be manually done.
++
++* Add loading and saving the game from my C++ code into lua.
++
++* Update changelog, change version to 1.2.15-1a.
+diff --git a/src/audio/MusicManager.cpp b/src/audio/MusicManager.cpp
+index ebb1e3ff..176de889 100644
+--- a/src/audio/MusicManager.cpp
++++ b/src/audio/MusicManager.cpp
+@@ -243,12 +243,18 @@ cMusicManager::SetRadioChannelByScript(uint32 station, int32 pos)
+ 	}
+ }
+ 
++/**
++ * TODO Look into this, I changed something in here to true and I can play the mobile radio.
++ * I wonder.. How can I make a toggle for this that also toggles the radio selector?
++ * 
++ */
+ bool8
+ cMusicManager::PlayerInCar()
+ {
+ 	CVehicle *vehicle = AudioManager.FindVehicleOfPlayer();
+ 	if(!vehicle)
+ 		return FALSE;
++		// return TRUE;
+ 
+ 	int32 State = FindPlayerPed()->m_nPedState;
+ 
+@@ -1275,6 +1281,10 @@ cMusicManager::SetStripClubTrackPos(uint8 scriptObject)
+ 	}
+ }
+ 
++/**
++ * TODO Look into this for a mobile radio.
++ * 
++ */
+ void
+ cMusicManager::DisplayRadioStationName()
+ {
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index ef62e88f..e2b8e152 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -635,7 +635,9 @@ CMenuManager::Initialise(void)
+ #endif
+ 
+ 	DMAudio.ChangeMusicMode(MUSICMODE_FRONTEND);
++// #ifndef DISABLE_GAME_SCRIPTS
+ 	DMAudio.PlayFrontEndSound(SOUND_FRONTEND_MENU_STARTING, 0);
++// #endif // !DISABLE_GAME_SCRIPTS - Disable game startup sound.
+ 	DMAudio.Service();
+ 	DMAudio.SetMusicMasterVolume(m_PrefsMusicVolume);
+ 	DMAudio.SetEffectsMasterVolume(m_PrefsSfxVolume);
+@@ -4996,7 +4998,7 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ 			// This just fixes a few issues with the audio not working until the game was paused and unpaused.
+-			FastLoader::LoadFreeroamScript();
++			FastLoader::RestartMenus();
+ #else
+ 			DoSettingsBeforeStartingAGame();
+ 
+@@ -5045,6 +5047,7 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #ifdef DISABLE_GAME_SCRIPTS
+ 			// This just fixes a few issues with the audio not working until the game was paused and unpaused.
+ 			FastLoader::LoadFreeroamScript();
++			// FastLoader::RestartMenus();
+ #else
+ 			DoSettingsBeforeStartingAGame();
+ 
+@@ -5166,7 +5169,7 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 						//  the save format and version are the same, if not don't attempt to load it.
+ 						// TODO Fix this to work again, something I did broke the loading of this from the pause menu.
+ 
+-						FreeroamUtil::LoadFreeroamJson();
++						FastLoader::RestartMenus();
+ 						FastLoader::LoadFreeroamScript();
+ 						// if(m_nCurrScreen == MENUPAGE_CHOOSE_LOAD_SLOT) {
+ 							// SwitchToNewScreen(MENUPAGE_LOAD_SLOT_CONFIRM);
+@@ -6230,7 +6233,9 @@ CMenuManager::UnloadTextures()
+ 	if (m_nCurrScreen == MENUPAGE_SOUND_SETTINGS)
+ 		DMAudio.StopFrontEndTrack();
+ 
++// #ifndef DISABLE_GAME_SCRIPTS
+ 	DMAudio.PlayFrontEndSound(SOUND_FRONTEND_MENU_STARTING, 0);
++// #endif // !DISABLE_GAME_SCRIPTS - Disable game startup sound.
+ 	DMAudio.ChangeMusicMode(MUSICMODE_GAME);
+ 	if (m_bSpritesLoaded) {
+ 		printf("REMOVE frontend\n");
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 3ce135af..06a2d0e3 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -114,6 +114,12 @@
+ // Extra stuff for defines.
+ #include "defines.h"
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "fast_loader.h"
++#endif // DISABLE_GAME_SCRIPTS
++
++
++
+ #endif // CUSTOM_CODE - LUA_TEST
+ 
+ // search for TExtender to see changes
+@@ -666,6 +672,13 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	DMAudio.SetStartingTrackPositions(TRUE);
+ 	DMAudio.ChangeMusicMode(MUSICMODE_GAME);
++
++#ifdef DISABLE_GAME_SCRIPTS
++	// This fixes the game loading the save values when it starts up!
++	// I can only have one slot but thats fine.
++	FastLoader::LoadFreeroamScript();
++#endif // DISABLE_GAME_SCRIPTS
++
+ 	return true;
+ }
+ 
+diff --git a/src/extras/functions/ini_functions.h b/src/extras/functions/ini_functions.h
+index 68a85e26..894de2f4 100644
+--- a/src/extras/functions/ini_functions.h
++++ b/src/extras/functions/ini_functions.h
+@@ -13,6 +13,10 @@
+ #include <vector>
+ #include <map>
+ 
++// Storing ini values
++
++void StoreIni(const char *cat, const char *key, int32 val);
++
+ class IniFunctions
+ {
+ private:
+diff --git a/src/extras/lua/lua_audio.cpp b/src/extras/lua/lua_audio.cpp
+new file mode 100644
+index 00000000..4a8c7884
+--- /dev/null
++++ b/src/extras/lua/lua_audio.cpp
+@@ -0,0 +1,105 @@
++#include "pch.h"
++
++#ifdef LUA_TEST
++#include "lua_audio.h"
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++#include "player_util.h"
++
++#include "defines.h"
++#include "log_functions.h"
++
++#include "custom_cheats.h"
++
++#include "DMAudio.h"
++#include "Frontend.h"
++#include "ini_functions.h"
++
++#include "sampman.h"
++
++// clang-format off
++//------- Audio functions for scripts --------//
++extern "C" 
++{
++
++	/** 
++ 	* Register the audio lua functions under the 'audio' namespace.
++ 	*/
++	void RegisterAudioFunctionsLua(lua_State* L)
++	{
++		//------------- Audio ------------//
++		lua_newtable(L); // Stack: audio table
++
++        // Playing sounds
++        lua_pushcfunction(L, playFrontendAudioTrackLua);
++        lua_setfield(L, -2, "play_frontend");
++
++        // Setting the volume for sounds and music.
++        lua_pushcfunction(L, setSoundEffectsVolumeLua);
++        lua_setfield(L, -2, "set_sound_volume");
++        // 
++        lua_pushcfunction(L, setMusicVolumeLua);
++        lua_setfield(L, -2, "set_music_volume");
++
++		// audio namespace
++    	lua_setglobal(L, "audio");
++	}
++
++    /**
++     * Start a frontend audio track
++     * Usage:
++     * audio.play_frontend(audio_enums.eSound.SOUND_RAMPAGE_FAILED, 1.0)
++     */
++    int
++    playFrontendAudioTrackLua(lua_State *L)
++    {
++        auto audioTrack = luaL_checknumber(L, 1);
++        auto audioVolume = luaL_checknumber(L, 2);
++        DMAudio.PlayFrontEndSound(audioTrack, audioVolume);
++
++        return 0;
++    }
++
++    /**
++     * Set the sound effects volume.
++     * 
++     * audio.set_sound_volume(1.0)
++     */
++    int
++    setSoundEffectsVolumeLua(lua_State *L)
++    {
++        auto value = luaL_checknumber(L, 1);
++
++        if (value < 0 || value > MAX_VOLUME)
++
++        DMAudio.SetEffectsMasterVolume(value);
++        // Set the volume in the frontend and ini also.
++        FrontEndMenuManager.m_PrefsSfxVolume = value;
++        StoreIni("Audio", "SfxVolume", value);
++        return 0;
++    }
++
++    /**
++     * Set the music volume.
++     * 
++     * audio.set_music_volume(1.0)
++     */
++    int
++    setMusicVolumeLua(lua_State *L)
++    {
++        auto value = luaL_checknumber(L, 1);
++        DMAudio.SetMusicMasterVolume(value);
++        // Set the volume in the frontend and ini also.
++        FrontEndMenuManager.m_PrefsMusicVolume = value;
++	    StoreIni("Audio", "MusicVolume", value);
++        return 0;
++    }
++}
++
++#endif // LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_audio.h b/src/extras/lua/lua_audio.h
+new file mode 100644
+index 00000000..06de4947
+--- /dev/null
++++ b/src/extras/lua/lua_audio.h
+@@ -0,0 +1,28 @@
++#pragma once
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++// clang-format off
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++	extern void RegisterAudioFunctionsLua(lua_State* L);
++
++	// Taken out of log_functions.
++	extern int playFrontendAudioTrackLua(lua_State *L);
++    extern int setSoundEffectsVolumeLua(lua_State *L);
++    extern int setMusicVolumeLua(lua_State *L);
++
++
++
++#ifdef __cplusplus
++}
++#endif
++
++// clang-format on
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 6c622867..748215cc 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -25,6 +25,7 @@
+ #include "vehicle_cheats.h"
+ #include "vehicle_functions.h"
+ 
++#include "freeroam_util.h"
+ #include "custom_cheats.h"
+ #include "imgui_functions.h"
+ #include "init_game.h"
+@@ -255,6 +256,13 @@ void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+ 	lua_pushcfunction(L, createHiddenPackageLua);
+ 	lua_setfield(L, -2, "create_hidden_package");
+ 
++	// Saving/loading the game
++	lua_pushcfunction(L, saveCustomFreeroamLua);
++	lua_setfield(L, -2, "save");
++
++	lua_pushcfunction(L, loadCustomFreeroamLua);
++	lua_setfield(L, -2, "load");
++
+ 	//
+ 
+     // Game namespace
+@@ -1095,6 +1103,33 @@ int createHiddenPackageLua(lua_State *L)
+ 	return 0;
+ }
+ 
++/**
++ * Save the custom freeroam json for my saves.
++ * 
++ * Usage:
++ * game.save
++ */
++int saveCustomFreeroamLua(lua_State *L)
++{
++	FreeroamUtil::SaveFreeroamJson();
++	CustomCheats::CustomHelpMessage("Game saved");
++	return 0;
++}
++
++/**
++ * Save the custom freeroam json for my saves.
++ * 
++ * Usage:
++ * game.load
++ */
++int loadCustomFreeroamLua(lua_State *L)
++{
++	FreeroamUtil::LoadFreeroamJson();
++	CustomCheats::CustomHelpMessage("Game loaded");
++	return 0;
++}
++
++
+ /**
+  * TODO Implement these for pickups later.
+  * IS_ANY_PICKUP_AT_COORDS
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index e88fbecc..bf63b261 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -68,6 +68,9 @@ extern "C" {
+     extern int isAnyPickupAtCoordsLua(lua_State *L);
+     extern int createHiddenPackageLua(lua_State *L);
+ 
++    extern int saveCustomFreeroamLua(lua_State *L);
++    extern int loadCustomFreeroamLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_ped.cpp b/src/extras/lua/lua_ped.cpp
+new file mode 100644
+index 00000000..07e7f560
+--- /dev/null
++++ b/src/extras/lua/lua_ped.cpp
+@@ -0,0 +1,162 @@
++#include "pch.h"
++
++#ifdef LUA_TEST
++#include "lua_ped.h"
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++#include "player_util.h"
++
++#include "defines.h"
++#include "log_functions.h"
++
++#include "custom_cheats.h"
++
++#include "Pools.h"
++#include "Ped.h"
++#include "Script.h"
++#include "Population.h"
++
++// clang-format off
++//------- Ped functions for scripts --------//
++extern "C" 
++{
++
++	/** 
++ 	* Register the ped lua functions under the 'ped' namespace.
++ 	*/
++	void RegisterPedFunctionsLua(lua_State* L)
++	{
++		//------------- Ped ------------//
++		lua_newtable(L); // Stack: ped table
++
++		// lua_pushcfunction(L, logInfoMessageLua);
++		// lua_setfield(L, -2, "create");
++
++        lua_pushcfunction(L, getRandomCharLua);
++        lua_setfield(L, -2, "get_random_char");
++	
++
++		// ped namespace
++    	lua_setglobal(L, "ped");
++	}
++
++    /**
++     * Get a random ped in lua.
++     * This might work, it was adapted from a possibly unused command
++     * GET_RANDOM_CHAR_IN_AREA
++     * 
++     * TODO Make the ped functions work on a ped handle, I think they might.
++     * 
++     * TODO Figure out how to return a CPed* in lua, so I can do actions on the ped from lua.
++     * 
++     * Usage:
++     * ped.get_random_char()
++     */
++    int
++    getRandomCharLua(lua_State *L)
++    {
++        int pedHandle = -1;
++        CVector pos = FindPlayerCoors();
++        auto x1 = luaL_checknumber(L, 1);
++        auto y1 = luaL_checknumber(L, 2);
++        auto x2 = luaL_checknumber(L, 3);
++        auto y2 = luaL_checknumber(L, 4);
++
++        int i = CPools::GetPedPool()->GetSize();
++        while(--i && pedHandle == -1)
++        {
++            CPed* ped = CPools::GetPedPool()->GetSlot(i);
++			if (!ped)
++				continue;
++			if (CTheScripts::LastRandomPedId == CPools::GetPedPool()->GetIndex(ped))
++				continue;
++			if (ped->CharCreatedBy != RANDOM_CHAR)
++				continue;
++			if (!ped->IsPedInControl())
++				continue;
++			if (ped->bRemoveFromWorld)
++				continue;
++			if (ped->bFadeOut)
++				continue;
++            // TODO Add this check.
++			// if (!ThisIsAValidRandomPed(pPed->m_nPedType))
++				// continue;
++			if (ped->bIsLeader || ped->m_leader)
++				continue;
++			if (!ped->IsWithinArea(x1, y1, x2, y2))
++				continue;
++			if (pos.z - PED_FIND_Z_OFFSET > ped->GetPosition().z)
++				continue;
++			if (pos.z + PED_FIND_Z_OFFSET < ped->GetPosition().z)
++				continue;
++
++			pedHandle = CPools::GetPedPool()->GetIndex(ped);
++			CTheScripts::LastRandomPedId = pedHandle;
++			ped->CharCreatedBy = MISSION_CHAR;
++			ped->bRespondsToThreats = false;
++
++            // TODO Why is this here for?
++			++CPopulation::ms_nTotalMissionPeds;
++
++            // TODO Test returning the ped handle
++            pushIntToLua(L, pedHandle);
++
++            // Not used
++			// if (m_bIsMissionScript)
++				// CTheScripts::MissionCleanUp.AddEntityToList(pedHandle, CLEANUP_CHAR);
++            
++        }
++
++        /*
++    
++		int i = CPools::GetPedPool()->GetSize();
++		while (--i && ped_handle == -1){
++			CPed* pPed = CPools::GetPedPool()->GetSlot(i);
++			if (!pPed)
++				continue;
++			if (CTheScripts::LastRandomPedId == CPools::GetPedPool()->GetIndex(pPed))
++				continue;
++			if (pPed->CharCreatedBy != RANDOM_CHAR)
++				continue;
++			if (!pPed->IsPedInControl())
++				continue;
++			if (pPed->bRemoveFromWorld)
++				continue;
++			if (pPed->bFadeOut)
++				continue;
++//			if (pPed->GetModelIndex() == MI_SCUM_WOM || pPed->GetModelIndex() == MI_SCUM_MAN)
++//				continue;
++			if (!ThisIsAValidRandomPed(pPed->m_nPedType))
++				continue;
++			if (pPed->bIsLeader || pPed->m_leader)
++				continue;
++			if (!pPed->IsWithinArea(x1, y1, x2, y2))
++				continue;
++			if (pos.z - PED_FIND_Z_OFFSET > pPed->GetPosition().z)
++				continue;
++			if (pos.z + PED_FIND_Z_OFFSET < pPed->GetPosition().z)
++				continue;
++			ped_handle = CPools::GetPedPool()->GetIndex(pPed);
++			CTheScripts::LastRandomPedId = ped_handle;
++			pPed->CharCreatedBy = MISSION_CHAR;
++			pPed->bRespondsToThreats = false;
++			++CPopulation::ms_nTotalMissionPeds;
++			if (m_bIsMissionScript)
++				CTheScripts::MissionCleanUp.AddEntityToList(ped_handle, CLEANUP_CHAR);
++		}
++		ScriptParams[0] = ped_handle;
++		StoreParameters(&m_nIp, 1);
++		return 0;
++        */
++
++        return 1;
++    }
++}
++
++#endif // LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_ped.h b/src/extras/lua/lua_ped.h
+new file mode 100644
+index 00000000..9a623d74
+--- /dev/null
++++ b/src/extras/lua/lua_ped.h
+@@ -0,0 +1,26 @@
++#pragma once
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++// clang-format off
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++	extern void RegisterPedFunctionsLua(lua_State* L);
++
++	// Taken out of log_functions.
++	extern int getRandomCharLua(lua_State *L);
++
++
++
++#ifdef __cplusplus
++}
++#endif
++
++// clang-format on
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 63f2f737..51786a94 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -95,6 +95,7 @@
+ #include "defines.h"
+ 
+ #include "init_game.h"
++#include "freeroam_util.h"
+ 
+ 
+ //****************************/
+@@ -164,6 +165,8 @@ LuaSetup::LuaPlayingGameLoop()
+ 			// If I do the normal settings before a game my audio won't work until I pause/unpause.
+ 			FastLoader::LoadFreeroamScript();
+ 
++			// FreeroamUtil::LoadFreeroamJson();
++
+ 			// FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 
+ 			// Well changing to this just reloads the game.
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 8b4c5227..215d67c8 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -60,10 +60,12 @@ extern "C" {
+ #include "init_game.h"
+ 
+ // Lua functions
++#include "lua_audio.h"
+ #include "lua_game.h"
+ #include "lua_garages.h"
+ #include "lua_log.h"
+ #include "lua_hud.h"
++#include "lua_ped.h"
+ #include "lua_player.h"
+ #include "lua_vehicle.h"
+ #include "lua_world.h"
+@@ -474,6 +476,7 @@ void LuaTest::StartOnTick()
+  * Start a function with the thread and timer system
+  * 
+  * TODO Test this later
++ * TODO Try to use this for custom functions in other lua scripts if possible.
+  */
+ void LuaTest::StartFunction(const char* functionName)
+ {
+@@ -704,10 +707,12 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// This is using namespaces for all of my stuff now.
+ 	//----
+ 
++	RegisterAudioFunctionsLua(L);
+ 	RegisterGameFunctionsLua(L, this);
+ 	RegisterGarageFunctionsLua(L);
+ 	RegisterHudFunctionsLua(L);
+ 	RegisterLogFunctionsLua(L);
++	RegisterPedFunctionsLua(L);
+ 	RegisterPlayerFunctionsLua(L);
+ 	RegisterVehicleFunctionsLua(L);
+ 	RegisterWorldFunctionsLua(L);
+diff --git a/src/extras/lua/lua_vehicle.cpp b/src/extras/lua/lua_vehicle.cpp
+index 5564271b..b277f751 100644
+--- a/src/extras/lua/lua_vehicle.cpp
++++ b/src/extras/lua/lua_vehicle.cpp
+@@ -116,6 +116,7 @@ extern "C"
+ 		// VehicleFunctions::SpawnVehicle(vehicleId, deleteLastVehicle, warpIntoVehicle);
+ 
+ 		// New function for testing.
++		// TODO Make this return the CVehicle that was created.
+ 		// VehicleFunctions::CreateVehicle(vehicleId, posX, posY, posZ, deleteLastVehicle, warpIntoVehicle);
+ 		VehicleFunctions::CreateVehicle(vehicleId, *vehiclePos, deleteLastVehicle, warpIntoVehicle);
+ 
+@@ -132,19 +133,39 @@ extern "C"
+ 	int 
+ 	toggleVehicleFrozenLua(lua_State *L)
+ 	{
+-		VehicleFunctions vehicleFunctions;
+ 		if(!lua_isboolean(L, -1)) {
+ 		}
+ 			
+ 		bool toggle = static_cast<float>(lua_toboolean(L, -1));
+-		if(vehicleFunctions.IsPlayerInVehicle())
++		if(VehicleFunctions::IsPlayerInVehicle())
+ 		{
+ 			FindPlayerPed()->m_pMyVehicle->bIsFrozen = toggle;
+ 		}
+ 
+-		return 1;
++		return 0;
++	}
++
++	/**
++	 * Set the current vehicle as strong.
++	 * 
++	 * Usage:
++	 * vehicle.set_strong(true)
++	 */
++	int
++	setVehicleStrong(lua_State *L)
++	{
++
++		bool toggle = static_cast<float>(lua_toboolean(L, -1));
++		if(VehicleFunctions::IsPlayerInVehicle())
++		{
++			FindPlayerPed()->m_pMyVehicle->bTakeLessDamage = toggle;
++		}
++
++		return 0;
+ 	}
+ 
++	
++
+ 	/**
+ 	 * TODO Implement these below commands
+ 	 * I am probably missing some of these.
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 2c01d348..b38549b9 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-9a";
++std::string Defines::programVersion = "1.2.15-1a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 846f5067..4f5f1005 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -83,14 +83,11 @@ FastLoader::FastLoad()
+ 		// && FrontEndMenuManager.m_nCurrScreen != MENUPAGE_START_MENU
+ 	) {
+ 
+-
+-		LoadFreeroamScript();
++		RestartMenus();
+ 
+ 		// Well this will just crash here, I guess don't do this..
+ 		// DoGameSpecificStuffAfterSucessLoad();
+ 
+-
+-
+ 		// This doesn't do anything.
+ 		// FrontEndMenuManager.m_bShowMouse = true;
+ 
+@@ -139,9 +136,13 @@ FastLoader::LoadFreeroamScript()
+ 	// Doing this in my fast loader fixes the audio glitch on first load!
+ 	// Now I don't have to pause and unpause to fix the sounds to work again.
+ 	// I guess DoSettingsBeforeStartingAGame does something that shouldn't be run here.
+-	FrontEndMenuManager.m_bShutDownFrontEndRequested = true;
+-	FrontEndMenuManager.m_bWantToRestart = true;
+-	FrontEndMenuManager.SwitchMenuOnAndOff();
++	// Is this really needed here?
++	// FrontEndMenuManager.m_bShutDownFrontEndRequested = true;
++	// FrontEndMenuManager.m_bWantToRestart = true;
++	// FrontEndMenuManager.SwitchMenuOnAndOff();
++
++
++	FreeroamUtil::LoadFreeroamJson();
+ 	//
+ 
+ 
+@@ -217,3 +218,14 @@ FastLoader::LoadMainGameScripts()
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 	}
+ }
++
++/**
++ * Restart the game menus, moved outside of LoadFreeroamScript for some fixes.
++ */
++void
++FastLoader::RestartMenus()
++{
++	FrontEndMenuManager.m_bShutDownFrontEndRequested = true;
++	FrontEndMenuManager.m_bWantToRestart = true;
++	FrontEndMenuManager.SwitchMenuOnAndOff();
++}
+\ No newline at end of file
+diff --git a/src/extras/utils/fast_loader.h b/src/extras/utils/fast_loader.h
+index dc157fa1..ef77b020 100644
+--- a/src/extras/utils/fast_loader.h
++++ b/src/extras/utils/fast_loader.h
+@@ -8,4 +8,5 @@ public:
+ 	void FastLoad();
+ 
+ 	static void LoadFreeroamScript();
++	static void RestartMenus();
+ };
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index c5dfd433..d1ce2fda 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -163,6 +163,11 @@ FreeroamUtil::SaveFreeroamJson()
+ 
+ 		save["game"]["weather"]["list"] = CWeather::WeatherTypeInList;
+ 
++		// New, added in v1.2.15-1a.
++		// save["game"]["sound_volume"] = FrontEndMenuManager.m_PrefsSfxVolume;
++		// save["game"]["music_volume"] = FrontEndMenuManager.m_PrefsMusicVolume;
++		//
++
+ 		// Player position
+ 		CPlayerInfo &player = CWorld::Players[CWorld::PlayerInFocus];
+ 
+@@ -182,7 +187,7 @@ FreeroamUtil::SaveFreeroamJson()
+ 		 * These member names are examples. Replace them with the
+ 		 * corresponding fields or accessors in your Stats.h.
+ 		 */
+-		save["stats"]["money"] = FindPlayerPed()->m_nPedMoney;
++		save["stats"]["money"] = CWorld::Players[CWorld::PlayerInFocus].m_nMoney;
+ 		save["stats"]["health"] = FindPlayerPed()->m_fHealth;
+ 		save["stats"]["armor"] = FindPlayerPed()->m_fArmour;
+ 
+@@ -405,7 +410,6 @@ FreeroamUtil::LoadFreeroamJson()
+ 
+ 		if(!save.is_object()) return false;
+ 
+-		// if(save.value("format", "") != "revc-freeroam") return false;
+ 		if(save.value("format", "") != SAVE_FILE_FORMAT) return false;
+ 
+ 		const int version = save.value("version", 0);
+@@ -448,6 +452,13 @@ FreeroamUtil::LoadFreeroamJson()
+ 
+ 		CWeather::WeatherTypeInList = weather.value("list", CWeather::WeatherTypeInList);
+ 
++		// New, added in v1.2.15-1a.
++		// Load audio volumes
++		// Are these breaking my save?
++		// FrontEndMenuManager.m_PrefsSfxVolume = save["game"].value("sound_volume", FrontEndMenuManager.m_PrefsSfxVolume);
++		// FrontEndMenuManager.m_PrefsMusicVolume = save["game"].value("music_volume", FrontEndMenuManager.m_PrefsMusicVolume);
++		//
++
+ 		/*
+ 		 * Load stats. Replace these example fields with the actual
+ 		 * fields or functions in your CStats implementation.
+@@ -455,7 +466,7 @@ FreeroamUtil::LoadFreeroamJson()
+ 		if(save.contains("stats")) {
+ 			const json &stats = save["stats"];
+ 
+-			FindPlayerPed()->m_nPedMoney = stats.value("money", FindPlayerPed()->m_nPedMoney);
++			CWorld::Players[CWorld::PlayerInFocus].m_nMoney = stats.value("money", CWorld::Players[CWorld::PlayerInFocus].m_nMoney);
+ 
+ 			FindPlayerPed()->m_fHealth = stats.value("health", FindPlayerPed()->m_fHealth);
+ 
+diff --git a/src/save/GenericGameStorage.cpp b/src/save/GenericGameStorage.cpp
+index 8787eca2..146c22f5 100644
+--- a/src/save/GenericGameStorage.cpp
++++ b/src/save/GenericGameStorage.cpp
+@@ -48,6 +48,7 @@
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ #include "freeroam_util.h"
++#include "fast_loader.h"
+ #endif // DISABLE_GAME_SCRIPTS - Load/save custom json format for saves.
+ 
+ 
+@@ -343,8 +344,8 @@ GenericLoad()
+ 	// This breaks the new game if set here, I cannot press F5 to restart the script or press new game without crashing.
+ 	// LuaTest::GetInstance().SetupFreeroamScript();
+ 	
+-	// TODO Test this later
+-	// FreeroamUtil::LoadFreeroamJson();
++	// TODO Test this later.
++	FreeroamUtil::LoadFreeroamJson();
+ 	//
+ 
+ 	return true;
+@@ -712,6 +713,10 @@ CheckDataNotCorrupt(int32 slot, char *name)
+ bool
+ RestoreForStartLoad()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	return true;
++#else
++
+ 	uint8 buf[999];
+ 
+ 	int file = CFileMgr::OpenFile(LoadFileName, "rb");
+@@ -741,6 +746,8 @@ RestoreForStartLoad()
+ 			return false;
+ 		}
+ 	}
++
++#endif // DISABLE_GAME_SCRIPTS - Load/save custom json format for saves.
+ }
+ 
+ int
+-- 
+2.43.0
+

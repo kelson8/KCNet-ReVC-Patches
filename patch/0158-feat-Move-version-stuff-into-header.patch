@@ -1,0 +1,108 @@
+From bcd981b41ffab3015c6073e06bcd7cdbeaf3c3c4 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 15 Sep 2026 03:56:10 -0400
+Subject: [PATCH 158/161] feat: Move version stuff into header
+
+* Add 'SAVE_FILE_VERSION' and 'SAVE_FILE_FORMAT' for use in lua.
+
+* Update changelog.
+---
+ Changelog.md                       |  7 +++++++
+ src/extras/lua/lua_test.cpp        | 16 +++++++++++++++-
+ src/extras/utils/freeroam_util.cpp |  7 -------
+ src/extras/utils/freeroam_util.h   |  6 ++++++
+ 4 files changed, 28 insertions(+), 8 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index a195b5e3..0504390c 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -973,3 +973,10 @@ refactor: Cleanup imgui_setup a bit
+ 
+ * Update changelog.
+ 
++**Commit 5**
++
++feat: Move version stuff into header
++
++* Add 'SAVE_FILE_VERSION' and 'SAVE_FILE_FORMAT' for use in lua.
++
++* Update changelog.
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index da148592..826918a5 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -6,6 +6,8 @@
+ #ifdef LUA_TEST
+ 
+ #include "lua_test.h"
++#include "freeroam_util.h"
++
+ #include <iostream>
+ 
+ #include <vector>
+@@ -780,7 +782,19 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	RegisterWorldFunctionsLua(L);
+ 	//----
+ 
+-	//	
++	//----
++	// New for save file stuff
++	// For my KCNet ReVC Lua saves.
++	// TODO Test this in lua, it should allow me to validate the version against what I have set in my code.
++	// I may even add some kind of checksum validation for these in the future to play around with.
++	//----
++	lua_pushinteger(L, SAVE_FILE_VERSION);
++	lua_setglobal(L, "EXPECTED_SAVE_VERSION");
++	lua_pushstring(L, SAVE_FILE_FORMAT);
++	lua_setglobal(L, "EXPECTED_SAVE_FORMAT");
++	//
++
++	//
+ }
+ 
+ /// <summary>
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index ff8e1bf5..39fdf2e5 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -31,19 +31,12 @@ using json = nlohmann::json;
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ 
+-// The max length for a save file name.
+-#define MAX_SAVE_FILE_NAME 32
+-#define SAVE_FILE_FORMAT "revc-freeroam"
+-// The current version of the save file format, not sure how often I'll change this.
+-#define SAVE_FILE_VERSION 1
+-
+ namespace 
+ {
+ 	// The JSON save file name.
+ 	std::string saveFileName = "kcnet-revc-save.json";
+ }
+ 
+-
+ //----------------------
+ // Json saving/loading
+ // This actually works! I wasn't expecting it to just work.
+diff --git a/src/extras/utils/freeroam_util.h b/src/extras/utils/freeroam_util.h
+index 93fc024d..d8918fbd 100644
+--- a/src/extras/utils/freeroam_util.h
++++ b/src/extras/utils/freeroam_util.h
+@@ -3,6 +3,12 @@
+ #include "defines.h"
+ #include <filesystem>
+ 
++// The max length for a save file name.
++#define MAX_SAVE_FILE_NAME 32
++#define SAVE_FILE_FORMAT "revc-freeroam"
++// The current version of the save file format, not sure how often I'll change this.
++#define SAVE_FILE_VERSION 1
++
+ class FreeroamUtil
+ {
+ private:
+-- 
+2.43.0
+

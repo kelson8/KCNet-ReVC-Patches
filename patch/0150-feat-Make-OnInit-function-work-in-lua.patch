@@ -1,0 +1,150 @@
+From c21e85c12e2ad2aacd96d1c45b7a5c72acba0c4d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 13 Sep 2026 19:03:36 -0400
+Subject: [PATCH 150/161] feat: Make OnInit function work in lua
+
+* This commit fixes the OnInit function that I have in lua, now I can run things in there only when the game starts up
+
+* Set total number of hidden packages to 0 by default in PlayerInfo.cpp
+
+* Update changelog, change version to 1.2.13-14a.
+---
+ Changelog.md                     | 13 ++++++++++++-
+ src/core/Game.cpp                |  8 ++++----
+ src/core/PlayerInfo.cpp          |  5 +++++
+ src/core/config.h                |  3 +--
+ src/extras/lua/lua_functions.cpp |  7 +++++--
+ src/extras/utils/defines.cpp     |  6 +++++-
+ 6 files changed, 32 insertions(+), 10 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 62297f2f..eb189f79 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -848,7 +848,7 @@ feat: Add arrest player test option to misc menu
+ 
+ * Update changelog.
+ 
+-### Latest 1.2.13-13a
++### 1.2.13-13a
+ 
+ **Commit 1**
+ 
+@@ -873,3 +873,14 @@ feat: Make game not crash if player isn't created
+ * I plan on adding random locations to spawn at using my json files later.
+ 
+ * Update changelog.
++
++
++### Latest 1.2.13-14a
++
++feat: Make OnInit function work in lua
++
++* This commit fixes the OnInit function that I have in lua, now I can run things in there only when the game starts up
++
++* Set total number of hidden packages to 0 by default in PlayerInfo.cpp
++
++* Update changelog, change version to 1.2.13-14a.
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 63542ad2..17f56fe8 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -630,16 +630,16 @@ bool CGame::Initialise(const char* datFile)
+ #else
+ 		// Enabled again here, this is running elsewhere and I have re-enabled some checks in here to test.
+ 		CTheScripts::Process();
+-	// Init lua scripts, moved out of glfw.cpp.
+-	LuaTest::GetInstance().SetupFreeroamScript();
+-	
++
+ 	// Lua init scripts, create the player and other required items.
+-	// This is a work in progress and doesn't currently work right, so it's disabled.
++	LuaTest::GetInstance().SetupFreeroamScript();
+ 
++	// Moved here, should run the lua OnInit function on startup.
+ #ifdef NEW_LUA_FORMAT
+ 	LuaTest::GetInstance().OnInit();
+ #endif // NEW_LUA_FORMAT
+ 
++
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		TheCamera.Process();
+ 	}
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index af24fac8..bd7caf46 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -70,8 +70,13 @@ CPlayerInfo::Clear(void)
+ 	m_bUnusedTaxiThing = false;
+ 	m_nUnusedTaxiTimer = 0;
+ 	m_nCollectedPackages = 0;
++#ifdef DISABLE_GAME_SCRIPTS
++	m_nTotalPackages = 0;
++#else
+ 	m_nTotalPackages = 3;
+ 
++#endif // DISABLE_GAME_SCRIPTS - Set default script values.
++
+ 	m_nTimeLastHealthLoss = 0;
+ 	m_nTimeLastArmourLoss = 0;
+ 	m_nNextSexFrequencyUpdateTime = 0;
+diff --git a/src/core/config.h b/src/core/config.h
+index b273aa80..5f193a48 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -133,8 +133,7 @@
+ // These should only run if DISABLE_GAME_SCRIPTS is active above.
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	// Currently, just enables the OnInit function in my lua scripts.
+-	// This is broken so it's disabled.
+-	// #define NEW_LUA_FORMAT
++	#define NEW_LUA_FORMAT
+ #endif // DISABLE_GAME_SCRIPTS
+ 
+ #endif // CUSTOM_CODE
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 45176e56..6eac0271 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -298,8 +298,11 @@ std::optional<CVector2D> luaGetCVector2D(lua_State* L, int index)
+     return CVector2D(x, y);
+ }
+ 
+-// Check lua globals, made this into a function
+-// Moved out of lua_test.cpp.
++
++/**
++ * Check lua globals, made this into a function
++ * Moved out of lua_test.cpp.
++ */
+ bool
+ CheckLua(lua_State *L, int r)
+ {
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 57ee4d9b..dbb7df42 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-13a";
++std::string Defines::programVersion = "1.2.13-14a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+@@ -114,7 +114,11 @@ std::string luaScriptsFolder = Defines::gamePathFolder + "lua_scripts/";
+ std::string Defines::luaScript = luaScriptsFolder + "kcnet-init.lua";
+ 
+ // New for freeroam script
++// TODO Add a luaCompiledFreeroamScript, so I can toggle loading a compiled script.
++// This script will still be open source, but I will allow the user to optionally compile it.
++// Since this has the player init and save loading it probably shouldn't easily be modified.
+ std::string Defines::luaFreeroamScript = luaScriptsFolder + "freeroam-game.lua";
++// std::string Defines::luaFreeroamScript = luaScriptsFolder + "freeroam-game.luac";
+ 
+ // New lua items
+ std::string Defines::luaKeyBindScript = luaScriptsFolder + "kcnet-keybind-events.lua";
+-- 
+2.43.0
+

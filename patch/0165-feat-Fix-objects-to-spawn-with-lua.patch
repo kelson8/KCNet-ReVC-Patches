@@ -1,0 +1,1047 @@
+From 5a14eab18cb824b15d8f91e076691bdca7eeb360 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 16 Sep 2026 14:41:11 -0400
+Subject: [PATCH 165/176] feat: Fix objects to spawn with lua
+
+* Now I can create objects in my lua code, such as the road blocks that the scripts would normally set up.
+
+* Update Garages code a bit, move pay n spray code into its own function.
+
+* Update changelog, change verison to 1.2.14-6a.
+---
+ Changelog.md                 |  10 +
+ src/control/Garages.cpp      | 388 ++++++++++++++++++++++++++++++++++-
+ src/control/Garages.h        |   5 +
+ src/extras/lua/lua_world.cpp | 158 ++++++++++++--
+ src/extras/lua/lua_world.h   |   6 +
+ src/extras/utils/defines.cpp |   2 +-
+ 6 files changed, 537 insertions(+), 32 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 798afc3d..64a0dadb 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1048,3 +1048,13 @@ feat: Make garages work in lua
+ * I can open/close the garages, and check if they are open/closed now.
+ 
+ * Update changelog, change version to 1.2.14-5a.
++
++### 1.2.14-6a
++
++feat: Fix objects to spawn with lua
++
++* Now I can create objects in my lua code, such as the road blocks that the scripts would normally set up.
++
++* Update Garages code a bit, move pay n spray code into its own function.
++
++* Update changelog, change verison to 1.2.14-6a.
+diff --git a/src/control/Garages.cpp b/src/control/Garages.cpp
+index 3ef1cd1f..a0e90280 100644
+--- a/src/control/Garages.cpp
++++ b/src/control/Garages.cpp
+@@ -102,24 +102,45 @@ const int32 gaCarsToCollectInCraigsGarages[TOTAL_COLLECTCARS_GARAGES][TOTAL_COLL
+ 
+ const int32 gaCarsToCollectIn60Seconds[] = { MI_CHEETAH, MI_TAXI, MI_ESPERANT, MI_SENTINEL, MI_IDAHO };
+ 
++// The bank vans that are collected.
+ int32 CGarages::BankVansCollected;
++// If bombs are free
+ bool CGarages::BombsAreFree;
++// TODO Add toggle for this in lua
+ bool CGarages::RespraysAreFree;
++
++// The amount of cars collected
+ int32 CGarages::CarsCollected;
++// The car types collected.
+ int32 CGarages::CarTypesCollected[TOTAL_COLLECTCARS_GARAGES];
++
++// The crushed car ID.
+ int32 CGarages::CrushedCarId;
++
+ uint32 CGarages::LastTimeHelpMessage;
+ int32 CGarages::MessageNumberInString;
++
+ char CGarages::MessageIDString[MESSAGE_LENGTH];
+ int32 CGarages::MessageNumberInString2;
++
+ uint32 CGarages::MessageStartTime;
+ uint32 CGarages::MessageEndTime;
++
++// The current number of garages
+ uint32 CGarages::NumGarages;
++
++// If the player is in a garage.
+ bool CGarages::PlayerInGarage;
++
++// The police cars collected
+ int32 CGarages::PoliceCarsCollected;
++// The cars in safehouses.
+ CStoredCar CGarages::aCarsInSafeHouses[TOTAL_HIDEOUT_GARAGES][NUM_GARAGE_STORED_CARS];
+ int32 hGarages = AEHANDLE_NONE;
++
++// The current garage list
+ CGarage CGarages::aGarages[NUM_GARAGES];
++// Should the camera be outside for the garages
+ bool CGarages::bCamShouldBeOutisde;
+ 
+ #ifndef MASTER
+@@ -155,6 +176,9 @@ void CGarages::Init(void)
+ 		DMAudio.SetEntityStatus(hGarages, TRUE);
+ }
+ 
++/**
++ * Shutdown the garages, sets the amounts of garages to 0 and destroys the audio entities for them.
++ */
+ void CGarages::Shutdown(void)
+ {
+ 	NumGarages = 0;
+@@ -164,6 +188,9 @@ void CGarages::Shutdown(void)
+ 	hGarages = AEHANDLE_NONE;
+ }
+ 
++/**
++ * Updating for the garages.
++ */
+ void CGarages::Update(void)
+ {
+ 	static uint32 GarageToBeTidied = 0;
+@@ -200,6 +227,19 @@ void CGarages::Update(void)
+ 		aGarages[GarageToBeTidied].TidyUpGarage();
+ }
+ 
++/**
++ * Add a garage, this won't add it if its more then NUM_GARAGES.
++ * 
++ * @param X1
++ * @param Y1
++ * @param Z1
++ * @param X2
++ * @param Y2
++ * @param X3
++ * @param Z2
++ * @param type The type of garage from the eGarageType enum.
++ * @param targetId
++ */
+ int16 CGarages::AddOne(float X1, float Y1, float Z1, float X2, float Y2, float X3, float Y3, float Z2, uint8 type, int32 targetId)
+ {
+ 	if (NumGarages >= NUM_GARAGES) {
+@@ -309,6 +349,175 @@ void CGarages::ChangeGarageType(int16 garage, uint8 type, int32 mi)
+ 	pGarage->m_eGarageState = GS_FULLYCLOSED;
+ }
+ 
++#ifdef CUSTOM_CODE
++
++/**
++ * Handle the Pay N Spray garage logic.
++ */
++void CGarage::HandlePayNSprayGarage()
++{
++	switch (m_eGarageState) {
++
++		case GS_OPENED:
++			if (IsStaticPlayerCarEntirelyInside()) {
++				if (CGarages::IsCarSprayable(FindPlayerVehicle())) {
++					if (CWorld::Players[CWorld::PlayerInFocus].m_nMoney >= RESPRAY_PRICE || CGarages::RespraysAreFree) {
++						m_eGarageState = GS_CLOSING;
++						CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_GARAGE);
++						FindPlayerPed()->m_pWanted->m_bIgnoredByCops = true;
++					}
++					else {
++						CGarages::TriggerMessage("GA_3", -1, 4000, -1); // No more freebies. $100 to respray!
++						m_eGarageState = GS_OPENEDCONTAINSCAR;
++						DMAudio.PlayFrontEndSound(SOUND_GARAGE_NO_MONEY, 1);
++					}
++				}
++				else {
++					CGarages::TriggerMessage("GA_1", -1, 4000, -1); // Whoa! I don't touch nothing THAT hot!
++					m_eGarageState = GS_OPENEDCONTAINSCAR;
++					DMAudio.PlayFrontEndSound(SOUND_GARAGE_BAD_VEHICLE, 1);
++				}
++			}
++			if (FindPlayerVehicle()) {
++				if (CalcDistToGarageRectangleSquared(FindPlayerVehicle()->GetPosition().x, FindPlayerVehicle()->GetPosition().y) < SQR(DISTANCE_TO_ACTIVATE_GARAGE))
++					CWorld::CallOffChaseForArea(
++						m_fInfX - DISTANCE_TO_CALL_OFF_CHASE,
++						m_fInfY - DISTANCE_TO_CALL_OFF_CHASE,
++						m_fSupX + DISTANCE_TO_CALL_OFF_CHASE,
++						m_fSupY + DISTANCE_TO_CALL_OFF_CHASE);
++			}
++			break;
++		case GS_CLOSING:
++			if (FindPlayerVehicle())
++				ThrowCarsNearDoorOutOfGarage(FindPlayerVehicle());
++			m_fDoorPos = Max(0.0f, m_fDoorPos - (m_bRotatedDoor ? ROTATED_DOOR_CLOSE_SPEED : DEFAULT_DOOR_CLOSE_SPEED) * CTimer::GetTimeStep());
++			if (m_fDoorPos == 0.0f) {
++				m_eGarageState = GS_FULLYCLOSED;
++				m_nTimeToStartAction = CTimer::GetTimeInMilliseconds() + TIME_TO_RESPRAY;
++				DMAudio.PlayOneShot(hGarages, SOUND_GARAGE_DOOR_CLOSED, 1.0f);
++				CStats::CheckPointReachedSuccessfully();
++			}
++			UpdateDoorsHeight();
++#ifdef FIX_BUGS
++			if (FindPlayerVehicle() && FindPlayerVehicle()->IsCar())
++#else
++			if (FindPlayerVehicle())
++#endif
++				((CAutomobile*)(FindPlayerVehicle()))->m_fFireBlowUpTimer = 0.0f;
++			CWorld::CallOffChaseForArea(
++				m_fInfX - DISTANCE_TO_CALL_OFF_CHASE,
++				m_fInfY - DISTANCE_TO_CALL_OFF_CHASE,
++				m_fSupX + DISTANCE_TO_CALL_OFF_CHASE,
++				m_fSupY + DISTANCE_TO_CALL_OFF_CHASE);
++			break;
++		case GS_FULLYCLOSED:
++			if (CTimer::GetTimeInMilliseconds() > m_nTimeToStartAction) {
++				m_eGarageState = GS_OPENING;
++				DMAudio.PlayFrontEndSound(SOUND_GARAGE_OPENING, 1);
++				bool bTakeMoney = false;
++				if (FindPlayerPed()->m_pWanted->GetWantedLevel() != 0) {
++					bTakeMoney = true;
++					FindPlayerPed()->m_pWanted->Suspend();
++				}
++				CPad::GetPad(0)->SetEnablePlayerControls(PLAYERCONTROL_GARAGE);
++				FindPlayerPed()->m_pWanted->m_bIgnoredByCops = false;
++#ifdef FIX_BUGS
++				bool bChangedColour = false;
++#else
++				bool bChangedColour;
++#endif
++				if (FindPlayerVehicle() && (FindPlayerVehicle()->IsCar() || FindPlayerVehicle()->IsBike())) {
++					if (FindPlayerVehicle()->m_fHealth < FREE_RESPRAY_HEALTH_THRESHOLD)
++						bTakeMoney = true;
++					FindPlayerVehicle()->m_fHealth = 1000.0f;
++					if (FindPlayerVehicle()->IsCar()) {
++						((CAutomobile*)(FindPlayerVehicle()))->m_fFireBlowUpTimer = 0.0f;
++						((CAutomobile*)(FindPlayerVehicle()))->Fix();
++					}
++					else {
++						((CBike*)(FindPlayerVehicle()))->m_fFireBlowUpTimer = 0.0f;
++						((CBike*)(FindPlayerVehicle()))->Fix();
++					}
++					FindPlayerVehicle()->m_nDoorLock = CARLOCK_UNLOCKED;
++					++CStats::Sprayings;
++					if (FindPlayerVehicle()->GetUp().z < 0.0f) {
++						FindPlayerVehicle()->GetUp() = -FindPlayerVehicle()->GetUp();
++						FindPlayerVehicle()->GetRight() = -FindPlayerVehicle()->GetRight();
++					}
++					bChangedColour = false;
++#ifdef FIX_BUGS
++					if (!FindPlayerVehicle()->IsCar() || !((CAutomobile*)(FindPlayerVehicle()))->bFixedColour) {
++#else
++					if (!((CAutomobile*)(FindPlayerVehicle()))->bFixedColour) {
++#endif
++						uint8 colour1, colour2;
++						uint16 attempt;
++						FindPlayerVehicle()->GetModelInfo()->ChooseVehicleColour(colour1, colour2);
++						for (attempt = 0; attempt < 10; attempt++) {
++							if (colour1 != FindPlayerVehicle()->m_currentColour1 || colour2 != FindPlayerVehicle()->m_currentColour2)
++								break;
++							FindPlayerVehicle()->GetModelInfo()->ChooseVehicleColour(colour1, colour2);
++						}
++						bChangedColour = (attempt < 10);
++						FindPlayerVehicle()->m_currentColour1 = colour1;
++						FindPlayerVehicle()->m_currentColour2 = colour2;
++						if (bChangedColour) {
++							for (int i = 0; i < NUM_PARTICLES_IN_RESPRAY; i++) {
++								CVector pos;
++								pos.x = CGeneral::GetRandomNumberInRange(m_fInfX + 0.5f, m_fSupX - 0.5f);
++								pos.y = CGeneral::GetRandomNumberInRange(m_fInfY + 0.5f, m_fSupY - 0.5f);
++								pos.z = CGeneral::GetRandomNumberInRange(m_fDoor1Z - 3.0f, m_fDoor1Z + 1.0f);
++								CParticle::AddParticle(PARTICLE_GARAGEPAINT_SPRAY, pos, CVector(0.0f, 0.0f, 0.0f), nil, 0.0f, CVehicleModelInfo::ms_vehicleColourTable[colour1]);
++							}
++						}
++					}
++					CenterCarInGarage(FindPlayerVehicle());
++				}
++				if (bTakeMoney) {
++					if (!CGarages::RespraysAreFree) {
++						CWorld::Players[CWorld::PlayerInFocus].m_nMoney = Max(0, CWorld::Players[CWorld::PlayerInFocus].m_nMoney - RESPRAY_PRICE);
++						CStats::AutoPaintingBudget += RESPRAY_PRICE;
++					}
++					CGarages::TriggerMessage("GA_2", -1, 4000, -1); // New engine and paint job. The cops won't recognize you!
++				}
++				else if (bChangedColour) {
++					if (CGeneral::GetRandomTrueFalse())
++						CGarages::TriggerMessage("GA_15", -1, 4000, -1); // Hope you like the new color.
++					else
++						CGarages::TriggerMessage("GA_16", -1, 4000, -1); // Respray is complementary.
++				}
++				m_bResprayHappened = true;
++			}
++			CWorld::CallOffChaseForArea(
++				m_fInfX - DISTANCE_TO_CALL_OFF_CHASE,
++				m_fInfY - DISTANCE_TO_CALL_OFF_CHASE,
++				m_fSupX + DISTANCE_TO_CALL_OFF_CHASE,
++				m_fSupY + DISTANCE_TO_CALL_OFF_CHASE);
++			break;
++		case GS_OPENING:
++			m_fDoorPos = Min(m_fDoorHeight, m_fDoorPos + (m_bRotatedDoor ? ROTATED_DOOR_OPEN_SPEED : DEFAULT_DOOR_OPEN_SPEED) * CTimer::GetTimeStep());
++			if (m_fDoorPos == m_fDoorHeight) {
++				m_eGarageState = GS_OPENEDCONTAINSCAR;
++				DMAudio.PlayOneShot(hGarages, SOUND_GARAGE_DOOR_OPENED, 1.0f);
++			}
++			UpdateDoorsHeight();
++			break;
++		case GS_OPENEDCONTAINSCAR:
++			if (IsPlayerOutsideGarage())
++				m_eGarageState = GS_OPENED;
++			break;
++		//case GS_CLOSEDCONTAINSCAR:
++		//case GS_AFTERDROPOFF:
++		default:
++			break;
++		}
++}
++#endif // CUSTOM_CODE - Move some garage logic
++
++
++/**
++ * Main updating for the garages.
++ */
+ void CGarage::Update()
+ {
+ 	if (m_eGarageType != GARAGE_CRUSHER) {
+@@ -384,9 +593,14 @@ void CGarage::Update()
+ 		}
+ #endif
+ 	}
++
+ 	switch (m_eGarageType) {
+ 	case GARAGE_RESPRAY:
++#ifdef CUSTOM_CODE
++		HandlePayNSprayGarage();
++#else
+ 		switch (m_eGarageState) {
++
+ 		case GS_OPENED:
+ 			if (IsStaticPlayerCarEntirelyInside()) {
+ 				if (CGarages::IsCarSprayable(FindPlayerVehicle())) {
+@@ -539,8 +753,13 @@ void CGarage::Update()
+ 		//case GS_AFTERDROPOFF:
+ 		default:
+ 			break;
++
+ 		}
++#endif // CUSTOM_CODE - Move some garage logic
+ 		break;
++
++
++
+ 	case GARAGE_BOMBSHOP1:
+ 	case GARAGE_BOMBSHOP2:
+ 	case GARAGE_BOMBSHOP3:
+@@ -570,6 +789,8 @@ void CGarage::Update()
+ 			m_fDoorPos = Max(0.0f, m_fDoorPos - (m_bRotatedDoor ? ROTATED_DOOR_CLOSE_SPEED : DEFAULT_DOOR_CLOSE_SPEED) * CTimer::GetTimeStep());
+ 			if (m_fDoorPos == 0.0f) {
+ 				m_eGarageState = GS_FULLYCLOSED;
++				// TODO Look into this m_nTimeToStartAction varaible, I might be able to adapt it for some timers.
++				// Although it won't work for a wait like in the scripts it'll at least do something.
+ 				m_nTimeToStartAction = CTimer::GetTimeInMilliseconds() + TIME_TO_SETUP_BOMB;
+ 				DMAudio.PlayOneShot(hGarages, SOUND_GARAGE_DOOR_CLOSED, 1.0f);
+ 			}
+@@ -1336,6 +1557,9 @@ bool CGarage::IsAnyOtherPedTouchingGarage(CPed * pException)
+ 	return false;
+ }
+ 
++/**
++ * Check if any car is blocking a garage door.
++ */
+ bool CGarage::IsAnyCarBlockingDoor()
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -1370,6 +1594,9 @@ int32 CGarage::CountCarsWithCenterPointWithinGarage(CEntity * pException)
+ 	return total;
+ }
+ 
++/**
++ * Remove the cars that are blocking the garage door and not inside.
++ */
+ void CGarage::RemoveCarsBlockingDoorNotInside()
+ {
+ 	uint32 i = CPools::GetVehiclePool()->GetSize();
+@@ -1391,6 +1618,9 @@ void CGarage::RemoveCarsBlockingDoorNotInside()
+ 	}
+ }
+ 
++/**
++ * Print the messages for the garages.
++ */
+ void CGarages::PrintMessages()
+ {
+ 	if (CTimer::GetTimeInMilliseconds() > MessageStartTime && CTimer::GetTimeInMilliseconds() < MessageEndTime) {
+@@ -1426,13 +1656,14 @@ void CGarages::PrintMessages()
+ 	}
+ }
+ 
+-/// <summary>
+-/// This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
+-/// </summary>
+-/// TODO Setup preprocessor for this and ToggleRespray if it's not in original code.
+ #ifdef CUSTOM_CODE
++// This is for the static allow all vehicles respray variable.
++// TODO Make this able to be changed in lua if it isn't already able to be.
+ bool CGarage::m_allowAllVehiclesRespray = false;
+ 
++/**
++ * This toggles the option for respray of vehicles such as police cars and other normally restricted vehicles.
++ */
+ void
+ CGarages::ToggleRespray()
+ {
+@@ -1459,17 +1690,19 @@ CGarages::ToggleRespray()
+ 
+ #endif // CUSTOM_CODE
+ 
+-/// <summary>
+-/// Code customized to allow repairing all vehicles.
+-/// I have a toggle for this in the debug menu and my Cleo Redux menu.
+-/// </summary>
+-/// <param name="pVehicle">The vehicle to check for.</param>
+-/// <returns>If the car is resprayable at a Pay N Spray</returns>
++/**
++ * Code customized to allow repairing all vehicles.
++ * I have a toggle for this in the debug menu and my Cleo Redux menu.
++ * 
++ * @param pVehicle The vehicle to check for.
++ * @returns If the car is resprayable at a Pay N Spray
++ */
+ bool
+ CGarages::IsCarSprayable(CVehicle *pVehicle)
+ {
+ #ifdef CUSTOM_CODE
+ 	// Allow all vehicles to be resprayed such as cop cars.
++	// TODO Add toggle for this in lua.
+ 	if(CGarage::m_allowAllVehiclesRespray) { 
+ 		return true; 
+ 	}
+@@ -1611,6 +1844,14 @@ void CGarage::RefreshDoorPointers(bool bCreate)
+ 		FindDoorsEntities();
+ }
+ 
++/**
++ * Trigger the messages for the garages
++ * 
++ * @param text The gxt string to display from the game texts.
++ * @param num1
++ * @param time The time to display
++ * @param num2
++ */
+ void CGarages::TriggerMessage(const char* text, int16 num1, uint16 time, int16 num2)
+ {
+ 	if (strcmp(text, MessageIDString) == 0 &&
+@@ -1648,11 +1889,25 @@ bool CGarages::HasCarBeenDroppedOffYet(int16 garage)
+ 	return aGarages[garage].m_eGarageState == GS_CLOSEDCONTAINSCAR;
+ }
+ 
++/**
++ * Deactivate a garage for use.
++ * 
++ * TODO Look into using this in my lua scripts.
++ * 
++ * @param garage
++ */
+ void CGarages::DeActivateGarage(int16 garage)
+ {
+ 	aGarages[garage].m_bDeactivated = true;
+ }
+ 
++/**
++ * Activate a garage for use.
++ * 
++ * TODO Look into using this in my lua scripts.
++ * 
++ * @param garage
++ */
+ void CGarages::ActivateGarage(int16 garage)
+ {
+ 	aGarages[garage].m_bDeactivated = false;
+@@ -1670,16 +1925,30 @@ bool CGarages::HasImportExportGarageCollectedThisCar(int16 garage, int8 car)
+ 	return CarTypesCollected[GetCarsCollectedIndexForGarageType(aGarages[garage].m_eGarageType)] & (BIT(car));
+ }
+ 
++/**
++ * Is this garage open.
++ * 
++ * @param garage
++ */
+ bool CGarages::IsGarageOpen(int16 garage)
+ {
+ 	return aGarages[garage].IsOpen();
+ }
+ 
++/**
++ * Is this garage closed.
++ * 
++ * @param garage
++ */
+ bool CGarages::IsGarageClosed(int16 garage)
+ {
+ 	return aGarages[garage].IsClosed();
+ }
+ 
++//--------------------------
++// Craig Garage Stuff
++//--------------------------
++
+ bool CGarages::HasThisCarBeenCollected(int16 garage, uint8 id)
+ {
+ 	return aGarages[garage].m_bCollectedCarsState & BIT(id);
+@@ -1728,12 +1997,22 @@ bool CGarage::MarkThisCarAsCollectedForCraig(int32 mi)
+ 	return true;
+ }
+ 
++//--------------------------
++// End Craig Garage Stuff
++//--------------------------
++
++/**
++ * Open a garage
++ */
+ void CGarage::OpenThisGarage()
+ {
+ 	if (m_eGarageState == GS_FULLYCLOSED || m_eGarageState == GS_CLOSING || m_eGarageState == GS_CLOSEDCONTAINSCAR)
+ 		m_eGarageState = GS_OPENING;
+ }
+ 
++/**
++ * Close a garage
++ */
+ void CGarage::CloseThisGarage()
+ {
+ 	if (m_eGarageState == GS_OPENED || m_eGarageState == GS_OPENING)
+@@ -1841,6 +2120,11 @@ void CGarage::FindDoorsEntitiesSectorList(CPtrList& list, bool dummy)
+ 	}
+ }
+ 
++/**
++ * Has a respray happened at this garage?
++ * 
++ * @param garage
++ */
+ bool CGarages::HasResprayHappened(int16 garage)
+ {
+ 	bool result = aGarages[garage].m_bResprayHappened;
+@@ -1848,6 +2132,11 @@ bool CGarages::HasResprayHappened(int16 garage)
+ 	return result;
+ }
+ 
++/**
++ * Set a garage door to rotate.
++ * 
++ * @param garage
++ */
+ void CGarages::SetGarageDoorToRotate(int16 garage)
+ {
+ 	if (aGarages[garage].m_bRotatedDoor)
+@@ -1859,21 +2148,40 @@ void CGarages::SetGarageDoorToRotate(int16 garage)
+ 	aGarages[garage].UpdateDoorsHeight();
+ }
+ 
++/**
++ * Make the camera leave for this garage, set it back to following the player.
++ * 
++ * @param garage.
++ */
+ void CGarages::SetLeaveCameraForThisGarage(int16 garage)
+ {
+ 	aGarages[garage].m_bCameraFollowsPlayer = true;
+ }
+ 
++/**
++ * Check if a car is within any garage area.
++ * 
++ * @param garage
++ * @param pCar
++ */
+ bool CGarages::IsThisCarWithinGarageArea(int16 garage, CEntity * pCar)
+ {
+ 	return aGarages[garage].IsEntityEntirelyInside3D(pCar, 0.0f);
+ }
+ 
++/**
++ * Check if a car has been crushed.
++ */
+ bool CGarages::HasCarBeenCrushed(int32 handle)
+ {
+ 	return CrushedCarId == handle;
+ }
+ 
++/**
++ * Store the current vehicle data
++ * 
++ * @param pVehicle The vehicle to store the data for.
++ */
+ void CStoredCar::StoreCar(CVehicle* pVehicle)
+ {
+ 	m_nModelIndex = pVehicle->GetModelIndex();
+@@ -1894,6 +2202,9 @@ void CStoredCar::StoreCar(CVehicle* pVehicle)
+ 		m_nCarBombType = ((CAutomobile*)pVehicle)->m_bombType; // NB: cast to CAutomobile is original behaviour
+ }
+ 
++/**
++ * Repair a car with the hideout garages.
++ */
+ CVehicle* CStoredCar::RestoreCar()
+ {
+ 	CStreaming::RequestModel(m_nModelIndex, STREAMFLAGS_DEPENDENCY);
+@@ -1971,6 +2282,11 @@ void CGarage::StoreAndRemoveCarsForThisHideout(CStoredCar* aCars, int32 nMax)
+ 		aCars[i].Clear();
+ }
+ 
++/**
++ * Restore the garage cars for a hideout
++ * 
++ * @param aCars
++ */
+ bool CGarage::RestoreCarsForThisHideout(CStoredCar* aCars)
+ {
+ 	for (int i = 0; i < NUM_GARAGE_STORED_CARS; i++) {
+@@ -2015,6 +2331,9 @@ bool CGarages::IsPointInAGarageCameraZone(CVector point)
+ 	return false;
+ }
+ 
++/**
++ * Should the player camera be outside of the garage.
++ */
+ bool CGarages::CameraShouldBeOutside()
+ {
+ 	return bCamShouldBeOutisde;
+@@ -2104,6 +2423,9 @@ void CGarages::PlayerArrestedOrDied()
+ 	MessageStartTime = 0;
+ }
+ 
++/**
++ * If the player has arrested or died, reset the garage states.
++ */
+ void CGarage::PlayerArrestedOrDied()
+ {
+ 	switch (m_eGarageType) {
+@@ -2164,6 +2486,11 @@ void CGarage::PlayerArrestedOrDied()
+ 	}
+ }
+ 
++/**
++ * Center a car in a garage
++ * 
++ * @param pVehicle
++ */
+ void CGarage::CenterCarInGarage(CVehicle* pVehicle)
+ {
+ 	if (IsAnyOtherCarTouchingGarage(FindPlayerVehicle()))
+@@ -2189,6 +2516,9 @@ void CGarage::CenterCarInGarage(CVehicle* pVehicle)
+ 		pVehicle->SetPosition(pos);
+ }
+ 
++/**
++ * Close all hideout garages before saving.
++ */
+ void CGarages::CloseHideOutGaragesBeforeSave()
+ {
+ #ifdef FIX_BUGS
+@@ -2208,6 +2538,12 @@ void CGarages::CloseHideOutGaragesBeforeSave()
+ 	}
+ }
+ 
++/**
++ * Count the cars in a hideout garage.
++ * 
++ * @param type Hideout type from 'eGarageType' enum.
++ * @returns The total amount of cars in a hideout garage.
++ */
+ int32 CGarages::CountCarsInHideoutGarage(uint8 type)
+ {
+ 	int32 total = 0;
+@@ -2217,6 +2553,11 @@ int32 CGarages::CountCarsInHideoutGarage(uint8 type)
+ 	return total;
+ }
+ 
++/**
++ * Check if the point is within a hideout garage.
++ * 
++ * @param point The CVector point to check.
++ */
+ bool CGarages::IsPointWithinHideOutGarage(Const CVector& point)
+ {
+ #ifdef FIX_BUGS
+@@ -2245,6 +2586,11 @@ bool CGarages::IsPointWithinHideOutGarage(Const CVector& point)
+ 	return false;
+ }
+ 
++/**
++ * Check if a point is within a garage.
++ * 
++ * @param point The CVector point to check.
++ */
+ bool CGarages::IsPointWithinAnyGarage(Const CVector& point)
+ {
+ #ifdef FIX_BUGS
+@@ -2263,6 +2609,9 @@ bool CGarages::IsPointWithinAnyGarage(Const CVector& point)
+ 	return false;
+ }
+ 
++/**
++ * Reset all the garage doors back to the original height.
++ */
+ void CGarages::SetAllDoorsBackToOriginalHeight()
+ {
+ #ifdef FIX_BUGS
+@@ -2301,6 +2650,9 @@ void CGarages::SetAllDoorsBackToOriginalHeight()
+ 	}
+ }
+ 
++/**
++ * Save the garage data
++ */
+ void CGarages::Save(uint8 * buf, uint32 * size)
+ {
+ //INITSAVEBUF
+@@ -2374,6 +2726,9 @@ void CGarages::Save(uint8 * buf, uint32 * size)
+ //VALIDATESAVEBUF(*size);
+ }
+ 
++/**
++ * Stored car info
++ */
+ const CStoredCar &CStoredCar::operator=(const CStoredCar & other)
+ {
+ 	m_nModelIndex = other.m_nModelIndex;
+@@ -2389,6 +2744,9 @@ const CStoredCar &CStoredCar::operator=(const CStoredCar & other)
+ 	return *this;
+ }
+ 
++/**
++ * Load the garages data
++ */
+ void CGarages::Load(uint8* buf, uint32 size)
+ {
+ //INITSAVEBUF
+@@ -2475,6 +2833,11 @@ void CGarages::Load(uint8* buf, uint32 size)
+ 	MessageStartTime = 0;
+ }
+ 
++/**
++ * Is the garage model index a door.
++ * 
++ * @param id
++ */
+ bool
+ CGarages::IsModelIndexADoor(uint32 id)
+ {
+@@ -2503,6 +2866,11 @@ CGarages::IsModelIndexADoor(uint32 id)
+ 		id == MI_GARAGEDOOR26;
+ }
+ 
++/**
++ * Stop the car from exploding
++ * 
++ * @param pCar
++ */
+ void CGarages::StopCarFromBlowingUp(CAutomobile* pCar)
+ {
+ 	pCar->m_fFireBlowUpTimer = 0.0f;
+diff --git a/src/control/Garages.h b/src/control/Garages.h
+index 1b0970fc..1ff80703 100644
+--- a/src/control/Garages.h
++++ b/src/control/Garages.h
+@@ -146,6 +146,11 @@ public:
+ 	bool IsOpen() { return m_eGarageState == GS_OPENED || m_eGarageState == GS_OPENEDCONTAINSCAR; }
+ 	bool IsClosed() { return m_eGarageState == GS_FULLYCLOSED; }
+ 	bool IsUsed() { return m_eGarageType != GARAGE_NONE; }
++
++#ifdef CUSTOM_CODE
++	void HandlePayNSprayGarage();
++#endif // CUSTOM_CODE - Move some garage logic
++
+ 	void Update();
+ 	float GetGarageCenterX() { return (m_fInfX + m_fSupX) / 2; }
+ 	float GetGarageCenterY() { return (m_fInfY + m_fSupY) / 2; }
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 17ef9b64..4edd5827 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -56,6 +56,7 @@
+ #include "Zones.h"
+ 
+ #include "CarGen.h"
++#include "Script.h"
+ 
+ // clang-format off
+ 
+@@ -128,19 +129,38 @@ extern "C"
+ 		lua_setfield(L, -2, "switch_ped_roads_on");
+ 
+ 		// Objects
+-		// TODO Fix these later, I have create_object_no_offset started, but now it just doesn't do anything.
++		// These mostly seem to work now
++		// Enabled in 1.2.14-6a.
+ 		// lua_pushcfunction(L, createObjectLua);
+ 		// lua_setfield(L, -2, "create_object");
+ 
+-		// lua_pushcfunction(L, createObjectNoOffsetLua);
+-		// lua_setfield(L, -2, "create_object_no_offset");
++		lua_pushcfunction(L, createObjectNoOffsetLua);
++		lua_setfield(L, -2, "create_object_no_offset");
+ 
+-		// Dont remove the object
+-		// lua_pushcfunction(L, dontRemoveObjectLua);
+-		// lua_setfield(L, -2, "dont_remove_object");
++		// Check if an object exists.
++		lua_pushcfunction(L, doesObjectExistLua);
++		lua_setfield(L, -2, "does_object_exist");
+ 
++		// Dont remove the object, marks it as not to be removed.
++		// Like the island gates
++		lua_pushcfunction(L, dontRemoveObjectLua);
++		lua_setfield(L, -2, "dont_remove_object");
++
++		// Set the object heading, not implemented yet
+ 		// lua_pushcfunction(L, setObjectHeadingLua);
+ 		// lua_setfield(L, -2, "set_object_heading");
++
++		// Remove an object by its handle
++		lua_pushcfunction(L, deleteObjectLua);
++		lua_setfield(L, -2, "remove_object");
++
++		// Toggle collision for an object
++		lua_pushcfunction(L, setObjectCollisionLua);
++		lua_setfield(L, -2, "set_object_collision");
++		
++		// Add a blip for the object, not implemented yet
++		// lua_pushcfunction(L, addBlipForObject);
++		// lua_setfield(L, -2, "add_blip_for_object");
+ 		
+ 		//
+ 
+@@ -515,6 +535,7 @@ extern "C"
+ 
+ 	/**
+ 	 * Create an object with an offset.
++	 * I probably won't use this one much.
+ 	 * 
+ 	 * Usage:
+ 	 * world.create_object({x = 25, y = 25, z = 25})
+@@ -526,8 +547,14 @@ extern "C"
+ 
+ 	/**
+ 	 * Create an object without an offset
+-	 * TODO Test this, I'll see if it works by just setting the position in lua for now.
+-	 * TODO Fix this to work, it crashes the game currently.
++	 * 
++	 * Now this works? All I did was disable the is model loaded check.
++	 * I thought I needed that and to wait on it..
++	 * 
++	 * TODO Add error handling to this, it will crash if the model is invalid.
++	 * Although, I don't know the range of the IDs for this.
++	 * Also, these do not have a collision currently.
++	 * 
+ 	 * If this works, then I'll add an objects enum to lua.
+ 	 * 
+ 	 * Usage (Doesn't currently take a model index just yet.):
+@@ -536,6 +563,7 @@ extern "C"
+ 	int createObjectNoOffsetLua(lua_State *L)
+ 	{
+ 		auto objPos = luaGetCVector(L, 1);
++		lua_Number objToSpawn = luaL_checknumber(L, 2);
+ 
+ 		if(!objPos)
+ 		{
+@@ -549,7 +577,9 @@ extern "C"
+ 		// 352 = Bin1
+ 		// int objectModel = 352;
+ 		// One of the gates for the islands.
+-		int objectModel = 2444;
++		// int objectModel = 2444;
++		// TODO Add error handling for this.
++		int objectModel = objToSpawn;
+ 
+ 		CStreaming::RequestModel(objectModel, 0);
+ 
+@@ -557,7 +587,7 @@ extern "C"
+ 
+ 		static int newTime = 0;
+ 		// Max time to load the object.
+-		int maxTime = 2000;
++		int maxTime = 5000;
+ 
+ 		// Has the model loaded.
+ 		bool hasModelLoaded = false;
+@@ -576,10 +606,14 @@ extern "C"
+ 		}
+ 
+ 		// Make sure the model has loaded.
+-		if(!CStreaming::HasModelLoaded(objectModel) && !hasModelLoaded)
+-		{
+-			return luaL_error(L, "world.create_object_no_offset error, the object model was not loaded!");
+-		}
++		// This always says it wasn't loaded...
++		// if(!CStreaming::HasModelLoaded(objectModel) && !hasModelLoaded)
++
++		// Well, removing this check has fixed it? I thought it would crash without this.
++		// if(!CStreaming::HasModelLoaded(objectModel))
++		// {
++		// 	return luaL_error(L, "world.create_object_no_offset error, the object model was not loaded!");
++		// }
+ 
+ 		// TODO Make this create the objects for the bridge gates and other stuff.
+ 		// TODO Add error handling for this, for now I'll just spawn it somewhere..
+@@ -594,12 +628,12 @@ extern "C"
+ 		object->GetMatrix().UpdateRW();
+ 		object->UpdateRwFrame();
+ 
+-		// CBaseModelInfo* objModelInfo = CModelInfo::GetModelInfo(objectModel);
++		CBaseModelInfo* objModelInfo = CModelInfo::GetModelInfo(objectModel);
+ 		// This check is probably not needed, I'll leave it here anyways.
+-		// if (objModelInfo->IsBuilding() && ((CSimpleModelInfo*)objModelInfo)->m_isBigBuilding)
+-		// {
+-		// 	object->SetupBigBuilding();
+-		// }
++		if (objModelInfo->IsBuilding() && ((CSimpleModelInfo*)objModelInfo)->m_isBigBuilding)
++		{
++			object->SetupBigBuilding();
++		}
+ 
+ 		// Not used in here
+ 		// CTheScripts::ClearMissionSpaceForEntity(objPos, object);
+@@ -607,8 +641,27 @@ extern "C"
+ 		// Add the object to the world.
+ 		CWorld::Add(object);
+ 
+-		// Not sure of what this is for
+-		// CPools::GetObjectPool()->GetIndex
++		// TODO Figure out how to return the object handle
++		// TODO Test this, from the create object scripts.
++		int objectHandle = CPools::GetObjectPool()->GetIndex(object);
++		pushIntToLua(L, objectHandle);
++		//
++
++		return 1;
++	}
++
++	/**
++	 * Check if an object exists
++	 * 
++	 * Usage:
++	 * world.does_object_exist(object_handle)
++	 * 
++	 */
++	int doesObjectExistLua(lua_State *L)
++	{
++		lua_Number curObj = luaL_checknumber(L, 1);
++
++		pushBooleanToLua(L, CPools::GetObjectPool()->GetAt(curObj));		
+ 
+ 		return 1;
+ 	}
+@@ -621,6 +674,14 @@ extern "C"
+ 	 */
+ 	int dontRemoveObjectLua(lua_State *L)
+ 	{
++		lua_Number obj = luaL_checknumber(L, 1);
++
++		CObject *curObj = CPools::GetObjectPool()->GetAt(obj);
++		if(curObj)
++		{
++			CTheScripts::MissionCleanUp.RemoveEntityFromList(obj, CLEANUP_OBJECT);
++		}
++
+ 		return 1;
+ 	}
+ 
+@@ -635,6 +696,61 @@ extern "C"
+ 		return 1;
+ 	}
+ 
++	/**
++	 * Remove an object by its handle.
++	 * 
++	 * TODO Test this.
++	 * 
++	 * Usage:
++	 * world.remove_object(object_handle)
++	 * 
++	 */
++	int deleteObjectLua(lua_State *L)
++	{
++		lua_Number objToDelete = luaL_checknumber(L, 1);
++
++		CObject *curObj = CPools::GetObjectPool()->GetAt(objToDelete);
++		if(curObj)
++		{
++			CWorld::Remove(curObj);
++			CWorld::RemoveReferencesToDeletedObject(curObj);
++			delete curObj;
++		}
++
++		return 0;
++	}
++
++	/**
++	 * Toggle collision for an object
++	 * 
++	 * Usage:
++	 * world.set_object_collision(object_handle, state)
++	 */
++	int setObjectCollisionLua(lua_State *L)
++	{
++		lua_Number obj = luaL_checknumber(L, 1);
++		bool state = static_cast<float>(lua_toboolean(L, 2));
++
++		CObject *curObj = CPools::GetObjectPool()->GetAt(obj);
++		if(curObj)
++		{
++			curObj->bUsesCollision = state;
++		}
++
++		return 0;
++	}
++
++	/**
++	 * Add a blip for an object
++	 * 
++	 * Usage:
++	 * world.add_blip_for_object(object_handle)
++	 */
++	int addBlipForObject(lua_State *L)
++	{
++		return 0;
++	}
++
+ 
+ 	//-------------------
+ 	// Fading
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 5492e797..0b664b76 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -39,9 +39,15 @@ extern "C" {
+ 	// Objects
+ 	extern int createObjectLua(lua_State *L);
+ 	extern int createObjectNoOffsetLua(lua_State *L);
++	extern int doesObjectExistLua(lua_State *L);
++
+ 	extern int dontRemoveObjectLua(lua_State *L);
+ 	extern int setObjectHeadingLua(lua_State *L);
+ 
++	extern int deleteObjectLua(lua_State *L);
++	extern int setObjectCollisionLua(lua_State *L);
++	extern int addBlipForObject(lua_State *L);
++
+ 	// Fading
+ 	extern int fadeCameraLua(lua_State *L);
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 5d8da907..d976fa61 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-5a";
++std::string Defines::programVersion = "1.2.14-6a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

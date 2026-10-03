@@ -1,0 +1,202 @@
+From 52b2619e4cfe483f062679162786f9414b642f7c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 13 Sep 2026 11:54:55 -0400
+Subject: [PATCH 147/161] feat: Add IsWeaponValid to misc_util
+
+* Add Util/Weapon namespace into misc_util.
+
+* Make givePlayerWeaponLua function use my new is weapon valid function.
+
+* Update frontend-guides.md.
+
+* Update changelog.
+---
+ Changelog.md                   | 14 ++++++++++++
+ guides/frontend-guides.md      | 39 +++++++++++++++++++++++++++++++++-
+ src/extras/lua/lua_player.cpp  |  6 +++++-
+ src/extras/utils/misc_util.cpp | 27 ++++++++++++++++++++++-
+ src/extras/utils/misc_util.h   |  8 +++++++
+ 5 files changed, 91 insertions(+), 3 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 1c5ddf9c..34348e73 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -818,6 +818,8 @@ feat: Fix load game option to work
+ 
+ ### 1.2.13-12a
+ 
++**Commit 1**
++
+ feat: Make setPedObjectives take parameters in lua
+ 
+ * Now you can set custom actions for the test objectives.
+@@ -825,3 +827,15 @@ feat: Make setPedObjectives take parameters in lua
+ * Remove ped objective test from ped menu.
+ 
+ * Update changelog, change version to 1.2.13-13a.
++
++**Commit 2**
++
++feat: Add IsWeaponValid to misc_util
++
++* Add Util/Weapon namespace into misc_util.
++
++* Make givePlayerWeaponLua function use my new is weapon valid function.
++
++* Update frontend-guides.md.
++
++* Update changelog.
+diff --git a/guides/frontend-guides.md b/guides/frontend-guides.md
+index ac5b24d0..994be123 100644
+--- a/guides/frontend-guides.md
++++ b/guides/frontend-guides.md
+@@ -46,7 +46,7 @@ This can also modify the menu texts if you want to change it to say something el
+ 
+ Look into how my `_FAST_LOADER` preprocessor is adding to the `General Settings` menu option in the game to understand more on how the menus are working a bit.
+ 
+-
++Also, I forgot about this preprocessor `MENU_TEST`, this one is what displays the `General Settings` menu text from the game GXT strings.
+ 
+ </details>
+ 
+@@ -81,3 +81,40 @@ AsciiToUnicode(gameStr, ustr);
+ 
+ </details>
+ 
++<details>
++<summary>
++CMenuScreenCustom struct
++</summary>
++
++This contains useful info for `MenuScreensCustom.cpp`, which is pretty much how the menus are displayed in the game.
++
++```cpp
++struct CMenuScreenCustom
++{
++	char m_ScreenName[8];
++	int32 m_PreviousPage; // eMenuScreen
++	CCustomScreenLayout *layout;
++	ReturnPrevPageFunc returnPrevPageFunc;
++	
++	struct CMenuEntry
++	{
++		int32 m_Action; // eMenuAction - below zero is CFO
++		char m_EntryName[8];
++		struct {
++			union {
++				CCFO *m_CFO; // for initializing
++				CCFOSelect *m_CFOSelect;
++				CCFODynamic *m_CFODynamic;
++				CCFOSlider *m_CFOSlider;
++			};
++			int32 m_SaveSlot; // eSaveSlot
++			int32 m_TargetMenu; // eMenuScreen
++		};
++		uint16 m_X;
++		uint16 m_Y;
++		uint8 m_Align;
++	} m_aEntries[NUM_MENUROWS];
++};
++```
++
++</details>
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index e16f94a9..c451daf1 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -13,6 +13,8 @@
+ 
+ #include "lua_log.h"
+ 
++#include "misc_util.h"
++
+ #include "defines.h"
+ #include "log_functions.h"
+ 
+@@ -779,7 +781,9 @@ givePlayerWeaponLua(lua_State *L)
+ 		return luaL_error(L, "player.give_weapon requires a weapon type and an amount for the ammo");
+ 	}
+ 
+-	if (weaponType < WEAPONTYPE_BRASSKNUCKLE || weaponType > WEAPONTYPE_TOTALWEAPONS)
++	// I switched to this function since I got it working.
++	// It is a better way to check if the weapon is valid, so it can be used elsewhere.
++	if(!Util::Weapon::IsWeaponValid(static_cast<eWeaponType>(weaponType)))
+ 	{
+ 		return luaL_error(L, "player.give_weapon out of range for values of weaponType enum, please use weapon_enums in freeroam-enums.lua.");
+ 	}
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 7cabbc92..aceab6eb 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -7,7 +7,6 @@
+ #include "main.h"
+ 
+ #include "Pad.h"
+-
+ #include "Pools.h"
+ #include "Camera.h"
+ #include "CarCtrl.h"
+@@ -78,6 +77,25 @@
+ 
+ #include <stdlib.h>
+ 
++namespace Util {
++	namespace Weapon {
++
++		/**
++		 * Check if the weapon is valid for my lua functions.
++		 * @param weaponType The type of weapon to check from the eWeaponType enum.
++		 */
++		bool IsWeaponValid(eWeaponType weaponType)
++		{
++			if(weaponType < WEAPONTYPE_BRASSKNUCKLE || weaponType > WEAPONTYPE_TOTALWEAPONS)
++			{
++				return false;
++			}
++
++			return true;
++		}
++	}
++}
++
+ // TODO Set this up, attempt to start the game mission scripts
+ void
+ startMissionScript()
+@@ -365,6 +383,13 @@ MiscUtil::GenerateRandomNumber(int min, int max)
+ 	return randomNum;
+ }
+ 
++/**
++ * TODO Make this list the objectives that I use for my functions like below.
++ */
++enum class eObjC {
++
++};
++
+ /**
+  * Kill all peds in the area, excluding the player.
+  */
+diff --git a/src/extras/utils/misc_util.h b/src/extras/utils/misc_util.h
+index 9404088c..a67f41b8 100644
+--- a/src/extras/utils/misc_util.h
++++ b/src/extras/utils/misc_util.h
+@@ -5,6 +5,14 @@
+ // For wchar
+ #include "common.h"
+ 
++#include "WeaponType.h"
++
++namespace Util {
++	namespace Weapon {
++		bool IsWeaponValid(eWeaponType weaponType);
++	}
++}
++
+ class MiscUtil
+ {
+ public:
+-- 
+2.43.0
+

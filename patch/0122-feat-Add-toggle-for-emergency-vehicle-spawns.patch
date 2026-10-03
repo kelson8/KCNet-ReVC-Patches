@@ -1,0 +1,341 @@
+From a4c781c8ac390f24bdba7da3fdd0b73478076fd0 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 17:21:13 -0400
+Subject: [PATCH 122/161] feat: Add toggle for emergency vehicle spawns
+
+* I can now toggle the emergency vehicle spawning in the lua scripts with a global that I setup.
+
+* Make project build again without DISABLE_GAME_SCRIPTS, I need to keep this working so the main mission scripts also still work.
+
+* Update changelog
+---
+ Changelog.md                   | 12 +++++++++++-
+ src/control/CarCtrl.cpp        | 27 +++++++++++++++++++++++++++
+ src/control/ScriptDebug.cpp    | 33 +++++++++++++++++++++++++++++++++
+ src/core/main.cpp              |  5 +++++
+ src/core/main.h                |  4 ++++
+ src/extras/lua/lua_test.cpp    | 28 ++++++++++++++++++++++++++++
+ src/extras/lua/lua_test.h      | 14 ++++++++++++++
+ src/extras/menus/misc_menu.cpp |  3 +++
+ 8 files changed, 125 insertions(+), 1 deletion(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index a11189ee..96bc16aa 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -575,4 +575,14 @@ feat: Add test for setting blip on peds and vehicles
+ 
+ * I made a test in lua to set the blip on the spawned ped and vehicle that I create in the C++ code.
+ 
+-* Update changelog.
+\ No newline at end of file
++* Update changelog.
++
++**Commit 4**
++
++feat: Add toggle for emergency vehicle spawns
++
++* I can now toggle the emergency vehicle spawning in the lua scripts with a global that I setup.
++
++* Make project build again without DISABLE_GAME_SCRIPTS, I need to keep this working so the main mission scripts also still work.
++
++* Update changelog
+diff --git a/src/control/CarCtrl.cpp b/src/control/CarCtrl.cpp
+index a206bc9c..9d5baeff 100644
+--- a/src/control/CarCtrl.cpp
++++ b/src/control/CarCtrl.cpp
+@@ -37,6 +37,10 @@
+ #include "Zones.h"
+ #include "Pickups.h"
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "main.h"
++#endif // DISABLE_GAME_SCRIPTS - Diasble emergency vehicle spawning global
++
+ #define DISTANCE_TO_SPAWN_ROADBLOCK_PEDS (51.0f)
+ #define DISTANCE_TO_SCAN_FOR_DANGER (14.0f)
+ #define DISTANCE_TO_SCAN_FOR_PED_DANGER (11.0f)
+@@ -130,11 +134,16 @@ CCarCtrl::GenerateRandomCars()
+ 			CTheCarGenerators::GenerateEvenIfPlayerIsCloseCounter = 20;
+ 		}
+ 	}
++	
++	// TODO Disable this in lua scripts, I didn't know this was what was spawning in the firetrucks and other stuff.
+ 	/* Approximately once per 4 seconds. */
+ 	if ((CTimer::GetTimeInMilliseconds() & 0xFFFFF000) != (CTimer::GetPreviousTimeInMilliseconds() & 0xFFFFF000))
+ 		GenerateEmergencyServicesCar();
+ }
+ 
++/**
++ * Generate one random car for the GenerateRandomCars function.
++ */
+ void
+ CCarCtrl::GenerateOneRandomCar()
+ {
+@@ -3082,6 +3091,10 @@ void CCarCtrl::SwitchVehicleToRealPhysics(CVehicle* pVehicle)
+ 	pVehicle->AutoPilot.m_nTimeTempAction = CTimer::GetTimeInMilliseconds();
+ }
+ 
++//------------
++// Joining cars to road system
++//------------
++
+ void CCarCtrl::JoinCarWithRoadSystem(CVehicle* pVehicle)
+ {
+ 	pVehicle->AutoPilot.m_nPrevRouteNode = pVehicle->AutoPilot.m_nCurrentRouteNode = pVehicle->AutoPilot.m_nNextRouteNode = 0;
+@@ -3119,6 +3132,11 @@ void CCarCtrl::JoinCarWithRoadSystem(CVehicle* pVehicle)
+ 	pVehicle->AutoPilot.m_nNextLane = pVehicle->AutoPilot.m_nCurrentLane = 0;
+ }
+ 
++/**
++ * Join the car with the road system and set the coords.
++ * 
++ * TODO Look into this later
++ */
+ bool CCarCtrl::JoinCarWithRoadSystemGotoCoors(CVehicle* pVehicle, CVector vecTarget, bool isProperNow)
+ {
+ 	pVehicle->AutoPilot.m_vecDestinationCoors = vecTarget;
+@@ -3141,6 +3159,10 @@ bool CCarCtrl::JoinCarWithRoadSystemGotoCoors(CVehicle* pVehicle, CVector vecTar
+ 	return false;
+ }
+ 
++//------------
++// End Joining cars to road system
++//------------
++
+ void CCarCtrl::FindLinksToGoWithTheseNodes(CVehicle* pVehicle)
+ {
+ 	if (pVehicle->m_nRouteSeed)
+@@ -3187,6 +3209,11 @@ void CCarCtrl::FindLinksToGoWithTheseNodes(CVehicle* pVehicle)
+  */
+ void CCarCtrl::GenerateEmergencyServicesCar(void)
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	if(gbDisableEmergencyVehicleSpawning)
++		return;
++#endif // DISABLE_GAME_SCRIPTS - Diasble emergency vehicle spawning global
++
+ 	if (FindPlayerPed()->m_pWanted->GetWantedLevel() > 3)
+ 		return;
+ 	if (CGame::IsInInterior())
+diff --git a/src/control/ScriptDebug.cpp b/src/control/ScriptDebug.cpp
+index 1ca5f588..745ec24e 100644
+--- a/src/control/ScriptDebug.cpp
++++ b/src/control/ScriptDebug.cpp
+@@ -16,6 +16,11 @@
+ #include <stdarg.h>
+ #endif
+ 
++#ifdef CUSTOM_CODE
++#include <iostream>
++#include <string>
++#endif
++
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 
+ char CRunningScript::commandInfo[1024];
+@@ -1498,6 +1503,12 @@ const tScriptCommandData commands[] = {
+ 	REGISTER_COMMAND(COMMAND_MARK_CUTSCENE_END, INPUT_ARGUMENTS(), OUTPUT_ARGUMENTS(), false, -1, ""),
+ 	REGISTER_COMMAND(COMMAND_CUTSCENE_SCROLL, INPUT_ARGUMENTS(), OUTPUT_ARGUMENTS(), false, -1, ""),
+ #endif
++
++// Oh, these need to be defined in here also.
++#ifdef NEW_OPCODES
++	REGISTER_COMMAND(COMMAND_KCNET_TEST, INPUT_ARGUMENTS(ARGTYPE_INT, ARGTYPE_INT, ), OUTPUT_ARGUMENTS(), false, -1, ""),
++#endif
++
+ };
+ #undef REGISTER_COMMAND
+ #undef INPUT_ARGUMENTS
+@@ -1641,10 +1652,14 @@ void CRunningScript::LogOnStartProcessing()
+ void CRunningScript::LogBeforeProcessingCommand(int32 command)
+ {
+ 	storedIp = m_nIp;
++
+ 	if (command < ARRAY_SIZE(commands)) {
+ 		script_assert(commands[command].id == command);
+ 		m_nIp -= 2;
+ 		sprintf(commandInfo, m_nIp >= SIZE_MAIN_SCRIPT ? "M<%5d> " : "<%6d> ", m_nIp >= SIZE_MAIN_SCRIPT ? m_nIp - SIZE_MAIN_SCRIPT : m_nIp);
++
++		// std::cout << commandInfo << std::endl;
++
+ 		m_nIp += 2;
+ 		if (m_bNotFlag)
+ 			strcat(commandInfo, "NOT ");
+@@ -1669,10 +1684,20 @@ void CRunningScript::LogBeforeProcessingCommand(int32 command)
+ 			strcat(commandInfo, tmp);
+ 			if (commands[command].position == i)
+ 				strcat(commandInfo, commands[command].name_override);
++
++			// This prints off something, although I still have no idea how to use 
++			// The scripts in C++ directly.
++			// std::cout << tmp << std::endl;
+ 		}
+ 		uint32 t = m_nIp;
+ 		m_nIp = storedIp;
+ 		storedIp = t;
++
++		// std::cout << "t " << t << std::endl;
++		// std::cout << "m_nIp " << m_nIp << std::endl;
++		// std::cout << "storedIp " << storedIp<< std::endl;
++
++		
+ 	}
+ }
+ 
+@@ -1714,6 +1739,14 @@ void CRunningScript::LogAfterProcessingCommand(int32 command)
+ 
+ #ifdef MISSION_SWITCHER
+ void
++/**
++ * TODO Look into this format for my lua scripts.
++ * 
++ * I may possibly be able to run the game scripts alongside of my lua scripts.
++ * 
++ * I could use my stripped freeroam_miami.scm.
++ * Also, I could set it to only have the freeroam lua scripts display the 'KCNet Freeroam' text.
++ */
+ CTheScripts::SwitchToMission(int32 mission)
+ {
+ 	for (CRunningScript* pScript = CTheScripts::pActiveScripts; pScript != nil; pScript = pScript->GetNext()) {
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 7b2c026f..d7bac522 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -173,6 +173,11 @@ uint8 gbGameSaveOnStartup = 0;
+ bool gbReloadLuaScriptWithKeybind = true;
+ #endif // DISABLE_GAME_SCRIPTS - Reload lua game scripts toggle 
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++// If this is true, it disables spawning firetrucks and other emergency vehicles.
++bool gbDisableEmergencyVehicleSpawning = false;
++#endif // DISABLE_GAME_SCRIPTS - Diasble emergency vehicle spawning global
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/core/main.h b/src/core/main.h
+index 40b74d40..045727d1 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -124,6 +124,10 @@ extern uint8 gbGameSaveOnStartup;
+ extern bool gbReloadLuaScriptWithKeybind;
+ #endif // DISABLE_GAME_SCRIPTS - Reload lua game scripts toggle 
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++extern bool gbDisableEmergencyVehicleSpawning;
++#endif // DISABLE_GAME_SCRIPTS - Diasble emergency vehicle spawning global
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 705940b5..959397be 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -521,6 +521,15 @@ LuaTest::RemoveFinishedThreads()
+ }
+ 
+ 
++//-------------------------------------------
++// New coroutine testing
++// TODO Fix this for waits and coroutines in my scripts.
++// So I can set this up to have waits like the original game.
++// That way I can run a function every second or a set amount of time.
++//-------------------------------------------
++
++
++
+ //------- End init functions --------//
+ 
+ //------- Begin cheat functions --------//
+@@ -1060,6 +1069,8 @@ extern "C" {
+ void
+ LuaTest::SetupFreeroamScript()
+ {
++
++#ifdef DISABLE_GAME_SCRIPTS
+ 	CMenuManager frontEndMenuManager = CMenuManager();
+ 
+ 		//-------------
+@@ -1261,7 +1272,24 @@ LuaTest::SetupFreeroamScript()
+ 			bool shouldDisplayPosition = static_cast<float>(lua_toboolean(m_luaVM, -1));
+ 			gbDisplayPosn = shouldDisplayPosition;
+ 		}
++
++		lua_pop(m_luaVM, 1);
++
++
++		//------
++		// If the emergency vehicles should be disabled.
++		// This stops the emergency vehicles such as firetrucks from spawning.
++		//------
++
++		lua_getglobal(m_luaVM, "gbDisableEmergencyVehicleSpawning");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool shouldDisableEmergencyVehicles = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbDisableEmergencyVehicleSpawning = shouldDisableEmergencyVehicles;
++		}
++
++		lua_pop(m_luaVM, 1);
+ 	}
++#endif // DISABLE_GAME_SCRIPTS - Disable free roam script with main mission scripts.
+ }
+ 
+ /// <summary>
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 781bff00..f9b4856b 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -40,6 +40,18 @@ struct LuaThread
+     bool finished = false;
+ };
+ 
++// For new coroutine test
++// struct LuaScript
++// {
++//     lua_State* thread = nullptr;
++//     int threadReference = LUA_NOREF;
++
++//     uint32_t wakeTime = 0;
++//     bool finished = false;
++//     bool failed = false;
++// };
++//
++
+ class LuaTest
+ {
+ private:
+@@ -106,6 +118,8 @@ public:
+ 	void OnInit();
+ 	void OnTick();
+ 
++	// LuaScript* CreateScript(const char* functionName);
++
+ 	// New for starting the tick thread.
+ 	void StartOnTick();
+ 	void StartFunction(const char* functionName);
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index d2d03f42..7a966107 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -637,6 +637,7 @@ void MiscMenu::MiscTab()
+ 		}
+ #endif
+ 
++#ifdef DISABLE_GAME_SCRIPTS
+ 		// This works for basic saving/loading of the player data!
+ 
+ 		if(ImGui::Button("Save freeroam"))
+@@ -649,6 +650,8 @@ void MiscMenu::MiscTab()
+ 			FreeroamUtil::LoadFreeroamJson();
+ 		}
+ 
++#endif // DISABLE_GAME_SCRIPTS - Custom json save/load system.
++
+ 
+ 		//
+ 	}
+-- 
+2.43.0
+

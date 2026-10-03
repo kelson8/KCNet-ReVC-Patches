@@ -1,0 +1,663 @@
+From 869e38fd52d6612c6710fd1a98d4a69da3f85a57 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 00:58:18 -0400
+Subject: [PATCH 075/161] feat: Add test for making game load specific script
+ from ini
+
+* Currently this doesn't work, but I will be making this setup the specfic game script to load from the ini file so I can easily switch to my test debug script which has no missions.
+
+* Update reVC.ini with new script to load option.
+* Update fast_loader.cpp.
+
+* Reorganize and label my custom code in main.cpp/main.h.
+
+* Move and label some code in ini_functions.cpp.
+
+* Label some items inScript.cpp and add some todo comments into there.
+---
+ gamefiles/reVC.ini                     | 18 ++++--
+ src/control/Script.cpp                 | 85 ++++++++++++++++++++++++-
+ src/core/main.cpp                      | 39 +++++++++---
+ src/core/main.h                        | 55 +++++++++++-----
+ src/extras/functions/ini_functions.cpp | 56 +++++++++++++----
+ src/extras/utils/fast_loader.cpp       | 87 +++++++++++++++++---------
+ 6 files changed, 269 insertions(+), 71 deletions(-)
+
+diff --git a/gamefiles/reVC.ini b/gamefiles/reVC.ini
+index 7afe3000..6795bfb6 100644
+--- a/gamefiles/reVC.ini
++++ b/gamefiles/reVC.ini
+@@ -143,10 +143,20 @@ Autosave=0
+ [KCNet]
+ ; Not implemented
+ ExtraLogging=0
+-; Set this to 1 for enabling lua with F9, wasted/busted and also the lua events.
+-; Set this to 0 for disabling lua
+-LuaTest=1
++
++; The game script to load
++; If using the fast loader, make sure to set this to 0.
++; 0 = Release (main.scm)
++; 1 = Free roam script (freeroam_miami.scm)
++; 2 = Main Debug script - Doesnt work (main_d.scm)
++GameScriptToLoad=0
++
+ ; Set this to 1 for enabling ImGui with F8
+ ; Set this to 0 for disabling the ImGui menu
+ ImGuiMenuToggle=1
+-; TODO Add a debug menu toggle in here.
+\ No newline at end of file
++
++; Set this to 1 for enabling lua with F9, wasted/busted and also the lua events.
++; Set this to 0 for disabling lua
++LuaTest=1
++
++; TODO Add a debug menu toggle in here.
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 12dca427..b0812926 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -620,6 +620,15 @@ bool CStuckCarCheck::HasCarBeenStuckForAWhile(int32 id)
+ 	return false;
+ }
+ 
++/**
++ * Collect parameters for the game scripts, such as the m_nIp values and more.
++ * These can be floats, int32, int8, int16, global vars, and local vars.
++ * 
++ * TODO Modify this to redirect some of the commands to the lua scripts.
++ * 
++ * @param pIp The value from the script.
++ * @param total The amount of parameters.
++ */
+ void CRunningScript::CollectParameters(uint32* pIp, int16 total)
+ {
+ 	for (int16 i = 0; i < total; i++){
+@@ -676,6 +685,12 @@ int32 CRunningScript::CollectNextParameterWithoutIncreasingPC(uint32 ip)
+ 	return -1;
+ }
+ 
++/**
++ * Store the parameters from the scripts.
++ * 
++ * @param pIp The value from the script.
++ * @param number The amount of parameters.
++ */
+ void CRunningScript::StoreParameters(uint32* pIp, int16 number)
+ {
+ 	for (int16 i = 0; i < number; i++){
+@@ -692,6 +707,13 @@ void CRunningScript::StoreParameters(uint32* pIp, int16 number)
+ 	}
+ }
+ 
++/**
++ * Get a pointer to the script variable.
++ * 
++ * @param pIp The value from the script.
++ * @param type Either global or local vars.
++ * @returns The script variable pointer.
++ */
+ int32 *CRunningScript::GetPointerToScriptVariable(uint32* pIp, int16 type)
+ {
+ 	switch (CTheScripts::Read1ByteFromScript(pIp))
+@@ -708,6 +730,9 @@ int32 *CRunningScript::GetPointerToScriptVariable(uint32* pIp, int16 type)
+ 	return nil;
+ }
+ 
++/**
++ * Setup the values for the game scripts.
++ */
+ void CRunningScript::Init()
+ {
+ 	strcpy(m_abScriptName, "noname");
+@@ -733,12 +758,23 @@ void CRunningScript::Init()
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ 
+ #ifdef CUSTOM_CODE
++// TODO Make this get value from ini, I could go straight to the freeroam_miami.scm script for testing.
++// Name the value game_script_to_load or something.
+ int CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
++// New for getting this value from the ini.
++// TODO Fix this to work.
++// int CTheScripts::ScriptToLoad = gbScriptToLoad;
++
++// I can now change this since I modified the fast loader code.
++// int CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+ 
+ #else
+ int CTheScripts::ScriptToLoad = 0;
+ #endif // CUSTOM_CODE
+ 
++/**
++ * Run a specific game script.
++ */
+ int CTheScripts::OpenScript()
+ {
+ 	CFileMgr::ChangeDir("\\");
+@@ -758,6 +794,21 @@ int CTheScripts::OpenScript()
+ }
+ #endif
+ 
++/**
++ * Init the main scripts for the game.
++ * 
++ * 
++ * 
++ * This sets up the scripts, mission cleanup, upside down cars check, stuck cars checks.
++ * Updates the controller pads
++ * Sets the script to start on game startup.
++ *
++ * In debug:
++ * If 'G' is pressed, run the main.scm script.
++ * If 'R' is pressed, run the freeroam_miami.scm script.
++ * If 'D' is pressed, run the main_d.scm script.
++ *
++ */
+ void CTheScripts::Init()
+ {
+ 	for (int i = 0; i < SIZE_SCRIPT_SPACE; i++)
+@@ -767,6 +818,7 @@ void CTheScripts::Init()
+ 		ScriptsArray[i].Init();
+ 		ScriptsArray[i].AddScriptToList(&pIdleScripts);
+ 	}
++
+ 	MissionCleanUp.Init();
+ 	UpsideDownCars.Init();
+ 	StuckCars.Init();
+@@ -794,33 +846,43 @@ void CTheScripts::Init()
+ 	CFileMgr::Read(mainf, (char*)ScriptSpace, SIZE_MAIN_SCRIPT);
+ 	CFileMgr::CloseFile(mainf);
+ 	CFileMgr::SetDir("");
++
+ 	StoreVehicleIndex = -1;
+ 	StoreVehicleWasRandom = true;
++
+ 	OnAMissionFlag = 0;
+ 	LastMissionPassedTime = (uint32)-1;
+ 	LastRandomPedId = -1;
++
+ 	for (int i = 0; i < MAX_NUM_USED_OBJECTS; i++){
+ 		memset(&UsedObjectArray[i].name, 0, sizeof(UsedObjectArray[i].name));
+ 		UsedObjectArray[i].index = 0;
+ 	}
++
+ 	NumberOfUsedObjects = 0;
+ 	ReadObjectNamesFromScript();
+ 	UpdateObjectIndices();
++
+ 	bAlreadyRunningAMissionScript = false;
+ 	bUsingAMultiScriptFile = true;
++
+ 	for (int i = 0; i < MAX_NUM_MISSION_SCRIPTS; i++)
+ 		MultiScriptArray[i] = 0;
++
+ 	NumberOfExclusiveMissionScripts = 0;
+ 	NumberOfMissionScripts = 0;
+ 	LargestMissionScriptSize = 0;
+ 	MainScriptSize = 0;
++
+ 	ReadMultiScriptFileOffsetsFromScript();
+ 	FailCurrentMission = 0;
+ 	DbgFlag = false;
+ 	NumScriptDebugLines = 0;
++
+ 	RiotIntensity = 0;
+ 	bPlayerHasMetDebbieHarry = false;
+ 	bPlayerIsInTheStatium = false;
++
+ 	for (int i = 0; i < MAX_NUM_SCRIPT_SPHERES; i++){
+ 		ScriptSphereArray[i].m_bInUse = false;
+ 		ScriptSphereArray[i].m_Index = 1;
+@@ -828,11 +890,14 @@ void CTheScripts::Init()
+ 		ScriptSphereArray[i].m_vecCenter = CVector(0.0f, 0.0f, 0.0f);
+ 		ScriptSphereArray[i].m_fRadius = 0.0f;
+ 	}
++
+ 	for (int i = 0; i < MAX_NUM_INTRO_TEXT_LINES; i++){
+ 		IntroTextLines[i].Reset();
+ 	}
++
+ 	NumberOfIntroTextLinesThisFrame = 0;
+ 	UseTextCommands = 0;
++
+ 	for (int i = 0; i < MAX_NUM_INTRO_RECTANGLES; i++){
+ 		IntroRectangles[i].m_bIsUsed = false;
+ 		IntroRectangles[i].m_bBeforeFade = false;
+@@ -840,6 +905,7 @@ void CTheScripts::Init()
+ 		IntroRectangles[i].m_sRect = CRect(0.0f, 0.0f, 0.0f, 0.0f);
+ 		IntroRectangles[i].m_sColor = CRGBA(255, 255, 255, 255);
+ 	}
++
+ 	NumberOfIntroRectanglesThisFrame = 0;
+ 	RemoveScriptTextureDictionary();
+ 	for (int i = 0; i < MAX_NUM_BUILDING_SWAPS; i++){
+@@ -847,6 +913,7 @@ void CTheScripts::Init()
+ 		BuildingSwapArray[i].m_nNewModel = -1;
+ 		BuildingSwapArray[i].m_nOldModel = -1;
+ 	}
++
+ 	for (int i = 0; i < MAX_NUM_INVISIBILITY_SETTINGS; i++)
+ 		InvisibilitySettingArray[i] = nil;
+ 
+@@ -1003,6 +1070,13 @@ bool CTheScripts::IsPlayerOnAMission()
+ 	return OnAMissionFlag && *(int32*)&ScriptSpace[OnAMissionFlag] == 1;
+ }
+ 
++/**
++ * Process and run the game scripts
++ * 
++ * TODO Figure out how to hook into this with external C++ code or something.
++ * Make a DLL like the plugin-sdk that can hook directly into the C++ functions,
++ * And expose it in the LUA code.
++ */
+ void CRunningScript::Process()
+ {
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+@@ -1035,13 +1109,15 @@ int8 CRunningScript::ProcessOneCommand()
+ 	int8 retval = -1;
+ 	++CTheScripts::CommandsExecuted;
+ 	int32 command = (uint16)CTheScripts::Read2BytesFromScript(&m_nIp);
++
++	m_bNotFlag = (command & 0x8000);
++	command &= 0x7FFF;
++
+ #ifdef CUSTOM_CODE
+ 	// Well this just spams this with random
+ 	// numbers, is that all the commands are?
+-	// std::cout << "Command: " << command << std::endl;
++	std::cout << "Command: " << command << std::endl;
+ #endif // CUSTOM_CODE
+-	m_bNotFlag = (command & 0x8000);
+-	command &= 0x7FFF;
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 	LogBeforeProcessingCommand(command);
+ #endif
+@@ -1606,6 +1682,9 @@ int8 CRunningScript::ProcessCommands0To99(int32 command)
+ 		}
+ #endif
+ 		return 1;
++
++	// Hmm, here is what starts the scripts in the commands.
++	// I would like to hook into this and redirect some commands to lua and recreate a couple of them.
+ 	case COMMAND_START_NEW_SCRIPT:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index d5f8d829..6f6c7319 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -118,18 +118,18 @@ bool gbDrawVersionText; // Our addition, we think it was always enabled on !MAST
+ bool gbNoMovies;
+ #endif
+ 
+-#ifdef _FAST_LOADER
+-bool gbFastLoader;
+-#endif
++//---------------------------
++// KCNet
++//---------------------------
++
++//--------
++// Misc
++//--------
+ 
+ #ifdef EXTRA_LOGGING
+ bool gbExtraLogging;
+ #endif // EXTRA_LOGGING
+ 
+-#ifdef _IMGUI_TEST
+-bool gbImGuiToggle;
+-#endif
+-
+ #ifdef CUSTOM_CODE 
+ // Ped speech toggle
+ bool gbPedSpeech = true;
+@@ -142,14 +142,39 @@ bool gbPedHorns = true;
+ bool gbFalloffBike = true;
+ #endif // CUSTOM_CODE
+ 
++//--------
++// Script and saves
++//--------
++
++#ifdef _FAST_LOADER
++bool gbFastLoader;
++#endif
++
++#ifdef CUSTOM_CODE
++uint8 gbScriptToLoad;
++#endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
++
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ uint8 gbGameSaveOnStartup = 0;
+ #endif
+ 
++//--------
++// Lua/ImGui
++//--------
++
++#ifdef _IMGUI_TEST
++bool gbImGuiToggle;
++#endif
++
+ #ifdef LUA_TEST
+ bool gbLuaTest;
+ #endif //LUA_TEST
+ 
++//---------------------------
++// End KCNet
++//---------------------------
++
++
+ volatile int32 frameCount;
+ 
+ RwRGBA gColourTop;
+diff --git a/src/core/main.h b/src/core/main.h
+index 5588c677..6c287c25 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -75,34 +75,59 @@ extern bool gbDrawVersionText;
+ extern bool gbNoMovies;
+ #endif
+ 
+-#ifdef _FAST_LOADER
+-extern bool gbFastLoader;
+-#endif //_FAST_LOADER
++//---------------------------
++// KCNet
++//---------------------------
++
++//--------
++// Misc
++//--------
+ 
+ #ifdef EXTRA_LOGGING
+ extern bool gbExtraLogging;
+ #endif // EXTRA_LOGGING
+ 
+-#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+-extern uint8 gbGameSaveOnStartup;
+-#endif //EX_LOADING_GAME_SAVE_ON_STARTUP
+-
+-#ifdef LUA_TEST
+-extern bool gbLuaTest;
++#ifdef CUSTOM_CODE
++extern bool gbPedSpeech;
+ #endif
+ 
+-#ifdef _IMGUI_TEST
+-extern bool gbImGuiToggle;
++#ifdef CUSTOM_CODE // Bike fall off toggle
++extern bool gbFalloffBike;
+ #endif
+ 
+ #ifdef CUSTOM_CODE
+ extern bool gbDisplayPosn;
+ #endif
+ 
++//--------
++// Script and saves
++//--------
++
++#ifdef _FAST_LOADER
++extern bool gbFastLoader;
++#endif //_FAST_LOADER
++
+ #ifdef CUSTOM_CODE
+-extern bool gbPedSpeech;
++// The game script to load on startup.
++extern uint8 gbScriptToLoad;
++#endif // CUSTOM_CODE
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++extern uint8 gbGameSaveOnStartup;
++#endif //EX_LOADING_GAME_SAVE_ON_STARTUP
++
++//--------
++// Lua/ImGui
++//--------
++
++#ifdef _IMGUI_TEST
++extern bool gbImGuiToggle;
+ #endif
+ 
+-#ifdef CUSTOM_CODE // Bike fall off toggle
+-extern bool gbFalloffBike;
+-#endif
+\ No newline at end of file
++#ifdef LUA_TEST
++extern bool gbLuaTest;
++#endif
++
++//---------------------------
++// End KCNet
++//---------------------------
+diff --git a/src/extras/functions/ini_functions.cpp b/src/extras/functions/ini_functions.cpp
+index 6937806f..33f38753 100644
+--- a/src/extras/functions/ini_functions.cpp
++++ b/src/extras/functions/ini_functions.cpp
+@@ -1288,7 +1288,13 @@ LoadINISettings()
+ 	ReadIniIfExists("General", "NoMovies", &gbNoMovies);
+ #endif
+ 
++//---------------------------
+ // KCNet
++//---------------------------
++
++//--------
++// Script and saves
++//--------
+ 
+ #ifdef _FAST_LOADER
+ 	ReadIniIfExists("General", "FastLoader", &gbFastLoader);
+@@ -1298,17 +1304,29 @@ LoadINISettings()
+ 	ReadIniIfExists("KCNet", "ExtraLogging", &gbExtraLogging);
+ #endif
+ 
+-#ifdef LUA_TEST
+-	ReadIniIfExists("KCNet", "LuaTest", &gbLuaTest);
+-#endif
++#ifdef CUSTOM_CODE
++	ReadIniIfExists("KCNet", "GameScriptToLoad", &gbScriptToLoad);
++#endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
++	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
++#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++
++//--------
++// Lua/ImGui
++//--------
+ 
+ #ifdef _IMGUI_TEST
+ 	ReadIniIfExists("KCNet", "ImGuiMenuToggle", &gbImGuiToggle);
+ #endif
+ 
+-#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+-	ReadIniIfExists("General", "GameSaveOnStartup", &gbGameSaveOnStartup);
+-#endif // EX_LOADING_GAME_SAVE_ON_STARTUP
++#ifdef LUA_TEST
++	ReadIniIfExists("KCNet", "LuaTest", &gbLuaTest);
++#endif
++
++//---------------------------
++// End KCNet
++//---------------------------
+ 
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+ 	bool migrate = cfg.get("FrontendOptions").size() != 0;
+@@ -1422,7 +1440,13 @@ SaveINISettings()
+ #endif
+ 
+ 
++//---------------------------
+ // KCNet
++//---------------------------
++
++//--------
++// Script and saves
++//--------
+ 
+ #ifdef _FAST_LOADER
+ 	StoreIni("General", "FastLoader", gbFastLoader);
+@@ -1432,19 +1456,29 @@ SaveINISettings()
+ 	StoreIni("KCNet", "ExtraLogging", gbExtraLogging);
+ #endif
+ 
+-#ifdef LUA_TEST
+-	StoreIni("KCNet", "LuaTest", gbLuaTest);
++#ifdef CUSTOM_CODE
++	StoreIni("KCNet", "GameScriptToLoad", gbScriptToLoad);
++#endif // CUSTOM_CODE - Load specific game script when 'New game' is pressed.
++
++#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
++	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
+ #endif
+ 
++//--------
++// Lua/ImGui
++//--------
++
+ #ifdef _IMGUI_TEST
+ 	StoreIni("KCNet", "ImGuiMenuToggle", gbImGuiToggle);
+ #endif
+ 
+-#ifdef EX_LOADING_GAME_SAVE_ON_STARTUP // ini
+-	StoreIni("General", "GameSaveOnStartup", gbGameSaveOnStartup);
++#ifdef LUA_TEST
++	StoreIni("KCNet", "LuaTest", gbLuaTest);
+ #endif
+ 
+-//
++//---------------------------
++// End KCNet
++//---------------------------
+ 
+ 
+ #ifdef CUSTOM_FRONTEND_OPTIONS
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 1808ac33..23879ede 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -20,7 +20,7 @@
+ // Keybinds
+ #define KEYJUSTDOWN(k) ControlsManager.GetIsKeyboardKeyJustDown((RsKeyCodes)k)
+ // #define KEYDOWN(k) ControlsManager.GetIsKeyboardKeyDown((RsKeyCodes)k)
+-// #define CTRLJUSTDOWN(key)                                                                                                                                      \
++// #define CTRLJUSTDOWN(key) \
+ // 	((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYJUSTDOWN((RsKeyCodes)key) || (KEYJUSTDOWN(rsLCTRL) || KEYJUSTDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ // #define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ //
+@@ -42,54 +42,79 @@ FastLoader::FastLoad()
+ 	// I am now able to cancel my fast loader with left control now.
+ 	// This works! When the game starts if you hold left control this disables the fast loader
+ 	// and puts the user on the main menu! This is perfect for testing.
+-	if (KEYJUSTDOWN(rsLCTRL) && gbFastLoader) 
+-	{
++	if(KEYJUSTDOWN(rsLCTRL) && gbFastLoader) {
+ 		gbFastLoader = false;
+ 		return;
+ 	}
+ 	//
+ 
+-	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader
+-	   // TODO Test this, I should be able to cancel the fast load with a keybind.
+-	   // Well it disables it until the key is unpressed..
+-	   //&& !KEYDOWN(rsF2)
+-	   //&& !CTRLDOWN(rsF1)
+-	) {
++	// TODO Fix this to only load a save if release script is selected.
++	// Otherwise load the freeroam_miami script.
++
++	// TODO Add option in pause menu to select either Release, Freeroam, or Debug mission scripts to launch.
++#ifdef USE_DEBUG_SCRIPT_LOADER
++	// CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
++	// if(CTheScripts::ScriptToLoad == SCRIPT_RELEASE)
++
++#endif // USE_DEBUG_SCRIPT_LOADER
++
++	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader) {
+ 		// TODO Test
+ 		// This doesn't work.
+ 		//     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
+ 		//        cMenuManager.m_nCurrScreen != MENUPAGE_GENERAL_SETTINGS &&
+ 		// cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
+ 
+-		FrontEndMenuManager.m_nCurrSaveSlot = gbGameSaveOnStartup - 1;
+-
+-		FrontEndMenuManager.m_bWantToLoad = true;
+-
+-
+-#ifdef USE_DEBUG_SCRIPT_LOADER
+-		// TODO Fix this to be able to be changed.
+-		// So if I want to test scripts, switch over to FREEROAM_MIAMI in the options.
+-		CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
+-		// Hmm, well since freeroam_miami tries to load a save, this just crashes on load.
+-		// CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+-#endif
++		// Load the current save setup for this.
++		if(CTheScripts::ScriptToLoad == SCRIPT_RELEASE) {
++			// This is required to be offset by 1, otherwise it gets the incorrect save slot.
++			// TODO Make this check if the save slot doesn't exist
++
++			int32 saveSlot = gbGameSaveOnStartup - 1;
++			FrontEndMenuManager.m_nCurrSaveSlot = saveSlot;
++			FrontEndMenuManager.m_bWantToLoad = true;
++
++			// TODO Fix this check, currently it spams the console if the save slot doesn't exist with casepath errors.
++			// Although this already seems to be done in my function.
++			// if(CheckSlotDataValid(saveSlot))
++			// {
++			// 	FrontEndMenuManager.m_nCurrSaveSlot = saveSlot;
++			// 	// Oh this is what breaks the SCRIPT_FREEROAM_MIAMI loading.
++			// 	// Hmm...
++			// 	// I moved this up here
++			// 	FrontEndMenuManager.m_bWantToLoad = true;
++			// } else {
++			// 	TRACE("Game save doesn't exist, switching to new game.");
++			// 	FrontEndMenuManager.SwitchToNewScreen(MENUPAGE_NEW_GAME);
++			// }
++
++			// TODO Fix this to be able to be changed.
++			// Jump straight to debug for testing, this should be set in the ini later.
++			// This works here, requires m_bWantToLoad to be disabled.
++			// CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+ 
+ #ifdef XBOX_MESSAGE_SCREEN
+-		SetDialogText("FELD_WR");
+-		ToggleDialog(true);
++			SetDialogText("FELD_WR");
++			ToggleDialog(true);
+ #else
+ #if defined(GTAVC) || defined(GTALCS)
+-		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
++			if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR", true);
+ #elif defined(GTA3)
+-		if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR");
++			if(!FrontEndMenuManager.m_bGameNotLoaded) FrontEndMenuManager.MessageScreen("FELD_WR");
+ #endif
+ 
+ #endif
+-		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+-		//}
+-	}
++
++			if(CTheScripts::ScriptToLoad == SCRIPT_RELEASE) { FrontEndMenuManager.DoSettingsBeforeStartingAGame(); }
++
++			//}
++		}
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+-       //*****************
+-       // End Fast Loader
+-       // ************/
++	}
++
++	//
++
++	//*****************
++	// End Fast Loader
++	// ************/
+ }
+-- 
+2.43.0
+

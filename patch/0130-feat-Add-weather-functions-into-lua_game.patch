@@ -1,0 +1,354 @@
+From 30a4a019984b69b34327ffce23447e5b7ad6fd46 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 11 Sep 2026 21:09:01 -0400
+Subject: [PATCH 130/161] feat: Add weather functions into lua_game
+
+* Add a CVector2D for use in lua.
+
+* Update changelog, change version to 1.2.13-5a.
+---
+ Changelog.md                            |   8 ++
+ src/extras/custom_scripts/init_game.cpp |   6 +-
+ src/extras/lua/lua_functions.cpp        |  51 +++++++++-
+ src/extras/lua/lua_functions.h          |   2 +
+ src/extras/lua/lua_game.cpp             | 128 +++++++++++++++++++++++-
+ src/extras/lua/lua_game.h               |  12 +++
+ src/extras/utils/defines.cpp            |   2 +-
+ 7 files changed, 202 insertions(+), 7 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 959bb85c..fe261e8f 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -658,3 +658,11 @@ feat: Add Colors.cpp from plugin-sdk
+ * Modify blow up vehicle function a bit.
+ 
+ * Update changelog, change version to 1.2.13-4a.
++
++### 1.2.13-5a
++
++feat: Add weather functions into lua_game
++
++* Add a CVector2D for use in lua.
++
++* Update changelog, change version to 1.2.13-5a.
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+index 1e7d64c0..f9dda3a3 100644
+--- a/src/extras/custom_scripts/init_game.cpp
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -72,6 +72,7 @@ bool InitGame::CreatePlayer(int playerIndex, CVector pos)
+ 	// Load the player model.
+     // I can set a specific skin to spawn in with here.
+     // I may setup an enum list of these later, it is the same as the clothes menu in my mod menu.
++	// TODO Make this spawn the player with a skin set in the lua freeroam script.
+ 	if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
+ 		CStreaming::RequestSpecialModel(MI_PLAYER, "player", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
+ 		// CStreaming::RequestSpecialModel(MI_PLAYER, "player2", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
+@@ -106,8 +107,9 @@ bool InitGame::CreatePlayer(int playerIndex, CVector pos)
+ 	// Reactivate the player ped.
+ 	CPlayerPed::ReactivatePlayerPed(playerIndex);
+ 
+-	// Well I tried to do this, but it still doesn't enabel sound when loading with my scripts unless I pause and unpause.
+-	// I'm not sure what is happening.
++	// Well I tried to do this, but it still doesn't enable sound when loading with my scripts unless I pause and unpause.
++	// I'm not sure what is happening
++	// I probably wouldn't want this anyways, it would override the health and stuff if i load from my json file.
+ 	// CGameLogic::RestorePlayerStuffDuringResurrection(FindPlayerPed(), pos, 0.0f);
+ 
+     // Make this set the player as created, otherwise it will spawn multiple players.
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index 62fde627..45176e56 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -200,8 +200,9 @@ void pushCVectorAsTableLua(lua_State* L, const CVector& vector)
+  * 
+  * Get a CVector in lua, used for my new lua CVector setup for lua.
+  * Look into the 'SetPlayerPositionLua' function for usages.
++ * 
++ * This is for a CVector3D, which has an X, Y, and Z.
+  */
+-
+ std::optional<CVector> luaGetCVector(lua_State* L, int index)
+ {
+     if (!lua_istable(L, index))
+@@ -249,6 +250,54 @@ std::optional<CVector> luaGetCVector(lua_State* L, int index)
+     return CVector(x, y, z);
+ }
+ 
++/**
++ * Get a Vector2D in lua.
++ * 
++ * This is for a CVector2D, which only has X, and Y, for options that don't require the Z value.
++ * 
++ * TODO Test this.
++ * 
++ * This is used like this:
++ * local leftBottom = { x = 25, y = 25 }
++ * local topRight = { x = 25, y = 25 }
++ * ... Use with functions that require a CVector2D.
++ */
++std::optional<CVector2D> luaGetCVector2D(lua_State* L, int index)
++{
++    if (!lua_istable(L, index))
++        return std::nullopt;
++
++    const int absoluteIndex = lua_absindex(L, index);
++
++    lua_getfield(L, absoluteIndex, "x");
++    if (!lua_isnumber(L, -1))
++    {
++        lua_pop(L, 1);
++        return std::nullopt;
++    }
++
++    const float x = static_cast<float>(lua_tonumber(L, -1));
++    lua_pop(L, 1);
++
++    lua_getfield(L, absoluteIndex, "y");
++    if (!lua_isnumber(L, -1))
++    {
++        lua_pop(L, 1);
++        return std::nullopt;
++    }
++
++    const float y = static_cast<float>(lua_tonumber(L, -1));
++    lua_pop(L, 1);
++
++    if (!std::isfinite(x) ||
++        !std::isfinite(y))
++    {
++        return std::nullopt;
++    }
++
++    return CVector2D(x, y);
++}
++
+ // Check lua globals, made this into a function
+ // Moved out of lua_test.cpp.
+ bool
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index a7377d76..cc93f7e3 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -29,6 +29,8 @@ extern "C" {
+ 	extern void pushCVectorAsTableLua(lua_State* L, const CVector& vector);
+ 	extern std::optional<CVector> luaGetCVector(lua_State* L, int index);
+ 
++	extern std::optional<CVector2D> luaGetCVector2D(lua_State* L, int index);
++
+ 	extern bool CheckLua(lua_State *L, int r);
+ 
+ #ifdef __cplusplus
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index fb87ab20..b837c46a 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -40,8 +40,10 @@
+ #include "Phones.h"
+ 
+ #include "Pad.h"
++#include "Stats.h"
+ 
+ #include "Fire.h"
++#include "Weather.h"
+ 
+ //-----------------------
+ // Game options/Settings/setup
+@@ -117,13 +119,35 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	// lua_pushcfunction(L, waitLua);
+ 	// lua_setfield(L, -2, "wait");
+ 
+-	//----------
+-	// TODO Implement these below
+-	//----------
+ 	// Add an explosion
+ 	lua_pushcfunction(L, addExplosionLua);
+     lua_setfield(L, -2, "add_explosion");
+ 
++	//-------
++	// Weather
++	// TODO Implement these.
++	//-------
++	lua_pushcfunction(L, forceWeatherLua);
++    lua_setfield(L, -2, "force_weather");
++
++	lua_pushcfunction(L, forceWeatherNowLua);
++    lua_setfield(L, -2, "force_weather_now");
++
++	lua_pushcfunction(L, releaseWeatherLua);
++	lua_setfield(L, -2, "release_weather");
++
++	// This is in cleo, I'll need to replicate it.
++	// Although it shouldn't be hard.
++	lua_pushcfunction(L, getCurrentWeatherLua);
++    lua_setfield(L, -2, "get_weather");
++
++	lua_pushcfunction(L, setAllowHurricanesLua);
++    lua_setfield(L, -2, "set_allow_hurricanes");
++
++	//----------
++	// TODO Implement these below
++	//----------
++
+ 	// DISPLAY_ONSCREEN_TIMER
+ 	// CUserDisplay::OnscnTimer.AddClock(offset, nil, ScriptParams[0] != 0);
+ 
+@@ -544,6 +568,104 @@ int addExplosionLua(lua_State *L)
+ 	return 1;
+ }
+ 
++//----------
++// Weather functions
++//----------
++
++/**
++ * Force change the weather.
++ * 
++ * Usage:
++ * game.force_weather(weatherType)
++ */
++int forceWeatherLua(lua_State *L)
++{
++	// int weatherType = luaGetNumber(L, 1);
++
++	int weatherType = lua_tonumber(L, 1);
++
++	if(weatherType < WEATHER_SUNNY || weatherType > WEATHER_HURRICANE) 
++	{
++		return luaL_error(L, "game.force_weather requires a value from the weather_enums.eWeatherType enum.");
++	}
++
++	CWeather::ForceWeather(weatherType);
++
++	return 1;
++}
++
++/**
++ * Force change the weather now.
++ * 
++ * Usage:
++ * game.force_weather_now(weatherType)
++ */
++int forceWeatherNowLua(lua_State *L)
++{
++	int weatherType = lua_tonumber(L, 1);
++
++	if(weatherType < WEATHER_SUNNY || weatherType > WEATHER_HURRICANE) 
++	{
++		return luaL_error(L, "game.force_weather_now requires a value from the weather_enums.eWeatherType enum.");
++	}
++
++	CWeather::ForceWeatherNow(weatherType);
++	return 1;
++}
++
++/**
++ * Release the current weather type.
++ * 
++ * Usage:
++ * game.release_weather(weatherType)
++ */
++int releaseWeatherLua(lua_State *L)
++{
++	CWeather::ReleaseWeather();
++
++	return 1;
++}
++
++
++/**
++ * Get the current weather that is in the game.
++ *
++ * TODO Figure this out, it's in cleo so I might need to re-create it.
++ *  
++ * Usage:
++ * game.get_weather()
++ */
++int getCurrentWeatherLua(lua_State *L)
++{
++	return 1;
++}
++
++/**
++ * Toggle for allowing hurricanes in the game.
++ * 
++ * TODO Test this, I have not tested it yet but it should work.
++ * 
++ * Usage:
++ * game.set_allow_hurricanes(true)
++ */
++int setAllowHurricanesLua(lua_State *L)
++{
++	// CWeather::ForceHurricaneWeather();
++
++	bool toggle = static_cast<float>(lua_toboolean(L, 1));
++
++	// https://stackoverflow.com/questions/55936608/how-to-check-for-boolean-argument-in-lua-function
++	// I guess I was doing this wrong, I was checking if the boolean was always false, not if it was a boolean..
++	if(!lua_isboolean(L, 1))
++	{
++		return luaL_error(L, "game.set_allow_hurricanes requires a boolean true or false.");
++	}
++
++	CStats::NoMoreHurricanes = toggle;
++
++	return 1;
++}
++
+ //----------
+ // Blip functions
+ // TODO Move into lua_blip.cpp/.h later.
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index eb7cff32..98fd1c00 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -17,21 +17,33 @@ extern "C" {
+     extern void RegisterGameFunctionsLua(lua_State* L);
+     extern int cheatCodesLua(lua_State *L);
+ 
++    // Respawns
+     extern int setHospitalRespawnLua(lua_State *L);
+     extern int setPoliceStationRespawnLua(lua_State *L);
+     
+     extern int startFireLua(lua_State *L);
+     
++    // Time
+     extern int passTimeLua(lua_State *L);
+     extern int setTimeLua(lua_State *L);
+     extern int setTimeScaleLua(lua_State *L);
+ 
++    // Phone
+     extern int turnPhoneOffLua(lua_State *L);
+     extern int turnPhoneOnLua(lua_State *L);
+     extern int grabPhoneLua(lua_State *L);
+ 
+     extern int addExplosionLua(lua_State *L);
+ 
++    // Weather
++    extern int forceWeatherLua(lua_State *L);
++    extern int forceWeatherNowLua(lua_State *L);
++    extern int releaseWeatherLua(lua_State *L);
++    extern int getCurrentWeatherLua(lua_State *L);
++    extern int setAllowHurricanesLua(lua_State *L);
++
++
++    // Blips
+     extern int addBlipForCoordOldLua(lua_State *L);
+     extern int addBlipForPedLua(lua_State *L);
+     extern int addBlipForVehicleLua(lua_State *L);
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index d3e886cf..a9a0a4f0 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-4a";
++std::string Defines::programVersion = "1.2.13-5a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

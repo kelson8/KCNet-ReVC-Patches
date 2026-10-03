@@ -1,0 +1,99 @@
+From 1b338e1d368a86a8a5796b6dbe23c291844b9cac Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 12:35:18 -0400
+Subject: [PATCH 117/161] feat: Add teleport to marker for lua scripts
+
+* Now you can use 'player.tp_to_marker' to teleport to a marker set on the map.
+
+* Update changelog, switch version to 1.2.12-9a.
+---
+ Changelog.md                  | 10 +++++++++-
+ src/extras/lua/lua_player.cpp | 14 ++++++++++++++
+ src/extras/lua/lua_player.h   |  2 ++
+ src/extras/utils/defines.cpp  |  2 +-
+ 4 files changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index dc19880c..96046ea5 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -421,7 +421,7 @@ feat: Add missing lua functions changes
+ 
+ * Update changelog.
+ 
+-# 1.12.12a
++# 1.2.12a
+ 
+ ### 1.2.12-1a
+ 
+@@ -528,3 +528,11 @@ feat: Add fixes from AltronMaxX repo on GitHub
+ 
+ 
+ * Update changelog, switch version to 1.2.12-8a.
++
++### 1.2.12-9a
++
++feat: Add teleport to marker for lua scripts
++
++* Now you can use 'player.tp_to_marker' to teleport to a marker set on the map.
++
++* Update changelog, switch version to 1.2.12-9a.
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index f255a3cb..b3ad09c7 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -135,6 +135,10 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, checkWantedLevelLua);
+ 	lua_setfield(L, -2, "get_wanted_level");
+ 
++	// Teleport to marker
++	lua_pushcfunction(L, teleportToMarkerLua);
++	lua_setfield(L, -2, "tp_to_marker");
++
+ 	// Player namespace
+     lua_setglobal(L, "player");
+ }
+@@ -552,4 +556,14 @@ cancelOverrideNextRestartLua(lua_State *L)
+ 	return 1;
+ }
+ 
++// New
++int
++teleportToMarkerLua(lua_State *L)
++{
++	
++
++	return 1;
++}
++//
++
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index 6d04415c..fb10adce 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -46,6 +46,8 @@ extern "C" {
+ 	extern int setRespawnPointLua(lua_State *L);
+ 	extern int cancelOverrideNextRestartLua(lua_State *L);
+ 
++	extern int teleportToMarkerLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index a0be6b56..34e21c01 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-8a";
++std::string Defines::programVersion = "1.2.12-9a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

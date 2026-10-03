@@ -1,0 +1,811 @@
+From b6fa4a760007529078b96bd75e7181b1b592883f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Sep 2026 19:24:34 -0400
+Subject: [PATCH 087/161] fix: Make CreatePlayer function only create one
+ player
+
+* Add more todo for scripts to replicate.
+
+* Add init_game.cpp and init_game.h
+* Move Create Player function into init_game.cpp, remove it out of misc_functions.cpp.
+
+* Add src/extras/custom_scripts into premake5.lua.
+
+* Update c_cpp_properties.json for VSCode includes.
+* Add new comment to pch.h file.
+
+* Update changelog.md, bump version to 1.2.8a.
+---
+ .vscode/c_cpp_properties.json                 |  3 +-
+ Changelog.md                                  | 17 ++++
+ .../lua_scripts/freeroam-game.lua             |  7 ++
+ premake5.lua                                  |  4 +
+ src/control/Darkel.cpp                        |  4 +
+ src/control/Script2.cpp                       |  4 +
+ src/control/Script3.cpp                       |  5 ++
+ src/control/Script4.cpp                       |  2 +
+ src/control/Script6.cpp                       |  3 +
+ src/control/Script7.cpp                       |  2 +
+ src/core/PlayerInfo.cpp                       | 23 +++++
+ src/core/Stats.cpp                            | 31 +++++++
+ src/core/Streaming.cpp                        |  5 ++
+ src/extras/custom_scripts/init_game.cpp       | 87 +++++++++++++++++++
+ src/extras/custom_scripts/init_game.h         | 35 ++++++++
+ src/extras/functions/misc_functions.cpp       | 48 ----------
+ src/extras/functions/misc_functions.h         |  7 +-
+ src/extras/kcnet/pch.h                        |  2 +
+ src/extras/lua/lua_player.cpp                 |  3 +-
+ src/extras/utils/defines.cpp                  |  2 +-
+ src/extras/utils/fast_loader.cpp              |  2 +
+ src/save/GenericGameStorage.cpp               | 25 ++++++
+ 22 files changed, 267 insertions(+), 54 deletions(-)
+ create mode 100644 src/extras/custom_scripts/init_game.cpp
+ create mode 100644 src/extras/custom_scripts/init_game.h
+
+diff --git a/.vscode/c_cpp_properties.json b/.vscode/c_cpp_properties.json
+index 66c1656a..58719983 100644
+--- a/.vscode/c_cpp_properties.json
++++ b/.vscode/c_cpp_properties.json
+@@ -27,7 +27,8 @@
+             "includePath": [
+                 "${default}",
+                 "lib/sol2/include",
+-                "${workspaceFolder}/src/extras/test"
++                "${workspaceFolder}/src/extras/test",
++                "${workspaceFolder}/src/extras/custom_scripts"
+             ],
+             "defines": [
+                 "XDG_ROOT",
+diff --git a/Changelog.md b/Changelog.md
+index cc0600b6..6462e8c2 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -129,3 +129,20 @@ feat: Add some missing functions for lua
+ * Update lua-documentation.md.
+ 
+ * Update changelog.md.
++
++### 1.2.8a
++
++fix: Make CreatePlayer function only create one player
++
++* Add more todo for scripts to replicate.
++
++* Add init_game.cpp and init_game.h
++* Move Create Player function into init_game.cpp, remove it out of misc_functions.cpp.
++
++* Add src/extras/custom_scripts into premake5.lua.
++
++* Update c_cpp_properties.json for VSCode includes.
++* Add new comment to pch.h file.
++
++* Update changelog.md, bump version to 1.2.8a.
++
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index 9da30f76..3291889e 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -13,6 +13,13 @@
+ -- Look into my Vice City scm scripts repo for setting up the player and other scm script examples.
+ -- https://git.internal.kelsoncraft.net/kelson8/GTAVC-ScmScripts
+ 
++--------
++-- For KCNet ReVC Freeroam
++-- This is a main.scm replacement, when my code is enabled this will disable the game scripts.
++-- Also, it will run anything in the 'OnTick' function.
++-- You can press 'F5' to start a new game and reload this file.
++--------
++
+ --------
+ -- REQUIRED
+ -- If you remove these functions out of the freeroam script you will most likely crash!
+diff --git a/premake5.lua b/premake5.lua
+index 53f91080..e36afbb9 100644
+--- a/premake5.lua
++++ b/premake5.lua
+@@ -331,6 +331,10 @@ project "reVC"
+ 	files { addSrcFiles("src/extras/kcnet") }
+ 	files { addSrcFiles("src/extras/utils") }
+ 
++	-- Custom scripts for new '.scm' script replacement, init and more.
++	includedirs { ("src/extras/custom_scripts") }
++	files { addSrcFiles("src/extras/custom_scripts") }
++
+ 	-- Lib folders - ImGui and Lua
+ 	-- includedirs { "lib/" }
+ 	includedirs { "lib/imgui" }
+diff --git a/src/control/Darkel.cpp b/src/control/Darkel.cpp
+index a6aca57e..8cb76a85 100644
+--- a/src/control/Darkel.cpp
++++ b/src/control/Darkel.cpp
+@@ -286,6 +286,10 @@ CDarkel::ResetOnPlayerDeath()
+ 	DealWithWeaponChangeAtEndOfFrenzy();
+ }
+ 
++/**
++ * Start a rampage frenzy.
++ * TODO Call this in my mod menu and test this, I might be able to enjoy some rampages.
++ */
+ void
+ CDarkel::StartFrenzy(eWeaponType weaponType, int32 time, uint16 kill, int32 modelId0, wchar *text, int32 modelId2, int32 modelId3, int32 modelId4, bool standardSound, bool needHeadShot)
+ {
+diff --git a/src/control/Script2.cpp b/src/control/Script2.cpp
+index 895d8139..85666571 100644
+--- a/src/control/Script2.cpp
++++ b/src/control/Script2.cpp
+@@ -198,6 +198,8 @@ int8 CRunningScript::ProcessCommands300To399(int32 command)
+ 		CUserDisplay::OnscnTimer.ClearCounter((uint16)CTheScripts::Read2BytesFromScript(&m_nIp));
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SET_ZONE_CAR_INFO:
+ 	{
+ 		char label[12];
+@@ -272,6 +274,8 @@ int8 CRunningScript::ProcessCommands300To399(int32 command)
+ 		CPad::GetPad(ScriptParams[0])->StartShake(ScriptParams[1], ScriptParams[2]);
+ 		return 0;
+ 	*/
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SET_ZONE_PED_INFO:
+ 	{
+ 		char label[12];
+diff --git a/src/control/Script3.cpp b/src/control/Script3.cpp
+index 4d7f0f67..c75e21ba 100644
+--- a/src/control/Script3.cpp
++++ b/src/control/Script3.cpp
+@@ -83,6 +83,8 @@ int8 CRunningScript::ProcessCommands500To599(int32 command)
+ 		return 0;
+ 	}
+ 	*/
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_START_KILL_FRENZY:
+ 	{
+ 		wchar* text = CTheScripts::GetTextByKeyFromScript(&m_nIp);
+@@ -92,12 +94,15 @@ int8 CRunningScript::ProcessCommands500To599(int32 command)
+ 			ScriptParams[6], ScriptParams[7] != 0, false);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_READ_KILL_FRENZY_STATUS:
+ 	{
+ 		ScriptParams[0] = CDarkel::ReadStatus();
+ 		StoreParameters(&m_nIp, 1);
+ 		return 0;
+ 	}
++
+ 	case COMMAND_SQRT:
+ 	{
+ 		CollectParameters(&m_nIp, 1);
+diff --git a/src/control/Script4.cpp b/src/control/Script4.cpp
+index 16a4ddae..cdfc4ca1 100644
+--- a/src/control/Script4.cpp
++++ b/src/control/Script4.cpp
+@@ -96,6 +96,8 @@ int8 CRunningScript::ProcessCommands800To899(int32 command)
+ 		pBoat->m_bIsAnchored = (ScriptParams[1] != 0);
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SET_ZONE_GROUP:
+ 	{
+ 		char zone[KEY_LENGTH_IN_SCRIPT];
+diff --git a/src/control/Script6.cpp b/src/control/Script6.cpp
+index 8af32f57..c1361d1e 100644
+--- a/src/control/Script6.cpp
++++ b/src/control/Script6.cpp
+@@ -631,10 +631,13 @@ int8 CRunningScript::ProcessCommands1000To1099(int32 command)
+ 		CWorld::ClearPedsFromArea(infX, infY, infZ, supX, supY, supZ);
+ 		return 0;
+ 	}
++
++	// TODO Set this to 0 in my lua scripts, I am not creating missions.
+ 	case COMMAND_SET_TOTAL_NUMBER_OF_MISSIONS:
+ 		CollectParameters(&m_nIp, 1);
+ 		CStats::SetTotalNumberMissions(CGame::germanGame ? ScriptParams[0] - 2 : ScriptParams[0]);
+ 		return 0;
++
+ 	case COMMAND_CONVERT_METRES_TO_FEET_INT:
+ 		CollectParameters(&m_nIp, 1);
+ 		ScriptParams[0] *= FEET_IN_METER;
+diff --git a/src/control/Script7.cpp b/src/control/Script7.cpp
+index 71099cc4..08d6cea5 100644
+--- a/src/control/Script7.cpp
++++ b/src/control/Script7.cpp
+@@ -440,6 +440,8 @@ int8 CRunningScript::ProcessCommands1200To1299(int32 command)
+ 		}
+ 		return 0;
+ 	}
++
++	// TODO Replicate this for my freeroam scripts.
+ 	case COMMAND_SET_ZONE_CIVILIAN_CAR_INFO:
+ 	{
+ 		char label[12];
+diff --git a/src/core/PlayerInfo.cpp b/src/core/PlayerInfo.cpp
+index 39efe232..65159134 100644
+--- a/src/core/PlayerInfo.cpp
++++ b/src/core/PlayerInfo.cpp
+@@ -54,54 +54,71 @@ CPlayerInfo::Clear(void)
+ 		m_pVehicleEx->bUsingSpecialColModel = false;
+ 		m_pVehicleEx = nil;
+ 	}
++
+ 	m_nVisibleMoney = 0;
+ 	m_nMoney = m_nVisibleMoney;
+ 	m_WBState = WBSTATE_PLAYING;
+ 	m_nWBTime = 0;
++
+ 	m_nTrafficMultiplier = 0;
+ 	m_fRoadDensity = 1.0f;
++
+ 	m_bInRemoteMode = false;
+ 	field_D5 = false;
+ 	field_D6 = false;
++
+ 	m_bUnusedTaxiThing = false;
+ 	m_nUnusedTaxiTimer = 0;
+ 	m_nCollectedPackages = 0;
+ 	m_nTotalPackages = 3;
++
+ 	m_nTimeLastHealthLoss = 0;
+ 	m_nTimeLastArmourLoss = 0;
+ 	m_nNextSexFrequencyUpdateTime = 0;
+ 	m_nNextSexMoneyUpdateTime = 0;
++
+ 	m_nSexFrequency = 0;
+ 	m_pHooker = nil;
+ 	m_nTimeTankShotGun = 0;
+ 	field_EC = 0;
++
+ 	m_nUpsideDownCounter = 0;
+ 	m_nTimeCarSpentOnTwoWheels = 0;
+ 	m_nDistanceCarTravelledOnTwoWheels = 0;
+ 	m_nTimeNotFullyOnGround = 0;
+ 	m_nTimeSpentOnWheelie = 0;
++
+ 	m_nDistanceTravelledOnWheelie = 0.0f;
+ 	m_nTimeSpentOnStoppie = 0;
+ 	m_nDistanceTravelledOnStoppie = 0.0f;
+ 	m_nCancelWheelStuntTimer = 0;
++
+ 	m_nLastTimeCarSpentOnTwoWheels = 0;
+ 	m_nLastDistanceCarTravelledOnTwoWheels = 0;
+ 	m_nLastTimeSpentOnWheelie = 0;
+ 	m_nLastDistanceTravelledOnWheelie = 0;
+ 	m_nLastTimeSpentOnStoppie = 0;
+ 	m_nLastDistanceTravelledOnStoppie = 0;
++
++	// TODO Get values from freeroam-game.lua if DISABLE_GAME_SCRIPTS is enabled.
+ 	m_bInfiniteSprint = false;
+ 	m_bFastReload = false;
+ 	m_bFireproof = false;
++
+ 	m_nMaxHealth = m_nMaxArmour = 100;
++
+ 	m_bGetOutOfJailFree = false;
+ 	m_bGetOutOfHospitalFree = false;
+ 	m_bDriveByAllowed = true;
++	//
++
+ 	m_nPreviousTimeRewardedForExplosion = 0;
+ 	m_nExplosionsSinceLastReward = 0;
+ 	m_nHavocLevel = 0;
++
+ 	m_fMediaAttention = 0.0f;
+ 	m_nCurrentBustedAudio = 1;
++
+ 	m_nBustedAudioStatus = BUSTEDAUDIO_NONE;
+ }
+ 
+@@ -552,6 +569,7 @@ CPlayerInfo::Process(void)
+ 		CStats::DistanceTravelledOnFoot += FindPlayerPed()->m_fDistanceTravelled;
+ 	}
+ 
++	// If the player has a wanted level
+ 	if (m_pPed->m_pWanted->GetWantedLevel() && !CTheScripts::IsPlayerOnAMission()) {
+ 		float maxDelta = 0.0f;
+ 		static bool movedSignificantly = true;
+@@ -621,19 +639,24 @@ CPlayerInfo::SavePlayerInfo(uint8 *buf, uint32 *size)
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nMoney);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_WBState);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nWBTime);
++
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nTrafficMultiplier);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_fRoadDensity);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nVisibleMoney);
++
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nCollectedPackages);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nTotalPackages);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bInfiniteSprint);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bFastReload);
++
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bFireproof);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nMaxHealth);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nMaxArmour);
++
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfJailFree);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bGetOutOfHospitalFree);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_bDriveByAllowed);
++
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_aPlayerName);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nBustedAudioStatus);
+ 	CopyToBuf(buf, CWorld::Players[CWorld::PlayerInFocus].m_nCurrentBustedAudio);
+diff --git a/src/core/Stats.cpp b/src/core/Stats.cpp
+index 8c6137f2..630e8efb 100644
+--- a/src/core/Stats.cpp
++++ b/src/core/Stats.cpp
+@@ -496,24 +496,34 @@ void CStats::SaveStats(uint8 *buf, uint32 *size)
+ 	uint8 *buf_start = buf;
+ 	*size = sizeof(PeopleKilledByPlayer) +
+ 		sizeof(PeopleKilledByOthers) +
++
+ 		sizeof(CarsExploded) +
++
+ 		sizeof(BoatsExploded) +
+ 		sizeof(TyresPopped) +
+ 		sizeof(RoundsFiredByPlayer) +
++
+ 		sizeof(PedsKilledOfThisType) +
+ 		sizeof(HelisDestroyed) +
++
++		// Progress
+ 		sizeof(ProgressMade) +
+ 		sizeof(TotalProgressInGame) +
++
+ 		sizeof(KgsOfExplosivesUsed) +
+ 		sizeof(BulletsThatHit) +
+ 		sizeof(HeadsPopped) +
++
+ 		sizeof(WantedStarsAttained) +
+ 		sizeof(WantedStarsEvaded) +
+ 		sizeof(TimesArrested) +
+ 		sizeof(TimesDied) +
++
+ 		sizeof(DaysPassed) +
+ 		sizeof(SafeHouseVisits) +
+ 		sizeof(Sprayings) +
++
++		// Stunt jumps
+ 		sizeof(MaximumJumpDistance) +
+ 		sizeof(MaximumJumpHeight) +
+ 		sizeof(MaximumJumpFlips) +
+@@ -521,14 +531,20 @@ void CStats::SaveStats(uint8 *buf, uint32 *size)
+ 		sizeof(BestStuntJump) +
+ 		sizeof(NumberOfUniqueJumpsFound) +
+ 		sizeof(TotalNumberOfUniqueJumps) +
++
+ 		sizeof(MissionsGiven) +
++
+ 		sizeof(PassengersDroppedOffWithTaxi) +
+ 		sizeof(MoneyMadeWithTaxi) +
++
+ 		sizeof(IndustrialPassed) +
+ 		sizeof(CommercialPassed) +
+ 		sizeof(SuburbanPassed) +
++
+ 		sizeof(PamphletMissionPassed) +
+ 		sizeof(NoMoreHurricanes) +
++
++		// Distance travelled
+ 		sizeof(DistanceTravelledOnFoot) +
+ 		sizeof(DistanceTravelledByCar) +
+ 		sizeof(DistanceTravelledByBike) +
+@@ -536,36 +552,48 @@ void CStats::SaveStats(uint8 *buf, uint32 *size)
+ 		sizeof(DistanceTravelledByGolfCart) +
+ 		sizeof(DistanceTravelledByHelicoptor) +
+ 		sizeof(DistanceTravelledByPlane) +
++
+ 		sizeof(LivesSavedWithAmbulance) +
++
+ 		sizeof(CriminalsCaught) +
++
+ 		sizeof(FiresExtinguished) +
+ 		sizeof(HighestLevelVigilanteMission) +
+ 		sizeof(HighestLevelAmbulanceMission) +
+ 		sizeof(HighestLevelFireMission) +
+ 		sizeof(PhotosTaken) +
++
+ 		sizeof(NumberKillFrenziesPassed) +
+ 		sizeof(TotalNumberKillFrenzies) +
+ 		sizeof(TotalNumberMissions) +
+ 		sizeof(FlightTime) +
++
++		// Misc stats
+ 		sizeof(TimesDrowned) +
+ 		sizeof(SeagullsKilled) +
+ 		sizeof(WeaponBudget) +
+ 		sizeof(FashionBudget) +
+ 		sizeof(LoanSharks) +
++
+ 		sizeof(StoresKnockedOff) +
+ 		sizeof(MovieStunts) +
+ 		sizeof(Assassinations) +
+ 		sizeof(PizzasDelivered) +
+ 		sizeof(GarbagePickups) +
++
+ 		sizeof(IceCreamSold) +
+ 		sizeof(TopShootingRangeScore) +
+ 		sizeof(ShootingRank) +
++
++		// Longest wheelies and other actions.
+ 		sizeof(LongestWheelie) +
+ 		sizeof(LongestStoppie) +
+ 		sizeof(Longest2Wheel) +
++		
+ 		sizeof(LongestWheelieDist) +
+ 		sizeof(LongestStoppieDist) +
+ 		sizeof(Longest2WheelDist) +
++
+ 		sizeof(PropertyBudget) +
+ 		sizeof(AutoPaintingBudget) +
+ 		sizeof(PropertyDestroyed) +
+@@ -573,14 +601,17 @@ void CStats::SaveStats(uint8 *buf, uint32 *size)
+ 		sizeof(BloodRingKills) +
+ 		sizeof(BloodRingTime) +
+ 		sizeof(PropertyOwned) +
++
+ 		sizeof(HighestChaseValue) +
+ 		sizeof(FastestTimes) +
+ 		sizeof(HighestScores) +
+ 		sizeof(BestPositions) +
++
+ 		sizeof(KillsSinceLastCheckpoint) +
+ 		sizeof(TotalLegitimateKills) +
+ 		sizeof(LastMissionPassedName) +
+ 		sizeof(CheatedCount) +
++
+ 		sizeof(FavoriteRadioStationList);
+ 
+ #define CopyToBuf(buf, data) memcpy(buf, &data, sizeof(data)); buf += sizeof(data);
+diff --git a/src/core/Streaming.cpp b/src/core/Streaming.cpp
+index 6d980e18..72ea7c15 100644
+--- a/src/core/Streaming.cpp
++++ b/src/core/Streaming.cpp
+@@ -1902,6 +1902,11 @@ CStreaming::RemoveCurrentZonesModels(void)
+ 	ms_loadedGangCars = 0;
+ }
+ 
++/**
++ * Load the buildings in the game
++ * I guess this works depending on where the player is at currently.
++ * TODO Look into this function later.
++ */
+ void
+ CStreaming::LoadBigBuildingsWhenNeeded(void)
+ {
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+new file mode 100644
+index 00000000..6a15e65d
+--- /dev/null
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -0,0 +1,87 @@
++#include "pch.h"
++
++
++#include "init_game.h"
++
++// ReVC
++#include "Entity.h"
++#include "Placeable.h"
++#include "PlayerPed.h"
++#include "PlayerInfo.h"
++
++#include "Physical.h"
++
++#include "Frontend.h"
++#include "Text.h"
++
++#include "Script.h"
++
++// CUserDisplay
++#include "User.h"
++
++// Set help message and more.
++#include "Hud.h"
++
++// For getting the PlayerInfo
++#include "World.h"
++
++// For getting the time cycles
++#include "Timecycle.h"
++
++#include "Zones.h"
++
++// For pickups
++#include "Pickups.h"
++
++// For loading models.
++#include "Streaming.h"
++
++//----------
++// Player
++// TODO Move these
++//----------
++
++/**
++ * Create the player for my lua scripts.
++ * Implementation of COMMAND_CREATE_PLAYER.
++ * TODO Test this in my lua init, I'm not sure if this will work.
++ */
++void InitGame::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
++{
++	// Do nothing if the player is already created.
++	if(m_bPlayerCreated) return;
++
++	// Load the player model.
++	if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
++		CStreaming::RequestSpecialModel(MI_PLAYER, "player", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
++		CStreaming::LoadAllRequestedModels(false);
++	}
++
++	// Setup the player ped.
++	CPlayerPed::SetupPlayerPed(playerIndex);
++	CWorld::Players[playerIndex].m_pPed->CharCreatedBy = MISSION_CHAR;
++
++	// Deactivate the player ped.
++	// TODO Why is this here? Maybe for some loading or something.
++	CPlayerPed::DeactivatePlayerPed(playerIndex);
++
++	// Position from script, used like this in the scripts:
++	// CVector pos = *(CVector*)&ScriptParams[1];
++	CVector pos = CVector(posX, posY, posZ);
++
++	// Set the players Z coordinate.
++	if (pos.z <= MAP_Z_LOW_LIMIT)
++		pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
++	pos.z += CWorld::Players[playerIndex].m_pPed->GetDistanceFromCentreOfMassToBaseOfModel();
++	//
++
++	// Set the players position.
++	CWorld::Players[playerIndex].m_pPed->SetPosition(pos);
++
++	// Clear space around the player.
++	CTheScripts::ClearSpaceForMissionEntity(pos, CWorld::Players[playerIndex].m_pPed);
++		
++	// Reactivate the player ped.
++	CPlayerPed::ReactivatePlayerPed(playerIndex);
++}
+diff --git a/src/extras/custom_scripts/init_game.h b/src/extras/custom_scripts/init_game.h
+new file mode 100644
+index 00000000..36da013a
+--- /dev/null
++++ b/src/extras/custom_scripts/init_game.h
+@@ -0,0 +1,35 @@
++#pragma once
++#include <string>
++#include "defines.h"
++
++
++class InitGame
++{
++private:
++
++	// If the player has been created, this should prevent the code from spawning multiple players.
++	// I guess I could use this for a possible multiplayer system.
++	bool m_bPlayerCreated;
++public:
++	// Constructor, initalize the boolean also
++	// TODO Test this
++	//MiscFunctions(bool timerBarInitialValue) : m_bChaosTimerBar(timerBarInitialValue) {}
++
++	// Create the player, for the lua scripts.
++	void CreatePlayer(int playerIndex, float posX, float posY, float posZ);
++
++	// Singleton
++	static InitGame &GetInstance()
++	{
++		static InitGame instance; // Static instance created once
++		return instance;
++	}
++
++	// Setters
++	void setPlayerCreated(const bool &playerCreated) { m_bPlayerCreated = playerCreated; }
++
++
++	// Getters
++	const bool &getPlayerCreated() const { return m_bPlayerCreated; }
++
++};
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 2402546e..fcc017ef 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -114,7 +114,6 @@
+ // strncpy and other functions
+ #include <cstring>
+ 
+-
+ //---------- Booleans for misc functions ----------//
+ // Show the current directory in ImGui
+ bool showCurrentDirectory = false;
+@@ -840,50 +839,3 @@ MiscFunctions::ReplaceExportTemplateVars(
+ 	}
+ }
+ 
+-//----------
+-// Player
+-// TODO Move these
+-//----------
+-
+-/**
+- * Create the player for my lua scripts.
+- * Implementation of COMMAND_CREATE_PLAYER.
+- * TODO Test this in my lua init, I'm not sure if this will work.
+- */
+-void MiscFunctions::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
+-{
+-	// Load the player model.
+-	if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
+-		CStreaming::RequestSpecialModel(MI_PLAYER, "player", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
+-		CStreaming::LoadAllRequestedModels(false);
+-	}
+-
+-	// Setup the player ped.
+-	CPlayerPed::SetupPlayerPed(playerIndex);
+-	CWorld::Players[playerIndex].m_pPed->CharCreatedBy = MISSION_CHAR;
+-
+-	// Deactivate the player ped.
+-	// TODO Why is this here? Maybe for some loading or something.
+-	CPlayerPed::DeactivatePlayerPed(playerIndex);
+-
+-	// Position from script, used like this in the scripts:
+-	// CVector pos = *(CVector*)&ScriptParams[1];
+-	CVector pos = CVector(posX, posY, posZ);
+-
+-	// Set the players Z coordinate.
+-	if (pos.z <= MAP_Z_LOW_LIMIT)
+-		pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
+-
+-	pos.z += CWorld::Players[playerIndex].m_pPed->GetDistanceFromCentreOfMassToBaseOfModel();
+-	//
+-
+-	// Set the players position.
+-	CWorld::Players[playerIndex].m_pPed->SetPosition(pos);
+-
+-	// Clear space around the player.
+-	CTheScripts::ClearSpaceForMissionEntity(pos, CWorld::Players[playerIndex].m_pPed);
+-		
+-	// Reactivate the player ped.
+-	CPlayerPed::ReactivatePlayerPed(playerIndex);
+-
+-}
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index 8c749d61..f3a52e7e 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -14,6 +14,10 @@ private:
+ 
+ 	int m_nInterval = 10;
+ 
++	// If the player has been created, this should prevent the code from spawning multiple players.
++	// I guess I could use this for a possible multiplayer system.
++	bool m_bPlayerCreated;
++
+ 	void ToggleCurrentDirectory();
+ 
+ 	// Hud
+@@ -91,9 +95,6 @@ public:
+ 	// Creating an item pickup, this one works for weapons
+ 	void CreateWeaponPickup(uint32 weaponModel);
+ 
+-	// Create the player, for the lua scripts.
+-	void CreatePlayer(int playerIndex, float posX, float posY, float posZ);
+-
+ 	// Singleton
+ 	static MiscFunctions &GetInstance()
+ 	{
+diff --git a/src/extras/kcnet/pch.h b/src/extras/kcnet/pch.h
+index de11aa25..b76afb32 100644
+--- a/src/extras/kcnet/pch.h
++++ b/src/extras/kcnet/pch.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++// This is required to be at the top for any custom C++ files that I add, otherwise it breaks the code.
++
+ #include <vector>
+ #include <string>
+ #include <sstream>
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 3669606d..4c212f13 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -21,6 +21,7 @@
+ #include "custom_cheats.h"
+ #include "player_cheats.h"
+ #include "misc_functions.h"
++#include "init_game.h"
+ 
+ // VC Specific
+ #include "Hud.h"
+@@ -57,7 +58,7 @@ createPlayerLua(lua_State *L)
+ 		return 0;
+ 	}
+ 
+-	MiscFunctions::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ);
++	InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ);
+ 	
+ 	std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
+ 	+ " Y: " + std::to_string(spawnPosY)
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 8f28741c..b949f338 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.7a";
++std::string Defines::programVersion = "1.2.8a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index ba652e38..b68a795f 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -70,6 +70,7 @@ FastLoader::FastLoad()
+ 	if(gbFastLoader) {
+ 		// Probably not required here, just forcing the freeroam script anyways.
+ 		// If the game scripts are disabled this variable is probably discarded.
++		// TODO Make this also load in the audio, sometimes I have to pause and unpause for sound to work.
+ 		CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+ 		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 	}
+@@ -111,6 +112,7 @@ FastLoader::FastLoad()
+ 		// 	FrontEndMenuManager.SwitchToNewScreen(MENUPAGE_NEW_GAME);
+ 		// }
+ 
++		// FELD_WR = Loading game. Please wait...
+ #ifdef XBOX_MESSAGE_SCREEN
+ 		SetDialogText("FELD_WR");
+ 		ToggleDialog(true);
+diff --git a/src/save/GenericGameStorage.cpp b/src/save/GenericGameStorage.cpp
+index 9af3d1f7..5a655582 100644
+--- a/src/save/GenericGameStorage.cpp
++++ b/src/save/GenericGameStorage.cpp
+@@ -131,12 +131,37 @@ do {\
+ 	totalSize += buf - work_buff;\
+ } while (0)
+ 
++/**
++ * TODO Replicate saving some things like the player health, position, and their stats
++ * This will be used for my new freeroam scripts, maybe I can setup like a high score system or something.
++ */
+ bool
+ GenericSave(int file)
+ {
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	// TODO Fix this to disable loading of the game if enabled in the ini.
+ 	// Early exit out of this, game scripts are disabled and this will crash.
++
++	// TODO Make this save just a couple of values and the stats to a freeroam-game-save.json or something.
++	
++	// Possibly save these values
++	// WriteSaveDataBlock(CTheCarGenerators::SaveAllCarGenerators, "AllCarGeneratorsSize");
++	//	WriteSaveDataBlock(CRadar::SaveAllRadarBlips, "RadarBlipsBufferSize");
++	// 	WriteSaveDataBlock(CRestart::SaveAllRestartPoints, "RestartPointsBufferSize");
++	// 	WriteSaveDataBlock(CPickups::Save, "PickUpsSize");
++
++	// This one will be complicated if i decide to implement garages in the freeroam
++	// WriteSaveDataBlock(CGarages::Save, "GaragesSize");
++
++	// This saves the players info, maybe I should just do something like this to write to my save file.
++	// TODO Save this to a json file or something.
++	// 	WriteSaveDataBlock(CWorld::Players[CWorld::PlayerInFocus].SavePlayerInfo, "PlayerInfoSize");
++
++	// Save the player stats
++	// WriteSaveDataBlock(CStats::SaveStats, "StatsSize");
++	
++	//
++	
+ 	return true;
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+-- 
+2.43.0
+

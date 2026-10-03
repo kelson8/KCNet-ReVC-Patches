@@ -1,0 +1,134 @@
+From 6e141621b7f52992665a4f96cf71e0c94f350f30 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 01:31:13 -0400
+Subject: [PATCH 076/161] feat: Fix game loading specific script from ini
+
+* The game can now load a specific script selected from the ini, if this is set to release scripts it loads a save game, otherwise it just loads the script.
+---
+ src/control/Script.cpp           |  8 ++---
+ src/extras/utils/fast_loader.cpp | 52 +++++++++++++++++++-------------
+ 2 files changed, 34 insertions(+), 26 deletions(-)
+
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index b0812926..2ca56367 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -758,12 +758,10 @@ void CRunningScript::Init()
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ 
+ #ifdef CUSTOM_CODE
+-// TODO Make this get value from ini, I could go straight to the freeroam_miami.scm script for testing.
+-// Name the value game_script_to_load or something.
+-int CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
++// Revert this if the ini code stops working.
++// int CTheScripts::ScriptToLoad = SCRIPT_RELEASE;
+ // New for getting this value from the ini.
+-// TODO Fix this to work.
+-// int CTheScripts::ScriptToLoad = gbScriptToLoad;
++int CTheScripts::ScriptToLoad = gbScriptToLoad;
+ 
+ // I can now change this since I modified the fast loader code.
+ // int CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 23879ede..cce5d650 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -25,6 +25,16 @@
+ // #define CTRLDOWN(key) ((KEYDOWN(rsLCTRL) || KEYDOWN(rsRCTRL)) && KEYDOWN((RsKeyCodes)key))
+ //
+ 
++/**
++ * Fast loader for ReVC
++ * 
++ * This will run if it is enabled in the ini.
++ * If the script is set to SCRIPT_RELEASE, this loads a save game.
++ * Otherwise, it just loads straight into a script such as freeroam_miami.scm.
++ * The save game slot and fast loader can be toggled in the reVC.ini.
++ * 
++ * Runs in GS_FRONTEND under GameStateFrontend() within glfw.cpp.
++ */
+ void
+ FastLoader::FastLoad()
+ {
+@@ -42,23 +52,23 @@ FastLoader::FastLoad()
+ 	// I am now able to cancel my fast loader with left control now.
+ 	// This works! When the game starts if you hold left control this disables the fast loader
+ 	// and puts the user on the main menu! This is perfect for testing.
++	// TODO Fix this to work with the new format, currently it breaks it to where this
++	//  just loads a new game for some reason if trying to use this sometimes with the freeroam script
+ 	if(KEYJUSTDOWN(rsLCTRL) && gbFastLoader) {
+ 		gbFastLoader = false;
+ 		return;
+ 	}
+ 	//
+ 
+-	// TODO Fix this to only load a save if release script is selected.
+-	// Otherwise load the freeroam_miami script.
++	// New
++	// Without this here sometimes holding control will send you back to the new game.
++	CTheScripts::ScriptToLoad = gbScriptToLoad;
+ 
+-	// TODO Add option in pause menu to select either Release, Freeroam, or Debug mission scripts to launch.
+-#ifdef USE_DEBUG_SCRIPT_LOADER
+-	// CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+-	// if(CTheScripts::ScriptToLoad == SCRIPT_RELEASE)
+-
+-#endif // USE_DEBUG_SCRIPT_LOADER
+-
+-	if(gbGameSaveOnStartup > 0 && CheckSlotDataValid(gbGameSaveOnStartup - 1) && gbFastLoader) {
++	// Only run this save loading if the release script is enabled.
++	if(gbGameSaveOnStartup > 0 
++		&& CheckSlotDataValid(gbGameSaveOnStartup - 1) 
++		&& gbFastLoader
++		&& gbScriptToLoad == SCRIPT_RELEASE) {
+ 		// TODO Test
+ 		// This doesn't work.
+ 		//     if(cMenuManager.m_nCurrScreen != MENUPAGE_START_MENU &&
+@@ -66,7 +76,6 @@ FastLoader::FastLoad()
+ 		// cMenuManager.m_nCurrScreen != MENUPAGE_OPTIONS) {
+ 
+ 		// Load the current save setup for this.
+-		if(CTheScripts::ScriptToLoad == SCRIPT_RELEASE) {
+ 			// This is required to be offset by 1, otherwise it gets the incorrect save slot.
+ 			// TODO Make this check if the save slot doesn't exist
+ 
+@@ -88,11 +97,6 @@ FastLoader::FastLoad()
+ 			// 	FrontEndMenuManager.SwitchToNewScreen(MENUPAGE_NEW_GAME);
+ 			// }
+ 
+-			// TODO Fix this to be able to be changed.
+-			// Jump straight to debug for testing, this should be set in the ini later.
+-			// This works here, requires m_bWantToLoad to be disabled.
+-			// CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
+-
+ #ifdef XBOX_MESSAGE_SCREEN
+ 			SetDialogText("FELD_WR");
+ 			ToggleDialog(true);
+@@ -104,13 +108,19 @@ FastLoader::FastLoad()
+ #endif
+ 
+ #endif
++			FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++
++	// TODO Fix this else if to work, it should fix this to be able to be cancelled with left control again.
++	} else if(gbScriptToLoad == SCRIPT_FREEROAM_MIAMI
++		|| gbScriptToLoad == SCRIPT_DEBUG 
++		&& gbFastLoader) {
++	// } else {
++		// Jump straight to freeroam_miami.scm, don't worry about loading the save games since this is 
++		//  using the custom freeroam_miami.scm script.
++		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++	}
+ 
+-			if(CTheScripts::ScriptToLoad == SCRIPT_RELEASE) { FrontEndMenuManager.DoSettingsBeforeStartingAGame(); }
+-
+-			//}
+-		}
+ #endif // EX_LOADING_GAME_SAVE_ON_STARTUP
+-	}
+ 
+ 	//
+ 
+-- 
+2.43.0
+

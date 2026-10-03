@@ -1,0 +1,68 @@
+From 36d4a8d721baf4efa92cda4a15236505fd305cd3 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 12:53:47 -0400
+Subject: [PATCH 135/161] feat: Add a few more stats into freeroam_util
+
+* Update changelog
+---
+ Changelog.md                       | 10 +++++++++-
+ src/extras/utils/freeroam_util.cpp |  5 +++++
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 863ae100..2b14d08d 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -705,8 +705,16 @@ feat: Add untested SetStat function in player_util.cpp
+ 
+ ### 1.2.13-9a
+ 
++**Commit 1**
++
+ feat: Add setting player stats to lua
+ 
+ * Now I can set the players stats in lua, and I will use this for my save system once I get the stats saved and a pickup fixed for it.
+ 
+-* Update changelog, change version to 1.2.13-9a.
+\ No newline at end of file
++* Update changelog, change version to 1.2.13-9a.
++
++**Commit 2**
++
++feat: Add a few more stats into freeroam_util
++
++* Update changelog
+\ No newline at end of file
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 6acbb65f..1c9eced4 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -125,13 +125,16 @@ bool FreeroamUtil::SaveFreeroamJson()
+         // Explosions
+         save["stats"]["kgs_of_explosives_used"] = CStats::KgsOfExplosivesUsed;
+         
++        // Boats/vehicles destroyed
+         save["stats"]["boats_exploded"] = CStats::BoatsExploded;
+         save["stats"]["helis_destroyed"] = CStats::HelisDestroyed;
+         save["stats"]["vehicles_exploded"] = CStats::CarsExploded;
+         
++        // Bullets fired and hit.
+         save["stats"]["bullets_that_hit"] = CStats::BulletsThatHit;
+         save["stats"]["rounds_fired_by_player"] = CStats::RoundsFiredByPlayer;
+         
++        // Days passed
+         save["stats"]["days_passed"] = CStats::DaysPassed;
+ 
+         // Distance travelled
+@@ -164,6 +167,8 @@ bool FreeroamUtil::SaveFreeroamJson()
+         save["stats"]["longest_wheelie_distance"] = CStats::LongestWheelieDist;
+         //
+ 
++        save["stat"]["fires_extinguished"] = CStats::FiresExtinguished;
++        save["stat"]["heads_popped"] = CStats::HeadsPopped;
+         
+         // Not in use, I could possibly use this once I figure out how to place the pickups.
+         // Then I could increment this when I save my game.
+-- 
+2.43.0
+

@@ -1,0 +1,85 @@
+From 7b55e93c52f31ddb21bc2aa562c7089f9b163b77 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 18:40:40 -0400
+Subject: [PATCH 140/161] fix: Make game effects work again
+
+* I had acidentally turned off RenderEffects in main.cpp, oops.
+
+* Add mission passed sound effect to misc menu.
+
+* Update changelog.
+---
+ Changelog.md                   | 13 ++++++++++++-
+ src/core/main.cpp              |  3 ++-
+ src/extras/menus/misc_menu.cpp | 12 +++++++++++-
+ 3 files changed, 25 insertions(+), 3 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 6f681f72..517d87cf 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -754,4 +754,15 @@ feat: Make load game option load into json save
+ fix: I had broken the save format in the save function
+ 
+ * Fixed save file format.
+-* Update changelog.
+\ No newline at end of file
++* Update changelog.
++
++**Commit 3**
++
++fix: Make game effects work again
++
++* I had acidentally turned off the RenderEffects in main.cpp, oops.
++
++* Add mission passed sound effect to misc menu.
++
++* Update changelog.
++
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index 30db4470..e82d3ced 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -1889,7 +1889,8 @@ Idle(void *arg)
+ 		RenderDebugShit();
+ 
+ 		// Render most effects for the game.
+-		// RenderEffects();
++		// Damn I forgot I disabled this, I almost never found this change...
++		RenderEffects();
+ 
+ 		if((TheCamera.m_BlurType == MOTION_BLUR_NONE || TheCamera.m_BlurType == MOTION_BLUR_LIGHT_SCENE) &&
+ 		   TheCamera.m_ScreenReductionPercentage > 0.0f)
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 20f6c08a..e19a2341 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -54,6 +54,8 @@
+ #include "ControllerConfig.h"
+ #include "Pad.h"
+ 
++#include "DMAudio.h"
++
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+@@ -665,7 +667,15 @@ void MiscMenu::MiscTab()
+ 
+ 			CPickups::GenerateNewOne(playerPosOffset, MI_PICKUP_SAVEGAME, ePickupType::PICKUP_ON_STREET, 1);
+ 		}
+-		//CPickups::GenerateNewOne
++
++		ImGui::Separator();
++		// This works, I guess I wasnt' expecting it to.
++		ImGui::Text("Play the mission passed sound");
++		if(ImGui::Button("Play mission passed"))
++		{
++			DMAudio.ChangeMusicMode(MUSICMODE_FRONTEND);
++			DMAudio.PlayFrontEndTrack(STREAMED_SOUND_MISSION_COMPLETED, FALSE);
++		}
+ 
+ 
+ 		//
+-- 
+2.43.0
+

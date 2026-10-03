@@ -1,0 +1,329 @@
+From 2ebee3b9fccc4b22bc2f660caa6185d75fc11781 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 7 Sep 2026 14:33:43 -0400
+Subject: [PATCH 094/161] feat: Update some items in freeroam-game.lua
+
+* When I updated the function to a new namespace I forgot to update this file with the new values.
+
+* Move lua world functions into 'world' namespace.
+
+* Add Readme into `gamefiles` folder.
+
+* Update changelog.
+---
+ Changelog.md                                  | 14 ++++++
+ gamefiles/Readme.md                           | 17 +++++++
+ .../lua_scripts/freeroam-game.lua             | 47 ++++++++-----------
+ src/extras/lua/lua_test.cpp                   | 27 ++++++++++-
+ src/extras/lua/lua_world.cpp                  | 20 ++++++++
+ src/extras/lua/lua_world.h                    |  1 +
+ 6 files changed, 97 insertions(+), 29 deletions(-)
+ create mode 100644 gamefiles/Readme.md
+
+diff --git a/Changelog.md b/Changelog.md
+index f48d3e10..ac643410 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -240,6 +240,8 @@ Misc changes:---
+ 
+ ### 1.2.10-1a
+ 
++**Commit 1**
++
+ feat: Update CreateVehicle function to take a CVector
+ 
+ * Now my create vehicle function takes a CVector in the C++ code and in the lua code.
+@@ -251,3 +253,15 @@ feat: Update CreateVehicle function to take a CVector
+ * Update TODO.md for things to do and look into for project.
+ 
+ * Update changelog, bump version to 1.2.10-1a.
++
++**Commit 2**
++
++feat: Update some items in freeroam-game.lua
++
++* When I updated the function to a new namespace I forgot to update this file with the new values.
++
++* Move lua world functions into 'world' namespace.
++
++* Add Readme into `gamefiles` folder.
++
++* Update changelog.
+\ No newline at end of file
+diff --git a/gamefiles/Readme.md b/gamefiles/Readme.md
+new file mode 100644
+index 00000000..2d8a04a1
+--- /dev/null
++++ b/gamefiles/Readme.md
+@@ -0,0 +1,17 @@
++# Folder info
++
++* data folder - Contains a modified `freeroam_miami.scm` for use with the game scripts, this is incompatible with my `DISABLE_GAME_SCRIPTS` preprocessor and only loads with the mission scripts enabled.
++
++* models folder - Contains the frontend textures for controllers, some fonts, some controller icons and other stuff.
++
++* neo folder - Contains car tweaking table, neo.txd and other ReVC required items.
++
++* TEXT folder - Contains the compiled gxt game texts for use with the game, the original ones are in the project root `utils/gxt` folder.
++
++* ViceExtended folder - Contains my custom fonts, lua scripts, stat export folder, toml files for mod menu and other stuff, vehicles.ini for a list of vehicles, and warps.ini for a list of warps.
++
++### New Info
++
++I have moved the lua scripts into this repo, and now it is located in the ReVC executable directory under the `ViceExtended` folder, so try not to modify the `ViceExtended/lua_scripts` in this folder anymore.
++* https://github.com/kelson8/KCNet-ReVC-Lua
++* https://git.internal.kelsoncraft.net/kelson8/KCNet-ReVC-Lua
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index e8feeddd..a2724331 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -1,5 +1,6 @@
+ -- This format works with my setup! I had to have a subdirectory for it.
+ -- Moved locations into this file.
++-- Relative to the ReVC directory, where data and all the assets are.
+ dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
+ 
+ -- Obtained from freeroam-locations.lua
+@@ -8,14 +9,6 @@ local airport = GameLocations.airport
+ local policeStation = GameLocations.policeStation
+ local construction_site = GameLocations.constructionSiteVehicle
+ 
+--- TODO Attempt to make freeroam_miami.scm load a custom script called freeroam-game.lua.
+-
+--- I will need to figure out how to disable the game scripts which might be a bit easy to do.
+-
+--- TODO Switch game from using .scm to lua. 
+--- Reimplement the init player and other required startup functions into my player cheats for lua.
+--- Or just call functions like that if I can.
+-
+ -- TODO Make this able to be toggled in the ini, with a flag such as gbDisableGameScripts.
+ -- It should shut down the game scm scripting engine, return and exit out of some script functions.
+ -- Also this should do some things to prevent the game from crashing without the scripts in place.
+@@ -44,8 +37,6 @@ local construction_site = GameLocations.constructionSiteVehicle
+ -- If these are missing the game will probably crash.
+ -----------
+ 
+--- true is enabled and false is disabled
+-
+ -- If this is enabled, vehicles won't catch on fire when upside down.
+ -- false = vehicles explode when upside down.
+ -- true = no vehicles explode when upside down.
+@@ -64,27 +55,27 @@ gbReloadLuaScriptWithKeybind = true
+ -- Locations are stored in freeroam-locations.lua, and more can be added.
+ -------
+ 
+--- This only runs once in the init, if there are more then one of the create_player functions they won't do anything.
++-- This only runs once in the init, if there are more then one of the 'player.create' functions they won't do anything.
+ -- Fixes some bugs I was having, which was spawning multiple players for me to control lol.
+ 
+ -- Init player, spawn them in.
+ 
+ -- Spawn at the custom spawn in the middle of the map.
+--- create_player(0, oldSpawn.pos.x, oldSpawn.pos.y, oldSpawn.pos.z)
++-- player.create(0, oldSpawn.pos.x, oldSpawn.pos.y, oldSpawn.pos.z)
+ 
+ -- Spawn at the airport.
+--- create_player(0, airport.pos.x, airport.pos.y, airport.pos.z)
++-- player.create(0, airport.pos.x, airport.pos.y, airport.pos.z)
+ 
+ -- Spawn at the police station.
+--- create_player(0, policeStation.pos.x, policeStation.pos.y, policeStation.pos.z)
++-- player.create(0, policeStation.pos.x, policeStation.pos.y, policeStation.pos.z)
+ 
+ -- Spawn at the construction site.
+--- create_player(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
++-- player.create(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
+ 
+ -- Spawn player at spawn set in freeroam-locations.lua
+ -- I got this working with my new table setup in freeroam-locations.lua!
+ -- To find a spawn position, look into the GameLocations table in freeroam-locations.lua.
+-create_player(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
++player.create(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
+ 
+ --------
+ -- End REQUIRED
+@@ -107,7 +98,7 @@ function OnTick()
+ 
+     -- Kill player if they get cops
+     -- This works, although I need to start a new game to change these in the tick function.
+---      kill_wanted_player()
++--      player.kill_wanted_player()
+ end
+ 
+ --------
+@@ -136,12 +127,12 @@ local loseWeapons = true
+ 
+ -- Toggle losing weapons on death.
+ if not loseWeapons then
+-	disable_lose_weapons_on_death()
++	player.disable_lose_weapons_on_death()
+ else
+-	enable_lose_weapons_on_death()
++	player.enable_lose_weapons_on_death()
+ end
+ 
+-
++-- TODO Move this and other cheat functions into 'cheat' namespace.
+ -- Blow up all cars cheat
+ if blowUpCarsToggle then
+ 	blow_up_all_vehicles()
+@@ -149,17 +140,17 @@ end
+ 
+ -- Clear the area of any peds and vehicles.
+ if clearAreaToggle then
+-	clear_area(25)
++	world.clear_area(25)
+ end
+ 
+ -- Turn the ped density multiplier to 0.0
+ if disablePeds then
+-	disablePeds()
++	world.disable_peds()
+ end
+ 
+ -- Turn the vehicle density multiplier to 0.0
+ if disableVehicles then
+-	disable_vehicles()
++	world.disable_vehicles()
+ end
+ 
+ -- Fixes below here, if game is reloaded with F5 these never get disabled.
+@@ -167,15 +158,15 @@ end
+ -- Although these have a cheat activated message, I'll deal with this later.
+ -- For now they can manually be disabled with the keybind events or something.
+ if enableNeverWanted then
+-	enable_never_wanted()
++	player.enable_never_wanted()
+ else
+-    -- disable_never_wanted()
++    -- player.disable_never_wanted()
+ end
+ 
+ if enableInfiniteHealth then
+-	enable_infinite_health()
++	player.enable_infinite_health()
+ else
+-    -- disable_infinite_health()
++    -- player.disable_infinite_health()
+ end
+ 
+ -----------
+@@ -185,7 +176,7 @@ end
+ -- Create some vehicles
+ -- TODO Fix this in here, this doesn't work just yet.
+ -- For some reason this doesn't work here, it works in kcnet-keybinds-events.lua though.
+--- create_vehicle(145, airportX + 10.0, airportY + 10.0, airportZ + 2.0, false, false)
++-- vehicle.create(145, {airportX + 10.0, airportY + 10.0, airportZ + 2.0}, false, false)
+ 
+ -- Spawn some peds
+ -- TODO Implement this.
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index ccfc2c45..1bb43c9a 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -138,6 +138,27 @@ LuaTest::LuaTest() {
+  */
+ void LuaTest::OnTick()
+ {
++	// Taken from Script.cpp
++	// TODO Implement this for a wait timer in my lua scripts.
++	// Should be like the first thing I create in here.
++	/**
++	 * 
++	 * 	TODO Look into how this is working for a wait in my lua scripts.
++	// Otherwise creating a ped and other stuff will never be possible.
++
++	// Possibly put the lua_getglobal and the lua_pcall in here? So it only runs with this.
++	if (CTimer::GetTimeInMilliseconds() >= m_nWakeTime){
++		while (!ProcessOneCommand())
++			;
++		return;
++	}
++
++	// TODO Reuse this in a LuaEvents::Process function or something
++	if (!m_bSkipWakeTime)
++		return;
++	 * 
++	 */
++
+     lua_State* L = GetLuaState();
+     lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
+     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+@@ -450,7 +471,7 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Kill the player if wanted
+ 	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
+ 
+-#endif // 
++#endif // Moved into lua_player.cpp.
+ 
+ 
+ 	// TODO Move out of lua_test.cpp later.
+@@ -471,11 +492,13 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	RegisterPlayerFunctionsLua(m_luaVM);
+ 	RegisterVehicleFunctionsLua(m_luaVM);
++	RegisterWorldFunctionsLua(m_luaVM);
+ 	//----
+ 
+ 	//
+ 
+ 	//-------------- World --------------//
++#if 0
+ 	// Auto disable peds and vehicles in the lua script
+ 	lua_register(L, "disable_peds", disablePedsLua);
+ 	lua_register(L, "disable_vehicles", disableVehiclesLua);
+@@ -485,6 +508,8 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_register(L, "clear_area", clearAreaLua);
+ 	//
+ 
++#endif // Moved into lua_world.cpp.
++
+ 	//------------- Messages ------------//
+ 
+ 	// Display a hud help message
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 361eb944..97e3eadd 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -51,6 +51,26 @@
+ //-----------------------
+ extern "C"
+ {
++	void RegisterWorldFunctionsLua(lua_State* L)
++	{
++		lua_newtable(L); // New stack: world
++
++		// Auto disable peds and vehicles in the lua script
++		lua_pushcfunction(L, disablePedsLua);
++		lua_setfield(L, -2, "disable_peds");
++
++		lua_pushcfunction(L, disableVehiclesLua);
++		lua_setfield(L, -2, "disable_vehicles");
++		//
++
++
++		// Clear the area of any peds and vehicles.
++		// Example: world.clear_area(radius)
++		lua_pushcfunction(L, clearAreaLua);
++		lua_setfield(L, -2, "clear_area");
++
++	}
++
+ 	// Clear items in the specified area
+ 	// TODO Test this
+ 	int
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index f5957428..0aafc835 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -12,6 +12,7 @@ extern "C" {
+ extern "C" {
+ #endif
+ 	//------------- World ------------//
++	extern void RegisterWorldFunctionsLua(lua_State* L);
+ 	extern int clearAreaLua(lua_State* L);
+ 
+ 	extern int disablePedsLua(lua_State *L);
+-- 
+2.43.0
+

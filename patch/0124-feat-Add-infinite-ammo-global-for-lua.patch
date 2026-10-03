@@ -1,0 +1,338 @@
+From b6978bfb7f7a4601d8622d4f9d5553e65e52df37 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 11 Sep 2026 01:12:27 -0400
+Subject: [PATCH 124/161] feat: Add infinite ammo global for lua
+
+* I added an infinite ammo global into lua to easily be toggled on or off.
+
+* Add give weapon and remove weapon functions to lua scripts.
+
+* Move freeroam text into defines.cpp/.h, and add version to freeroam text display.
+
+* Update changelog, change version to 1.2.13-1a.
+---
+ Changelog.md                              | 12 ++++
+ src/core/main.cpp                         | 10 +++-
+ src/core/main.h                           |  4 ++
+ src/extras/functions/player_functions.cpp | 11 ++--
+ src/extras/lua/lua_player.cpp             | 70 +++++++++++++++++++++++
+ src/extras/lua/lua_player.h               |  3 +
+ src/extras/lua/lua_test.cpp               | 13 +++++
+ src/extras/utils/defines.cpp              |  8 ++-
+ src/extras/utils/defines.h                |  6 ++
+ src/weapons/Weapon.cpp                    | 19 +++++-
+ 10 files changed, 145 insertions(+), 11 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index add0de61..e7c31d8a 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -594,3 +594,15 @@ feat: Add everyone ignore and police ignore toggles
+ * I added these into lua to be set now, with player.everyone_ignore, and player.police_ignore.
+ 
+ * Update changelog, change version to 1.2.12-11a.
++
++### 1.2.13-1a
++
++feat: Add infinite ammo global for lua
++
++* I added an infinite ammo global into lua to easily be toggled on or off.
++
++* Add give weapon and remove weapon functions to lua scripts.
++
++* Move freeroam text into defines.cpp/.h, and add version to freeroam text display.
++
++* Update changelog, change version to 1.2.13-1a.
+\ No newline at end of file
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index d7bac522..e0df9428 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -178,6 +178,11 @@ bool gbReloadLuaScriptWithKeybind = true;
+ bool gbDisableEmergencyVehicleSpawning = false;
+ #endif // DISABLE_GAME_SCRIPTS - Diasble emergency vehicle spawning global
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++// If this is true, it enables infinite ammo for the player.
++bool gbInfiniteAmmoCheat = false;
++#endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
++
+ //--------
+ // Lua/ImGui
+ //--------
+@@ -1303,14 +1308,13 @@ DisplayGameDebugText()
+ // New
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+-	// Make this draw 'KCNet - Freeroam' at the top.
++	// Make this draw the custom freeroam text at the top which is set in defines.cpp.
+ 	// This is my own lua scripting system replacing the Vice City one anyways.
+ 	// TODO Make this not display on the pause menu, and only when the player is playing.
+ 
+ 	wchar customScriptMsgBuf[200];
+ 
+-	const char* customScriptMsg = "KCNet - Freeroam";
+-	AsciiToUnicode(customScriptMsg, customScriptMsgBuf);
++	AsciiToUnicode(Defines::freeroamScriptsText.c_str(), customScriptMsgBuf);
+ 	
+ 	CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.5f));
+ 	CFont::SetPropOn();
+diff --git a/src/core/main.h b/src/core/main.h
+index 045727d1..d2789185 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -128,6 +128,10 @@ extern bool gbReloadLuaScriptWithKeybind;
+ extern bool gbDisableEmergencyVehicleSpawning;
+ #endif // DISABLE_GAME_SCRIPTS - Diasble emergency vehicle spawning global
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++extern bool gbInfiniteAmmoCheat;
++#endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/extras/functions/player_functions.cpp b/src/extras/functions/player_functions.cpp
+index 2f5c575a..04224380 100644
+--- a/src/extras/functions/player_functions.cpp
++++ b/src/extras/functions/player_functions.cpp
+@@ -43,9 +43,8 @@
+ #include "ModelIndices.h"
+ 
+ // Map for the weapon models
+-// TODO Move this elsewhere and rename it, for now I'll leave it here.
+-// This can be used for loading the specific weapons model.
+-static const std::unordered_map<eWeaponType, int> WeaponModels =
++// I may move this in the future, for now it'll just stay here since it's not used elsewhere.
++static const std::unordered_map<eWeaponType, int> weaponModelIndexes =
+ {
+     { WEAPONTYPE_BRASSKNUCKLE,       MI_BRASS_KNUCKLES },
+     { WEAPONTYPE_SCREWDRIVER,        MI_SCREWDRIVER },
+@@ -183,14 +182,14 @@ PlayerFunctions::Suicide()
+ 
+ /**
+  * Give a player a weapon.
+- * This format works! It looks up the model index name from the WeaponModels std::map.
++ * This format works! It looks up the model index name from the weaponModelIndexes std::map.
+  */
+ void
+ PlayerFunctions::GiveWeapon(eWeaponType weapon, int ammo)
+ {
+-    auto it = WeaponModels.find(weapon);
++    auto it = weaponModelIndexes.find(weapon);
+ 
+-    if (it == WeaponModels.end())
++    if (it == weaponModelIndexes.end())
+     {
+         TRACE("Error: The weapon doesn't exist in the WeaponModels list.");
+         // No model exists for this weapon type.
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index f4ed0ffc..7a70c201 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -157,6 +157,14 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, togglePoliceIgnorePlayerLua);
+ 	lua_setfield(L, -2, "police_ignore");
+ 
++	// Give the player a weapon
++	lua_pushcfunction(L, givePlayerWeaponLua);
++	lua_setfield(L, -2, "give_weapon");
++
++	// Remove a weapon from the specified slot
++	lua_pushcfunction(L, removePlayerWeaponLua);
++	lua_setfield(L, -2, "remove_weapon");
++
+ 	// Player namespace
+     lua_setglobal(L, "player");
+ }
+@@ -701,4 +709,66 @@ togglePoliceIgnorePlayerLua(lua_State *L)
+ 	return 1;
+ }
+ 
++/**
++ * Give the player a weapon
++ * 
++ * Usage (Values obtained from freeroam-enums.lua in my scripts):
++ * player.give_weapon(weapon_enums.eWeaponType.WEAPONTYPE_COLT45, 100)
++ */
++int 
++givePlayerWeaponLua(lua_State *L)
++{
++	int weaponType = lua_tonumber(L, 1);
++	int ammo = lua_tonumber(L, 2);
++
++
++	if(!lua_isnumber(L, 1) || !lua_isnumber(L, 2))
++	{
++		return luaL_error(L, "player.give_weapon requires a weapon type and an amount for the ammo");
++	}
++
++	if (weaponType < WEAPONTYPE_BRASSKNUCKLE || weaponType > WEAPONTYPE_TOTALWEAPONS)
++	{
++		return luaL_error(L, "player.give_weapon out of range for values of weaponType enum, please use weapon_enums in freeroam-enums.lua.");
++	}
++
++	// This works, the value should match up with the enum in freeroam-enums.lua anyways.
++	PlayerFunctions::GiveWeapon(static_cast<eWeaponType>(weaponType), ammo);
++
++	return 1;
++}
++
++/**
++ * Remove a weapon from a specific slot for the player.
++ * 
++ * Usage (This can be used in a loop to remove all weapons):
++ * player.remove_weapon(slot)
++ */
++int
++removePlayerWeaponLua(lua_State *L)
++{
++	int slot = lua_tonumber(L, 1);
++
++	if(!lua_isnumber(L, 1))
++	{
++		return luaL_error(L, "player.remove_weapon requires a slot for the weapon to remove.");
++	}
++
++	if(slot < WEAPONSLOT_MELEE ||  slot > TOTAL_WEAPON_SLOTS )
++	{
++		return luaL_error(L, "player.remove_weapon invalid weapon slot, value from 1-10 is required");
++	}
++
++	// Check if player has a weapon in the slot, if so set the ammo to 0 and set to unarmed.
++	if(FindPlayerPed()->HasWeaponSlot(slot))
++	{
++		FindPlayerPed()->m_weapons[slot].m_nAmmoInClip = 0;
++		FindPlayerPed()->m_weapons[slot].m_nAmmoTotal = 0;
++
++		FindPlayerPed()->SetCurrentWeapon(WEAPONSLOT_UNARMED);
++	}
++
++	return 1;
++}
++
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index 1ed65614..d1c671be 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -54,6 +54,9 @@ extern "C" {
+ 	extern int toggleEveryoneIgnorePlayerLua(lua_State *L);
+ 	extern int togglePoliceIgnorePlayerLua(lua_State *L);
+ 
++	extern int givePlayerWeaponLua(lua_State *L);
++	extern int removePlayerWeaponLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 959397be..f7489986 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -1288,6 +1288,19 @@ LuaTest::SetupFreeroamScript()
+ 		}
+ 
+ 		lua_pop(m_luaVM, 1);
++
++		//------
++		// If infinite ammo is enabled
++		//------
++
++		lua_getglobal(m_luaVM, "gbInfiniteAmmoCheat");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool infiniteAmmoToggle = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbInfiniteAmmoCheat = infiniteAmmoToggle;
++		}
++
++		lua_pop(m_luaVM, 1);
++
+ 	}
+ #endif // DISABLE_GAME_SCRIPTS - Disable free roam script with main mission scripts.
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 78fdfb66..70a716a5 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,13 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-11a";
++std::string Defines::programVersion = "1.2.13-1a";
++
++// Set the freeroam game name
++#ifdef DISABLE_GAME_SCRIPTS
++std::string Defines::freeroamScriptsText = "KCNet - Freeroam " + Defines::programVersion;
++#endif // DISABLE_GAME_SCRIPTS
++
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/defines.h b/src/extras/utils/defines.h
+index f09d705d..5249e238 100644
+--- a/src/extras/utils/defines.h
++++ b/src/extras/utils/defines.h
+@@ -3,6 +3,8 @@
+ #include <iostream>
+ #include <cstdint>
+ 
++#include "config.h"
++
+ // Idea taken from here for this
+ // https://github.com/x87/gta-extended-2025/blob/bbb70d06286b07686bce0ded1db3aa90277d0ef0/src/core/Game.h#L34-L44
+ // Added in KCNet ReVC 1.2.12-8a.
+@@ -109,4 +111,8 @@ public:
+ 	static std::string menuName;
+ 	static std::string modificationAuthor;
+ 	static std::string programVersion;
++
++#ifdef GTAVC
++	static std::string freeroamScriptsText;
++#endif // GTAVC
+ };
+\ No newline at end of file
+diff --git a/src/weapons/Weapon.cpp b/src/weapons/Weapon.cpp
+index 2d219e2d..97142027 100644
+--- a/src/weapons/Weapon.cpp
++++ b/src/weapons/Weapon.cpp
+@@ -37,6 +37,10 @@
+ #include "Pickups.h"
+ #include "SaveBuf.h"
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "main.h"
++#endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
++
+ float fReloadAnimSampleFraction[5] = {  0.5f,  0.7f,  0.75f,  0.75f,  0.7f };
+ float fSeaSparrowAimingAngle = 10.0f;
+ float fHunterAimingAngle = 30.0f;
+@@ -382,11 +386,24 @@ CWeapon::Fire(CEntity *shooter, CVector *fireSource)
+ 			}
+ 	  
+ 
++			//------------------
++			// This below adds an infinite ammo cheat, I always wondered how I would do this.
++			
++#ifdef DISABLE_GAME_SCRIPTS
++			if (m_nAmmoInClip > 0 && !gbInfiniteAmmoCheat)
++#else
+ 			if (m_nAmmoInClip > 0)
++#endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
+ 				m_nAmmoInClip--;
+ 
+-			if (m_nAmmoTotal > 0 && (m_nAmmoTotal < 25000 || isPlayer) && (!isPlayer || CStats::GetPercentageProgress() < 100.0f || m_eWeaponType == WEAPONTYPE_DETONATOR))
++			if (m_nAmmoTotal > 0 && (m_nAmmoTotal < 25000 || isPlayer) 
++				&& (!isPlayer || CStats::GetPercentageProgress() < 100.0f || m_eWeaponType == WEAPONTYPE_DETONATOR)
++#ifdef DISABLE_GAME_SCRIPTS
++				&& !gbInfiniteAmmoCheat
++#endif // DISABLE_GAME_SCRIPTS - Infinite ammo cheat.
++			)
+ 				m_nAmmoTotal--;
++			//---------------------
+ 
+ 			if (m_eWeaponState == WEAPONSTATE_READY && m_eWeaponType == WEAPONTYPE_FLAMETHROWER)
+ 				DMAudio.PlayOneShot(((CPhysical*)shooter)->m_audioEntityId, SOUND_WEAPON_FLAMETHROWER_FIRE, 0.0f);
+-- 
+2.43.0
+

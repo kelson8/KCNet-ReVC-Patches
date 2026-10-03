@@ -1,0 +1,358 @@
+From bf6d6a882d33a2d00dd870c1870757310a088708 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 11 Sep 2026 11:51:47 -0400
+Subject: [PATCH 127/161] feat: Add test for giving player the rc car in lua
+
+* I setup a player.give_rc_car function in lua to test out.
+
+* Move is player vehicle check, and toggle player control out of lua_test.cpp.
+
+* Move log functions into lua_log, and hud functions into lua_hud.
+
+* Update changelog, change version to 1.2.13-2a.
+---
+ Changelog.md                  | 12 +++++++++-
+ src/extras/lua/lua_hud.cpp    | 19 ++++++++++++++++
+ src/extras/lua/lua_hud.h      |  3 ++-
+ src/extras/lua/lua_log.cpp    | 42 +++++++++++++++++++++++++++++++---
+ src/extras/lua/lua_log.h      |  4 +++-
+ src/extras/lua/lua_player.cpp | 33 ++++++++++++++++++++++++++-
+ src/extras/lua/lua_player.h   |  2 ++
+ src/extras/lua/lua_test.cpp   | 43 +++++------------------------------
+ src/extras/utils/defines.cpp  |  2 +-
+ 9 files changed, 115 insertions(+), 45 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 3ca581a4..88487b2a 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -617,4 +617,14 @@ refactor: Label some functions
+ 
+ * Label some functions and variables in Pathfind.cpp and World.cpp.
+ 
+-* Update changelog.
+\ No newline at end of file
++* Update changelog.
++
++### 1.2.13-2a
++
++feat: Add test for giving player the rc car in lua
++
++* I setup a player.give_rc_car function in lua to test out.
++
++* Move is player vehicle check, and toggle player control out of lua_test.cpp.
++
++* Update changelog, change version to 1.2.13-2a.
+diff --git a/src/extras/lua/lua_hud.cpp b/src/extras/lua/lua_hud.cpp
+index 161594c3..5b7b45bb 100644
+--- a/src/extras/lua/lua_hud.cpp
++++ b/src/extras/lua/lua_hud.cpp
+@@ -23,6 +23,25 @@
+ extern "C" 
+ {
+ 
++	/** 
++ 	* Register the hud lua functions under the 'hud' namespace.
++ 	* Usage for new format):
++ 	* 
++ 	* hud.print_msg("Test log message")
++ 	*/
++	void RegisterHudFunctionsLua(lua_State* L)
++	{
++		//------------- Hud ------------//
++		lua_newtable(L); // Stack: hud table
++
++		// Display a hud help message
++		lua_pushcfunction(L, customHelpMessageLua);
++		lua_setfield(L, -2, "print_msg");
++
++		// hud namespace
++    	lua_setglobal(L, "hud");
++	}
++
+ 	// Display a help message to the hud using lua, this works
+ 	// To use this in lua: print_msg(message)
+ 	int
+diff --git a/src/extras/lua/lua_hud.h b/src/extras/lua/lua_hud.h
+index da291e57..d6c197e4 100644
+--- a/src/extras/lua/lua_hud.h
++++ b/src/extras/lua/lua_hud.h
+@@ -11,7 +11,8 @@ extern "C" {
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+-	//------------- Messages ------------//
++	//------------- Hud ------------//
++	extern void RegisterHudFunctionsLua(lua_State* L);
+ 	extern int customHelpMessageLua(lua_State *L);
+ 
+ #ifdef __cplusplus
+diff --git a/src/extras/lua/lua_log.cpp b/src/extras/lua/lua_log.cpp
+index d3272778..054a26ee 100644
+--- a/src/extras/lua/lua_log.cpp
++++ b/src/extras/lua/lua_log.cpp
+@@ -1,6 +1,7 @@
+ #include "pch.h"
+ 
+ #ifdef LUA_TEST
++#include "lua_log.h"
+ 
+ // Lua functions
+ #include "lua_functions.h"
+@@ -22,6 +23,41 @@
+ extern "C" 
+ {
+ 
++	/** 
++ 	* Register the log lua functions under the 'log' namespace.
++ 	* Usage for new format (Logs to to the lua log file in the logs folder.):
++ 	* 
++ 	* log.info("Test log message")
++ 	*/
++	void RegisterLogFunctionsLua(lua_State* L)
++	{
++		//------------- Log ------------//
++		lua_newtable(L); // Stack: log table
++
++		// Log messages in lua
++		// This works, log an info message in lua
++		// TODO Rename this function to logInfoMessageLua
++		lua_pushcfunction(L, logInfoMessageLua);
++		lua_setfield(L, -2, "info");
++	
++		// Log warning and error messages in lua
++		lua_pushcfunction(L, logWarningMessageLua);
++		lua_setfield(L, -2, "warning");
++
++		lua_pushcfunction(L, logErrorMessageLua);
++		lua_setfield(L, -2, "error");
++	
++		// Log the current directory
++		lua_pushcfunction(L, logCurrentDirectoryLua);
++		lua_setfield(L, -2, "current_directory");
++		lua_register(L, "log_directory", logCurrentDirectoryLua);
++
++		// log namespace
++    	lua_setglobal(L, "log");
++
++	//logCurrentDirectoryLua
++	}
++
+ 	/// <summary>
+ 	/// Log the players coords to the lua file, this works.
+ 	/// </summary>
+@@ -69,7 +105,7 @@ extern "C"
+     /// <param name="L"></param>
+     /// <returns></returns>
+     int
+-    logMessageLua(lua_State *L)
++    logInfoMessageLua(lua_State *L)
+     {
+ 		Defines defines = Defines();
+ 	    // std::string logString = lua_tostring(L, 1);
+@@ -83,7 +119,7 @@ extern "C"
+ 
+ 	    LogFunctions::LogInfo(defines.luaLogFile, logString);
+ 
+-	    return 0;
++	    return 1;
+ 	}
+ 
+ 	/// <summary>
+@@ -139,7 +175,7 @@ extern "C"
+ 		// LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
+ 		// LogFunctions::LogInfo(Defines::luaLogFile, FileFunctions::CurrentDirectory());
+ // #endif
+-		return 0;
++		return 1;
+ 	}
+ 
+ }
+diff --git a/src/extras/lua/lua_log.h b/src/extras/lua/lua_log.h
+index f6f43446..9c635fc4 100644
+--- a/src/extras/lua/lua_log.h
++++ b/src/extras/lua/lua_log.h
+@@ -12,11 +12,13 @@ extern "C" {
+ extern "C" {
+ #endif
+ 
++	extern void RegisterLogFunctionsLua(lua_State* L);
++
+ 	// Taken out of lua_functions.
+ 	extern int logPlayerCoordsLua(lua_State *L);
+ 	extern int logPlayerHeadingLua(lua_State *L);
+ 
+-	extern int logMessageLua(lua_State *L);
++	extern int logInfoMessageLua(lua_State *L);
+ 	extern int logWarningMessageLua(lua_State *L);
+ 	extern int logErrorMessageLua(lua_State *L);
+ 
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 7a70c201..8d0e0dd9 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -81,6 +81,10 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+     lua_pushcfunction(L, HealPlayerLua);
+     lua_setfield(L, -2, "heal");
+ 
++	// Blow up the players vehicle
++	lua_pushcfunction(L, blowUpPlayerVehicleLua);
++	lua_setfield(L, -2, "blow_up_vehicle");
++
+ 	// Never wanted
+ 	lua_pushcfunction(L, toggleNeverWantedLua);
+     lua_setfield(L, -2, "set_never_wanted");
+@@ -133,6 +137,10 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	// lua_setfield(L, -2, "is_player_alive");
+ 	lua_setfield(L, -2, "is_alive");
+ 
++	// Check if player is in a vehicle, moved out of lua_test.cpp.
++	lua_pushcfunction(L, isPlayerInVehicleLua);
++	lua_setfield(L, -2, "is_in_vehicle");
++
+ 	// Setup changing player clothes
+ 	lua_pushcfunction(L, changePlayerClothesLua);
+ 	lua_setfield(L, -2, "change_clothes");
+@@ -165,6 +173,10 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, removePlayerWeaponLua);
+ 	lua_setfield(L, -2, "remove_weapon");
+ 
++	// Give the player a RC car
++	// lua_pushcfunction(L, givePlayerRcCarLua);
++	// lua_setfield(L, -2, "give_rc_car");
++	
+ 	// Player namespace
+     lua_setglobal(L, "player");
+ }
+@@ -626,7 +638,7 @@ togglePlayerControlLua(lua_State *L)
+ 
+ 	if(!lua_isboolean(L, 1))
+ 	{
+-		return luaL_error(L, "player.toggle_control requires a boolean true or false value.");
++		return luaL_error(L, "player.set_control requires a boolean true or false value.");
+ 	}
+ 
+ 	// I need to figure this out.
+@@ -771,4 +783,23 @@ removePlayerWeaponLua(lua_State *L)
+ 	return 1;
+ }
+ 
++/**
++ * Give the player an RC Car
++ * 
++ * TODO Fix this to work, I don't think I ever had this function working.
++ * 
++ * 
++ * 
++ * Usage:
++ * player.give_rc_car()
++ * 
++ */
++int
++givePlayerRcCarLua(lua_State *L)
++{
++	CustomCheats::GiveRcCar();
++
++	return 1;
++}
++
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index d1c671be..80d2166d 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -57,6 +57,8 @@ extern "C" {
+ 	extern int givePlayerWeaponLua(lua_State *L);
+ 	extern int removePlayerWeaponLua(lua_State *L);
+ 
++	extern int givePlayerRcCarLua(lua_State *L);
++
+ 	//
+ 
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index f7489986..3584ce36 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -755,59 +755,28 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ #endif //
+ 
+-	// Toggle player control
+-	lua_register(L, "toggle_control", TogglePlayerControlLua);
+-
+-	// Test for ImGui
++	// Toggle for ImGui
++	// TODO Remove this, I don't think this is needed here.
+ #ifdef _IMGUI_TEST
+ 	lua_register(L, "toggle_imgui", toggleImGuiLua);
+ #endif // _IMGUI_TEST
+ 
+-	// TODO Move out of lua_test.cpp later.
+-	// Vehicle
+-	// Check if player is in a vehicle
+-	lua_register(L, "is_player_in_vehicle", isPlayerInVehicleLua);
+-	// Blow up the players vehicle
+-	lua_register(L, "blow_up_vehicle", blowUpPlayerVehicleLua);
+-	// Blow up all vehicles
+-	lua_register(L, "blow_up_all_vehicles", blowUpAllVehiclesLua);
+-
+ 	//----
+-	// TODO Fully switch to this, I'll deal with this later.
+ 	// I will need to rewrite some of my examples but once I fix this,
+ 	//  I should be able to start porting the commands over much neater.
+-	// Try to use namespace like player.set_position({2, 2, 2})
++	// This is using namespaces for all of my stuff now.
+ 	//----
+ 
+ 	RegisterGameFunctionsLua(L);
+ 	RegisterGarageFunctionsLua(L);
++	RegisterHudFunctionsLua(L);
++	RegisterLogFunctionsLua(L);
+ 	RegisterPlayerFunctionsLua(L);
+ 	RegisterVehicleFunctionsLua(L);
+ 	RegisterWorldFunctionsLua(L);
+ 	//----
+ 
+-	//
+-
+-	//------------- Messages ------------//
+-
+-	// Display a hud help message
+-	lua_register(L, "print_msg", customHelpMessageLua);
+-
+-	// Log messages in lua
+-	// This works, log an info message in lua
+-	// TODO Rename this function to logInfoMessageLua
+-	lua_register(L, "log_info", logMessageLua);
+-	
+-	// Log warning and error messages in lua
+-	lua_register(L, "log_warning", logWarningMessageLua);
+-	lua_register(L, "log_error", logErrorMessageLua);
+-	
+-	// Log the current directory
+-	lua_register(L, "log_directory", logCurrentDirectoryLua);
+-
+-	//logCurrentDirectoryLua
+-
+-	
++	//	
+ }
+ 
+ /// <summary>
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 70a716a5..aeb44228 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-1a";
++std::string Defines::programVersion = "1.2.13-2a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

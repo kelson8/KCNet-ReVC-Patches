@@ -1,0 +1,454 @@
+From d00cc47a9c47eaf5653066f5df92bd437de29278 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 00:03:49 -0400
+Subject: [PATCH 110/161] feat: Add get player coords and heading functions
+
+* Add IsPlayerSafe function, move it out of misc_util.
+
+* Disable DisplayCounterOnScreen if I have the game scripts disabled, otherwise this causes crashes.
+
+* Enable blow up all vehicles in lua again.
+
+* Disable cheat message for BlowUpAllVehicles cheat.
+
+* Update changelog, change version to 1.2.12-5a.
+---
+ Changelog.md                              | 14 ++++++
+ src/extras/cheats/custom_cheats.cpp       |  5 +-
+ src/extras/functions/misc_functions.cpp   | 20 ++++++++
+ src/extras/functions/player_functions.cpp | 41 ++++++++++++++++
+ src/extras/functions/player_functions.h   |  3 ++
+ src/extras/lua/lua_player.cpp             |  1 +
+ src/extras/lua/lua_world.cpp              |  4 ++
+ src/extras/lua/lua_world.h                |  2 +
+ src/extras/menus/misc_menu.cpp            | 27 ++++++++++
+ src/extras/utils/defines.cpp              |  2 +-
+ src/extras/utils/misc_util.cpp            | 60 -----------------------
+ src/extras/utils/player_util.cpp          | 44 +++++++++++++++++
+ src/extras/utils/player_util.h            |  2 +
+ 13 files changed, 163 insertions(+), 62 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 2db59916..4773d7fb 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -476,3 +476,17 @@ feat: Move some functions into player_functions.cpp
+ * Cleanup lua_player file quite a bit with new toggle functions.
+ 
+ * Update changelog, bump version to 1.2.12-4a.
++
++### 1.2.12-5a
++
++feat: Add get player coords and heading functions
++
++* Add IsPlayerSafe function, move it out of misc_util.
++
++* Disable DisplayCounterOnScreen if I have the game scripts disabled, otherwise this causes crashes.
++
++* Enable blow up all vehicles in lua again.
++
++* Disable cheat message for BlowUpAllVehicles cheat.
++
++* Update changelog, change version to 1.2.12-5a.
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 8e9a06d4..53b7ecc0 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -259,7 +259,9 @@ void
+ CustomCheats::BlowUpAllCars()
+ {
+ 	//BlowUpCarsCheat();
+-	CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
++	// Lets turn this message off for a while..
++	// Damn spam with this in the OnTick function in lua, it should never be there anyways lol.
++	// CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 	VehicleFunctions vehicleFunctions = VehicleFunctions();
+ 
+ 	int i = CPools::GetVehiclePool()->GetSize();
+@@ -507,6 +509,7 @@ void CustomCheats::GiveRcCar() {
+ /// <summary>
+ /// Lock the player's current vehicle doors.
+ /// This works for having the doors lock, I can't unlock them outside of the vehicle though.
++/// TODO Make this store the players current vehicle to unlock from.
+ /// </summary>
+ void
+ CustomCheats::LockDoors()
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 10d9dcaa..b2fc86f4 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -637,10 +637,18 @@ bool counterEnabled = false;
+ /// TODO Add custom text option in here, the text needs to be in the american.gxt/american.txt file.
+ /// TODO Figure out how to update the on screen counter.
+ /// </summary>
++
++/**
++ * 
++ * 
++ * Well without the game scripts, and having the DISABLE_GAME_SCRIPTS preprocessor crashes with this function.
++ * I guess this requires the scripts.
++ */
+ void
+ MiscFunctions::DisplayCounterOnScreen()
+ {
+ 
++#ifndef DISABLE_GAME_SCRIPTS
+ 	char str[200];
+ 	wchar ustr[200];
+ 
+@@ -674,6 +682,9 @@ MiscFunctions::DisplayCounterOnScreen()
+ 	} else {
+ 		ClearCounterOnScreen();
+ 	}
++#else
++	return;
++#endif // !DISABLE_GAME_SCRIPTS - Fix crashing in mod menu with function.
+ }
+ 
+ 
+@@ -684,10 +695,19 @@ MiscFunctions::DisplayCounterOnScreen()
+ void
+ MiscFunctions::DisplayCounterImGui()
+ {
++
++#ifdef DISABLE_GAME_SCRIPTS
++	ImGui::Text("This doesn't work with DISABLE_GAME_SCRIPTS");
++	ImGui::BeginDisabled();
++#endif
+ 	if(ImGui::Checkbox("Display counter test", &counterEnabled)) 
+ 	{
+ 		DisplayCounterOnScreen(); 
+ 	}
++
++#ifdef DISABLE_GAME_SCRIPTS
++	ImGui::EndDisabled();
++#endif
+ }
+ #endif // _IMGUI_TEST
+ 
+diff --git a/src/extras/functions/player_functions.cpp b/src/extras/functions/player_functions.cpp
+index 5afdc082..6d22c1ef 100644
+--- a/src/extras/functions/player_functions.cpp
++++ b/src/extras/functions/player_functions.cpp
+@@ -7,6 +7,8 @@
+ 
+ #include "vehicle_functions.h"
+ 
++#include "misc_util.h"
++
+ //------
+ // ReVC Headers
+ //------
+@@ -86,6 +88,45 @@ PlayerFunctions::PlayerFunctions()
+ 
+ }
+ 
++// New
++
++/**
++ * Get the players current position, mostly for use in my lua scripts.
++ * 
++ * @returns The players current position if they are alive and exist, otherwise return all 0 values.
++ */
++CVector
++PlayerFunctions::GetPosition()
++{
++    // Set a default position of 0.0 to return on all values.
++    CVector pos = CVector(0.0f, 0.0f, 0.0f);
++
++    if(PlayerUtil::IsPlayerSafe() && FindPlayerPed())
++    {
++        pos = FindPlayerCoors();
++        // return FindPlayerCoors();
++        return pos;
++    }
++
++    return pos;
++}
++
++/**
++ * Get the players current heading
++ * 
++ * @returns The players current heading if they are alive and exist, otherwise return all 0 values.
++ */
++float
++PlayerFunctions::GetHeading()
++{
++    if(FindPlayerPed())
++    {
++        return FindPlayerHeading();
++    }
++
++    return 0.0f;
++}
++
+ //-------------------
+ // Moved out of player_cheats.cpp/.h
+ //-------------------
+diff --git a/src/extras/functions/player_functions.h b/src/extras/functions/player_functions.h
+index 78d3e854..18dd1bb7 100644
+--- a/src/extras/functions/player_functions.h
++++ b/src/extras/functions/player_functions.h
+@@ -20,6 +20,9 @@ public:
+ 		return instance;
+ 	}
+ 
++	static CVector GetPosition();
++	static float GetHeading();
++
+     static void Heal();
+ 	static void Suicide();
+ 	static void GiveWeapon(eWeaponType weapon, int ammo);
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index f4977e36..589015d4 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -474,6 +474,7 @@ changePlayerClothesLua(lua_State *L)
+ /**
+  * This works for respawning the player.
+  * TODO Make this get the X, Y, Z, and heading in lua also.
++ * TODO Switch this to a new format, make this add hospital respawns or something.
+  */
+ extern "C" int
+ setRespawnPointLua(lua_State *L)
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index e8701c0b..129cbeda 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -91,6 +91,10 @@ extern "C"
+ 		lua_setfield(L, -2, "set_ped_objectives");
+ 		// setPedObjectivesInAreaLua;
+ 
++		// Blow up vehicles
++		lua_pushcfunction(L, blowUpAllVehiclesLua);
++		lua_setfield(L, -2, "blow_up_all_vehicles");
++
+ 		// World namespace
+     	lua_setglobal(L, "world");
+ 	}
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index b32f3cb2..66e73cf8 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -18,6 +18,8 @@ extern "C" {
+ 	extern int disablePedsLua(lua_State *L);
+ 	extern int disableVehiclesLua(lua_State *L);
+ 
++	extern int blowUpAllVehiclesLua(lua_State *L);
++
+ 	extern int unlockDoorsInAreaLua(lua_State *L);
+ 
+ 	extern int setPedObjectivesInAreaLua(lua_State *L);
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index be5a5c6c..d2d03f42 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -2,6 +2,8 @@
+ 
+ #ifdef _IMGUI_TEST
+ 
++#include <format>
++
+ #include "misc_menu.h"
+ #include "imgui.h"
+ #include "imgui_defines.h"
+@@ -32,6 +34,8 @@
+ #include "defines.h"
+ #include "model_ids.h"
+ 
++#include "player_functions.h"
++
+ // Util
+ #include "player_util.h"
+ #include "message_util.h"
+@@ -888,6 +892,29 @@ void MiscMenu::MiscTab()
+ 	//} else {
+ 	//	ImGuiMenus::ShowWindow2 = false;
+ 	//}
++
++	ImGui::Separator();
++	// Test for logging the players coordinates with the new get position function.
++	// Will be used for lua, to replace the global playerX, y and z variables.
++	if(ImGui::Button("Log coords"))
++	{
++		float playerX = PlayerFunctions::GetPosition().x;
++		float playerY = PlayerFunctions::GetPosition().y;
++		float playerZ = PlayerFunctions::GetPosition().z;
++		// std::string logMsg = "Players current position: " + std::to_string"X: ");
++		std::string logMsg = std::format("Players current position: X: {}, Y: {}, Z: {}", playerX, playerY, playerZ);
++		LogFunctions::LogInfo(Defines::logFile, logMsg);
++		TRACE(logMsg.c_str());
++	}
++
++	// Test for logging the players heading, mostly for use with lua.
++	if(ImGui::Button("Log heading"))
++	{
++		float playerHeading = PlayerFunctions::GetHeading();
++		std::string logMsg = std::format("Players current heading: {}", playerHeading);
++		LogFunctions::LogInfo(Defines::logFile, logMsg);
++		TRACE(logMsg.c_str());
++	}
+ }
+ 
+ #endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 2aa06b17..bb731067 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-3a";
++std::string Defines::programVersion = "1.2.12-5a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index 8a4b41d6..7cabbc92 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -212,66 +212,6 @@ IsCutsceneProcessing()
+ 	return false;
+ }
+ 
+-/// <summary>
+-/// Check if the player is safe
+-/// This checks if the player is being arrested or dead, returns false if so.
+-/// TODO Test this
+-/// Got the idea from here:
+-/// https://github.com/gta-chaos-mod/Trilogy-ASI-Script/blob/3.0/src/gtasa/util/GameUtil.cpp#L322-L377
+-/// </summary>
+-/// <returns></returns>
+-bool
+-IsPlayerSafe()
+-{
+-	CPed *pPlayer = FindPlayerPed();
+-	if (!pPlayer || !pPlayer->CanSetPedState())
+-	{ 
+-		return false;
+-	}
+-
+-	switch(pPlayer->m_nPedState) {
+-	case PED_ARRESTED: 
+-	case PED_ARREST_PLAYER:
+-	case PED_DEAD:
+-	case PED_DIE: 
+-		return false;
+-	
+-		// TODO What is this for?
+-		default:
+-		{
+-		}
+-	}
+-
+-	// TODO Implement these
+-	/*
+-	
+-    if (player->m_pAttachedTo) return false;
+-
+-    CPlayerData *data = player->m_pPlayerData;
+-    if (!data || !data->m_bCanBeDamaged) return false;
+-
+-    CPad *pad = player->GetPadFromPlayer ();
+-    if (!pad) return false;
+-
+-    if (pad->bPlayerOnInteriorTransition || pad->bPlayerSafe
+-        || pad->bPlayerSafeForCutscene)
+-    {
+-        return false;
+-    }
+-
+-    if (GameUtil::IsCutsceneProcessing ())
+-    {
+-        return false;
+-    }
+-
+-	*/
+-
+-	// The ped should be safe
+-	return true;
+-
+-
+-}
+-
+ /// <summary>
+ /// Save the game to a specific slot, also pass the time.
+ /// I have disabled this for now in the ImGui menu.
+diff --git a/src/extras/utils/player_util.cpp b/src/extras/utils/player_util.cpp
+index 780c5ad7..9d59a3b1 100644
+--- a/src/extras/utils/player_util.cpp
++++ b/src/extras/utils/player_util.cpp
+@@ -8,6 +8,7 @@
+ #include "vehicle_functions.h"
+ 
+ // ReVC
++#include "CutsceneMgr.h"
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+@@ -271,3 +272,46 @@ PlayerUtil::ChangeClothes(const char* clothingSetName)
+ 		//TRACE("Clothes not valid.");
+ 	}
+ }
++
++
++/**
++ * Check if the player is safe
++ * This checks if the player is being arrested or dead along with some other things.
++ * 
++ * Got the idea from here:
++ * https://github.com/gta-chaos-mod/Trilogy-ASI-Script/blob/3.0/src/gtasa/util/GameUtil.cpp#L322-L377
++ * 
++ * @returns If the player is safe, for things like teleporting.
++ */
++bool
++PlayerUtil::IsPlayerSafe()
++{
++	CPed *pPlayer = FindPlayerPed();
++	if (!pPlayer || !pPlayer->CanSetPedState() || pPlayer->m_fHealth <= 0)
++	{ 
++		return false;
++	}
++
++	switch(pPlayer->m_nPedState) {
++	case PED_ARRESTED: 
++	case PED_ARREST_PLAYER:
++	case PED_DEAD:
++	case PED_DIE: 
++		return false;
++	
++		// TODO What is this for?
++		default:
++		{
++		}
++	}
++
++	if(CCutsceneMgr::IsCutsceneProcessing())
++	{
++		return false;
++	}
++
++	// The ped should be safe
++	return true;
++
++
++}
+\ No newline at end of file
+diff --git a/src/extras/utils/player_util.h b/src/extras/utils/player_util.h
+index 3f305f60..f741c111 100644
+--- a/src/extras/utils/player_util.h
++++ b/src/extras/utils/player_util.h
+@@ -43,6 +43,8 @@ public:
+ 
+ 	void ChangeClothes(const char *clothingSetName);
+ 
++	static bool IsPlayerSafe();
++
+ 	// Test for getting the clothesMap variable from here, this works
+ 	// TODO Fix this to not crash on invalid models.
+ 	static const std::map<std::string, const char*> &GetClothesMap();
+-- 
+2.43.0
+

@@ -1,0 +1,1552 @@
+From 2cfde1f20b8a31361d8212bbe7cdab40f6987243 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 6 Sep 2026 12:17:59 -0400
+Subject: [PATCH 092/161] feat: Update some lua scripts
+
+Lua changes:---
+
+* Make playerX, playerY, and playerZ into globals for use with F9 in `kcnet-keybind-events.lua.
+
+* Make lua_test.cpp crash the game if 'create_player' isn't called when setting up the freeroam scripts, this is always required in them.
+
+* Update lua scripts to use CVector values instead of floats, move all new custom positions into lua table.
+
+* Make SetPlayerPositionLua use a CVector instead of floats.
+
+* Update freeroam-game.lua, freeroam-locations.lua, and kcnet-keybind-events.lua
+
+Misc changes:---
+
+* Make game assert if the player isn't created with `create_player` in the lua scripts.
+
+* Update changelog.md, bump version to 1.2.10-2a.
+---
+ Changelog.md                                  |  25 +
+ .../lua_scripts/freeroam-game.lua             |  18 +-
+ .../lua_scripts/freeroam-locations.lua        |  96 +++-
+ .../lua_scripts/kcnet-keybind-events.lua      |  83 ++-
+ .../ViceExtended/lua_scripts/vehicles.lua     | 472 +++++-------------
+ src/control/Replay.cpp                        |  27 +
+ src/core/Fire.cpp                             |   1 +
+ src/core/Frontend.cpp                         |   7 +
+ src/core/Game.cpp                             |   1 +
+ src/extras/functions/vehicle_functions.cpp    |   9 +
+ src/extras/lua/lua_functions.cpp              | 112 +++++
+ src/extras/lua/lua_functions.h                |   8 +
+ src/extras/lua/lua_player.cpp                 |  33 +-
+ src/extras/lua/lua_test.cpp                   | 184 ++++++-
+ src/extras/menus/imgui_main_menu.cpp          |  10 +-
+ src/extras/utils/defines.cpp                  |   2 +-
+ src/extras/utils/fast_loader.cpp              |   3 +
+ 17 files changed, 658 insertions(+), 433 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 4edf86ad..9fecf307 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -199,6 +199,8 @@ fix: Make game not crash when new game is started
+ 
+ ### 1.2.9-1a
+ 
++**Commit 1**
++
+ feat: Add toggle for reloading lua scripts
+ 
+ * I added the gbReloadLuaScriptWithKeybind global into freeroam-game.lua, which can enable the F5 keybind, or disable it.
+@@ -212,3 +214,26 @@ feat: Add toggle for reloading lua scripts
+ * Switch version syntax, add a `1.2.9-1a` to it instead of incrementing the version.
+ 
+ * Update changelog, bump version to 1.2.9-1a.
++
++
++### 1.2.9-2a
++
++feat: Update some lua scripts
++
++Lua changes:---
++
++* Make playerX, playerY, and playerZ into globals for use with F9 in `kcnet-keybind-events.lua.
++
++* Make lua_test.cpp crash the game if 'create_player' isn't called when setting up the freeroam scripts, this is always required in them.
++
++* Update lua scripts to use CVector values instead of floats, move all new custom positions into lua table.
++
++* Make SetPlayerPositionLua use a CVector instead of floats.
++
++* Update freeroam-game.lua, freeroam-locations.lua,  kcnet-keybind-events.lua, and vehicles.lua scripts.
++
++Misc changes:---
++
++* Make game assert if the player isn't created with `create_player` in the lua scripts.
++
++* Update changelog.md, bump version to 1.2.10-2a.
+\ No newline at end of file
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+index f1ced867..e8feeddd 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-game.lua
+@@ -2,6 +2,11 @@
+ -- Moved locations into this file.
+ dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
+ 
++-- Obtained from freeroam-locations.lua
++local oldSpawn = GameLocations.oldSpawn
++local airport = GameLocations.airport
++local policeStation = GameLocations.policeStation
++local construction_site = GameLocations.constructionSiteVehicle
+ 
+ -- TODO Attempt to make freeroam_miami.scm load a custom script called freeroam-game.lua.
+ 
+@@ -65,16 +70,21 @@ gbReloadLuaScriptWithKeybind = true
+ -- Init player, spawn them in.
+ 
+ -- Spawn at the custom spawn in the middle of the map.
+--- create_player(0, spawnX, spawnY, spawnZ)
++-- create_player(0, oldSpawn.pos.x, oldSpawn.pos.y, oldSpawn.pos.z)
+ 
+ -- Spawn at the airport.
+--- create_player(0, airportX, airportY, airportZ)
++-- create_player(0, airport.pos.x, airport.pos.y, airport.pos.z)
+ 
+ -- Spawn at the police station.
+--- create_player(0, policeStationX, policeStationY, policeStationZ)
++-- create_player(0, policeStation.pos.x, policeStation.pos.y, policeStation.pos.z)
+ 
+ -- Spawn at the construction site.
+-create_player(0, constructionSiteX, constructionSiteY, constructionSiteZ)
++-- create_player(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
++
++-- Spawn player at spawn set in freeroam-locations.lua
++-- I got this working with my new table setup in freeroam-locations.lua!
++-- To find a spawn position, look into the GameLocations table in freeroam-locations.lua.
++create_player(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
+ 
+ --------
+ -- End REQUIRED
+diff --git a/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua b/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua
+index cd934d8c..efd0cfc4 100644
+--- a/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua
++++ b/gamefiles/ViceExtended/lua_scripts/freeroam-locations.lua
+@@ -2,19 +2,83 @@
+ -- Locations
+ -----------
+ 
+-spawnX = -258.1
+-spawnY = -453.1
+-spawnZ = 13.5
+-
+-airportX = -1515.1
+-airportY = -1182.1
+-airportZ = 16.5
+-airportHeading = 0.0
+-
+-policeStationX = 402.371
+-policeStationY = -463.671
+-policeStationZ = 10.1132
+-
+-constructionSiteX = 261.662
+-constructionSiteY = -234.038
+-constructionSiteZ = 11.437
++-- spawnX = -258.1
++-- spawnY = -453.1
++-- spawnZ = 13.5
++
++-- airportX = -1515.1
++-- airportY = -1182.1
++-- airportZ = 16.5
++-- airportHeading = 0.0
++
++-- policeStationX = 402.371
++-- policeStationY = -463.671
++-- policeStationZ = 10.1132
++
++-- constructionSiteX = 261.662
++-- constructionSiteY = -234.038
++-- constructionSiteZ = 11.437
++
++-- TODO Switch to this setup.
++
++-- To use this in another script:
++
++--[[
++
++dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
++
++local construction_site = GameLocations.constructionSiteVehiclePos
++
++create_player(0, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z)
++
++create_vehicle(145, construction_site.pos.x, construction_site.pos.y, construction_site.pos.z, false, false)
++]]
++
++GameLocations = {
++-- Spawn in the middle of the map.
++    oldSpawn = {
++        pos = {
++            x = -258.1,
++	        y = -453.1,
++	        z = 13.5
++        },
++        heading = 0.0
++    },
++
++    airport = {
++        pos = {
++            x = -1515.1,
++            y = -1182.1,
++            z = 16.5
++        },
++        heading = 0.0
++    },
++
++    policeStation = {
++        pos = {
++            x = 402.371,
++            y = -463.671,
++            z = 10.1132
++        },
++        heading = 0.0
++
++    },
++
++    -- local airportHeading = 0.0
++
++    constructionSiteVehicle = {
++        pos = {
++            x = 252.169,
++            y = -232.353,
++            z = 10.901
++        },
++        heading = 0.0
++    },
++}
++
++-- -- Set the area to place the player with the 'F9' keybind here.
++-- mainSpawnX = constructionSiteVehiclePos.x
++
++-- mainSpawnY = constructionSiteVehiclePos.y
++-- mainSpawnZ = constructionSiteVehiclePos.z
++
+diff --git a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+index b1ba9768..0150c74a 100644
+--- a/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
++++ b/gamefiles/ViceExtended/lua_scripts/kcnet-keybind-events.lua
+@@ -1,5 +1,29 @@
+ -- Keybind events are in here for when running with F9.
+ 
++-- For vehicle functions, such as converting a model name to an ID.
++dofile("ViceExtended/lua_scripts/vehicles.lua")
++
++-- For loading locations
++dofile("ViceExtended/lua_scripts/freeroam-locations.lua")
++
++-- Obtained from freeroam-locations.lua
++local oldSpawn = GameLocations.oldSpawn
++local airport = GameLocations.airport
++local policeStation = GameLocations.policeStation
++local construction_site = GameLocations.constructionSiteVehicle
++
++-- TODO Rename this file to freeroam-keybind-events.lua later.
++
++------
++-- Player functions
++------
++
++-- Get the players position, this only works in this file
++-- Use these globals:
++-- playerX
++-- playerY
++-- playerZ
++
+ ------
+ -- Vehicle functions
+ ------
+@@ -24,14 +48,19 @@ local create_vehicle_toggle = false
+ local teleportPlayerToSpawn = false
+ local teleportPlayerToAirport = false
+ 
+-local spawnX = -258.1
+-local spawnY = -453.1
+-local spawnZ = 13.5
++-- Set the players position, new values can easily be added into freeroam-locations.lua.
++set_position({
++	x = construction_site.pos.x,
++	y = construction_site.pos.y,
++	z = construction_site.pos.z
++})
+ 
+-local airportX = -1515.1
+-local airportY = -1182.1
+-local airportZ = 16.5
+-local airportHeading = 0.0
++-- Vehicle ID, posX, posY, posZ, Delete last vehicle, Warp into vehicle.
++-- create_vehicle(145, airportX + 10.0, airportY + 10.0, airportZ + 2.0, false, false)
++
++-- Get the players position, this only works in this file
++-- TODO Move into a CVector value instead of the floats later.
++-- print("Player coordinates, X: " .. playerX .. " Y: " .. playerY .. " Z: " .. playerZ)
+ 
+ -- if teleportPlayerToSpawn then
+ -- 	set_position(spawnX, spawnY, spawnZ)
+@@ -40,30 +69,40 @@ local airportHeading = 0.0
+ -- 	-- set_heading(spawnHeading)
+ -- end
+ 
+-if create_vehicle_toggle then
+-	-- create_vehicle(145, true, true)
+-    -- This can set the position of the player and the vehicle.
+-    -- if teleportPlayerToSpawn then
+-    --     set_position(spawnX, spawnY, spawnZ)
+-    -- end
++-- create_vehicle(145, constructionSiteX + 10.0, constructionSiteY + 10.0, constructionSiteZ + 2.0, false, false)
++-- create_vehicle(145, constructionSiteVehX, constructionSiteVehY, constructionSiteVehZ + 2.0, false, false)
+ 
+-	-- create_vehicle(145, true, true)
++-- Put the vehicle near the player.
++-- create_vehicle(145, playerX + 5, playerY + 5, playerZ + 2.0, false, false)
+ 
++if create_vehicle_toggle then
+ 	-- TODO Test this in a different namespace
+ 	-- Well this didn't work.
+ 	-- test_functions.create_vehicle_test(145, true, true)
+ 
+-	-- Well this doesn't work being moved in another file.
+-	-- local infernus = vehicle_test.getVehicleIdByName("Infernus")
+-	-- print("Test" .. infernus)
+-	
++	-- There is a full list of vehicles in vehicles.lua under the vehiclesByName function
+ 
+-	-- I wonder why this doesn't work
+-	-- local infernus = getVehicleIdByName("Infernus")
+-	-- print(infernus)
+-	-- create_vehicle(infernus, true, true)
++	local vehicle_id = getVehicleIdByName("Infernus")
++	-- local vehicle_id = getVehicleIdByName("Romero's Hearse")
++	local vehicle_name = getVehicleNameById(vehicle_id)
+ 
++	local vehicle_id_msg = "Vehicle ID: " .. vehicle_id .. " name " .. vehicle_name
+ 
++	-- Log the message to the console.
++	print(vehicle_id_msg)
++
++	-- Display the message to the screen.
++	print_msg(vehicle_id_msg)
++
++	print("Spawned ID " .. vehicle_id)
++	-- Well this was crashing it, it still does with invalid models though.
++	-- TODO Add error handling to the lua vehicle script so it only spawns valid models.
++	-- TODO Make this place the vehicle in a safe place, sometimes it can get stuck in a tree.
++	-- TODO Make this function take a CVector like the new setup for setting the players position above.
++	-- I'll fix it later.
++	create_vehicle(vehicle_id, playerX + 5, playerY + 5, playerZ + 2.0, false, false)
++	-- create_vehicle(411, playerX + 5, playerY + 5, playerZ + 2.0, false, false)
++	
+ 	-- TODO Fix this below, should create a random vehicle.
+ 	-- To create a random vehicle from the available IDs (keys):
+ 	-- print(vehicles)
+diff --git a/gamefiles/ViceExtended/lua_scripts/vehicles.lua b/gamefiles/ViceExtended/lua_scripts/vehicles.lua
+index 29fc76da..28a9a292 100644
+--- a/gamefiles/ViceExtended/lua_scripts/vehicles.lua
++++ b/gamefiles/ViceExtended/lua_scripts/vehicles.lua
+@@ -1,356 +1,138 @@
+--- TODO Figure out how to make kcnet-init.lua read from this.
+--- local vehicle_test = require 'vehicles'
++
+ --
++-- I think I fixed this list.
++-- https://gtamods.com/wiki/List_of_vehicles_(VC)
+ 
+--- Vehicle enums
+--- Make the game load vehicles.lua, and a few others in here
+-local vehicles = {
+-	[400] = "Landstal",
+-	[401] = "Bravura",
+-	[402] = "Buffalo",
+-	[403] = "Linerunner",
+-	[404] = "Perennial",
+-	[405] = "Sentinel",
+-	[406] = "Dumper",
+-	[407] = "Firetruck",
+-	[408] = "Trashmaster",
+-	[409] = "Stretch",
+-	[410] = "Manana",
+-	[411] = "Infernus",
+-	[412] = "Voodoo",
+-	[413] = "Pony",
+-	[414] = "Mule",
+-	[415] = "Cheetah",
+-	[416] = "Ambulance",
+-	[417] = "FBI Rancher",
+-	[418] = "Moonbeam",
+-	[419] = "Esperanto",
+-	[420] = "Taxi",
+-	[421] = "Washington",
+-	[422] = "Bobcat",
+-	[423] = "Mr. Whoopee",
+-	[424] = "BF Injection",
+-	[425] = "Hunter",
+-	[426] = "Police",
+-	[427] = "Enforcer",
+-	[428] = "Securicar",
+-	[429] = "Banshee",
+-	[430] = "Predator",
+-	[431] = "Bus",
+-	[432] = "Rhino",
+-	[433] = "Barracks OL",
+-	[434] = "Sanchez",
+-	[435] = "Blista Compact",
+-	[436] = "Stinger",
+-	[437] = "Dodo",
+-	[438] = "Coach",
+-	[439] = "Cabbie",
+-	[440] = "Stallion",
+-	[441] = "Rumpo",
+-	[442] = "RC Bandit",
+-	[443] = "Romero",
+-	[444] = "Packer",
+-	[445] = "Admiral",
+-	[446] = "Squalo",
+-	[447] = "Seasparrow",
+-	[448] = "Pizza Boy",
+-	[449] = "Gang Burrito",
+-	[450] = "Golf Caddy",
+-	[451] = "Baggage Handler",
+-	[452] = "VCN Maverick",
+-	[453] = "Sandking",
+-	[454] = "Baggage",
+-	[455] = "Helicopter", -- Generic Helicopter (likely unused directly)
+-	[456] = "Sparrow",
+-	[457] = "Yankee",
+-	[458] = "Top Fun Van",
+-	[459] = "Skimmer",
+-	[460] = "PCJ-600",
+-	[461] = "Faggio",
+-	[462] = "Freeway",
+-	[463] = "Angel",
+-	[464] = "Bike", -- Generic Bike (likely unused directly)
+-	[465] = "BMX",
+-	[466] = "RC Goblin",
+-	[467] = "Hotring Racer",
+-	[468] = "Sandking", -- Duplicate entry in the source list
+-	[469] = "Bloodring Banger",
+-	[470] = "Hotring Racer", -- Duplicate entry in the source list
+-	[471] = "Police Maverick",
+-	[472] = "Cuban Hermes",
+-	[473] = "Caddy", -- Duplicate of Golf Caddy in the source list
+-	[474] = "Baggage Handler", -- Duplicate entry in the source list
+-	[475] = "Pizza Boy", -- Duplicate entry in the source list
+-	[476] = "Gang Burrito", -- Duplicate entry in the source list
+-	[477] = "Sandking", -- Duplicate entry in the source list
+-	[478] = "VCN Maverick", -- Duplicate entry in the source list
+-	[479] = "Hotring Racer", -- Duplicate entry in the source list
+-	[480] = "Bloodring Banger", -- Duplicate entry in the source list
+-	[481] = "Hotring Racer", -- Duplicate entry in the source list
+-	[482] = "FBI Washington",
+-	[483] = "Virgo",
+-	[484] = "Greenwood",
+-	[485] = "Oceanic",
+-	[486] = "Voches",
+-	[487] = "Taxi", -- Duplicate entry in the source list
+-	[488] = "Hermes",
+-	[489] = "Sabre",
+-	[490] = "Phoenix",
+-	[491] = "Walton",
+-	[492] = "Regina",
+-	[493] = "Comet",
+-	[494] = "PCJ-600", -- Duplicate entry in the source list
+-	[495] = "Sanchez", -- Duplicate entry in the source list
+-	[496] = "Stinger", -- Duplicate entry in the source list
+-	[497] = "Perennial", -- Duplicate entry in the source list
+-	[498] = "Blista Compact", -- Duplicate entry in the source list
+-	[499] = "Banshee", -- Duplicate entry in the source list
+-	[500] = "Esperanto", -- Duplicate entry in the source list
+-	[501] = "Taxi", -- Duplicate entry in the source list
+-	[502] = "Buffalo", -- Duplicate entry in the source list
+-	[503] = "Sentinel", -- Duplicate entry in the source list
+-	[504] = "Manana", -- Duplicate entry in the source list
+-	[505] = "Landstal", -- Duplicate entry in the source list
+-	[506] = "Bravura", -- Duplicate entry in the source list
+-	[507] = "FBI Rancher", -- Duplicate entry in the source list
+-	[508] = "Virgo", -- Duplicate entry in the source list
+-	[509] = "Greenwood", -- Duplicate entry in the source list
+-	[510] = "Oceanic", -- Duplicate entry in the source list
+-	[511] = "Voches", -- Duplicate entry in the source list
+-	[512] = "Admiral", -- Duplicate entry in the source list
+-	[513] = "Stretch", -- Duplicate entry in the source list
+-	[514] = "Washington", -- Duplicate entry in the source list
+-	[515] = "Hermes", -- Duplicate entry in the source list
+-	[516] = "Sabre", -- Duplicate entry in the source list
+-	[517] = "Phoenix", -- Duplicate entry in the source list
+-	[518] = "Walton", -- Duplicate entry in the source list
+-	[519] = "Regina", -- Duplicate entry in the source list
+-	[520] = "Comet", -- Duplicate entry in the source list
+-	[521] = "Love Fist Limo",
+-	[522] = "Bloodring Banger", -- Duplicate entry in the source list
+-	[523] = "Bloodring Banger", -- Duplicate entry in the source list
+-	[524] = "Hotring Racer", -- Duplicate entry in the source list
+-	[525] = "Hotring Racer", -- Duplicate entry in the source list
+-	[526] = "Sabre Turbo",
+-	[527] = "Tampa",
+-	[528] = "Phoenix", -- Duplicate entry in the source list
+-	[529] = "Banshee", -- Duplicate entry in the source list
+-	[530] = "BF Injection", -- Duplicate entry in the source list
+-	[531] = "Police", -- Duplicate entry in the source list
+-	[532] = "Enforcer", -- Duplicate entry in the source list
+-	[533] = "Securicar", -- Duplicate entry in the source list
+-	[534] = "Rhino", -- Duplicate entry in the source list
+-	[535] = "Barracks OL", -- Duplicate entry in the source list
+-	[536] = "FBI Washington", -- Duplicate entry in the source list
+-	[537] = "Hunter", -- Duplicate entry in the source list
+-	[538] = "Coastguard",
+-	[539] = "Dinghy",
+-	[540] = "Perennial", -- Duplicate entry in the source list
+-	[541] = "Sentinel", -- Duplicate entry in the source list
+-	[542] = "Bravura", -- Duplicate entry in the source list
+-	[543] = "Buffalo", -- Duplicate entry in the source list
+-	[544] = "Landstal", -- Duplicate entry in the source list
+-	[545] = "Bobcat", -- Duplicate entry in the source list
+-	[546] = "Moonbeam", -- Duplicate entry in the source list
+-	[547] = "Esperanto", -- Duplicate entry in the source list
+-	[548] = "Taxi", -- Duplicate entry in the source list
+-	[549] = "Washington", -- Duplicate entry in the source list
+-	[550] = "Stallion", -- Duplicate entry in the source list
+-	[551] = "Blista Compact", -- Duplicate entry in the source list
+-	[552] = "Cheetah", -- Duplicate entry in the source list
+-	[553] = "FBI Rancher", -- Duplicate entry in the source list
+-	[554] = "Oceanic", -- Duplicate entry in the source list
+-	[555] = "Virgo", -- Duplicate entry in the source list
+-	[556] = "Greenwood", -- Duplicate entry in the source list
+-	[557] = "Manana", -- Duplicate entry in the source list
+-	[558] = "Admiral", -- Duplicate entry in the source list
+-	[559] = "Hermes", -- Duplicate entry in the source list
+-	[560] = "Sabre", -- Duplicate entry in the source list
+-	[561] = "Phoenix", -- Duplicate entry in the source list
+-	[562] = "Walton", -- Duplicate entry in the source list
+-	[563] = "Regina", -- Duplicate entry in the source list
+-	[564] = "Comet", -- Duplicate entry in the source list
+-	[565] = "PCJ-600", -- Duplicate entry in the source list
+-	[566] = "Sanchez", -- Duplicate entry in the source list
+-	[567] = "Stinger", -- Duplicate entry in the source list
+-	[568] = "Banshee", -- Duplicate entry in the source list
+-	[569] = "Infernus", -- Duplicate entry in the source list
+-	[570] = "Voodoo", -- Duplicate entry in the source list
+-	[571] = "Cuban Hermes", -- Duplicate entry in the source list
+-	[572] = "Sabre Turbo", -- Duplicate entry in the source list
+-	[573] = "Tampa", -- Duplicate entry in the source list
+-	[574] = "Admiral", -- Duplicate entry in the source list
+-	[575] = "Stretch", -- Duplicate entry in the source list
+-	[576] = "Washington", -- Duplicate entry in the source list
+-	[577] = "Sabre", -- Duplicate entry in the source list
+-	[578] = "Phoenix", -- Duplicate entry in the source list
+-	[579] = "Comet", -- Duplicate entry in the source list
+-	[580] = "Banshee", -- Duplicate entry in the source list
+-	[581] = "Infernus", -- Duplicate entry in the source list
+-	[582] = "Cheetah", -- Duplicate entry in the source list
+-	[583] = "FBI Rancher", -- Duplicate entry in the source list
+-	[584] = "Police Maverick", -- Duplicate entry in the source list
+-	[585] = "Sparrow", -- Duplicate entry in the source list
+-	[586] = "Sea Sparrow", -- Typo in the source list, assuming Seasparrow
+-	[587] = "Hunter", -- Duplicate entry in the source list
+-	[588] = "Police", -- Duplicate entry in the source list
+-	[589] = "Enforcer", -- Duplicate entry in the source list
+-	[590] = "Barracks OL", -- Duplicate entry in the source list
+-	[591] = "Rhino", -- Duplicate entry in the source list
+-	[592] = "Ambulance", -- Duplicate entry in the source list
+-	[593] = "Firetruck", -- Duplicate entry in the source list
+-	[594] = "Trashmaster", -- Duplicate entry in the source list
+-	[595] = "Linerunner", -- Duplicate entry in the source list
+-	[596] = "Dumper", -- Duplicate entry in the source list
+-	[597] = "Securicar", -- Duplicate entry in the source list
+-	[598] = "FBI Washington", -- Duplicate entry in the source list
+-	[599] = "Coastguard", -- Duplicate entry in the source list
+-	[600] = "Dinghy", -- Duplicate entry in the source list
+-	[601] = "VCN Maverick", -- Duplicate entry in the source list
+-	[602] = "Skimmer", -- Duplicate entry in the source list
+-	[603] = "PCJ-600", -- Duplicate entry in the source list
+-	[604] = "Freeway", -- Duplicate entry in the source list
+-	[605] = "Angel", -- Duplicate entry in the source list
+-	[606] = "BMX", -- Duplicate entry in the source list
+-	[607] = "RC Bandit", -- Duplicate entry in the source list
+-	[608] = "RC Goblin", -- Duplicate entry in the source list
+-	[609] = "Hotring Racer", -- Duplicate entry in the source list
+-	[610] = "Bloodring Banger", -- Duplicate entry in the source list
+-	[611] = "Sandking", -- Duplicate entry in the source list
+-	[612] = "Baggage Handler", -- Duplicate entry in the source list
+-	[613] = "Pizza Boy", -- Duplicate entry in the source list
+-	[614] = "Gang Burrito", -- Duplicate entry in the source list
+-	[615] = "Mule", -- Duplicate entry in the source list
+-	[616] = "Yankee", -- Duplicate entry in the source list
+-	[617] = "Top Fun Van", -- Duplicate entry in the source list
+-	[618] = "Coach", -- Duplicate entry in the source list
+-	[619] = "Cabbie", -- Duplicate entry in the source list
+-	[620] = "Bus", -- Duplicate entry in the source list
+-	[621] = "Mr. Whoopee", -- Duplicate entry in the source list
+-	[622] = "Pizza Boy", -- Duplicate entry in the source list
+-	[623] = "Baggage", -- Duplicate entry in the source list
+-	[624] = "Baggage Handler", -- Duplicate entry in the source list
+-	[625] = "Golf Caddy", -- Duplicate entry in the source list
+-	[626] = "VCN Maverick", -- Duplicate entry in the source list
+-	[627] = "Sparrow", -- Duplicate entry in the source list
+-	[628] = "Sea Sparrow", -- Assuming Seasparrow
+-	[629] = "Police Maverick", -- Duplicate entry in the source list
+-	[630] = "Cuban Hermes", -- Duplicate entry in the source list
+-	[631] = "Love Fist Limo", -- Duplicate entry in the source list
+-	[632] = "Sabre Turbo", -- Duplicate entry in the source list
+-	[633] = "Tampa", -- Duplicate entry in the source list
+-	[634] = "Sandking", -- Duplicate entry in the source list
+-	[635] = "Walton", -- Duplicate entry in the source list
+-	[636] = "Regina", -- Duplicate entry in the source list
+-	[637] = "Comet", -- Duplicate entry in the source list
+-	[638] = "Phoenix", -- Duplicate entry in the source list
+-	[639] = "Virgo", -- Duplicate entry in the source list
+-	[640] = "Greenwood", -- Duplicate entry in the source list
+-	[641] = "Oceanic", -- Duplicate entry in the source list
+-	[642] = "Voches", -- Duplicate entry in the source
++local vehiclesByName = {
++	["Landstalker"] = 130,
++	["Idaho"] = 131,
++	["Stinger"] = 132,
++	["Linerunner"] = 133,
++	["Perennial"] = 134,
++	["Sentinel"] = 135,
++	["Rio"] = 136,
++	["Firetruck"] = 137,
++	["Trashmaster"] = 138,
++	["Stretch"] = 139,
++	["Manana"] = 140,
++	["Infernus"] = 141,
++	["Voodoo"] = 142,
++	["Pony"] = 143,
++	["Mule"] = 144,
++	["Cheetah"] = 145,
++	["Ambulance"] = 146,
++	["FBI Washington"] = 147,
++	["Moonbeam"] = 148,
++	["Esperanto"] = 149,
++	["Taxi"] = 150,
++	["Washington"] = 151,
++	["Bobcat"] = 152,
++	["Mr. Whoopee"] = 153,
++	["BF Injection"] = 154,
++	["Hunter"] = 155,
++	["Police"] = 156,
++	["Enforcer"] = 157,
++	["Securicar"] = 158,
++	["Banshee"] = 159,
++	["Predator"] = 160,
++	["Bus"] = 161,
++	["Rhino"] = 162,
++	["Barracks OL"] = 163,
++	["Cuban Hermes"] = 164,
++	["Helicopter"] = 165,
++	["Angel"] = 166,
++	["Coach"] = 167,
++	["Cabbie"] = 168,
++	["Stallion"] = 169,
++	["Rumpo"] = 170,
++	-- ["RC Bandit"] = 171,
++	["Romero's Hearse"] = 172,
++	["Packer"] = 173,
++	["Sentinel XS"] = 174,
++	["Admiral"] = 175,
++	["Squalo"] = 176,
++	["Sea Sparrow"] = 177,
++	["Pizza Boy"] = 178,
++	["Gang Burrito"] = 179,
++	-- Disabled
++	-- ["Airtrain"] = 180,
++	-- ["Dodo"] = 181,
++	["Speeder"] = 182,
++	["Reefer"] = 183,
++	["Tropic"] = 184,
++	["Flatbed"] = 185,
++	["Yankee"] = 186,
++	["Caddy"] = 187,
++	["Zebra Cab"] = 188,
++	["Top Fun"] = 189,
++	["Skimmer"] = 190,
++	["PCJ 600"] = 191,
++	["Faggio"] = 192,
++	["Freeway"] = 193,
++	-- ["RC Baron"] = 194,
++	-- ["RC Raider"] = 195,
++	["Glendale"] = 196,
++	["Oceanic"] = 197,
++	["Sanchez"] = 198,
++	["Sparrow"] = 199,
++	["Patriot"] = 200,
++	["Love Fist"] = 201,
++	["Coast Guard"] = 202,
++	["Dinghy"] = 203,
++	["Hermes"] = 204,
++	["Sabre"] = 205,
++	["Sabre Turbo"] = 206,
++	["Phoenix"] = 207,
++	["Walton"] = 208,
++	["Regina"] = 209,
++	["Comet"] = 210,
++	["Deluxo"] = 211,
++	["Burrito"] = 212,
++	["Spand Express"] = 213,
++	["Marquis"] = 214,
++	["Baggage Handler"] = 215,
++	["Kaufman Cab"] = 216,
++	["Maverick"] = 217,
++	["VCN Maverick"] = 218,
++	["Rancher"] = 219,
++	["FBI Rancher"] = 220,
++	["Virgo"] = 221,
++	["Greenwood"] = 222,
++	["Cuban Jetmax"] = 223,
++	["Hotring Racer"] = 224,
++	["Sandking"] = 225,
++	["Blista Compact"] = 226,
++	["Police Maverick"] = 227,
++	["Boxville"] = 228,
++	["Benson"] = 229,
++	["Mesa Grande"] = 230,
++	-- ["RC Goblin"] = 231,
++	["Hotring Racer A"] = 232,
++	["Hotring Racer B"] = 233,
++	["Bloodring Banger A"] = 234,
++	["Bloodring Banger B"] = 235,
++	["Cheetah"] = 236,
+ }
+ 
+---
++local vehiclesById = {}
+ 
+-local vehiclesByName = {
+-	["Landstal"] = 400,
+-	["Bravura"] = 401,
+-	["Buffalo"] = 402,
+-	["Linerunner"] = 403,
+-	["Perennial"] = 404,
+-	["Sentinel"] = 405,
+-	["Dumper"] = 406,
+-	["Firetruck"] = 407,
+-	["Trashmaster"] = 408,
+-	["Stretch"] = 409,
+-	["Manana"] = 410,
+-	["Infernus"] = 411,
+-	["Voodoo"] = 412,
+-	["Pony"] = 413,
+-	["Mule"] = 414,
+-	["Cheetah"] = 415,
+-	["Ambulance"] = 416,
+-	["FBI Rancher"] = 417,
+-	["Moonbeam"] = 418,
+-	["Esperanto"] = 419,
+-	["Taxi"] = 420,
+-	["Washington"] = 421,
+-	["Bobcat"] = 422,
+-	["Mr. Whoopee"] = 423,
+-	["BF Injection"] = 424,
+-	["Hunter"] = 425,
+-	["Police"] = 426,
+-	["Enforcer"] = 427,
+-	["Securicar"] = 428,
+-	["Banshee"] = 429,
+-	["Predator"] = 430,
+-	["Bus"] = 431,
+-	["Rhino"] = 432,
+-	["Barracks OL"] = 433,
+-	["Sanchez"] = 434,
+-	["Blista Compact"] = 435,
+-	["Stinger"] = 436,
+-	["Dodo"] = 437,
+-	["Coach"] = 438,
+-	["Cabbie"] = 439,
+-	["Stallion"] = 440,
+-	["Rumpo"] = 441,
+-	["RC Bandit"] = 442,
+-	["Romero"] = 443,
+-	["Packer"] = 444,
+-	["Admiral"] = 445,
+-	["Squalo"] = 446,
+-	["Seasparrow"] = 447,
+-	["Pizza Boy"] = 448,
+-	["Gang Burrito"] = 449,
+-	["Golf Caddy"] = 450,
+-	["Baggage Handler"] = 451,
+-	["VCN Maverick"] = 452,
+-	["Sandking"] = 453,
+-	["Baggage"] = 454,
+-	["Helicopter"] = 455, -- Generic Helicopter
+-	["Sparrow"] = 456,
+-	["Yankee"] = 457,
+-	["Top Fun Van"] = 458,
+-	["Skimmer"] = 459,
+-	["PCJ-600"] = 460,
+-	["Faggio"] = 461,
+-	["Freeway"] = 462,
+-	["Angel"] = 463,
+-	["Bike"] = 464, -- Generic Bike
+-	["BMX"] = 465,
+-	["RC Goblin"] = 466,
+-	["Hotring Racer"] = 467,
+-	["Police Maverick"] = 471,
+-	["Cuban Hermes"] = 472,
+-	["FBI Washington"] = 482,
+-	["Virgo"] = 483,
+-	["Greenwood"] = 484,
+-	["Oceanic"] = 485,
+-	["Voches"] = 486,
+-	["Hermes"] = 488,
+-	["Sabre"] = 489,
+-	["Phoenix"] = 490,
+-	["Walton"] = 491,
+-	["Regina"] = 492,
+-	["Comet"] = 493,
+-	["Love Fist Limo"] = 521,
+-	["Sabre Turbo"] = 526,
+-	["Tampa"] = 527,
+-	["Coastguard"] = 538,
+-	["Dinghy"] = 539,
+-	["Sea Sparrow"] = 586 -- Corrected typo from source list
+-  }
++for name, id in pairs(vehiclesByName) do
++	vehiclesById[id] = name
++end
+ 
+ -- Example of how you might use this table in a function:
+ function getVehicleIdByName(name)
+ 	return vehiclesByName[name]
+-  end
++end
++
++function getVehicleNameById(id)
++	return vehiclesById[id]
++end
+ 
+-local infernusId = getVehicleIdByName("Infernus")
+--- log_info("ID of Infernus:", infernusId)
+-print("ID of Infernus:", infernusId) -- Output: ID of Infernus: 411
++-- local infernusId = getVehicleIdByName("Infernus")
++-- -- log_info("ID of Infernus:", infernusId)
++-- print("ID of Infernus:", infernusId) -- Output: ID of Infernus: 411
+ 
+-local unknownId = getVehicleIdByName("DoesNotExist")
+-print("ID of DoesNotExist:", unknownId) -- Output: ID of DoesNotExist: nil
+--- print(package.path)
+\ No newline at end of file
++-- local unknownId = getVehicleIdByName("DoesNotExist")
++-- print("ID of DoesNotExist:", unknownId) -- Output: ID of DoesNotExist: nil
++-- -- print(package.path)
+diff --git a/src/control/Replay.cpp b/src/control/Replay.cpp
+index 71b28f7a..9362247c 100644
+--- a/src/control/Replay.cpp
++++ b/src/control/Replay.cpp
+@@ -1327,6 +1327,11 @@ void CReplay::TriggerPlayback(uint8 cam_mode, float cam_x, float cam_y, float ca
+ 	CDraw::SetFOV(70.0f);
+ }
+ 
++/**
++ * Store stuff into the replay memory
++ * 
++ * TODO Look into this
++ */
+ void CReplay::StoreStuffInMem(void)
+ {
+ #ifdef FIX_BUGS
+@@ -1341,45 +1346,56 @@ void CReplay::StoreStuffInMem(void)
+ 		if (ped->m_attractor)
+ 			GetPedAttractorManager()->DeRegisterPed(ped, ped->m_attractor);
+ 	}
++	
+ 	CPools::GetVehiclePool()->Store(pBuf0, pBuf1);
+ 	CPools::GetPedPool()->Store(pBuf2, pBuf3);
+ 	CPools::GetObjectPool()->Store(pBuf4, pBuf5);
+ 	CPools::GetPtrNodePool()->Store(pBuf6, pBuf7);
+ 	CPools::GetEntryInfoNodePool()->Store(pBuf8, pBuf9);
+ 	CPools::GetDummyPool()->Store(pBuf10, pBuf11);
++
+ 	pWorld1 = new uint8[sizeof(CSector) * NUMSECTORS_X * NUMSECTORS_Y];
+ 	memcpy(pWorld1, CWorld::GetSector(0, 0), NUMSECTORS_X * NUMSECTORS_Y * sizeof(CSector));
++
+ 	WorldPtrList = CWorld::GetMovingEntityList().first; // why
+ 	BigBuildingPtrList = CWorld::GetBigBuildingList(LEVEL_GENERIC).first;
+ 	pPickups = new uint8[sizeof(CPickup) * NUMPICKUPS];
+ 	memcpy(pPickups, CPickups::aPickUps, NUMPICKUPS * sizeof(CPickup));
++
+ 	pReferences = new uint8[(sizeof(CReference) * NUMREFERENCES)];
+ 	memcpy(pReferences, CReferences::aRefs, NUMREFERENCES * sizeof(CReference));
+ 	pEmptyReferences = CReferences::pEmptyList;
+ 	pStoredCam = new uint8[sizeof(CCamera)];
++
+ 	memcpy(pStoredCam, &TheCamera, sizeof(CCamera));
+ 	pRadarBlips = new uint8[sizeof(sRadarTrace) * NUMRADARBLIPS];
+ 	memcpy(pRadarBlips, CRadar::ms_RadarTrace, NUMRADARBLIPS * sizeof(sRadarTrace));
+ 	PlayerWanted = *FindPlayerPed()->m_pWanted;
+ 	PlayerInfo = CWorld::Players[0];
++
+ 	Time1 = CTimer::GetTimeInMilliseconds();
+ 	Time2 = CTimer::GetTimeInMillisecondsNonClipped();
+ 	Time3 = CTimer::GetPreviousTimeInMilliseconds();
+ 	Time4 = CTimer::GetTimeInMillisecondsPauseMode();
++
+ 	Frame = CTimer::GetFrameCounter();
+ 	ClockHours = CClock::GetHours();
+ 	ClockMinutes = CClock::GetMinutes();
++
+ 	OldWeatherType = CWeather::OldWeatherType;
+ 	NewWeatherType = CWeather::NewWeatherType;
+ 	WeatherInterpolationValue = CWeather::InterpolationValue;
++
+ 	CurrArea = CGame::currArea;
+ 	TimeStepNonClipped = CTimer::GetTimeStepNonClipped();
+ 	TimeStep = CTimer::GetTimeStep();
+ 	TimeScale = CTimer::GetTimeScale();
++
+ 	ms_nNumCivMale_Stored = CPopulation::ms_nNumCivMale;
+ 	ms_nNumCivFemale_Stored = CPopulation::ms_nNumCivFemale;
+ 	ms_nNumCop_Stored = CPopulation::ms_nNumCop;
+ 	ms_nNumEmergency_Stored = CPopulation::ms_nNumEmergency;
++
+ 	ms_nNumGang1_Stored = CPopulation::ms_nNumGang1;
+ 	ms_nNumGang2_Stored = CPopulation::ms_nNumGang2;
+ 	ms_nNumGang3_Stored = CPopulation::ms_nNumGang3;
+@@ -1390,10 +1406,12 @@ void CReplay::StoreStuffInMem(void)
+ 	ms_nNumGang8_Stored = CPopulation::ms_nNumGang8;
+ 	ms_nNumGang9_Stored = CPopulation::ms_nNumGang9;
+ 	ms_nNumDummy_Stored = CPopulation::ms_nNumDummy;
++
+ 	ms_nTotalCivPeds_Stored = CPopulation::ms_nTotalCivPeds;
+ 	ms_nTotalGangPeds_Stored = CPopulation::ms_nTotalGangPeds;
+ 	ms_nTotalPeds_Stored = CPopulation::ms_nTotalPeds;
+ 	ms_nTotalMissionPeds_Stored = CPopulation::ms_nTotalMissionPeds;
++
+ 	int size = CPools::GetPedPool()->GetSize();
+ 	pPedAnims = new CStoredDetailedAnimationState[size];
+ 	for (int i = 0; i < size; i++) {
+@@ -1403,16 +1421,25 @@ void CReplay::StoreStuffInMem(void)
+ 	}
+ 	pGarages = new uint8[sizeof(CGarages::aGarages)];
+ 	memcpy(pGarages, CGarages::aGarages, sizeof(CGarages::aGarages));
++
+ 	FireArray = new CFire[NUM_FIRES];
+ 	memcpy(FireArray, gFireManager.m_aFires, sizeof(gFireManager.m_aFires));
++
+ 	NumOfFires = gFireManager.m_nTotalFires;
+ 	paProjectileInfo = new uint8[sizeof(gaProjectileInfo)];
++
+ 	memcpy(paProjectileInfo, gaProjectileInfo, sizeof(gaProjectileInfo));
+ 	paProjectiles = new uint8[sizeof(CProjectileInfo::ms_apProjectile)];
++
+ 	memcpy(paProjectiles, CProjectileInfo::ms_apProjectile, sizeof(CProjectileInfo::ms_apProjectile));
+ 	CScriptPaths::Save_ForReplay();
+ }
+ 
++/**
++ * Restore stuff from the replay memory
++ * 
++ * TODO Look into this
++ */
+ void CReplay::RestoreStuffFromMem(void)
+ {
+ 	CPools::GetVehiclePool()->CopyBack(pBuf0, pBuf1);
+diff --git a/src/core/Fire.cpp b/src/core/Fire.cpp
+index 49db5ccf..562e2daa 100644
+--- a/src/core/Fire.cpp
++++ b/src/core/Fire.cpp
+@@ -242,6 +242,7 @@ CFireManager::StartFire(CVector pos, float size, uint8 propagation)
+ 
+ /// <summary>
+ /// Start a fire, this one doesn't seem to be in use
++/// TODO Look into this, make this work in lua if possible.
+ /// </summary>
+ /// <param name="entityOnFire">The entity to be on fire</param>
+ /// <param name="fleeFrom"></param>
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 45cf29cd..4148844a 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -989,6 +989,13 @@ CMenuManager::DoSettingsBeforeStartingAGame()
+ 	for (int i = 0; i < NUM_RADIOS; i++)
+ 		CStats::FavoriteRadioStationList[i] = 0.0f;
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++	// TODO Make this not attempt to fast load if 'create_player' isn't called in lua.
++	// Otherwise I cannot stop the game from loading since it's already running the load sequence.
++	// Although this runs before my lua player is even created so I'm not sure how I'll check it here.
++	// For now, I just have an assert in 'LuaTest::GetInstance().SetupFreeroamScript()'.
++#endif // DISABLE_GAME_SCRIPTS
++
+ 	SwitchMenuOnAndOff();
+ 	DMAudio.ResetTimers(CTimer::GetTimeInMilliseconds());
+ }
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 7a8ac80f..156456e5 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -309,6 +309,7 @@ CGame::InitialiseRenderWare(void)
+ 
+ /// <summary>
+ /// Shuts down the render ware engine.
++/// And seems to shut down parts of the game itself.
+ /// </summary>
+ void CGame::ShutdownRenderWare(void)
+ {
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 389b6ff7..b7bc8edc 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -636,6 +636,15 @@ VehicleFunctions::CreateVehicle(int id, float posX, float posY, float posZ, bool
+ 	CVector vehiclePos = CVector(posX, posY, posZ);
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
+ 
++	// This should prevent this from spawning the vehicle if it isn't valid, and no longer crash in lua.
++	// Well this just breaks it
++	// TODO Fix this to work.
++	// if(!CModelInfo::IsCarModel(id) || !CModelInfo::IsBikeModel(id))
++	// {
++	// 	LogFunctions::LogError(Defines::logFile, "Function tried to spawn invalid vehicle model.");
++	// 	return;
++	// }
++
+ 	bool chaosMode = false;
+ 
+ 	CustomCheats *customCheats = new CustomCheats();
+diff --git a/src/extras/lua/lua_functions.cpp b/src/extras/lua/lua_functions.cpp
+index e2addbe7..73b6b28f 100644
+--- a/src/extras/lua/lua_functions.cpp
++++ b/src/extras/lua/lua_functions.cpp
+@@ -86,6 +86,29 @@ Example for player coords with 3 values:
+ 
+ //------- Lua utils --------//
+ 
++/**
++ * This should get a number in lua and check if it exists.
++ * 
++ * TODO Test this and fix it to work.
++ * 
++ * @param L The m_luaVM.
++ * @param index The index to check for the number.
++ * 
++ * @return The value of the number if it's valid.
++ */
++std::optional<lua_Number> luaGetNumber(lua_State* L, int index)
++{
++    if (!lua_isnumber(L, index))
++        return std::nullopt;
++
++    lua_Number value = lua_tonumber(L, index);
++
++    if (!std::isfinite(value))
++        return std::nullopt;
++
++    return value;
++}
++
+ /// <summary>
+ /// Push a boolean to lua.
+ /// </summary>
+@@ -113,6 +136,95 @@ void pushFloatToLua(lua_State *L, float value)
+ 	lua_pushnumber(L, value);
+ }
+ 
++/**
++ * Push a CVector to lua.
++ * 
++ * TODO Test this, I haven't tried to use this just yet since I already have a function that is getting the player coordinates.
++ * 
++ * Usage:
++ * CVector playerPosition = FindPlayerCoors();
++ * PushCVectorAsTable(m_luaVM, playerPosition);
++ * lua_setglobal(m_luaVM, "current_player");
++ * 
++ * @param L the m_luaVM.
++ * @param CVector the vector to push to lua.
++ */
++void pushCVectorAsTableLua(lua_State* L, const CVector& vector)
++{
++    lua_createtable(L, 0, 3);
++
++    lua_pushnumber(L, static_cast<lua_Number>(vector.x));
++    lua_setfield(L, -2, "x");
++
++    lua_pushnumber(L, static_cast<lua_Number>(vector.y));
++    lua_setfield(L, -2, "y");
++
++    lua_pushnumber(L, static_cast<lua_Number>(vector.z));
++    lua_setfield(L, -2, "z");
++}
++
++/**
++ * Get a CVector from lua
++ * 
++ * Usage in lua (Example with setting the players position using a CVector.):
++ * 
++ set_position({
++    x = 100.0,
++    y = 200.0,
++    z = 15.0
++})
++ * 
++ * Get a CVector in lua, used for my new lua CVector setup for lua.
++ * Look into the 'SetPlayerPositionLua' function for usages.
++ */
++
++std::optional<CVector> luaGetCVector(lua_State* L, int index)
++{
++    if (!lua_istable(L, index))
++        return std::nullopt;
++
++    const int absoluteIndex = lua_absindex(L, index);
++
++    lua_getfield(L, absoluteIndex, "x");
++    if (!lua_isnumber(L, -1))
++    {
++        lua_pop(L, 1);
++        return std::nullopt;
++    }
++
++    const float x = static_cast<float>(lua_tonumber(L, -1));
++    lua_pop(L, 1);
++
++    lua_getfield(L, absoluteIndex, "y");
++    if (!lua_isnumber(L, -1))
++    {
++        lua_pop(L, 1);
++        return std::nullopt;
++    }
++
++    const float y = static_cast<float>(lua_tonumber(L, -1));
++    lua_pop(L, 1);
++
++    lua_getfield(L, absoluteIndex, "z");
++    if (!lua_isnumber(L, -1))
++    {
++        lua_pop(L, 1);
++        return std::nullopt;
++    }
++
++    const float z = static_cast<float>(lua_tonumber(L, -1));
++    lua_pop(L, 1);
++
++    if (!std::isfinite(x) ||
++        !std::isfinite(y) ||
++        !std::isfinite(z))
++    {
++        return std::nullopt;
++    }
++
++    return CVector(x, y, z);
++}
++
+ // Check lua globals, made this into a function
+ // Moved out of lua_test.cpp.
+ bool
+diff --git a/src/extras/lua/lua_functions.h b/src/extras/lua/lua_functions.h
+index 5bf58007..481e28df 100644
+--- a/src/extras/lua/lua_functions.h
++++ b/src/extras/lua/lua_functions.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++
++
+ // Lua
+ extern "C" {
+ #include <lauxlib.h>
+@@ -7,16 +9,22 @@ extern "C" {
+ #include <lualib.h>
+ }
+ 
++#include <optional>
++
+ // clang-format off
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+ 
+ 	//------------- Functions -----------//
++	extern std::optional<lua_Number> luaGetNumber(lua_State* L, int index);
+ 	extern void pushBooleanToLua(lua_State *L, bool value);
+ 	extern void pushIntToLua(lua_State *L, int value);
+ 	extern void pushFloatToLua(lua_State *L, float value);
+ 
++	extern void pushCVectorAsTableLua(lua_State* L, const CVector& vector);
++	extern std::optional<CVector> luaGetCVector(lua_State* L, int index);
++
+ 	extern bool CheckLua(lua_State *L, int r);
+ 
+ #ifdef __cplusplus
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index cb3424fa..488ce821 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -82,25 +82,24 @@ int
+ SetPlayerPositionLua(lua_State *L)
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+-	CVector pPlayerPos = FindPlayerCoors();
++	// CVector pPlayerPos = FindPlayerCoors();
+ 
+-	// These seem to work in lua.
+-	float playerPosX = (float)lua_tonumber(L, 1);
+-	float playerPosY = (float)lua_tonumber(L, 2);
+-	float playerPosZ = (float)lua_tonumber(L, 3);
++	// TODO Test this, it should get a CVector instead of my floats.
++	auto playerPos = luaGetCVector(L, 1);
+ 
+-	// pPlayerPos.x = playerPosX;
+-	// pPlayerPos.y = playerPosY;
+-	// pPlayerPos.z = playerPosZ;
+-
+-	CVector newPlayerPos = CVector(playerPosX, playerPosY, playerPosZ);
+-	// FindPlayerPed()->SetPosition(playerPos);
++	if (!playerPos)
++    {
++        return luaL_error(
++            L,
++            "set_player_position expects a vector table with numeric x, y, and z fields"
++        );
++    }
+ 
+ 	// TODO Switch to using this as a test, should fix the camera movement.
+ 	// For some reason this one is a bit glitchy.
+ 	// PlayerCheats::SetPlayerPosition(newPlayerPos.x, newPlayerPos.y, newPlayerPos.z);
+ 
+-	FindPlayerPed()->SetPosition(newPlayerPos);
++	FindPlayerPed()->SetPosition(*playerPos);
+ 
+ 	// TODO Test this for ImGui
+ 	// CPad::GetPad(0)->SetDisablePlayerControls(PLAYERCONTROL_SHORTCUT_TAXI);
+@@ -109,18 +108,18 @@ SetPlayerPositionLua(lua_State *L)
+ 	// CHud::SetHelpMessage(TheText.Get("CHEATON"), false, false);
+ 
+ 	// Ok, the values are there, this is printing properly it looks like
+-	LogFunctions::LogInfo(Defines::luaLogFile,
+-	                      "X: " + std::to_string(playerPosX) + " Y: " + std::to_string(playerPosY) + "Z: " + std::to_string(playerPosZ));
++	// TODO Fix log message with my new lua CVector system.
++	// LogFunctions::LogInfo(Defines::luaLogFile,
++	                    //   "X: " + std::to_string(playerPosX) + " Y: " + std::to_string(playerPosY) + "Z: " + std::to_string(playerPosZ));
++	                    //   "X: " + std::to_string(playerPos) + " Y: " + std::to_string(playerPosY) + "Z: " + std::to_string(playerPosZ));
+ 
+-	// TRACE("X: %s Y: %s Z: %s", playerPosX, playerPosY, playerPosZ);
+ 
+ 	// Test setting the player at random coords
+ 
+ 	// Make a random number generator
+ 	// Make it pick between lists of numbers within the range of the map
+ 
+-	// This return value is the amount of parameters I'm quite sure.
+-	return 3;
++	return 1;
+ }
+ 
+ // Well this toggles the players control on/off
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 6da9e331..ee475ec5 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -55,6 +55,8 @@ extern "C" {
+ #include "custom_cheats.h"
+ #include "player_cheats.h"
+ 
++#include "init_game.h"
++
+ // Lua functions
+ #include "lua_log.h"
+ #include "lua_hud.h"
+@@ -95,6 +97,8 @@ extern "C" {
+ #include "Population.h"
+ #include "World.h"
+ 
++#include "Frontend.h"
++
+ // Get the player coords and heading
+ #include "player_util.h"
+ 
+@@ -399,6 +403,7 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_register(L, "disable_infinite_health", disablePlayerInfiniteHealthLua);
+ 
+ 	// This seems to work now.
++	// TODO Rename to set_player_position.
+ 	lua_register(L, "set_position", SetPlayerPositionLua);
+ 	// lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
+ 
+@@ -625,10 +630,53 @@ LuaTest::LuaKeybindEvents()
+ {
+ 	//Defines defines = Defines();
+ 	// This seems to work.
++
++		//-------------
++		// Moved out of other init lua script, oops.
++		// Added into here, from SetupFreeroamScript.
++		// I had this in the wrong init function.
++
++		// This has to be before the CheckLua function or it doesn't set the values for lua to see
++		// These globals are working now!
++
++		// Try to get the floats as global variables for testing.
++		// Then later on try to pass in a CVector to lua.
++		//-------------
++		// lua_pushcfunction(m_luaVM, FindPlayerCoors().x);
++		// lua_setglobal(m_luaVM, "player_pos")
++
++	
++		// https://stackoverflow.com/questions/19553060/how-to-pass-a-global-value-from-c-to-lua
++		// https://www.codingwiththomas.com/blog/a-lua-c-api-cheat-sheet#example-4
++		// https://github.com/orangeduck/LuaAutoC
++
++		float playerX = FindPlayerCoors().x;
++		float playerY = FindPlayerCoors().y;
++		float playerZ = FindPlayerCoors().z;
++		
++		lua_pushnumber(m_luaVM, playerX);
++		lua_setglobal(m_luaVM, "playerX");
++
++		lua_pop(m_luaVM, 1);
++		
++		lua_pushnumber(m_luaVM, playerY);
++		lua_setglobal(m_luaVM, "playerY");
++
++		lua_pop(m_luaVM, 1);
++
++		lua_pushnumber(m_luaVM, playerZ);
++		lua_setglobal(m_luaVM, "playerZ");
++
++	//---------------
++
++
+ 	if (!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaKeyBindScript.c_str())))
+ 	{
+ 		LogFunctions::LogError(Defines::luaErrorLog, "Error, something went wrong when looking for the key bind file or the script has errors.");
+ 		return;
++	} else {
++
++
+ 	}
+ 
+ 	// New, for vehicle list
+@@ -683,6 +731,60 @@ extern "C" {
+ void
+ LuaTest::SetupFreeroamScript()
+ {
++	CMenuManager frontEndMenuManager = CMenuManager();
++
++		//-------------
++		// Moved out of other init lua script, oops.
++		// Added into here, from SetupFreeroamScript.
++		// I had this in the wrong init function.
++
++		// Also this will never work here because this is before the player is setup.
++		// freeroam-game.lua sets up the player then it can be accessed with my original F9 lua keybinds.
++		// Uses kcnet-events.lua
++
++		// Try to get the floats as global variables for testing.
++		// Then later on try to pass in a CVector to lua.
++		//-------------
++		// lua_pushcfunction(m_luaVM, FindPlayerCoors().x);
++		// lua_setglobal(m_luaVM, "player_pos")
++
++	
++		// https://stackoverflow.com/questions/19553060/how-to-pass-a-global-value-from-c-to-lua
++		// https://www.codingwiththomas.com/blog/a-lua-c-api-cheat-sheet#example-4
++		// https://github.com/orangeduck/LuaAutoC
++
++	// 	float playerX = FindPlayerCoors().x;
++	// 	float playerY = FindPlayerCoors().y;
++	// 	float playerZ = FindPlayerCoors().z;
++		
++	// 	lua_pushnumber(m_luaVM, playerX);
++	// 	lua_setglobal(m_luaVM, "playerX");
++
++	// 	// lua_pop(m_luaVM, 1);
++		
++	// 	lua_pushnumber(m_luaVM, playerY);
++	// 	lua_setglobal(m_luaVM, "playerY");
++
++	// 	// lua_pop(m_luaVM, 1);
++
++	// 	lua_pushnumber(m_luaVM, playerZ);
++	// 	lua_setglobal(m_luaVM, "playerZ");
++
++	// TODO Figure out how to make this work, it should allow me to crash the game if 'create_player' isn't setup.
++	// If that is not there the player won't spawn anyways and it would already crash.
++	lua_getglobal(m_luaVM, "create_player");
++	
++	// https://www.eezytutorials.com/lua/lua-c-integration.php
++	// TODO Fix this to work, it always gives an error.
++	// if(lua_pcall(m_luaVM, 1, 1, 0) != LUA_OK) {
++	// 	LogFunctions::LogError(defines.luaLogFile, "The create_player function doesn't exist! Shutting down game...");
++	// 	TRACE("[KCNet-Lua-Error]: The create_player function doesn't exist! Shutting down game...");
++	// 	// TODO Make game exit cleanly here since the 'create_player' function isn't in the lua code.
++	// }
++
++
++	// //---------------
++
+ 	// TODO Make this give a hard crash, if this isn't found there is no game scripts to load.
+ 	// So this should just give an error popup saying they are required.
+ 	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaFreeroamScript.c_str()))) 
+@@ -690,6 +792,59 @@ LuaTest::SetupFreeroamScript()
+ 		return;
+ 	} else {
+ 
++		// TODO Make sure the create_player function is ran in lua, for now I'll just check if the player has been created.
++		// I got this to work at least with the log message.
++		// TODO Make this cleanly exit the game.
++		std::string createPlayerLogMsg;
++
++		// This only checks if the function exists at all
++		// if(lua_isfunction(m_luaVM, -1)) {
++	
++		
++		// This works now for exiting the game if the player hasn't been created.
++		// So far, this just exits the game in Debug with an assert.
++		// TODO Make this cleanly send the shutdown to ReVC.
++		if(InitGame::GetInstance().GetPlayerCreated()) {
++			createPlayerLogMsg = "The create_player function was called in the " + Defines::luaFreeroamScript + " launching game...";
++			// LogFunctions::LogInfo(defines.luaLogFile, "The create_player function exists in the " + Defines::luaFreeroamScript);
++			LogFunctions::LogInfo(defines.luaLogFile, createPlayerLogMsg);
++			TRACE(createPlayerLogMsg.c_str());
++		} else {
++			createPlayerLogMsg = "The create_player function wasn't called in the " + Defines::luaFreeroamScript + " Shutting down game...";
++			// LogFunctions::LogError(defines.luaLogFile, "The create_player function doesn't exist! Shutting down game...");
++			LogFunctions::LogError(defines.luaLogFile, createPlayerLogMsg);
++			TRACE(createPlayerLogMsg.c_str());
++
++			// TODO Why do these shutdown methods give a segfault here if this doesn't exist?
++			// Hmm, I'll need to do a little more troubleshooting with this to fix it.
++			// TODO Test this, it should safely shut the game down.
++			// Well this wasn't enough
++			// CGame::ShutdownRenderWare();
++			// This one might work...
++			// CGame::ShutDown();
++
++			// Possibly start the shutdown, seems to fire off CGame::Shutdown() in glfw.cpp.
++			// gGameState == GS_PLAYING_GAME;
++			// Stop the game from ever even loading..
++			// gbFastLoader = false;
++			// FrontEndMenuManager.m_bWantToLoad = false;
++			// FrontEndMenuManager.m_bWantToRestart = true;
++
++
++			// TODO Try to add these functions, I may need to add _psFreeVideoModeList to a class or something somewhere.
++			// DMAudio.Terminate();
++			// _psFreeVideoModeList();
++		}
++		//
++	
++		// Crash here if player isn't created.
++		// TODO Cleanly shut down game.
++		assert(InitGame::GetInstance().GetPlayerCreated() && "Required Lua player creation did not occur, create_player function wasn't called!");
++
++
++	
++	lua_pop(m_luaVM, 1);
++
+ 		// Copied from the main game init script.
+ 
+ 		// https://terminalroot.com/how-to-run-lua-files-within-cpp/
+@@ -702,6 +857,8 @@ LuaTest::SetupFreeroamScript()
+ 			std::string timeToPassString = "Time to pass set to: " + std::to_string(timeToPass);
+ 		}
+ 
++		lua_pop(m_luaVM, 1);
++
+ 		// lua_getglobal(m_luaVM, "gbVehiclesDontCatchFireWhenTurningOver");
+ 		// if(lua_isnumber(m_luaVM, -1)) {
+ 		// 	int timeToPass = static_cast<int>(lua_tointeger(m_luaVM, -1));
+@@ -725,6 +882,8 @@ LuaTest::SetupFreeroamScript()
+ 			LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
+ 		}
+ 
++		lua_pop(m_luaVM, 1);
++
+ 		//------
+ 
+ 		//------
+@@ -741,6 +900,8 @@ LuaTest::SetupFreeroamScript()
+ 
+ 			LogFunctions::LogInfo(defines.luaLogFile, "Lua scripts can " + toggleReloadKeybindString);
+ 		}
++
++		lua_pop(m_luaVM, 1);
+ 	}
+ }
+ 
+@@ -967,29 +1128,6 @@ LuaTest::InitLua()
+ 		// LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
+ 	}
+ 
+-	//-------------
+-	// TODO Figure this out, get the player position in lua.
+-	// Try to get the floats as global variables for testing.
+-	// Then later on try to pass in a CVector to lua.
+-	//-------------
+-	// lua_pushcfunction(m_luaVM, FindPlayerCoors().x);
+-	// lua_setglobal(m_luaVM, "player_pos")
+-
+-	
+-	// https://stackoverflow.com/questions/19553060/how-to-pass-a-global-value-from-c-to-lua
+-	// TODO Figure out how to name these, for getting the players current position.
+-	// lua_pushnumber(m_luaVM, FindPlayerCoors().x);
+-	// lua_setglobal(m_luaVM, "playerX");
+-		
+-	// lua_pushnumber(m_luaVM, FindPlayerCoors().y);
+-	// lua_setglobal(m_luaVM, "playerY");
+-
+-	// lua_pushnumber(m_luaVM, FindPlayerCoors().z);
+-	// lua_setglobal(m_luaVM, "playerZ");
+-
+-	//---------------
+-
+-
+ 	// if(lua_isinteger(m_luaVM, -1))
+ 
+ 	// Run a function in lua
+diff --git a/src/extras/menus/imgui_main_menu.cpp b/src/extras/menus/imgui_main_menu.cpp
+index 15231333..906f429b 100644
+--- a/src/extras/menus/imgui_main_menu.cpp
++++ b/src/extras/menus/imgui_main_menu.cpp
+@@ -225,11 +225,11 @@ ImGuiMenus::MainMenu()
+ 
+ 		// Ped menu
+ 		// Need to work on this one a bit more, disabled
+-		//if(ImGui::BeginTabItem("Peds")) { 
+-		//	pedMenu.PedTab();
+-		//	
+-		//	ImGui::EndTabItem();
+-		//}
++		if(ImGui::BeginTabItem("Peds")) { 
++			pedMenu.PedTab();
++			
++			ImGui::EndTabItem();
++		}
+ 
+ 		// About
+ 		if(ImGui::BeginTabItem("About")) { 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 7cc73f1e..2ab069e1 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.9-1a";
++std::string Defines::programVersion = "1.2.9-2a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index b68a795f..98aff4fd 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -67,6 +67,9 @@ FastLoader::FastLoad()
+ 	// Lock the game to the freeroam script, this will be used for my lua scripts once I implement them
+ 
+ 	// Starting the game! No game scripts here just freeroam
++	// TODO Make this not load if the create_player isn't setup in freeroam-game.lua.
++	// This will always try to load the game anyways and expect the player to be created from the scripts like normal.
++	// But since my script creates the player, there is no check to see if they were created I guess.
+ 	if(gbFastLoader) {
+ 		// Probably not required here, just forcing the freeroam script anyways.
+ 		// If the game scripts are disabled this variable is probably discarded.
+-- 
+2.43.0
+

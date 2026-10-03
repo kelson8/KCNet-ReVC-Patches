@@ -1,0 +1,56 @@
+From c4e78de5f965517eb25d0ef3d43693ca9dfeb14a Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 17:28:35 -0400
+Subject: [PATCH 139/161] fix: I had broken the save format in the save
+ function
+
+* Fixed save file format.
+* Update changelog.
+---
+ Changelog.md                       | 9 +++++++++
+ src/extras/utils/freeroam_util.cpp | 4 ++--
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 1d243d4f..6f681f72 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -739,6 +739,8 @@ feat: Add option to change load game slots text
+ 
+ ### 1.2.13-10a
+ 
++**Commit 1**
++
+ feat: Make load game option load into json save
+ 
+ * Now load game in the menu loads into the custom json save format.
+@@ -746,3 +748,10 @@ feat: Make load game option load into json save
+ * I re-enabled some menus in Frontend.cpp that I had previsouly disabled with DISABLE_GAME_SCRIPTS.
+ 
+ * Update changelog, change version to 1.2.13-10a.
++
++**Commit 2**
++
++fix: I had broken the save format in the save function
++
++* Fixed save file format.
++* Update changelog.
+\ No newline at end of file
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 0f8a9de8..59c98f71 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -167,8 +167,8 @@ bool FreeroamUtil::SaveFreeroamJson()
+         save["stats"]["longest_wheelie_distance"] = CStats::LongestWheelieDist;
+         //
+ 
+-        save["stat"]["fires_extinguished"] = CStats::FiresExtinguished;
+-        save["stat"]["heads_popped"] = CStats::HeadsPopped;
++        save["stats"]["fires_extinguished"] = CStats::FiresExtinguished;
++        save["stats"]["heads_popped"] = CStats::HeadsPopped;
+         
+         // Not in use, I could possibly use this once I figure out how to place the pickups.
+         // Then I could increment this when I save my game.
+-- 
+2.43.0
+

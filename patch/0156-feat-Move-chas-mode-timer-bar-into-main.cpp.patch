@@ -1,0 +1,391 @@
+From 7c0b1bdd9f17f8242e7ee2c931a71b6ca4b9f0ac Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 21:52:13 -0400
+Subject: [PATCH 156/161] feat: Move chas mode timer bar into main.cpp
+
+* Now I can run this all the time with the new gbTimerBarDisplay global.
+
+* Added ChaosBg and ChaosProgressTimer colors into Colors.cpp/.h.
+
+* Cleanup misc_menu a bit.
+
+* Add bgColor and progressColor parameters to TimerBarTest function.
+
+* Add check for if player is in water to kill them with invincibility cheat, otherwise they get stuck in the water.
+
+* Update changelog.
+---
+ Changelog.md                            | 16 ++++++++
+ src/core/main.cpp                       | 38 +++++++++++++++++
+ src/core/main.h                         |  4 ++
+ src/extras/enums/Colors.cpp             |  7 ++++
+ src/extras/enums/Colors.h               |  7 +++-
+ src/extras/functions/misc_functions.cpp | 54 ++++++++++++-------------
+ src/extras/functions/misc_functions.h   |  3 +-
+ src/extras/menus/misc_menu.cpp          | 33 +++++++--------
+ src/peds/Ped.cpp                        |  4 +-
+ src/peds/PedFight.cpp                   | 14 ++++++-
+ 10 files changed, 128 insertions(+), 52 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 82f75244..cda93bcc 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -948,3 +948,19 @@ feat: Move freeroam script options in debug menu
+ * Add new save format into freeroam_util for later use.
+ 
+ * Update changelog
++
++**Commit 3**
++
++feat: Move chas mode timer bar into main.cpp
++
++* Now I can run this all the time with the new gbTimerBarDisplay global.
++
++* Added ChaosBg and ChaosProgressTimer colors into Colors.cpp/.h.
++
++* Cleanup misc_menu a bit.
++
++* Add bgColor and progressColor parameters to TimerBarTest function.
++
++* Add check for if player is in water to kill them with invincibility cheat, otherwise they get stuck in the water.
++
++* Update changelog.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index e82d3ced..eafcbaa7 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -79,6 +79,11 @@
+ #include "GitSHA1.h"
+ #endif
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "misc_functions.h"
++
++#endif // DISABLE_GAME_SCRIPTS - For drawing to the screen.
++
+ #ifdef CUSTOM_CODE
+ // Set Text test.
+ #include "custom_cheats.h"
+@@ -192,6 +197,12 @@ bool gbInfiniteAmmoCheat = false;
+ bool gbFadeOnDeath = true;
+ #endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++// Toggle the timer bar on the top of the screen, mostly from the misc menu for now.
++bool gbTimerBarDisplay = false;
++#endif // DISABLE_GAME_SCRIPTS - Toggle timer bar on top off screen.
++
++
+ //--------
+ // Lua/ImGui
+ //--------
+@@ -1787,6 +1798,26 @@ Render2dStuffAfterFade(void)
+ 	POP_RENDERGROUP();
+ }
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++void
++RenderKcnetLua()
++{
++	MiscFunctions miscFunctions;
++	if(gbTimerBarDisplay) {
++		// This works fine.
++		miscFunctions.setChaosTimerBarToggle(gbTimerBarDisplay);
++		// This below doesn't work
++		// TODO Fix this to work.
++		// MiscFunctions::GetInstance().setChaosTimerBarToggle(timerBarTest);
++		miscFunctions.TimerBarTest(Colors::ChaosBg, Colors::ChaosProgressTimer);
++	}
++
++	// MiscMenu::
++	// TODO Move timerBarTest out of misc_menu and into here.
++	// That way I can always draw it to the screen.
++}
++#endif // DISABLE_GAME_SCRIPTS - For drawing to the screen.
++
+ void
+ Idle(void *arg)
+ {
+@@ -1892,6 +1923,13 @@ Idle(void *arg)
+ 		// Damn I forgot I disabled this, I almost never found this change...
+ 		RenderEffects();
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++
++		// TODO Add a way to draw the the screen here.
++		RenderKcnetLua();
++
++#endif // DISABLE_GAME_SCRIPTS - For drawing to the screen.
++
+ 		if((TheCamera.m_BlurType == MOTION_BLUR_NONE || TheCamera.m_BlurType == MOTION_BLUR_LIGHT_SCENE) &&
+ 		   TheCamera.m_ScreenReductionPercentage > 0.0f)
+ 		        TheCamera.SetMotionBlurAlpha(150);
+diff --git a/src/core/main.h b/src/core/main.h
+index a3b90397..bff30c5e 100644
+--- a/src/core/main.h
++++ b/src/core/main.h
+@@ -136,6 +136,10 @@ extern bool gbInfiniteAmmoCheat;
+ extern bool gbFadeOnDeath;
+ #endif // DISABLE_GAME_SCRIPTS - Toggle fading on death global in lua.
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++extern bool gbTimerBarDisplay;
++#endif // DISABLE_GAME_SCRIPTS - Toggle timer bar on top off screen.
++
+ //--------
+ // Lua/ImGui
+ //--------
+diff --git a/src/extras/enums/Colors.cpp b/src/extras/enums/Colors.cpp
+index 5ee8f477..83a74555 100644
+--- a/src/extras/enums/Colors.cpp
++++ b/src/extras/enums/Colors.cpp
+@@ -148,3 +148,10 @@ CRGBA Colors::SlateGray = { 112, 128, 144, 255 };
+ CRGBA Colors::DarkSlateGray = { 47,  79,  79, 255 };
+ CRGBA Colors::Black = { 0,   0,   0, 255 };
+ CRGBA Colors::Transparent = { 0,   0,   0, 0 };
++
++// New, for chaos mod timer bar
++CRGBA Colors::ChaosBg = { 24, 99, 44, 255 };
++CRGBA Colors::ChaosProgressTimer = { 33, 145, 63, 255 };
++
++
++//
+\ No newline at end of file
+diff --git a/src/extras/enums/Colors.h b/src/extras/enums/Colors.h
+index 07d72d92..8a6a7ecc 100644
+--- a/src/extras/enums/Colors.h
++++ b/src/extras/enums/Colors.h
+@@ -150,5 +150,10 @@ extern CRGBA IndianRed,
+     SlateGray,
+     DarkSlateGray,
+     Black,
+-    Transparent;
++    Transparent,
++
++// New, for chaos mod timer bar
++    ChaosBg,
++    ChaosProgressTimer;
++//
+ };
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index b2fc86f4..4d0984db 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -264,23 +264,22 @@ MiscFunctions::CreateWeaponPickup(uint32 weaponModel)
+ 
+ //---------- Begin chaos mod timer bar test ----------//
+ 
+-/// <summary>
+-/// TODO Look into using this, I forgot about it.
+-/// TODO Make this not flicker in DoRWStuffEndOfFrame within main.cpp.
+-/// Hookup a timer in lua and use this function with it or something.
+-/// I will need to keep track of a timer like the original game scripts were.
+-/// Credit to user-grinch for this:
+-/// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
+-/// This displays on the screen but only when the imgui menu is open, I will toggle this elsewhere.
+-/// TODO Move the toggle into this and use getters and setters to enable/disable it.
+-/// TODO Fix a working timer for this.
+-/// TODO Try to place this in DoRWStuffEndOfFrame
+-/// Or possibly FrontendIdle or Idle
+-/// </summary>
+-/// 
+ // clang-format off
++
++/**
++ * TODO Hookup a timer with lua and use this for my new chaos mod tests.
++ * I will need to keep track of a timer like the original game scripts were.
++ * 
++ * Credit to user-grinch for this:
++ * https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
++ * 
++ * This now always displays on the screen, I have finally fixed this.
++ * 
++ * @param bgColor the CRGBA colors for the background.
++ * @param progressColor the CRGBA colors for the progress.
++ */
+ void
+-MiscFunctions::TimerBarTest()
++MiscFunctions::TimerBarTest(CRGBA bgColor, CRGBA progressColor)
+ {
+ 	static uint32 m_nTimer = 0;
+ 	static int m_nInterval = 10;
+@@ -297,24 +296,21 @@ MiscFunctions::TimerBarTest()
+ 		}
+ 	}
+ 
+-	// I guess this if statement makes it flicker when on, I will have to find a way to toggle this properly in a loop.
+-	// if(this->getChaosTimerBarToggle()) {
+-
+-		int32 screenWidth = FrontEndMenuManager.m_nPrefsWidth;
+-		int32 screenHeight = FrontEndMenuManager.m_nPrefsHeight;
++	int32 screenWidth = FrontEndMenuManager.m_nPrefsWidth;
++	int32 screenHeight = FrontEndMenuManager.m_nPrefsHeight;
+ 		
+ 
+-		uint32 totalTime = 10;
+-		float progress = (totalTime - (timer - m_nTimer) / 1000.0f) / totalTime;
++	uint32 totalTime = 10;
++	float progress = (totalTime - (timer - m_nTimer) / 1000.0f) / totalTime;
+ 
+-		CRect sizeBox = CRect(0, 0, screenWidth, screenHeight / 50);
+-		CRect sizeProgress = CRect(0, 0, screenWidth * progress, screenHeight / 50);
+-		CRGBA colorBG = CRGBA(24, 99, 44, 255);
+-		CRGBA colorProgress = CRGBA(33, 145, 63, 255);
++	CRect sizeBox = CRect(0, 0, screenWidth, screenHeight / 50);
++	CRect sizeProgress = CRect(0, 0, screenWidth * progress, screenHeight / 50);
++	// CRGBA colorBG = CRGBA(24, 99, 44, 255);
++	// CRGBA colorProgress = CRGBA(33, 145, 63, 255);
+ 
+-		CSprite2d::DrawRect(sizeBox, colorBG);
+-		CSprite2d::DrawRect(sizeProgress, colorProgress);
+-	// }
++	CSprite2d::DrawRect(sizeBox, bgColor);
++	// CSprite2d::DrawRect(sizeProgress, colorProgress);
++	CSprite2d::DrawRect(sizeProgress, progressColor);
+ }
+ 
+ // clang-format on
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index 4d59df61..b5fbf369 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -81,8 +81,7 @@ public:
+ 
+ 	// Test for timer bar, from here:
+ 	// https://github.com/user-grinch/Cheat-Menu/blob/master/src/custom/randomcheats_sa.cpp#L30-L47
+-	// void TimerBarTest();
+-	static void TimerBarTest();
++	static void TimerBarTest(CRGBA bgColor, CRGBA progressColor);
+ 
+ 	// Ped road toggling, this toggles the peds in the specified area like in the scripts.
+ 	void SwitchPedRoadsOn(float x1, float x2, float y1, float y2, float z1, float z2);
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 4c73ac73..ce213ebe 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -135,9 +135,6 @@
+ // This will toggle the controller button that is shown in ImGui
+ bool toggleControllerText = false;
+ 
+-// Display the timer bar test for my future chaos mod.
+-bool timerBarTest = false;
+-
+ // Toggle the test for the mobile radio
+ bool mobileRadioTest = false;
+ 
+@@ -496,6 +493,7 @@ void MiscMenu::MiscTab()
+ 		// I have disabled this for now, broke it when moving into its own function.
+ 		// ImGui::Checkbox("Toggle window 2", &ImGuiFunctions::ShowSecondWindow);
+ 
++#ifndef DISABLE_GAME_SCRIPTS
+ 		// Display position from debug menu
+ 		miscFunctions.TogglePositionImGui();
+ 
+@@ -506,7 +504,7 @@ void MiscMenu::MiscTab()
+ 		// Draw the KCNet Test text box from C++.
+ 		// DrawKCNetTextBox();
+ 		miscFunctions.DrawKCNetTextBoxImGui();
+-
++#endif // DISABLE_GAME_SCRIPTS - Disable some mod menu options.
+ 
+ 		// TODO Fix this to work.
+ #ifdef PLUGIN_SDK_TEST
+@@ -569,27 +567,26 @@ void MiscMenu::MiscTab()
+ 
+ #endif // _WIN32
+ 
+-		// Well this shows up but only when the menu is open, if I can get this to change with time
++		// Well this shows up now, if I can get this to change with time
+ 		// and stay up, I could make a basic chaos mod test for random events.
+-		// It goes away if the menu goes away, I'll probably need to put it somewhere like FrontendIdle, Idle, or DoRWStuffEndOfFrame.
+-		ImGui::Checkbox("Timer bar toggle", &timerBarTest);
+-
+-		// This works if I have the toggle disabled in the function
+-		// Well now, this works with a toggle if i put the toggle in here
+-		if(timerBarTest) {
+-			// This works fine.
+-			miscFunctions.setChaosTimerBarToggle(timerBarTest);
+-			// This below doesn't work
+-			// TODO Fix this to work.
+-			// MiscFunctions::GetInstance().setChaosTimerBarToggle(timerBarTest);
+-			miscFunctions.TimerBarTest();
+-		}
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++		//--------------
++		// MOVED!!!
++		// This has been moved into main.cpp, under the new 'RenderKcnetLua()' function.
++		// Now it'll run all the time when it is enabled.
++		//  and I can toggle this global in lua once I set it up.
++		//--------------
++		ImGui::Checkbox("Timer bar toggle", &gbTimerBarDisplay);
++#endif  // DISABLE_GAME_SCRIPTS - Toggle timer bar on top off screen.
++
++#if 0
+ 		// Display the memory address to the player health as a test:
+ 		if(ImGui::Button("Display player health addr")) {
+ 			// miscUtil.DisplayPlayerHealthMemAddress();
+ 			miscUtil.TestHealthOffset();
+ 		}
++#endif // DISABLED
+ 
+ 		ImGui::Text("Check if in interior in cout");
+ 		if (ImGui::Button("Interior check"))
+diff --git a/src/peds/Ped.cpp b/src/peds/Ped.cpp
+index 0b67d3e8..7468e68e 100644
+--- a/src/peds/Ped.cpp
++++ b/src/peds/Ped.cpp
+@@ -7113,7 +7113,9 @@ CPed::SetDead(void)
+ {
+ 	// Add invincibility cheat
+ #ifdef INVINCIBLE_CHEAT
+-	if(IsPlayer() && FindPlayerPed()->bInvincibleCheat && m_fHealth > 0.0f) 
++	// Added is in water check, so this still kills the player in water.
++	// Otherwise they get stuck in the water.
++	if(IsPlayer() && FindPlayerPed()->bInvincibleCheat && m_fHealth > 0.0f && !FindPlayerPed()->bIsInWater) 
+ 		return;
+ #endif
+ 	if (!RpAnimBlendClumpGetAssociation(GetClump(), ANIM_STD_DROWN))
+diff --git a/src/peds/PedFight.cpp b/src/peds/PedFight.cpp
+index 089a5c64..7750894b 100644
+--- a/src/peds/PedFight.cpp
++++ b/src/peds/PedFight.cpp
+@@ -199,6 +199,11 @@ CPed::SetPointGunAt(CEntity *to)
+ 		Say(SOUND_PED_ATTACK);
+ }
+ 
++/**
++ * Point a gun at a ped
++ * 
++ * TODO Look into this function for my lua scripts once I can create peds.
++ */
+ void
+ CPed::PointGunAt(void)
+ {
+@@ -252,6 +257,11 @@ CPed::ClearPointGunAt(void)
+ 	}
+ }
+ 
++/**
++ * Set a ped to attack the specific entity.
++ * 
++ * TODO Look into this function for my lua scripts once I can create peds.
++ */
+ void
+ CPed::SetAttack(CEntity *victim)
+ {
+@@ -2667,7 +2677,9 @@ CPed::InflictDamage(CEntity *damagedBy, eWeaponType method, float damage, ePedPi
+ 
+ 	// Make it to where the player cannot be attacked if they are invincible.
+ #ifdef INVINCIBLE_CHEAT
+-		if(player->bInvincibleCheat) 
++		// Added is in water check, so this still kills the player in water.
++		// Otherwise they get stuck in the water.
++		if(player->bInvincibleCheat && !FindPlayerPed()->bIsInWater) 
+ 			return false;
+ #endif
+ 
+-- 
+2.43.0
+

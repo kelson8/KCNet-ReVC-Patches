@@ -1,0 +1,208 @@
+From e9c8444884d6f627b8a090c67714f44573262ca6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 11:44:09 -0400
+Subject: [PATCH 151/161] fix: Revert player fallback spawn
+
+* I had to disable the create player in CTheScript::Init since it spawns multiple players.
+
+* Add fading the camera in and out in lua.
+
+* Update changelog, change version to 1.2.14-1a.
+---
+ Changelog.md                 | 12 ++++++-
+ src/control/Script.cpp       | 13 ++++----
+ src/extras/lua/lua_world.cpp | 65 +++++++++++++++++++++++++++++++++++-
+ src/extras/lua/lua_world.h   |  3 ++
+ src/extras/utils/defines.cpp |  2 +-
+ 5 files changed, 86 insertions(+), 9 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index eb189f79..feb49369 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -875,7 +875,7 @@ feat: Make game not crash if player isn't created
+ * Update changelog.
+ 
+ 
+-### Latest 1.2.13-14a
++### 1.2.13-14a
+ 
+ feat: Make OnInit function work in lua
+ 
+@@ -884,3 +884,13 @@ feat: Make OnInit function work in lua
+ * Set total number of hidden packages to 0 by default in PlayerInfo.cpp
+ 
+ * Update changelog, change version to 1.2.13-14a.
++
++### Latest 1.2.14-1a
++
++fix: Revert player fallback spawn
++
++* I had to disable the create player in CTheScript::Init since it spawns multiple players.
++
++* Add fading the camera in and out in lua.
++
++* Update changelog, change version to 1.2.14-1a.
+\ No newline at end of file
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 10873001..ae1d5231 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -915,15 +915,16 @@ void CTheScripts::Init()
+ 	// TODO Move this elsewhere, for testing.
+ 	// LuaTest::GetInstance().OnTick();
+ 
++	// Well I had to disable this, if this is here and the player respawns it'll spawn two of them again..
+ 	// This works here for a fallback if the player isn't spawned in the lua scripts.
+ 	// TODO Make this get a default position from my future json files in my lua scripts.
+ 	// I will share it between the C++ and lua code for locations.
+-	if(!InitGame::GetInstance().GetPlayerCreated())
+-	{
+-		// Middle of map, old spawn in json and scripts.
+-		CVector defaultPos = CVector(-258.1, -453.1, 13.5);
+-		InitGame::GetInstance().CreatePlayer(0, defaultPos);
+-	}
++	// if(!InitGame::GetInstance().GetPlayerCreated())
++	// {
++	// 	// Middle of map, old spawn in json and scripts.
++	// 	CVector defaultPos = CVector(-258.1, -453.1, 13.5);
++	// 	InitGame::GetInstance().CreatePlayer(0, defaultPos);
++	// }
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 90cfbe1c..c39e8244 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -25,6 +25,7 @@
+ #include "vehicle_functions.h"
+ 
+ // VC Specific
++#include "Camera.h"
+ #include "Streaming.h"
+ #include "Pools.h"
+ //#include "Hud.h"
+@@ -135,6 +136,11 @@ extern "C"
+ 		
+ 		//
+ 
++		// Fade the camera
++		lua_pushcfunction(L, fadeCameraLua);
++		lua_setfield(L, -2, "fade_camera");
++		
++
+ 		// World namespace
+     	lua_setglobal(L, "world");
+ 	}
+@@ -314,6 +320,20 @@ extern "C"
+     	{
+     		return luaL_error(L, "world.switch_roads_off expects two vector tables with x, y and z values." );
+ 		}
++		// ThePaths.SwitchPedRoadsOffInArea(leftBottomX, rightTopX, leftBottomY, rightTopY, leftBottomZ, rightTopZ, true);
++
++		// I modifed this function to be more in line with SWITCH_PED_ROADS_OFF.
++		// If this works, then I'll switch the others to using this format also.
++		// Well this didn't work..
++		// I'm not even sure how this function works honestly, I might just make another one that does this.
++		// ThePaths.SwitchRoadsOffInArea(
++		// 	leftBottom->x, 
++		// 	rightTop->x,
++		// 	leftBottom->y,
++		// 	rightTop->y,
++		// 	leftBottom->z, 
++		// 	rightTop->z,
++		// 	true);
+ 
+ 		ThePaths.SwitchRoadsOffInArea(
+ 			leftBottom->x, 
+@@ -323,8 +343,10 @@ extern "C"
+ 			rightTop->y, 
+ 			rightTop->z, 
+ 			true);
++
++
+ 		// SwitchRoadsOffInArea
+-		return 1;
++		return 0;
+ 	}
+ 
+ 	/**
+@@ -510,6 +532,47 @@ extern "C"
+ 	}
+ 
+ 
++	//-------------------
++	// Fading
++	//-------------------
++
++	/**
++	 * Fade the camera in or out with a specific time.
++	 * 
++	 * TODO Fix this to work, I don't think it will work without a wait timer.
++	 * 
++	 * Usage:
++	 * world.fade_camera(2.0, camera_enums.eFadeDirection.FADE_OUT)
++	 * 
++	 * 
++	 */
++	int fadeCameraLua(lua_State *L)
++	{
++		// int fadeValue = 
++		float fadeTime = static_cast<float>(lua_tonumber(L, 1));
++		int fadeType = lua_tonumber(L, 2);
++		
++		
++
++		if(fadeTime <= 0 || fadeTime > 5000)
++		{
++			return luaL_error(L, "world.fade_camera takes a fade to variable, such as FADE_OUT, and a time to fade.");
++		}
++
++		if(fadeType < FADE_OUT || fadeType > FADE_IN) 
++		{
++			return luaL_error(L, "world.fade_camera takes a fade to variable, such as FADE_OUT, and a time to fade."); 
++		}
++
++		TheCamera.Fade(fadeTime, fadeType);
++
++		// TheCamera
++
++		// TODO Make this take the fade enum for use with this.
++		return 0;
++	}
++
++
+ 
+ 	//-------------------
+ 
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 5e7c69f5..090e7e74 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -42,6 +42,9 @@ extern "C" {
+ 	extern int ontRemoveObjectLua(lua_State *L);
+ 	extern int setObjectHeadingLua(lua_State *L);
+ 
++	// Fading
++	extern int fadeCameraLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index dbb7df42..d4517705 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-14a";
++std::string Defines::programVersion = "1.2.14-1a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

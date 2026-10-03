@@ -1,0 +1,224 @@
+From c618af2aaa5ac065b744dd569424eed38e2d6472 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Sep 2026 11:11:16 -0400
+Subject: [PATCH 072/161] feat: Update html export in CMenuManager::ExportStats
+
+* Make ExportStats print out to an html file with black instead of pink background.
+
+* Sync changes from miami-tcp-test, I accidentally pushed to that branch.
+---
+ src/core/Frontend.cpp | 108 +++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 91 insertions(+), 17 deletions(-)
+
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 6b2b3642..f4aa9b3b 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -970,6 +970,9 @@ CMenuManager::DoSettingsBeforeStartingAGame()
+ 	DMAudio.ResetTimers(CTimer::GetTimeInMilliseconds());
+ }
+ 
++/**
++ * @brief Draw some of the menus for the game.
++ */
+ void
+ CMenuManager::DrawStandardMenus(bool activeScreen)
+ {
+@@ -3763,6 +3766,7 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ 			}
+ 			break;
+ 		}
++
+ 		case MENUPAGE_SOUND_SETTINGS:
+ 			if (CheckHover(MENU_X_LEFT_ALIGNED(177.f), MENU_X_LEFT_ALIGNED(238.f), MENU_Y(MENURADIO_SELECTOR_START_Y - 13.f), MENU_Y(MENURADIO_SELECTOR_START_Y + MENURADIO_SELECTOR_HEIGHT - 8.f))) {
+ 					m_nHoverOption = HOVEROPTION_PREV_RADIO;
+@@ -3772,6 +3776,7 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ 					m_nHoverOption = HOVEROPTION_NEXT_RADIO;
+ 			}
+ 			break;
++
+ 		case MENUPAGE_STATS:
+ 		{
+ 			if (CPad::GetPad(0)->GetMouseWheelUpJustDown() || CPad::GetPad(0)->GetMouseWheelUpJustUp() || CPad::GetPad(0)->GetUp() ||
+@@ -3797,6 +3802,7 @@ CMenuManager::AdditionalOptionInput(bool &goBack)
+ 				pressedS = false;
+ 			}
+ 
++			// Export the stats if the button is pressed.
+ 			if (!pressedS) {
+ 				if (CPad::GetPad(0)->GetChar('S') || CPad::GetPad(0)->GetChar('s')) {
+ 					ExportStats();
+@@ -3822,6 +3828,7 @@ CMenuManager::ExportStats()
+ 
+ 	if (txtFile) {
+ 		int statLines = CStats::ConstructStatLine(99999);
++
+ 		fprintf(txtFile, "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n");
+ 		fprintf(txtFile, "\t\t\tGTA VICE CITY %s\n", UnicodeToAscii(TheText.Get("FEH_STA")));
+ 		fprintf(txtFile, "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n\n\n");
+@@ -3832,6 +3839,7 @@ CMenuManager::ExportStats()
+ 		fprintf(txtFile, "%s  ", UnicodeToAscii(TheText.Get("CRIMRA")));
+ 		UnicodeStrcpy(gUString, CStats::FindCriminalRatingString());
+ 		fprintf(txtFile, "%s (%d)\n\n\n", UnicodeToAscii(gUString), CStats::FindCriminalRatingNumber());
++
+ 		for (int i = 0; i < statLines; ++i) {
+ 			CStats::ConstructStatLine(i);
+ 			char *statKey = UnicodeToAscii(gUString);
+@@ -3850,46 +3858,101 @@ CMenuManager::ExportStats()
+ 	}
+ 	fclose(txtFile);
+ 	FILE *htmlFile = fopen("stats.html", "w");
++
++	// TODO Try and make this read the data from an html file, to make this a bit easier to handle.
++	// Although I have no idea how the hell I would update the variables in this.
+ 	if (htmlFile) {
+ 		int statLines = CStats::ConstructStatLine(99999);
+ 		fprintf(htmlFile, "<title>Grand Theft Auto Vice City Stats</title>\n");
+-		fprintf(htmlFile, "<body bgcolor=\"#FF00CC\" leftmargin=\"10\" topmargin=\"10\" marginwidth=\"10\" marginheight=\"10\">\n");
++
++#ifdef CUSTOM_CODE
++		// Change this nasty pink color, why would I want this?
++		fprintf(htmlFile, "<body bgcolor=\"#000000\" leftmargin=\"10\" topmargin=\"10\" 
++			marginwidth=\"10\" marginheight=\"10\">\n");
++#else
++		fprintf(htmlFile, "<body bgcolor=\"#FF00CC\" leftmargin=\"10\" topmargin=\"10\" 
++			marginwidth=\"10\" marginheight=\"10\">\n");
++#endif // CUSTOM_CODE - Disable Pink output for HTML.
++
+ 		fprintf(htmlFile, "<table width=\"560\" align=\"center\" border=\"0\" cellpadding=\"5\" cellspacing=\"0\">\n");
+ 		fprintf(htmlFile, "<tr align=\"center\" valign=\"top\"> \n");
+-		fprintf(htmlFile, "<td height=\"59\" colspan=\"2\" bgcolor=\"#FFCCFF\"><div align=\"center\"><font color=\"#FF00CC\" size=\"3\" "
++		
++#ifdef CUSTOM_CODE
++		fprintf(htmlFile, "<td height=\"59\" colspan=\"2\" 
++			bgcolor=\"#FFCCFF\">
++			<div align=\"center\">
++			<font color=\"#000000\" 
++			size=\"3\" "
++			"face=\"Arial, \n");
++#else
++		fprintf(htmlFile, "<td height=\"59\" colspan=\"2\" 
++			bgcolor=\"#FFCCFF\">
++			<div align=\"center\">
++			<font color=\"#FF00CC\" 
++			size=\"3\" "
+ 			"face=\"Arial, \n");
+-		fprintf(htmlFile, "Helvetica, sans-serif\">-------------------------------------------------------------------------</font><font \n");
++#endif // CUSTOM_CODE - Disable Pink output for HTML.
++
++		fprintf(htmlFile, "Helvetica, sans-serif\">-------------------------------------------------------------------------
++			</font><font \n");
+ 		fprintf(htmlFile, "size=\"3\" face=\"Arial, Helvetica, sans-serif\"><br>\n");
+ 		fprintf(htmlFile, "<strong><font color=\"#000000\">GRAND THEFT AUTO VICE CITY ");
+ 		fprintf(htmlFile, "%s</font></strong><br><font\n", UnicodeToAscii(TheText.Get("FEH_STA")));
+-		fprintf(htmlFile, "color=\"#FF00CC\">-------------------------------------------------------------------------</font></font></div></td> </tr>\n");
+-		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">     <td height=\"22\" colspan=\"2\">&nbsp;</td>  </tr>\n");
++		
++#ifdef CUSTOM_CODE
++		fprintf(htmlFile, "color=\"#000000\">-------------------------------------------------------------------------
++			</font></font></div></td> </tr>\n");
++#else
++		fprintf(htmlFile, "color=\"#FF00CC\">-------------------------------------------------------------------------
++			</font></font></div></td> </tr>\n");
++
++#endif // CUSTOM_CODE - Disable Pink output for HTML.
++		
++		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">     
++			<td height=\"22\" colspan=\"2\">&nbsp;</td>  </tr>\n");
++		
+ 		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
++		
+ 		fprintf(htmlFile,
+ 			"<td height=\"40\" colspan=\"2\"> <p><font color=\"#00CC00\" size=\"2\" face=\"Arial, Helvetica, sans-serif\">"
+ 			"<strong><font color=\"#009900\" size=\"1\">%s: \n", UnicodeToAscii(TheText.Get("FES_DAT")));
++
+ 		fprintf(htmlFile, "%s</font><br>        %s: </strong>", date, UnicodeToAscii(TheText.Get("FES_CMI")));
++
+ 		fprintf(htmlFile, "%s<strong><br></strong> </font></p></td></tr>\n", UnicodeToAscii(lastMission));
++
+ 		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#CCCCCC\"> <td height=\"5\" colspan=\"2\"></td> </tr> <tr align=\""
+ 			"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
+-		fprintf(htmlFile, "<td height=\"10\" colspan=\"2\"></td> </tr> <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
+-		fprintf(htmlFile, "<td height=\"20\" colspan=\"2\"><font color=\"#FF00CC\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><str"
++
++		fprintf(htmlFile, "<td height=\"10\" colspan=\"2\"></td> </tr> 
++			<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
++		
++		fprintf(htmlFile, "<td height=\"20\" colspan=\"2\">
++			<font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><str"
+ 			"ong>%s</strong>\n", UnicodeToAscii(TheText.Get("CRIMRA")));
+ 
++
++
+ 		UnicodeStrcpy(gUString, CStats::FindCriminalRatingString());
+ 		char *statKey = UnicodeToAscii(gUString);
+ 		int rating = CStats::FindCriminalRatingNumber();
+-		fprintf(htmlFile, "%s (%d)</font></td>  </tr>  <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"><td height=\"10\" colspan=\""
++		fprintf(htmlFile, "%s (%d)</font></td>  </tr>  
++			<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"><td height=\"10\" colspan=\""
+ 			"2\"></td>  </tr>\n", statKey, rating);
+ 
+ 		for (int k = 0; k < statLines; ++k) {
+ 			CStats::ConstructStatLine(k);
+ 			statKey = UnicodeToAscii(gUString);
+ 			if (statKey[0] != '\0')
+-				fprintf(htmlFile, "</font></strong></div></td> </tr> <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  <td height=\"10"
++				fprintf(htmlFile, "</font></strong></div></td> </tr> 
++					<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  
++					<td height=\"10"
+ 					"\" colspan=\"2\"></td> </tr>\n");
+ 
+-			fprintf(htmlFile, "<tr align=\"left\" valign=\"top\"><td width=\"500\" height=\"22\" bgcolor=\"#FFCCFF\"><font color=\"#FF00CC"
++
++			fprintf(htmlFile, "<tr align=\"left\" valign=\"top\">
++				<td width=\"500\" height=\"22\" bgcolor=\"#FFCCFF\">
++				<font color=\"#000000"
+ 				"\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><strong>\n");
+ 
+ 			if (statKey[0] != '\0')
+@@ -3897,8 +3960,10 @@ CMenuManager::ExportStats()
+ 			else
+ 				fprintf(htmlFile, " ");
+ 
+-			fprintf(htmlFile, "</strong></font></td> <td width=\"500\" align=\"right\" valign=\"middle\" bgcolor=\"#FFCCFF\"> <div align=\""
+-				"right\"><strong><font color=\"#FF00CC\">\n");
++			fprintf(htmlFile, "</strong></font></td> 
++				<td width=\"500\" align=\"right\" valign=\"middle\" bgcolor=\"#FFCCFF\"> 
++				<div align=\""
++				"right\"><strong><font color=\"#000000\">\n");
+ 
+ 			char *statValue = UnicodeToAscii(gUString2);
+ 			for (int l = 0; statValue[l] != '\0'; ++l) {
+@@ -3910,15 +3975,24 @@ CMenuManager::ExportStats()
+ 			else
+ 				fprintf(htmlFile, " ");
+ 		}
+-		fprintf(htmlFile, "</font></strong></div></td> </tr> <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  <td height=\"10\" c"
++		fprintf(htmlFile, "</font></strong></div></td> </tr> 
++			<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  
++			<td height=\"10\" c"
+ 			"olspan=\"2\"></td> </tr>\n");
+-		fprintf(htmlFile, "</table><br><table width=\"560\" border=\"0\"  align=\"center\" cellspacing=\"0\" cellpadding=\"5\"><tr align"
++
++		fprintf(htmlFile, "</table><br><table width=\"560\" border=\"0\"  align=\"center\" cellspacing=\"0\" 
++			cellpadding=\"5\"><tr align"
+ 			"=\"center\" valign=\"middle\" bgcolor=\"#FFCCFF\">");
+-		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><a href=\"http://www.rockstargam"
++		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, 
++			sans-serif\"><a href=\"http://www.rockstargam"
+ 			"es.com/vicecity\">rockstargames.com/vicecity</a></font></td>\n");
+-		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><a href=\"http://www.rockstargam"
++		
++		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, 
++			sans-serif\"><a href=\"http://www.rockstargam"
+ 			"es.com\">rockstargames.com</a></font></td>\n");
+-		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\">&nbsp;<a href=\"http://www.rocks"
++		
++			fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\">
++				&nbsp;<a href=\"http://www.rocks"
+ 			"tarnorth.com\">rockstarnorth.com</a></font></td></tr>\n");
+ 		fprintf(htmlFile, "</table>\n</body>\n");
+ 	}
+-- 
+2.43.0
+

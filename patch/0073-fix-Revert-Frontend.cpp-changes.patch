@@ -1,0 +1,562 @@
+From dde8a451fadd581a5fb76e3a962c138ca5b53791 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 3 Sep 2026 16:20:52 -0400
+Subject: [PATCH 073/161] fix: Revert Frontend.cpp changes
+
+* I reverted my code changes in Frontend.cpp that cleaned up the html output template in CMenuManager::ExportStats
+
+* Try to make stat html export read from html base template, add revc-stat-export-base.html and css file to go with it.
+
+* Add a few new functions into misc_functions.
+
+* Enable error squiggles for C++ in vscode settings.json.
+---
+ .vscode/settings.json                   |   3 +-
+ gamefiles/revc-stat-export-base.css     |  61 +++++++
+ gamefiles/revc-stat-export-base.html    |  62 +++++++
+ src/core/Frontend.cpp                   | 218 ++++++++++++++++--------
+ src/extras/functions/misc_functions.cpp |  53 +++++-
+ src/extras/functions/misc_functions.h   |   9 +
+ 6 files changed, 331 insertions(+), 75 deletions(-)
+ create mode 100644 gamefiles/revc-stat-export-base.css
+ create mode 100644 gamefiles/revc-stat-export-base.html
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index bd710602..dbf20002 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -88,5 +88,6 @@
+     "chrono": "cpp",
+     "optional": "cpp",
+     "xlocmon": "cpp"
+-  }
++  },
++  "C_Cpp.errorSquiggles": "enabled"
+ }
+diff --git a/gamefiles/revc-stat-export-base.css b/gamefiles/revc-stat-export-base.css
+new file mode 100644
+index 00000000..a7beb757
+--- /dev/null
++++ b/gamefiles/revc-stat-export-base.css
+@@ -0,0 +1,61 @@
++
++
++body {
++    background-color: #ff00cc;
++    margin: 10px;
++    font-family: Arial, Helvetica, sans-serif;
++}
++
++.main-table {
++    width: 560px;
++    margin: auto;
++    border-collapse: collapse;
++}
++
++.header {
++    height: 59px;
++    background-color: #ffccff;
++    color: #000000;
++    text-align: center;
++}
++
++.separator {
++    color: #ff00cc;
++}
++
++.white-row {
++    background-color: #ffffff;
++}
++
++.rating {
++    height: 20px;
++    color: #ff00cc;
++    background-color: #ffffff;
++}
++
++.stat-row td {
++    height: 22px;
++    padding: 5px;
++    background-color: #ffccff;
++    color: #ff00cc;
++}
++
++.stat-name {
++    text-align: left;
++}
++
++.stat-value {
++    text-align: right;
++}
++
++.footer-table {
++    width: 560px;
++    margin: auto;
++    border-collapse: collapse;
++    background-color: #ffccff;
++    text-align: center;
++}
++
++.footer-table td {
++    padding: 5px;
++}
+diff --git a/gamefiles/revc-stat-export-base.html b/gamefiles/revc-stat-export-base.html
+new file mode 100644
+index 00000000..0caf9f3c
+--- /dev/null
++++ b/gamefiles/revc-stat-export-base.html
+@@ -0,0 +1,62 @@
++<!DOCTYPE html>
++<html>
++
++<head>
++  <meta charset="UTF-8">
++  <title>{{TITLE}}</title>
++  <link rel="stylesheet" href="stats.css">
++</head>
++
++<!-- Taken from Frontend.cpp under CMenuManager::ExportStats() -->
++<!-- TODO Make this work in the C++ code. 
++  This will be a neater method then directly storing the html in the code. -->
++
++<body>
++  <table class="main-table">
++    <tr>
++      <td class="header" colspan="2">
++        <div class="center">
++          <span class="separator">-------------------------------------------------------------------------</span>
++          <br>
++          <strong>GRAND THEFT AUTO VICE CITY {{FEH_STA}}</strong>
++          <br>
++          <span class="separator">-------------------------------------------------------------------------</span>
++        </div>
++      </td>
++    </tr>
++
++    <tr class="white-row">
++      <td colspan="2">&nbsp;</td>
++    </tr>
++
++    <tr class="white-row">
++      <td colspan="2">
++        <strong>
++          {{FES_DAT}}: {{DATE}}<br>
++          {{FES_CMI}}: {{LAST_MISSION}}
++        </strong>
++      </td>
++    </tr>
++
++    <tr>
++      <td colspan="2" class="rating">
++        <strong>{{CRIMRA}}</strong> {{RATING_KEY}} ({{RATING_NUMBER}})
++      </td>
++    </tr>
++
++    {{STAT_ROWS}}
++
++  </table>
++
++  <br>
++
++  <table class="footer-table">
++    <tr>
++      <td><a href="http://www.rockstargames.com/vicecity">rockstargames.com/vicecity</a></td>
++      <td><a href="http://www.rockstargames.com">rockstargames.com</a></td>
++      <td><a href="http://www.rockstarnorth.com">rockstarnorth.com</a></td>
++    </tr>
++  </table>
++</body>
++
++</html>
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index f4aa9b3b..1a904316 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -36,6 +36,11 @@
+ #include "User.h"
+ #include "sampman.h"
+ 
++#ifdef CUSTOM_CODE
++#include <fstream>
++#include "misc_functions.h"
++#endif // CUSTOM_CODE - Export stats using html template
++
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+ // For easier modification we collect them here:
+@@ -3857,6 +3862,110 @@ CMenuManager::ExportStats()
+ 		fprintf(txtFile, "-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n\n");
+ 	}
+ 	fclose(txtFile);
++
++// Disable this for now.
++// TODO Fix this to work.
++#undef CUSTOM_CODE
++#ifdef CUSTOM_CODE
++	// TODO Implement this, read these values from the html template.
++	// So far, this is incomplete.
++
++	// This should set the folder to ViceExtended for this template.
++	CFileMgr::SetDir("ViceExtended");
++
++	int statLines = CStats::ConstructStatLine(99999);
++
++	std::string html =
++    	MiscFunctions::ReadStatsExportTemplate("revc-stat-export-base.html");
++
++	// TODO Try to figure out how to use this to open and close the file.
++	// CFileMgr::OpenFile("");
++
++	if(html.empty())
++	{
++		TRACE("Html template is empty or could not be read.");
++		CFileMgr::SetDir("");
++		return;
++	}
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{TITLE}}",
++           	"Grand Theft Auto Vice City Stats");
++
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{FEH_STA}}",
++           UnicodeToAscii(TheText.Get("FEH_STA")));
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{FES_DAT}}",
++           UnicodeToAscii(TheText.Get("FES_DAT")));
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{DATE}}", date);
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{FES_CMI}}",
++           UnicodeToAscii(TheText.Get("FES_CMI")));
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{LAST_MISSION}}",
++           UnicodeToAscii(lastMission));
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{CRIMRA}}",
++           UnicodeToAscii(TheText.Get("CRIMRA")));
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{RATING_KEY}}",
++           UnicodeToAscii(CStats::FindCriminalRatingString()));
++
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{RATING_NUMBER}}",
++           std::to_string(CStats::FindCriminalRatingNumber()));
++
++	//-----
++	// Stat rows
++	//-----
++	std::string statRows;
++
++	for (int k = 0; k < statLines; ++k) {
++    	CStats::ConstructStatLine(k);
++
++    	char* statKey = UnicodeToAscii(gUString);
++    	char* statValue = UnicodeToAscii(gUString2);
++
++    	std::string key = statKey ? statKey : "";
++    	std::string value = statValue ? statValue : "";
++
++    	for (char& character : value) {
++        	if (character == '_')
++            	character = '\xBA';
++    	}
++
++    	statRows +=
++        	"<tr class=\"stat-row\">"
++        	"<td class=\"stat-name\"><strong>" +
++        	key +
++        	"</strong></td>"
++        	"<td class=\"stat-value\"><strong>" +
++        	value +
++        	"</strong></td>"
++        	"</tr>\n"
++        	"<tr class=\"white-row\"><td colspan=\"2\">&nbsp;</td></tr>\n";
++	}
++
++	//-------
++
++	// Replace the other placeholders here.
++	MiscFunctions::ReplaceExportTemplateVars(html, "{{STAT_ROWS}}", statRows);
++
++	std::ofstream output("stats.html");
++
++	// This should not do anything if it didn't succeed
++	if (!output) {
++		CFileMgr::SetDir("");
++    	return;
++	}
++
++	// Write the final html.
++	output << html;
++	output.close();
++
++#else
++
++
+ 	FILE *htmlFile = fopen("stats.html", "w");
+ 
+ 	// TODO Try and make this read the data from an html file, to make this a bit easier to handle.
+@@ -3865,94 +3974,59 @@ CMenuManager::ExportStats()
+ 		int statLines = CStats::ConstructStatLine(99999);
+ 		fprintf(htmlFile, "<title>Grand Theft Auto Vice City Stats</title>\n");
+ 
+-#ifdef CUSTOM_CODE
+-		// Change this nasty pink color, why would I want this?
+-		fprintf(htmlFile, "<body bgcolor=\"#000000\" leftmargin=\"10\" topmargin=\"10\" 
+-			marginwidth=\"10\" marginheight=\"10\">\n");
+-#else
+-		fprintf(htmlFile, "<body bgcolor=\"#FF00CC\" leftmargin=\"10\" topmargin=\"10\" 
+-			marginwidth=\"10\" marginheight=\"10\">\n");
+-#endif // CUSTOM_CODE - Disable Pink output for HTML.
++// TODO Fix this to work by disabling the pink color and switching it to black.
++// TODO Switch this shit to using external HTML, otherwise it'll just piss me off...
++// I accendentially broke this to where it wouldn't read because I tried to add some spacing to it.
++// This html in the C++ code is so fragile and very easy to screw up the code with.
+ 
++		fprintf(htmlFile, "<body bgcolor=\"#FF00CC\" leftmargin=\"10\" topmargin=\"10\" marginwidth=\"10\" marginheight=\"10\">\n");
+ 		fprintf(htmlFile, "<table width=\"560\" align=\"center\" border=\"0\" cellpadding=\"5\" cellspacing=\"0\">\n");
+-		fprintf(htmlFile, "<tr align=\"center\" valign=\"top\"> \n");
+ 		
+-#ifdef CUSTOM_CODE
+-		fprintf(htmlFile, "<td height=\"59\" colspan=\"2\" 
+-			bgcolor=\"#FFCCFF\">
+-			<div align=\"center\">
+-			<font color=\"#000000\" 
+-			size=\"3\" "
+-			"face=\"Arial, \n");
+-#else
+-		fprintf(htmlFile, "<td height=\"59\" colspan=\"2\" 
+-			bgcolor=\"#FFCCFF\">
+-			<div align=\"center\">
+-			<font color=\"#FF00CC\" 
+-			size=\"3\" "
++		
++		fprintf(htmlFile, "<tr align=\"center\" valign=\"top\"> \n");
++
++		// TODO Copy from below into gamefiles/revc-stat-export-base.html.
++		// I will need to figure out how to use a HTML template system in C++.
++		fprintf(htmlFile, "<td height=\"59\" colspan=\"2\" bgcolor=\"#FFCCFF\"><div align=\"center\"><font color=\"#FF00CC\" size=\"3\" "
+ 			"face=\"Arial, \n");
+-#endif // CUSTOM_CODE - Disable Pink output for HTML.
+ 
+-		fprintf(htmlFile, "Helvetica, sans-serif\">-------------------------------------------------------------------------
+-			</font><font \n");
++		
++		fprintf(htmlFile, "Helvetica, sans-serif\">-------------------------------------------------------------------------</font><font \n");
+ 		fprintf(htmlFile, "size=\"3\" face=\"Arial, Helvetica, sans-serif\"><br>\n");
+ 		fprintf(htmlFile, "<strong><font color=\"#000000\">GRAND THEFT AUTO VICE CITY ");
+-		fprintf(htmlFile, "%s</font></strong><br><font\n", UnicodeToAscii(TheText.Get("FEH_STA")));
+-		
+-#ifdef CUSTOM_CODE
+-		fprintf(htmlFile, "color=\"#000000\">-------------------------------------------------------------------------
+-			</font></font></div></td> </tr>\n");
+-#else
+-		fprintf(htmlFile, "color=\"#FF00CC\">-------------------------------------------------------------------------
+-			</font></font></div></td> </tr>\n");
+ 
+-#endif // CUSTOM_CODE - Disable Pink output for HTML.
+-		
+-		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">     
+-			<td height=\"22\" colspan=\"2\">&nbsp;</td>  </tr>\n");
+-		
++		fprintf(htmlFile, "%s</font></strong><br><font\n", UnicodeToAscii(TheText.Get("FEH_STA")));
++		fprintf(htmlFile, "color=\"#FF00CC\">-------------------------------------------------------------------------</font></font></div></td> </tr>\n");
++		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">     <td height=\"22\" colspan=\"2\">&nbsp;</td>  </tr>\n");
+ 		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
+-		
+ 		fprintf(htmlFile,
+ 			"<td height=\"40\" colspan=\"2\"> <p><font color=\"#00CC00\" size=\"2\" face=\"Arial, Helvetica, sans-serif\">"
+ 			"<strong><font color=\"#009900\" size=\"1\">%s: \n", UnicodeToAscii(TheText.Get("FES_DAT")));
+ 
+ 		fprintf(htmlFile, "%s</font><br>        %s: </strong>", date, UnicodeToAscii(TheText.Get("FES_CMI")));
+-
+ 		fprintf(htmlFile, "%s<strong><br></strong> </font></p></td></tr>\n", UnicodeToAscii(lastMission));
+ 
+ 		fprintf(htmlFile, "<tr align=\"left\" valign=\"top\" bgcolor=\"#CCCCCC\"> <td height=\"5\" colspan=\"2\"></td> </tr> <tr align=\""
+ 			"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
+ 
+-		fprintf(htmlFile, "<td height=\"10\" colspan=\"2\"></td> </tr> 
+-			<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
+-		
+-		fprintf(htmlFile, "<td height=\"20\" colspan=\"2\">
+-			<font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><str"
++		fprintf(htmlFile, "<td height=\"10\" colspan=\"2\"></td> </tr> <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"> \n");
++		fprintf(htmlFile, "<td height=\"20\" colspan=\"2\"><font color=\"#FF00CC\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><str"
+ 			"ong>%s</strong>\n", UnicodeToAscii(TheText.Get("CRIMRA")));
+ 
+-
+-
+ 		UnicodeStrcpy(gUString, CStats::FindCriminalRatingString());
+ 		char *statKey = UnicodeToAscii(gUString);
+ 		int rating = CStats::FindCriminalRatingNumber();
+-		fprintf(htmlFile, "%s (%d)</font></td>  </tr>  
+-			<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"><td height=\"10\" colspan=\""
++		fprintf(htmlFile, "%s (%d)</font></td>  </tr>  <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\"><td height=\"10\" colspan=\""
+ 			"2\"></td>  </tr>\n", statKey, rating);
+ 
+ 		for (int k = 0; k < statLines; ++k) {
+ 			CStats::ConstructStatLine(k);
+ 			statKey = UnicodeToAscii(gUString);
+ 			if (statKey[0] != '\0')
+-				fprintf(htmlFile, "</font></strong></div></td> </tr> 
+-					<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  
+-					<td height=\"10"
++				fprintf(htmlFile, "</font></strong></div></td> </tr> <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  <td height=\"10"
+ 					"\" colspan=\"2\"></td> </tr>\n");
+ 
+-
+-			fprintf(htmlFile, "<tr align=\"left\" valign=\"top\">
+-				<td width=\"500\" height=\"22\" bgcolor=\"#FFCCFF\">
+-				<font color=\"#000000"
++			fprintf(htmlFile, "<tr align=\"left\" valign=\"top\"><td width=\"500\" height=\"22\" bgcolor=\"#FFCCFF\"><font color=\"#FF00CC"
+ 				"\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><strong>\n");
+ 
+ 			if (statKey[0] != '\0')
+@@ -3960,10 +4034,8 @@ CMenuManager::ExportStats()
+ 			else
+ 				fprintf(htmlFile, " ");
+ 
+-			fprintf(htmlFile, "</strong></font></td> 
+-				<td width=\"500\" align=\"right\" valign=\"middle\" bgcolor=\"#FFCCFF\"> 
+-				<div align=\""
+-				"right\"><strong><font color=\"#000000\">\n");
++			fprintf(htmlFile, "</strong></font></td> <td width=\"500\" align=\"right\" valign=\"middle\" bgcolor=\"#FFCCFF\"> <div align=\""
++				"right\"><strong><font color=\"#FF00CC\">\n");
+ 
+ 			char *statValue = UnicodeToAscii(gUString2);
+ 			for (int l = 0; statValue[l] != '\0'; ++l) {
+@@ -3975,28 +4047,28 @@ CMenuManager::ExportStats()
+ 			else
+ 				fprintf(htmlFile, " ");
+ 		}
+-		fprintf(htmlFile, "</font></strong></div></td> </tr> 
+-			<tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  
+-			<td height=\"10\" c"
++
++fprintf(htmlFile, "</font></strong></div></td> </tr> <tr align=\"left\" valign=\"top\" bgcolor=\"#FFFFFF\">  <td height=\"10\" c"
+ 			"olspan=\"2\"></td> </tr>\n");
+ 
+-		fprintf(htmlFile, "</table><br><table width=\"560\" border=\"0\"  align=\"center\" cellspacing=\"0\" 
+-			cellpadding=\"5\"><tr align"
++		fprintf(htmlFile, "</table><br><table width=\"560\" border=\"0\"  align=\"center\" cellspacing=\"0\" cellpadding=\"5\"><tr align"
+ 			"=\"center\" valign=\"middle\" bgcolor=\"#FFCCFF\">");
+-		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, 
+-			sans-serif\"><a href=\"http://www.rockstargam"
++
++		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><a href=\"http://www.rockstargam"
+ 			"es.com/vicecity\">rockstargames.com/vicecity</a></font></td>\n");
+-		
+-		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, 
+-			sans-serif\"><a href=\"http://www.rockstargam"
++
++		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\"><a href=\"http://www.rockstargam"
+ 			"es.com\">rockstargames.com</a></font></td>\n");
+-		
+-			fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\">
+-				&nbsp;<a href=\"http://www.rocks"
++
++		fprintf(htmlFile, "<td><font color=\"#000000\" size=\"2\" face=\"Arial, Helvetica, sans-serif\">&nbsp;<a href=\"http://www.rocks"
+ 			"tarnorth.com\">rockstarnorth.com</a></font></td></tr>\n");
++
+ 		fprintf(htmlFile, "</table>\n</body>\n");
++
+ 	}
+ 	fclose(htmlFile);
++#endif // CUSTOM_CODE - Export stats using html template
++
+ 	CFileMgr::SetDir("");
+ }
+ 
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 682e8b6b..6d4002fa 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -1,7 +1,11 @@
+ #include "pch.h"
+ 
++#include <fstream>
++#include <stdexcept>
++
+ #include "misc_functions.h"
+ 
++
+ #ifdef _IMGUI_TEST
+ #include "misc_menu.h"
+ #include "imgui.h"
+@@ -784,4 +788,51 @@ MiscFunctions::ShowRadarToggle()
+ 
+ 
+ 
+-//---------- End copied from misc_menu.cpp ----------//
+\ No newline at end of file
++//---------- End copied from misc_menu.cpp ----------//
++
++
++/**
++ * Read the export template for Frontend.cpp under CMenuManager::ExportStats()
++ */
++std::string 
++MiscFunctions::ReadStatsExportTemplate(const std::string& filename)
++{
++	std::ifstream file(filename);
++
++	if(!file)
++	{
++		// This shouldn't kill the program, although it may crash.
++		// Just early exit out here.
++		TRACE("[KCNET]: Stat export template could not be read!");
++		return "";
++	}
++
++	std::ostringstream buffer;
++	buffer << file.rdbuf();
++
++	std::string result = buffer.str();
++
++	// TRACE("Read %i bytes from %s.", result.size(), filename);
++
++	return result;
++}
++
++/**
++ * Replace the place holders in the template html file.
++ */
++void
++MiscFunctions::ReplaceExportTemplateVars(
++	std::string& text,
++	const std::string& placeholder,
++	const std::string& replacement
++)
++{
++
++	std::size_t position = 0;
++
++	while((position = text.find(placeholder, position)) != std::string::npos)
++	{
++		text.replace(position, placeholder.length(), replacement);
++		position += replacement.length();
++	}
++}
+\ No newline at end of file
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index 0574042f..b58f94f1 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -46,6 +46,15 @@ public:
+ 	void ShowHudToggle();
+ 	void ShowRadarToggle();
+ 
++	// For exporting the stats with an html base template
++	static std::string ReadStatsExportTemplate(
++		const std::string& filename);
++
++	static void ReplaceExportTemplateVars(
++		std::string& text,
++		const std::string& placeholder,
++		const std::string& replacement);
++
+ 	// Debug texts on screen
+ 	void TogglePositionImGui();
+ 	
+-- 
+2.43.0
+

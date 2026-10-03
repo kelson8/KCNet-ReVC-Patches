@@ -1,0 +1,51 @@
+From b115f3c42ab47e3daf78cb876172aac44c636bdb Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Aug 2026 03:41:12 -0400
+Subject: [PATCH 060/161] fix: Fixed crashing on Debug Functions with ImGui
+ using Linux
+
+---
+ src/extras/menus/misc_menu.cpp | 15 +++++++--------
+ 1 file changed, 7 insertions(+), 8 deletions(-)
+
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 75d1fce6..7c514aef 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -500,19 +500,16 @@ void MiscMenu::MiscTab()
+ 		// DrawKCNetTextBox();
+ 		miscFunctions.DrawKCNetTextBoxImGui();
+ 
+-		// if(ImGui::Checkbox("Draw Version Text", &gbDrawVersionText))
+-		//{
+-		//	// TODO Fix this to not show up if the other texts are active
+-		//	if(!drawKcNetText && !gbDisplayPosn)
+-		//		//toggleVersionText();
+-		//		ToggleVersionText();
+-		// }
+-
++		// TODO Fix for Linux
++		// Disabling this allows me to use this menu on Linux until I switch these over.
++#ifdef _WIN32
+ 		// Show current directory toggle
+ 		miscFunctions.ShowCurrentDirectory();
+ 
+ 		// This works
+ 		imGuiFunctions.OpenCurrentDirectoryButton("Open game directory");
++
++		
+ 		ImGui::SameLine();
+ 
+ 		// TODO Fix this, should open a custom directory.
+@@ -520,6 +517,8 @@ void MiscMenu::MiscTab()
+ 		std::string currentDir = imGuiFunctions.GetCurrentWorkingDirectory() + "/ViceExtended/logs/";
+ 		imGuiFunctions.OpenDirectoryButton(currentDir.c_str(), "Open logs directory");
+ 
++#endif // _WIN32
++
+ 		// Well this shows up but only when the menu is open, if I can get this to change with time
+ 		// and stay up, I could make a basic chaos mod test for random events.
+ 		// It goes away if the menu goes away, I'll probably need to put it somewhere like FrontendIdle, Idle, or DoRWStuffEndOfFrame.
+-- 
+2.43.0
+

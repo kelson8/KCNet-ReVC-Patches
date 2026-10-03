@@ -1,0 +1,670 @@
+From 7e19250497ce5dfaa068f16a8f790c82db9da41b Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 9 Sep 2026 20:48:56 -0400
+Subject: [PATCH 107/161] feat: Add singleton to ped functions
+
+* Move more ped functions out of misc_menu.cpp and into ped_menu.cpp.
+
+* Add some ped objective functions into ped_functions, these were originally in misc_util and I forgot about them so I rebuilt the set objective functions.
+
+* Make ped able to be spawned and removed in ped_menu.cpp.
+
+* Add missing changes to GenericGameStorage.cpp, fixes load and save to not run at all if the scripts are disabled.
+
+* Update changelog, bump version to 1.2.12-3a.
+---
+ Changelog.md                           |  14 ++
+ src/extras/functions/ped_functions.cpp | 232 +++++++++++++++++++++++--
+ src/extras/functions/ped_functions.h   |  16 ++
+ src/extras/menus/misc_menu.cpp         |  37 ----
+ src/extras/menus/ped_menu.cpp          |  50 +++++-
+ src/extras/utils/defines.cpp           |   2 +-
+ src/peds/Ped.h                         |  17 ++
+ src/save/GenericGameStorage.cpp        |  34 +++-
+ 8 files changed, 349 insertions(+), 53 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 7a993176..77da029c 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -446,3 +446,17 @@ feat: Fix ped spawner to work
+ * Add some more ped functions.
+ 
+ * Update changelog, bump version to 1.2.12-2a
++
++### 1.2.12-3a
++
++feat: Add singleton to ped functions
++
++* Move more ped functions out of misc_menu.cpp and into ped_menu.cpp.
++
++* Add some ped objective functions into ped_functions, these were originally in misc_util and I forgot about them so I rebuilt the set objective functions.
++
++* Make ped able to be spawned and removed in ped_menu.cpp.
++
++* Add missing changes to GenericGameStorage.cpp, fixes load and save to not run at all if the scripts are disabled.
++
++* Update changelog, bump version to 1.2.12-3a.
+\ No newline at end of file
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index b6817b6f..124ecce6 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -28,6 +28,11 @@
+ 
+ // https://wiki.gtaconnected.com/File:Model-Ped-VC-12.png
+ 
++PedFunctions::PedFunctions() : m_pCurrentPed(nullptr)
++{
++	// m_bSkipWakeTime = 0;
++}
++
+ /// <summary>
+ /// Run an objective on all peds in the area
+ /// TODO Make this run in a loop somewhere for extra chaos
+@@ -104,11 +109,12 @@ void
+ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+ {
+     // Remove the ped if they already exist
+-    // This doesn't work.
+-    // if(m_pCurrentPed)
+-    // {
+-    //     RemovePed();
+-    // }
++	// This works now, although I may need to debug some crashes.
++    if(m_pCurrentPed)
++    {
++        RemovePed();
++		m_pCurrentPed = nullptr;
++    }
+ 
+ 	// Blank error message for logs.
+ 	std::string errorMsg = "";
+@@ -235,6 +241,10 @@ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+     // Store the currently added ped, they can be removed later on.
+     m_pCurrentPed = ped;
+ 
++	std::string pedStoredMsg = "Ped has been stored, health: " + std::to_string(m_pCurrentPed->m_fHealth);
++
++	TRACE(pedStoredMsg.c_str());
++
+ 	// Release the model after use.
+ 	// CStreaming::SetModelIsDeletable(modelIndex);
+ }
+@@ -242,16 +252,16 @@ PedFunctions::CreatePed(ePedType pedType, uint32 modelIndex)
+ /**
+  * Remove the currently spawned ped if there is one spawned with CreatePed.
+  * 
+- * TODO Fix this to work, it doesn't seem to do anything.
++ * Well now this works with my ped system.
+  */
+ void
+ PedFunctions::RemovePed()
+ {
+-    if(m_pCurrentPed)
+-    {
+-        CWorld::Remove(m_pCurrentPed);
+-        delete m_pCurrentPed;
+-    }
++	if(!m_pCurrentPed)
++		return;
++
++	CWorld::Remove(m_pCurrentPed);
++	m_pCurrentPed = nullptr;
+ }
+ 
+ //--------------
+@@ -344,6 +354,206 @@ PedFunctions::Wait(uint32 waitTime)
+ 	//
+ }
+ 
++//--------------
++// Objectives.
++// TODO Test these, these are all untested and just something I quickly came up with
++// Added in v1.2.12-3a.
++
++// This is mostly just a reimplmentation of these for use with my mod menu and Lua scripts.
++// Since I got ped spawning working and am able to remove them now, I can run other actions on the peds.
++// Not all of these will work or are active in the code I don't think, I just added what I thought I'd use.
++// TODO Look into this timer, I might be able to use it for these
++// SetObjectiveTimer
++//--------------
++
++/**
++ * Set an objective on a ped, this one will just be for peds wandering and other options.
++ * It won't accept more parameters.
++ *
++ * 
++ * @param pedObjective, the objective to set for the ped.
++ * @param ped The ped to set the objective on.
++ */
++void
++PedFunctions::SetObjective(eObjective pedObjective, CPed* ped)
++{
++
++	switch(pedObjective)
++	{
++		case OBJECTIVE_WANDER:
++		case OBJECTIVE_WAIT_ON_FOOT:
++		case OBJECTIVE_WAIT_ON_FOOT_FOR_COP:
++		case OBJECTIVE_SET_LEADER:
++			ped->SetObjective(pedObjective);
++		break;
++	}
++		
++}
++
++/**
++ * Set a vehicle objective on a ped
++ * TODO Implement some of these.
++ * 
++ * @param pedObjective, the objective to set for the ped.
++ * @param ped The ped to set the objective on.
++ * @param  vehicle The vehicle to use for the objective.
++ */
++void
++PedFunctions::SetObjective(eObjective pedObjective, CPed* ped, CVehicle* vehicle)
++{
++	switch(pedObjective)
++	{
++		case OBJECTIVE_FLEE_CAR:
++			ped->SetObjective(OBJECTIVE_FLEE_CAR, vehicle);
++			break;
++
++		case OBJECTIVE_LEAVE_CAR:
++			ped->SetObjective(OBJECTIVE_LEAVE_CAR, vehicle);
++			break;
++
++
++		// case OBJECTIVE_WAIT_IN_CAR_THEN_GET_OUT:
++			// break;
++
++		case OBJECTIVE_ENTER_CAR_AS_DRIVER:
++			ped->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, vehicle);
++			break;
++		
++		case OBJECTIVE_ENTER_CAR_AS_PASSENGER:
++			ped->SetObjective(OBJECTIVE_ENTER_CAR_AS_PASSENGER, vehicle);
++			break;
++	
++		// case OBJECTIVE_FOLLOW_CAR_IN_CAR:
++
++		// case OBJECTIVE_WAIT_IN_CAR:
++			// break;
++
++		// case OBJECTIVE_FOLLOW_ROUTE:
++		// 	break;
++
++		// case OBJECTIVE_FOLLOW_CHAR_IN_FORMATION:
++		// case OBJECTIVE_FOLLOW_CAR_ON_FOOT_WITH_OFFSET:
++
++		case OBJECTIVE_STEAL_ANY_CAR:
++			ped->SetObjective(OBJECTIVE_STEAL_ANY_CAR);
++			break;
++
++		case OBJECTIVE_LEAVE_CAR_AND_DIE:
++			ped->SetObjective(OBJECTIVE_LEAVE_CAR_AND_DIE, vehicle);
++			break;
++
++		case OBJECTIVE_DESTROY_CAR:
++			ped->SetObjective(OBJECTIVE_DESTROY_CAR, vehicle);
++			break;
++	}
++}
++
++/**
++ * Set a go to position objective on a ped, make them go to a specific position.
++ * 
++ * @param pedObjective, the objective to set for the ped.
++ * @param ped The ped to set the objective on.
++ * @param pos The position to go to.
++ */
++void
++PedFunctions::SetObjective(eObjective posObjective, CPed *ped, CVector *pos)
++{
++	switch(posObjective)
++	{
++		case OBJECTIVE_GOTO_AREA_ANY_MEANS:
++			ped->SetObjective(OBJECTIVE_GOTO_AREA_ANY_MEANS, pos);
++			break;
++
++		// case OBJECTIVE_GOTO_AREA_IN_CAR:
++			// break;
++		// case OBJECTIVE_GOTO_ATM_ON_FOOT:
++			// break;
++
++		// case OBJECTIVE_GOTO_CHAR_ON_FOOT_WALKING:
++			// break;
++
++		case OBJECTIVE_GOTO_AREA_ON_FOOT:
++			ped->SetObjective(OBJECTIVE_GOTO_AREA_ON_FOOT, pos);
++			break;
++
++		// This one is active in PedAI.cpp.
++		case OBJECTIVE_GUARD_SPOT:
++			ped->SetObjective(OBJECTIVE_GUARD_SPOT, pos);
++			break;
++
++		// Not sure if this one is used.
++		// case OBJECTIVE_GUARD_AREA:
++
++		case OBJECTIVE_RUN_TO_AREA:
++			ped->SetObjective(OBJECTIVE_RUN_TO_AREA, pos);
++			break;
++		case OBJECTIVE_SPRINT_TO_AREA:
++			ped->SetObjective(OBJECTIVE_SPRINT_TO_AREA, pos);
++			break;
++
++		// I probably won't use these.
++		// case OBJECTIVE_GOTO_SEAT_ON_FOOT:
++		// case OBJECTIVE_GOTO_PIZZA_ON_FOOT:
++		// case OBJECTIVE_GOTO_SHELTER_ON_FOOT:
++		// case OBJECTIVE_GOTO_BUS_STOP_ON_FOOT:
++		// case OBJECTIVE_GOTO_ICE_CREAM_VAN_ON_FOOT
++
++		break;
++	}
++}
++
++/**
++ * Set a weapon objective on the ped, such as making them aim at the player
++ * @param pedObjective, the objective to set for the ped.
++ * @param ped The ped to set the objective on.
++ * @param target The target to attack, aim at or whatever.
++ */
++void
++PedFunctions::SetObjective(eObjective pedObjective, CPed *ped, CPed *target)
++{
++	switch(pedObjective)
++	{
++		case OBJECTIVE_AIM_GUN_AT:
++			ped->SetObjective(OBJECTIVE_AIM_GUN_AT, target);
++			break;
++
++		case OBJECTIVE_KILL_CHAR_ON_FOOT:
++			ped->SetObjective(OBJECTIVE_KILL_CHAR_ON_FOOT, target);
++			break;
++
++		case OBJECTIVE_KILL_CHAR_ANY_MEANS:
++			ped->SetObjective(OBJECTIVE_KILL_CHAR_ANY_MEANS, target);
++			break;
++
++		case OBJECTIVE_FLEE_CHAR_ON_FOOT_TILL_SAFE:
++			ped->SetObjective(OBJECTIVE_FLEE_CHAR_ON_FOOT_TILL_SAFE, target);
++			break;
++
++		case OBJECTIVE_FLEE_CHAR_ON_FOOT_ALWAYS:
++			ped->SetObjective(OBJECTIVE_FLEE_CHAR_ON_FOOT_ALWAYS, target);
++			break;
++
++		case OBJECTIVE_GOTO_CHAR_ON_FOOT:
++			ped->SetObjective(OBJECTIVE_GOTO_CHAR_ON_FOOT, target);
++			break;
++
++		case OBJECTIVE_GOTO_CHAR_ON_FOOT_WALKING:
++			ped->SetObjective(OBJECTIVE_GOTO_CHAR_ON_FOOT_WALKING, target);
++			break;
++
++		case OBJECTIVE_HASSLE_CHAR:
++			ped->SetObjective(OBJECTIVE_HASSLE_CHAR, target);
++			break;
++
++		// case OBJECTIVE_FOLLOW_CHAR_IN_FORMATION:
++			// break;
++	}
++	
++
++}
++
++
++
+ /*
+ 
+         case COMMAND_DELETE_CHAR:
+diff --git a/src/extras/functions/ped_functions.h b/src/extras/functions/ped_functions.h
+index d47b0026..f4efad6f 100644
+--- a/src/extras/functions/ped_functions.h
++++ b/src/extras/functions/ped_functions.h
+@@ -10,6 +10,14 @@
+ class PedFunctions
+ {
+ public:
++
++	// Singleton
++	static PedFunctions &GetInstance()
++	{
++		static PedFunctions instance; // Static instance created once
++		return instance;
++	}
++
+ 	void CreatePed(ePedType pedType, uint32 modelIndex);
+ 	void RemovePed();
+ 
+@@ -28,8 +36,16 @@ public:
+ 
+ 	void Wait(uint32 waitTime);
+ 
++	void SetObjective(eObjective pedObjective, CPed* ped);
++	void SetObjective(eObjective pedObjective, CPed* ped, CVehicle* vehicle);
++	void SetObjective(eObjective posObjective, CPed *ped, CVector *pos);
++	void SetObjective(eObjective pedObjective, CPed *ped, CPed *target);
++
+ 
+ private:
++
++	PedFunctions();
++
+ 	int m_nWakeTime;
+ 	bool m_bSkipWakeTime;
+ 
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index 3bfcabca..be5a5c6c 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -24,8 +24,6 @@
+ #include "log_functions.h"
+ #include "misc_functions.h"
+ 
+-// Spawning a ped so far, doesn't work.
+-#include "ped_functions.h"
+ #include "ini_functions.h"
+ 
+ // ImGui command system
+@@ -425,7 +423,6 @@ loadAndLaunchMissionInternal()
+ //----------- Misc tab ----------//
+ void MiscMenu::MiscTab()
+ {
+-	PedFunctions pedFunctions = PedFunctions();
+ 	CControllerConfigManager cControllerConfigManager = CControllerConfigManager();
+ #ifdef TOML_TEST
+ 	TomlImGui tomlImgui = TomlImGui();
+@@ -712,40 +709,6 @@ void MiscMenu::MiscTab()
+ 
+ 	IMGUI_END_DISABLED();
+ 
+-
+-	//---------------
+-	// Ped stuff
+-	//---------------
+-
+-	ImGui::Separator();
+-
+-	if(ImGui::CollapsingHeader("Ped stuff")) {
+-		ImGui::Separator();
+-
+-		ImGui::Text("I will be testing running stuff on multiple peds at once.");
+-		if(ImGui::Button("Kill peds in area")) 
+-		{
+-			miscUtil.KillAllPedsInArea();
+-		}
+-
+-		ImGui::Text("Misc ped testing");
+-		if (ImGui::Button("Ped test")) 
+-		{ 
+-			miscUtil.TestPedFeatures();
+-		}
+-
+-
+-		ImGui::Text("Objective testing");
+-		// TODO Setup checkbox for toggling this value
+-		
+-		IMGUITEXT("Give peds in area weapons.");
+-		IMGUITEXT("Set the peds in the area to kill player.");
+-		if (ImGui::Button("Set objective #1")) 
+-		{
+-			pedFunctions.PedObjectiveTest(true, true);
+-		}
+-	}
+-
+ 	//
+ 
+ 	ImGui::Separator();
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index ba79a022..eb004046 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -3,6 +3,7 @@
+ #ifdef _IMGUI_TEST
+ 
+ #include "ped_menu.h"
++#include "misc_util.h"
+ 
+ #include "imgui.h"
+ 
+@@ -43,7 +44,8 @@
+ void
+ PedMenu::PedTab()
+ {
+-	PedFunctions pedFunctions = PedFunctions();
++	PedFunctions &pedFunctions = PedFunctions::GetInstance();
++	MiscUtil miscUtil = MiscUtil();
+ 
+ 	//----------- Ped Spawning -----------//
+ 	// I got this working now!
+@@ -58,17 +60,61 @@ PedMenu::PedTab()
+ 	ImGui::Text("Spawn a ped near your position.");
+ 	if(ImGui::Button("Spawn ped")) { 
+ 		// pedFunctions.CreatePed(PEDTYPE_CRIMINAL, MI_BFOBE);
++		// pedFunctions.CreatePed(PEDTYPE_CIVMALE, MI_BFOBE);
+ 		pedFunctions.CreatePed(PEDTYPE_CIVMALE, MI_BFOBE);
+ 
+ 		// pedFunctions.CreatePed(PEDTYPE_FIREMAN, MI_FIREMAN);
+ 	}
+ 
++	// I got this working, for some reason my PedFunctions class didn't have a singleton so it wasn't working.
+ 	ImGui::Text("Remove the previously spawned ped.");
+-	ImGui::Text("Currently broken.");
+ 	if(ImGui::Button("Remove ped"))
+ 	{
+ 		pedFunctions.RemovePed();
+ 	}
++
++	ImGui::Text("Run objective on ped");
++	if(ImGui::Button("Objective Test"))
++	{
++		// miscUtil
++		pedFunctions.SetObjective();
++	}
++
++
++
++	//---------------
++	// Ped stuff
++	// From misc_menu.cpp
++	//---------------
++
++	ImGui::Separator();
++
++	if(ImGui::CollapsingHeader("Ped stuff")) {
++		ImGui::Separator();
++
++		ImGui::Text("I will be testing running stuff on multiple peds at once.");
++		if(ImGui::Button("Kill peds in area")) 
++		{
++			miscUtil.KillAllPedsInArea();
++		}
++
++		ImGui::Text("Misc ped testing");
++		if (ImGui::Button("Ped test")) 
++		{ 
++			miscUtil.TestPedFeatures();
++		}
++
++
++		ImGui::Text("Objective testing");
++		// TODO Setup checkbox for toggling this value
++		
++		ImGui::Text("Give peds in area weapons.");
++		ImGui::Text("Set the peds in the area to kill player.");
++		if (ImGui::Button("Set objective #1")) 
++		{
++			pedFunctions.PedObjectiveTest(true, true);
++		}
++	}
+ }
+ 
+ #endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 3c4430f4..2aa06b17 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-2a";
++std::string Defines::programVersion = "1.2.12-3a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/peds/Ped.h b/src/peds/Ped.h
+index 26cdf03f..d81dd986 100644
+--- a/src/peds/Ped.h
++++ b/src/peds/Ped.h
+@@ -192,55 +192,72 @@ enum eObjective {
+ 	OBJECTIVE_WAIT_ON_FOOT,
+ 	OBJECTIVE_WAIT_ON_FOOT_FOR_COP,
+ 	OBJECTIVE_FLEE_ON_FOOT_TILL_SAFE,
++
+ 	OBJECTIVE_GUARD_SPOT,
+ 	OBJECTIVE_GUARD_AREA,
+ 	OBJECTIVE_WAIT_IN_CAR,
++
+ 	OBJECTIVE_WAIT_IN_CAR_THEN_GET_OUT,
+ 	OBJECTIVE_KILL_CHAR_ON_FOOT,
+ 	OBJECTIVE_KILL_CHAR_ANY_MEANS,
++
+ 	OBJECTIVE_FLEE_CHAR_ON_FOOT_TILL_SAFE,
+ 	OBJECTIVE_FLEE_CHAR_ON_FOOT_ALWAYS,
+ 	OBJECTIVE_GOTO_CHAR_ON_FOOT,
++
+ 	OBJECTIVE_GOTO_CHAR_ON_FOOT_WALKING,
+ 	OBJECTIVE_HASSLE_CHAR,
+ 	OBJECTIVE_FOLLOW_CHAR_IN_FORMATION,
++
+ 	OBJECTIVE_LEAVE_CAR,
+ 	OBJECTIVE_ENTER_CAR_AS_PASSENGER,
+ 	OBJECTIVE_ENTER_CAR_AS_DRIVER,
++
+ 	OBJECTIVE_FOLLOW_CAR_IN_CAR,
+ 	OBJECTIVE_FIRE_AT_OBJECT_FROM_VEHICLE,
+ 	OBJECTIVE_DESTROY_OBJECT,
++
+ 	OBJECTIVE_DESTROY_CAR,
+ 	OBJECTIVE_GOTO_AREA_ANY_MEANS,
+ 	OBJECTIVE_GOTO_AREA_ON_FOOT,
++
+ 	OBJECTIVE_RUN_TO_AREA,
+ 	OBJECTIVE_GOTO_AREA_IN_CAR,
+ 	OBJECTIVE_FOLLOW_CAR_ON_FOOT_WITH_OFFSET,
+ 	OBJECTIVE_GUARD_ATTACK,
++
+ 	OBJECTIVE_SET_LEADER,
+ 	OBJECTIVE_FOLLOW_ROUTE,
+ 	OBJECTIVE_SOLICIT_VEHICLE,
++
+ 	OBJECTIVE_HAIL_TAXI,
+ 	OBJECTIVE_CATCH_TRAIN,
+ 	OBJECTIVE_BUY_ICE_CREAM,
++
+ 	OBJECTIVE_STEAL_ANY_CAR,
+ 	OBJECTIVE_STEAL_ANY_MISSION_CAR,
+ 	OBJECTIVE_MUG_CHAR,
++
+ 	OBJECTIVE_LEAVE_CAR_AND_DIE,
+ 	OBJECTIVE_GOTO_SEAT_ON_FOOT,
+ 	OBJECTIVE_GOTO_ATM_ON_FOOT,
++
+ 	OBJECTIVE_FLEE_CAR,
+ 	OBJECTIVE_SUN_BATHE,
+ 	OBJECTIVE_GOTO_BUS_STOP_ON_FOOT,
++
+ 	OBJECTIVE_GOTO_PIZZA_ON_FOOT,
+ 	OBJECTIVE_GOTO_SHELTER_ON_FOOT,
+ 	OBJECTIVE_AIM_GUN_AT,
++
+ 	OBJECTIVE_WANDER,
+ 	OBJECTIVE_WAIT_ON_FOOT_AT_SHELTER,
+ 	OBJECTIVE_SPRINT_TO_AREA,
++
+ 	OBJECTIVE_KILL_CHAR_ON_BOAT,
+ 	OBJECTIVE_SOLICIT_FOOT,
+ 	OBJECTIVE_WAIT_ON_FOOT_AT_BUS_STOP,
++	
+ 	OBJECTIVE_GOTO_ICE_CREAM_VAN_ON_FOOT,
+ 	OBJECTIVE_WAIT_ON_FOOT_AT_ICE_CREAM_VAN,
+ 	OBJ_55,
+diff --git a/src/save/GenericGameStorage.cpp b/src/save/GenericGameStorage.cpp
+index 5a655582..a7d90ac2 100644
+--- a/src/save/GenericGameStorage.cpp
++++ b/src/save/GenericGameStorage.cpp
+@@ -161,10 +161,18 @@ GenericSave(int file)
+ 	// WriteSaveDataBlock(CStats::SaveStats, "StatsSize");
+ 	
+ 	//
++
++	// Save the weather
++	// WriteDataToBufferPointer(buf, CWeather::OldWeatherType);
++	// WriteDataToBufferPointer(buf, CWeather::NewWeatherType);
++	// WriteDataToBufferPointer(buf, CWeather::ForcedWeatherType);
++	// WriteDataToBufferPointer(buf, CWeather::WeatherTypeInList);
++	// 
+ 	
+ 	return true;
+-#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
++	// Always disable saving code below, to prevent it from running.
++#else
+ 
+ 	uint8 *buf, *presize, *postsize;
+ 	uint32 size;
+@@ -320,6 +328,9 @@ GenericSave(int file)
+ 
+ 	CPad::FixPadsAfterSave();	
+ 	return true;
++
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ }
+ 
+ bool
+@@ -328,8 +339,24 @@ GenericLoad()
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	// TODO Fix this to disable loading of the game if enabled in the ini.
+ 	// Early exit out of this, game scripts are disabled and this will crash.
++
++	// TODO Make this load just a couple of values and the stats to a freeroam-game-save.json or something.
++	// Look into GenericSave, I have a starting point for doing this.
++	// Once I figure out how to read/write to a json file I'll work on implementing this.
++	
++	// Oh this seems to be what loads the variables from the scripts also.
++	// The LoadAllScripts function is in here.
++
++	// TODO Test this here, should possibly spawn a vehicle? This will need moved elsewhere.
++	// This breaks the new game if set here, I cannot press F5 to restart the script or press new game without crashing.
++	// LuaTest::GetInstance().SetupFreeroamScript();
++	
++
+ 	return true;
+-#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
++	// Always disable saving code below, to prevent it from running.
++#else
++
+ 
+ 	uint8 *buf;
+ 	int32 file;
+@@ -485,6 +512,9 @@ GenericLoad()
+ 	DoGameSpecificStuffAfterSucessLoad();
+ 	debug("Game successfully loaded \n");
+ 	return true;
++
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ }
+ 
+ bool
+-- 
+2.43.0
+

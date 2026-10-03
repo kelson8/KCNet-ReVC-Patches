@@ -1,0 +1,657 @@
+From e65c1d14625f2758f3f26dbf4b10b5703a589a66 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Tue, 8 Sep 2026 04:33:14 -0400
+Subject: [PATCH 101/161] feat: Add custom text to main.cpp for KCNet freeroam
+
+* Now when DISABLE_GAME_SCRIPTS is toggled, my ReVC build will display 'KCNet - Freeroam' at the top left.
+
+* Add lua_font.cpp/.h for later font testing, this isn't currently in use but I will draw to the screen with my OnTick functions later once I get this working.
+
+* Make game position display with my custom text enabled.
+
+* Add vehicle frozen toggle to lua scripts.
+
+* Add test function to run on all peds in lua scripts, world.set_ped_objectives(), this is now setup to make all peds get weapons and shoot the player.
+
+* Update changelog.md, bump version to 1.2.11-2a.
+---
+ Changelog.md                     |  18 ++++
+ src/core/main.cpp                |  26 ++++-
+ src/extras/lua/lua_font.cpp      | 175 +++++++++++++++++++++++++++++++
+ src/extras/lua/lua_font.h        |  28 +++++
+ src/extras/lua/lua_game.cpp      |   6 ++
+ src/extras/lua/lua_test.cpp      |  15 +++
+ src/extras/lua/lua_vehicle.cpp   |  29 +++++
+ src/extras/lua/lua_vehicle.h     |   2 +
+ src/extras/lua/lua_world.cpp     |  84 +++++++++++++++
+ src/extras/lua/lua_world.h       |   2 +
+ src/extras/utils/defines.cpp     |   2 +-
+ src/extras/utils/fast_loader.cpp |   1 +
+ src/extras/utils/misc_util.cpp   |   8 +-
+ 13 files changed, 388 insertions(+), 8 deletions(-)
+ create mode 100644 src/extras/lua/lua_font.cpp
+ create mode 100644 src/extras/lua/lua_font.h
+
+diff --git a/Changelog.md b/Changelog.md
+index e0672069..fdcc1f3d 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -356,3 +356,21 @@ Other changes:
+ * Make busted and wasted time to pass variable be obtained from my busted and wasted event scripts in lua.
+ 
+ * Update changelog, bump version to 1.2.11-1a.
++
++### 1.2.11-2a
++
++feat: Add custom text to main.cpp for KCNet freeroam
++
++* Now when DISABLE_GAME_SCRIPTS is toggled, my ReVC build will display 'KCNet - Freeroam' at the top left.
++
++* Add lua_font.cpp/.h for later font testing, this isn't currently in use but I will draw to the screen with my OnTick functions later once I get this working.
++
++* Make game position display with my custom text enabled.
++
++* Add global in `freeroam-game.lua` to enable or disable the position display, named `gbDisplayPosn` just like in the C++ code.
++
++* Add vehicle frozen toggle to lua scripts.
++
++* Add test function to run on all peds in lua scripts, world.set_ped_objectives(), this is now setup to make all peds get weapons and shoot the player.
++
++* Update changelog.md, bump version to 1.2.11-2a.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index c962e3eb..7b2c026f 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -170,7 +170,7 @@ uint8 gbGameSaveOnStartup = 0;
+ #endif
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+-bool gbReloadLuaScriptWithKeybind;
++bool gbReloadLuaScriptWithKeybind = true;
+ #endif // DISABLE_GAME_SCRIPTS - Reload lua game scripts toggle 
+ 
+ //--------
+@@ -1306,14 +1306,17 @@ DisplayGameDebugText()
+ 
+ 	const char* customScriptMsg = "KCNet - Freeroam";
+ 	AsciiToUnicode(customScriptMsg, customScriptMsgBuf);
++	
+ 	CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.5f));
+ 	CFont::SetPropOn();
+ 	CFont::SetBackgroundOff();
+ 	CFont::SetFontStyle(FONT_STANDARD);
++
+ 	CFont::SetCentreOff();
+ 	CFont::SetRightJustifyOff();
+ 	CFont::SetWrapx(SCREEN_WIDTH);
+ 	CFont::SetJustifyOff();
++
+ 	CFont::SetBackGroundOnlyTextOff();
+ 	CFont::SetColor(CRGBA(255, 108, 0, 255));
+ 	CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(10.0f), customScriptMsgBuf);
+@@ -1363,20 +1366,34 @@ DisplayGameDebugText()
+ 		
+ 		CFont::SetPropOn();
+ 		CFont::SetBackgroundOff();
++
+ 		CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
+ 		CFont::SetCentreOff();
++
+ 		CFont::SetRightJustifyOff();
+ 		CFont::SetJustifyOff();
+ 		CFont::SetBackGroundOnlyTextOff();
++
+ 		CFont::SetWrapx(SCREEN_STRETCH_X(DEFAULT_SCREEN_WIDTH));
+ 		CFont::SetFontStyle(FONT_STANDARD);
+ 		CFont::SetDropColor(CRGBA(0, 0, 0, 255));
+ 		CFont::SetDropShadowPosition(2);
++
+ 		CFont::SetColor(CRGBA(0, 0, 0, 255));
++
++#ifdef DISABLE_GAME_SCRIPTS
++		CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(20.0f), ustr);
++#else
+ 		CFont::PrintString(41.0f, 41.0f, ustr);
+-		
++	
++#endif // - Move the position text to be under my KCNet - Freeroam text.
+ 		CFont::SetColor(CRGBA(205, 205, 0, 255));
++
++#ifdef DISABLE_GAME_SCRIPTS
++		CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(20.0f), ustr);
++#else
+ 		CFont::PrintString(40.0f, 40.0f, ustr);
++#endif // - Move the position text to be under my KCNet - Freeroam text.
+ 	}
+ 
+ 	// custom
+@@ -1814,7 +1831,9 @@ Idle(void *arg)
+ #endif
+ 
+ 		RenderDebugShit();
+-		RenderEffects();
++
++		// Render most effects for the game.
++		// RenderEffects();
+ 
+ 		if((TheCamera.m_BlurType == MOTION_BLUR_NONE || TheCamera.m_BlurType == MOTION_BLUR_LIGHT_SCENE) &&
+ 		   TheCamera.m_ScreenReductionPercentage > 0.0f)
+@@ -1826,6 +1845,7 @@ Idle(void *arg)
+ 		ScreenDroplets::Render();
+ #endif
+ 
++		// TODO Look into this timer variable, I might be able to use it in my lua scripts later.
+ 		tbStartTimer(0, "RenderMotionBlur");
+ 		TheCamera.RenderMotionBlur();
+ 		tbEndTimer("RenderMotionBlur");
+diff --git a/src/extras/lua/lua_font.cpp b/src/extras/lua/lua_font.cpp
+new file mode 100644
+index 00000000..ccad3303
+--- /dev/null
++++ b/src/extras/lua/lua_font.cpp
+@@ -0,0 +1,175 @@
++#include "pch.h"
++
++#ifdef LUA_TEST
++
++#include "lua_font.h"
++#include "Font.h"
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++#include "vehicle_functions.h"
++
++//-----------------------
++// Font options
++// TODO Implement most of the font functions and setup drawing to the screen in my OnTick function in lua.
++// This might be fun.
++// None of these below are tested, they are here for later use.
++//-----------------------
++
++// TODO Add below list of functions for lua to use
++
++// TODO Implement these remaning functions
++/**
++ * 
++ * AsciiToUnicode
++ * 
++ * SetCentreOff/On
++ * SetRightJustifyOff/On
++ * SetJustifyOff/On
++ * SetBackgroundOnlyTextOff/On
++ * SetColor
++ * PrintString
++ */
++
++/**
++	AsciiToUnicode(customScriptMsg, customScriptMsgBuf);
++	
++	CFont::SetCentreOff();
++	CFont::SetRightJustifyOff();
++	CFont::SetWrapx(SCREEN_WIDTH);
++	CFont::SetJustifyOff();
++
++	CFont::SetColor(CRGBA(255, 108, 0, 255));
++	CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(10.0f), customScriptMsgBuf);
++	
++ */
++
++// clang-format off
++extern "C"
++{
++
++	/**
++	 * Register the lua font functions namespace
++	 * 
++	 */
++	void RegisterFontFunctionsLua(lua_State* L)
++	{
++		lua_newtable(L); // Stack: font table
++
++		// Setup the font.
++		lua_pushcfunction(L, setFontScaleLua);
++		lua_setfield(L, -2, "set_text_scale");
++
++		// Set the text....
++		// lua_pushcfunction(L, toggleVehicleFrozenLua);
++		// lua_setfield(L, -2, "freeze_position");
++
++		// Font namespace
++		lua_setglobal(L, "vehicle");
++	}
++
++	/**
++	 * Set the scale for the text
++     * TODO Test this
++	 * 
++	 * Usage:
++	 * Param 1 The font to set the scale for.
++     * Param 2 The scale for the font.
++	 * font.set_scale(font, scale)
++	 */
++	int 
++	setFontScaleLua(lua_State *L)
++	{
++        float textScaleX = static_cast<float>(lua_tointeger(L, 1));
++        float textScaleY = static_cast<float>(lua_tointeger(L, 2));
++	
++        if (!textScaleX, textScaleY)
++        {
++    	    return luaL_error(L, "font.set_scale requires these values: font.set_text_scale(font, scale)" );
++	    }
++
++        CFont::SetScale(textScaleX, textScaleY);
++
++		return 1;
++	}
++
++    /**
++     * Set the text prop for the fonts, takes a boolean parameter.
++     * 
++     * Usage:
++     * font.set_prop(true)
++     */
++    int
++    setFontPropLua(lua_State *L)
++    {
++        const bool value = lua_toboolean(L, 1) != 0;
++        if(value)
++        {
++            CFont::SetPropOn();
++        } else 
++        {
++            CFont::SetPropOff();
++        }
++
++        return 1;
++    }
++
++    /**
++     * Set the font style in lua.
++     * 
++     * Values for font
++     * 0 = FONT_BANK
++     * 1 = FONT_STANDARD
++     * 2 = FONT_HEADING
++     * Usage:
++     * font.set_style(0)
++     */
++    int
++    setFontStyleLua(lua_State *L)
++    {
++        int fontStyle = lua_tointeger(L, 1);
++        
++        if(!fontStyle)
++        {
++            return luaL_error(L, "font.set_style requires a number!");
++        }
++
++        if(fontStyle < FONT_BANK || fontStyle > FONT_HEADING)
++        {
++            return luaL_error(L, "font.set_style requires a font style of either 0, 1, or 2.");
++        }
++
++        return 1;
++    }
++
++    /**
++     * Set if the font has a background in lua.
++     * 
++     * Usage:
++     * font.set_background(true)
++     */
++    int
++    setFontBackgroundLua(lua_State *L)
++    {
++        const bool fontBackground = lua_toboolean(L, 1) != 0;
++
++        if(fontBackground)
++        {
++            CFont::SetBackgroundOn();
++        } 
++        else 
++        {
++            CFont::SetBackgroundOff();
++        }
++        return 1;
++    }
++
++}
++
++
++#endif // LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_font.h b/src/extras/lua/lua_font.h
+new file mode 100644
+index 00000000..f87026d3
+--- /dev/null
++++ b/src/extras/lua/lua_font.h
+@@ -0,0 +1,28 @@
++#pragma once
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++// clang-format off
++#ifdef __cplusplus
++extern "C" {
++#endif
++	//------------- Font ------------//
++	extern void RegisterFontFunctionsLua(lua_State* L);
++
++	extern int setFontScaleLua(lua_State *L);
++    extern int setFontPropLua(lua_State *L);
++
++    extern int setFontStyleLua(lua_State *L);
++    extern int setFontBackgroundLua(lua_State *L);
++
++
++#ifdef __cplusplus
++}
++#endif
++
++// clang-format on
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index e870bb6a..685a4c51 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -157,6 +157,11 @@ cheatCodesLua(lua_State *L)
+             // currentVeh->m_vecMoveSpeed = 0.0f;
+             // Turn off the engine
+             currentVeh->bEngineOn = false;
++
++			// Well, the FREEZE_CAR_POSITION command uses this so it might disable the vehicle movement.
++			// This works for freezing the vehicle in place!
++			// This will be fun for a chaos feature to randomly run on a tick.
++			currentVeh->bIsFrozen = true;
+ 		}
+ 
+ 	} else if(cheatString == "KILLME") {
+@@ -344,6 +349,7 @@ int setTimeScaleLua(lua_State *L)
+ {
+ 	float newTimeScale = static_cast<float>(lua_tointeger(L, 1));
+ 
++	// TODO Why doesn't this work?
+ 	if (!newTimeScale)
+     {
+     	return luaL_error(L, "game.set_time_scale missing argument, number required for the time scale." );
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 21dc0fb5..1db77670 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -862,6 +862,11 @@ LuaTest::SetupFreeroamScript()
+ 			// This one might work...
+ 			// CGame::ShutDown();
+ 
++			// I found this somewhere, it should actually exit...
++			// This still doesn't cleanly exit.
++			// It must be because of my fast loader.
++			// HandleExit();
++
+ 			// Possibly start the shutdown, seems to fire off CGame::Shutdown() in glfw.cpp.
+ 			// gGameState == GS_PLAYING_GAME;
+ 			// Stop the game from ever even loading..
+@@ -950,6 +955,16 @@ LuaTest::SetupFreeroamScript()
+ 		}
+ 
+ 		lua_pop(m_luaVM, 1);
++
++		//------
++		// If the position debug text is drawn on the screen.
++		//------
++
++		lua_getglobal(m_luaVM, "gbDisplayPosn");
++		if(lua_isboolean(m_luaVM, -1)) {
++			bool shouldDisplayPosition = static_cast<float>(lua_toboolean(m_luaVM, -1));
++			gbDisplayPosn = shouldDisplayPosition;
++		}
+ 	}
+ }
+ 
+diff --git a/src/extras/lua/lua_vehicle.cpp b/src/extras/lua/lua_vehicle.cpp
+index 0fc9aa1c..4021b0cc 100644
+--- a/src/extras/lua/lua_vehicle.cpp
++++ b/src/extras/lua/lua_vehicle.cpp
+@@ -31,9 +31,14 @@ extern "C"
+ 	{
+ 		lua_newtable(L); // Stack: vehicle table
+ 
++		// Create the vehicle.
+ 		lua_pushcfunction(L, createVehicleLua);
+ 		lua_setfield(L, -2, "create");
+ 
++		// Toggle the current vehicles position being frozen.
++		lua_pushcfunction(L, toggleVehicleFrozenLua);
++		lua_setfield(L, -2, "freeze_position");
++
+ 		// Vehicle namespace
+ 		lua_setglobal(L, "vehicle");
+ 	}
+@@ -116,6 +121,30 @@ extern "C"
+ 
+ 		return 0;
+ 	}
++
++	/**
++	 * Toggle if the vehicle is frozen
++	 * 
++	 * Usage in lua:
++	 * Param 1 - Booean: If the car is frozen or not
++	 * vehicle.freeze_car_position()
++	 */
++	int 
++	toggleVehicleFrozenLua(lua_State *L)
++	{
++		VehicleFunctions vehicleFunctions;
++		if(!lua_isboolean(L, -1)) {
++		}
++			
++		bool toggle = static_cast<float>(lua_toboolean(L, -1));
++		if(vehicleFunctions.IsPlayerInVehicle())
++		{
++			FindPlayerPed()->m_pMyVehicle->bIsFrozen = toggle;
++		}
++
++		return 1;
++	}
++
+ }
+ 
+ 
+diff --git a/src/extras/lua/lua_vehicle.h b/src/extras/lua/lua_vehicle.h
+index 70aaa5b3..48856913 100644
+--- a/src/extras/lua/lua_vehicle.h
++++ b/src/extras/lua/lua_vehicle.h
+@@ -15,6 +15,8 @@ extern "C" {
+ 	extern void RegisterVehicleFunctionsLua(lua_State* L);
+ 	extern int createVehicleLua(lua_State *L);
+ 
++	extern int toggleVehicleFrozenLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 3bf1f976..e8701c0b 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -24,6 +24,8 @@
+ #include "vehicle_functions.h"
+ 
+ // VC Specific
++#include "Streaming.h"
++#include "Pools.h"
+ //#include "Hud.h"
+ //#include "Radar.h"
+ //#include "Text.h"
+@@ -83,6 +85,12 @@ extern "C"
+ 		lua_pushcfunction(L, unlockDoorsInAreaLua);
+ 		lua_setfield(L, -2, "unlock_all_car_doors_in_area");
+ 
++		// TODO Fix this to actually set the objectives, for now this is just a ped test function.
++		// Currently, this takes no parameters and is just for testing.
++		lua_pushcfunction(L, setPedObjectivesInAreaLua);
++		lua_setfield(L, -2, "set_ped_objectives");
++		// setPedObjectivesInAreaLua;
++
+ 		// World namespace
+     	lua_setglobal(L, "world");
+ 	}
+@@ -153,6 +161,82 @@ extern "C"
+ 		VehicleFunctions::UnlockAllCarDoorsInArea(leftBottomX, leftBottomY, topRightX, topRightY);
+ 		return 1;
+ 	}
++
++	/**
++	 * Set the peds objectives in the area, not fully complete.
++	 * 
++	 * Now this will give all peds in the area a gun and try to make them kill the player.
++	 * 
++	 * I could use this for a chaos mod function or just a random event.
++	 * 
++	 * Usage:
++	 * world.set_ped_objectives()
++	 */
++	int
++	setPedObjectivesInAreaLua(lua_State *L)
++	{
++		// TODO Make this get a list of peds in the area, set their objective to just wander randomly.
++		// For now, this will just run a random function I define below.
++
++		// The weapon model to spawn
++		int weaponModelIndex = MI_COLT45;
++		eWeaponType weaponType = WEAPONTYPE_COLT45;
++		int ammo = 999;
++
++		int i = CPools::GetPedPool()->GetSize();
++		while(i-- > 0) {
++			if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) 
++			{
++				// Check if peds are not a player, I figured this out.
++				if (!ped->IsPlayer())
++				{
++					// Make them exit the vehicle, so they can die.
++					if(ped->InVehicle())
++					{
++						CVehicle* pVehicle = ped->m_pMyVehicle;
++						ped->SetObjective(OBJECTIVE_LEAVE_CAR, pVehicle);
++						ped->SetObjectiveTimer(4000);
++					}
++
++					// Kill the peds
++					// ped->m_fHealth = 0;
++
++					// Set the peds as cops.
++					// ped->m_nPedType = PEDTYPE_COP;
++
++					// Make the peds pissed off at the player, this should make them all attack the player.
++					// This works!
++					// ped->SetObjective(OBJECTIVE_AIM_GUN_AT, FindPlayerPed());
++					// ped->SetObjective(OBJECTIVE_KILL_CHAR_ON_FOOT, FindPlayerPed());
++					
++
++					// Request the weapon model
++
++					// CStreaming::RequestModel(MI_KATANA, STREAMFLAGS_DONT_REMOVE);
++					CStreaming::RequestModel(weaponModelIndex, STREAMFLAGS_DONT_REMOVE);
++					CStreaming::LoadAllRequestedModels(false);
++
++
++					// Make the peds all get weapons.
++					// I got this working!
++
++					// From GIVE_WEAPON_TO_CHAR.
++					ped->SetCurrentWeapon(ped->GiveWeapon(weaponType, 999));
++
++					// Set the weapon model as deletable.
++					CStreaming::SetModelIsDeletable(weaponModelIndex);
++
++					// Make the peds aim, and shoot at the player.
++					ped->SetObjective(OBJECTIVE_AIM_GUN_AT, FindPlayerPed());
++					ped->SetObjective(OBJECTIVE_KILL_CHAR_ON_FOOT, FindPlayerPed());
++				
++				}
++			}
++		}
++
++		return 1;
++	}
++
+ }
+ 
+ //
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 92e0861e..b32f3cb2 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -20,6 +20,8 @@ extern "C" {
+ 
+ 	extern int unlockDoorsInAreaLua(lua_State *L);
+ 
++	extern int setPedObjectivesInAreaLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 00656af3..e496bff4 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.11-1a";
++std::string Defines::programVersion = "1.2.11-2a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index e3348b2a..bde950aa 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -82,6 +82,7 @@ FastLoader::FastLoad()
+ 		// I must be disabling something else.
+ 
+ 		// FrontEndMenuManager.RequestFrontEndShutDown();
++
+ 		FrontEndMenuManager.m_bGameNotLoaded = false;
+ 
+ 		// This doesn't do anything.
+diff --git a/src/extras/utils/misc_util.cpp b/src/extras/utils/misc_util.cpp
+index d3016afd..8a4b41d6 100644
+--- a/src/extras/utils/misc_util.cpp
++++ b/src/extras/utils/misc_util.cpp
+@@ -425,16 +425,16 @@ MiscUtil::GenerateRandomNumber(int min, int max)
+ 	return randomNum;
+ }
+ 
+-/// <summary>
+-/// Kill all peds in the area, excluding the player
+-/// </summary>
++/**
++ * Kill all peds in the area, excluding the player.
++ */
+ void
+ MiscUtil::KillAllPedsInArea()
+ {
+ 	int i = CPools::GetPedPool()->GetSize();
+ 	while(i-- > 0) {
+ 		if(CPed *ped = CPools::GetPedPool()->GetSlot(i)) 
+-		{ 
++		{
+ 			// Check if peds are not a player, I figured this out.
+ 			if (!ped->IsPlayer())
+ 			{
+-- 
+2.43.0
+

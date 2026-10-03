@@ -1,0 +1,349 @@
+From c7e77b03eb851799a0628d22f47d2cd93e997b89 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 15:57:18 -0400
+Subject: [PATCH 153/161] feat: Add get game hour and minute to lua
+
+* I was missing this and had to add it.
+
+* Fix target marker in lua_world.
+
+* Move save file items into preprocessor defines in freeroam_util.
+
+* Update changelog.
+---
+ Changelog.md                       |  16 +++-
+ src/extras/lua/lua_game.cpp        |  21 ++++-
+ src/extras/lua/lua_game.h          |   3 +
+ src/extras/lua/lua_world.cpp       |   8 +-
+ src/extras/utils/freeroam_util.cpp | 120 ++++++++++++++++++++++++++++-
+ src/extras/utils/freeroam_util.h   |   6 +-
+ 6 files changed, 164 insertions(+), 10 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index fa94b944..a6d1fb32 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -899,6 +899,8 @@ fix: Revert player fallback spawn
+ 
+ ### Latest 1.2.14-2a
+ 
++**Commit 1**
++
+ feat: Move setup target marker into function
+ 
+ * I made a function that can easily setup a blip as a target marker in freeroam_util.
+@@ -907,4 +909,16 @@ feat: Move setup target marker into function
+ 
+ * Add set_marker to lua_world.
+ 
+-* Update changelog, change version to 1.2.14-2a.
+\ No newline at end of file
++* Update changelog, change version to 1.2.14-2a.
++
++**Commit 2**
++
++feat: Add get game hour and minute to lua
++
++* I was missing this and had to add it.
++
++* Fix target marker in lua_world.
++
++* Move save file items into preprocessor defines in freeroam_util.
++
++* Update changelog.
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 83012953..b78f39b3 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -101,6 +101,14 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, setTimeScaleLua);
+ 	lua_setfield(L, -2, "set_time_scale");
+ 
++	// Get the minute, and hour.
++	lua_pushcfunction(L, getGameMinuteLua);
++	lua_setfield(L, -2, "get_minute");
++
++	lua_pushcfunction(L, getGameHourLua);
++	lua_setfield(L, -2, "get_hour");
++	//
++
+ 	// Turn off the game phones, I hear them ringing when I am near some of them.
+ 	lua_pushcfunction(L, turnPhoneOffLua);
+ 	lua_setfield(L, -2, "turn_phone_off");
+@@ -361,6 +369,7 @@ int startFireLua(lua_State *L)
+     	return luaL_error(L, "game.start_fire expects a vector table with numeric x, y, and z fields");
+ 	}
+ 
++	// TODO Move this into another file later.
+ 	gFireManager.m_nTotalFires++;
+ 	gFireManager.StartFire(*pos, 1.0f, false);
+ 
+@@ -461,19 +470,27 @@ int setTimeScaleLua(lua_State *L)
+ /**
+  * Get the game minute in lua.
+  * 
+- * TODO Implement this.
++ * Usage:
++ * game.get_minute()
+  */
+ int getGameMinuteLua(lua_State *L)
+ {
++	// lua_pushnumber(L, static_cast<lua_Number>(CClock::GetMinutes()));
++	lua_pushnumber(L, static_cast<int>(CClock::GetMinutes()));
++
+ 	return 1;
+ }
+ 
+ /**
+  * Get the game hour in lua.
+- * TODO Implement this.
++ * 
++ * Usage:
++ * game.get_hour()
+  */
+ int getGameHourLua(lua_State *L)
+ {
++	lua_pushnumber(L, static_cast<int>(CClock::GetHours()));
++
+ 	return 1;
+ }
+ 
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 18a2e647..8fa05527 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -28,6 +28,9 @@ extern "C" {
+     extern int setTimeLua(lua_State *L);
+     extern int setTimeScaleLua(lua_State *L);
+ 
++    extern int getGameMinuteLua(lua_State *L);
++    extern int getGameHourLua(lua_State *L);
++
+     // Phone
+     extern int turnPhoneOffLua(lua_State *L);
+     extern int turnPhoneOnLua(lua_State *L);
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 079d5fee..61bfcab0 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -583,14 +583,16 @@ extern "C"
+ 	 */
+ 	int setupTargetMarkerLua(lua_State *L)
+ 	{
+-		auto targetMarkerPos = luaGetCVector(L, 1);
++		auto targetMarkerPos = luaGetCVector2D(L, 1);
+ 
+ 		if(!targetMarkerPos)
+ 		{
+-			return luaL_error(L, "world.set_marker expects one vector table with x, y and z values");
++			return luaL_error(L, "world.set_marker expects one vector2D table with x and y values");
+ 		}
+ 
+-		int targetMarker = FreeroamUtil::SetupTargetMarker(*targetMarkerPos);
++		CVector targetMarkerPosNew = CVector(targetMarkerPos->x, targetMarkerPos->y, 0.0f);
++
++		int targetMarker = FreeroamUtil::SetupTargetMarker(targetMarkerPosNew);
+ 
+ 		// TODO Make this return the target marker ID, for later use.
+ 		lua_pushinteger(L, targetMarker);
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 10eb53c4..5f1af2a1 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -30,6 +30,12 @@ using json = nlohmann::json;
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ 
++// The max length for a save file name.
++#define MAX_SAVE_FILE_NAME 32
++#define SAVE_FILE_FORMAT "revc-freeroam"
++// The current version of the save file format, not sure how often I'll change this.
++#define SAVE_FILE_VERSION 1
++
+ //----------------------
+ // Json saving/loading
+ // This actually works! I wasn't expecting it to just work.
+@@ -48,6 +54,17 @@ FreeroamUtil::GetFreeroamSavePath()
+     return "ViceExtended/kcnet-revc-save.json"; 
+ }
+ 
++// New
++// TODO Switch to this path format later.
++// const std::filesystem::path&
++// FreeroamUtil::GetFreeroamSavePath()
++// {
++//     static const std::filesystem::path path =
++//         GetUserDataDirectory() / "ViceExtended" / "kcnet-revc-save.json";
++
++//     return path;
++// }
++
+ /**
+  * Save the stats and info to a json file for testing
+  */
+@@ -214,7 +231,12 @@ FreeroamUtil::SaveFreeroamJson()
+ }
+ 
+ /**
+- * Load the stats and info from a json file for testing
++ * Load the stats and info from a json file for the freeroam save.
++ * 
++ * TODO Make the lua code use this instead of loading it manually.
++ * So I can move the error handling in here.
++ * Currently it doesn't care if the save format or version is valid.
++ * Well it will since I changed something, although that could easily be bypassed.
+  */
+ bool
+ FreeroamUtil::LoadFreeroamJson()
+@@ -229,11 +251,21 @@ FreeroamUtil::LoadFreeroamJson()
+ 
+ 		if(!save.is_object()) return false;
+ 
+-		if(save.value("format", "") != "revc-freeroam") return false;
++		// if(save.value("format", "") != "revc-freeroam") return false;
++		if(save.value("format", "") != SAVE_FILE_FORMAT) return false;
+ 
+ 		const int version = save.value("version", 0);
+ 
+-		if(version < 1) return false;
++		// if(version < 1) return false;
++        // Make sure the version matches the one set in the code.
++		if(version != SAVE_FILE_VERSION) return false;
++
++        // Make sure the save slot contains the game field and its an object.
++        // I will add more validation to this later.
++        if(!save.contains("game") || !save["game"].is_object())
++        {
++            return false;
++        }
+ 
+ 		// Load basic game state
+ 		CGame::currLevel = save["game"].value("level", CGame::currLevel);
+@@ -396,6 +428,86 @@ FreeroamUtil::LoadFreeroamJson()
+ 	}
+ }
+ 
++
++/**
++ * Check if the save slot is valid
++ * This will check if my custom ReVC save slot is valid.
++ * Mostly checks if the filename lowercase/capital letters, numbers and '-', '_'
++ * 
++ * @param slot
++ */
++bool FreeroamUtil::IsValidSaveSlot(std::string_view slot)
++{
++    if (slot.empty() || slot.size() > MAX_SAVE_FILE_NAME)
++        return false;
++
++    for (char c : slot)
++    {
++        const bool allowed =
++            (c >= 'a' && c <= 'z') ||
++            (c >= 'A' && c <= 'Z') ||
++            (c >= '0' && c <= '9') ||
++            c == '_' || c == '-';
++
++        if (!allowed)
++            return false;
++    }
++
++    return true;
++}
++
++// std::filesystem::path FreeroamUtil::SavePath(std::string_view slot)
++// {
++//     return GetFreeroamSavePath() / (std::string(slot) + ".json");
++// }
++
++//-----
++// Read save into lua
++//-----
++
++/**
++ * 
++ * This should be used like this:
++ * 
++ * game.read_save(save_file)
++ * 
++ * It will read from the 'ViceExtended/saves' folder once I set it up.
++ */
++// static int readFreeroamSaveLua(lua_State *L)
++// {
++//     const char* slot = luaL_checkstring(L, 1);
++
++//     if (!IsValidSaveSlot(slot)) {
++//         lua_pushnil(L);
++//         lua_pushliteral(L, "invalid save slot");
++//         return 2;
++//     }
++
++//     std::string path = GetSaveDirectory() / (std::string(slot) + ".json");
++
++//     if (FileSize(path) > 1024 * 1024) {
++//         lua_pushnil(L);
++//         lua_pushliteral(L, "save file too large");
++//         return 2;
++//     }
++
++//     std::string contents;
++//     if (!ReadFile(path, contents)) {
++//         lua_pushnil(L);
++//         lua_pushliteral(L, "could not read save");
++//         return 2;
++//     }
++
++//     lua_pushlstring(L, contents.data(), contents.size());
++
++//     return 1;
++// }
++
++
++//------------------------------
++// Blips
++//------------------------------
++
+ /**
+  * Setup the target marker for freeroam when loading.
+  *
+@@ -442,4 +554,6 @@ FreeroamUtil::SetupTargetMarker(CVector targetMarkerPos)
+ 	return 0;
+ }
+ 
++
++
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+diff --git a/src/extras/utils/freeroam_util.h b/src/extras/utils/freeroam_util.h
+index 3e3d280f..f6af61d1 100644
+--- a/src/extras/utils/freeroam_util.h
++++ b/src/extras/utils/freeroam_util.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include "defines.h"
++#include <filesystem>
+ 
+ class FreeroamUtil
+ {
+@@ -8,7 +9,7 @@ private:
+ #ifdef DISABLE_GAME_SCRIPTS
+     static const char* GetFreeroamSavePath();
+ 
+-	
++	// const std::filesystem::path& GetFreeroamSavePath();	
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ public:
+@@ -16,6 +17,9 @@ public:
+ 	static bool SaveFreeroamJson();
+ 	static bool LoadFreeroamJson();
+ 
++	static bool IsValidSaveSlot(std::string_view slot);
++	// std::filesystem::path SavePath(std::string_view slot);
++
+ 	static int SetupTargetMarker(CVector targetMarkerPos);
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ };
+-- 
+2.43.0
+

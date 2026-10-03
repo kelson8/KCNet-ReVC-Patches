@@ -1,0 +1,310 @@
+From a8bf21c097208fd8934e14f51e6f1b8ae6367e53 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 21:10:30 -0400
+Subject: [PATCH 155/161] feat: Move freeroam script options in debug menu
+
+* Add new save format into freeroam_util for later use.
+
+* Update changelog
+---
+ Changelog.md                       |  10 +++
+ src/extras/menus/misc_menu.cpp     |  52 +++++++++----
+ src/extras/utils/freeroam_util.cpp | 115 ++++++++++++++++++++---------
+ src/extras/utils/freeroam_util.h   |  10 ++-
+ 4 files changed, 134 insertions(+), 53 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index c3579f30..82f75244 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -925,6 +925,8 @@ feat: Add get game hour and minute to lua
+ 
+ ### Latest 1.2.14-3a
+ 
++**Commit 1**
++
+ feat: Add set_money and get_money to lua
+ 
+ * Now you can set the players amount of money in my scripts.
+@@ -938,3 +940,11 @@ feat: Add set_money and get_money to lua
+ * Add game.override_next_restart, and game.cancel_override_restart to lua.
+ 
+ * Update changelog, change version to 1.2.14-3a.
++
++**Commit 2**
++
++feat: Move freeroam script options in debug menu
++
++* Add new save format into freeroam_util for later use.
++
++* Update changelog
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index dfc2edbf..4c73ac73 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -633,6 +633,7 @@ void MiscMenu::MiscTab()
+ 		
+ 
+ 		// TODO Fix this to work, it doesn't for some reason.
++		// TODO Remove this or make another log dll with my new KCNet C++ library.
+ #ifdef LOG_CLASS_TEST
+ 		ImGui::Text("Log with dll test");
+ 		if (ImGui::Button("Log dll value"))
+@@ -641,21 +642,6 @@ void MiscMenu::MiscTab()
+ 		}
+ #endif
+ 
+-#ifdef DISABLE_GAME_SCRIPTS
+-		// This works for basic saving/loading of the player data!
+-
+-		if(ImGui::Button("Save freeroam"))
+-		{
+-			FreeroamUtil::SaveFreeroamJson();
+-		}
+-
+-		if(ImGui::Button("Load freeroam"))
+-		{
+-			FreeroamUtil::LoadFreeroamJson();
+-		}
+-
+-#endif // DISABLE_GAME_SCRIPTS - Custom json save/load system.
+-
+ 		ImGui::Separator();
+ 		// This works for spawning pickups!
+ 		// I didn't expect this format to work.
+@@ -698,12 +684,46 @@ void MiscMenu::MiscTab()
+ 			playerInfo.m_pPed->m_nPedState == PED_ARRESTED;
+ 			playerInfo.ArrestPlayer();
+ 		}
++		//
++	}
+ 
+ 
+-		//
++	//-----------------------------------
++	// KCNet ReVC Lua
++	//-----------------------------------
++
++#ifdef DISABLE_GAME_SCRIPTS
++	if(ImGui::CollapsingHeader("Freeroam Debug"))
++	{
++
++		// This works for basic saving/loading of the player data!
++
++		if(ImGui::Button("Save freeroam"))
++		{
++			FreeroamUtil::SaveFreeroamJson();
++		}
++
++		if(ImGui::Button("Load freeroam"))
++		{
++			FreeroamUtil::LoadFreeroamJson();
++		}
++
++		ImGui::Separator();
++		ImGui::Text("Save debug");
++		if(ImGui::Button("Print save path"))
++		{
++			FreeroamUtil freeroamUtil;
++			std::cout << freeroamUtil.SavePath() << std::endl;
++		}
+ 	}
++
++#endif // DISABLE_GAME_SCRIPTS - Custom json save/load system.
+ 	//
+ 
++	//-----------------------------------
++	// End KCNet ReVC Lua
++	//-----------------------------------
++
+ 	ImGui::Separator();
+ 	ImGui::Text("Other tests");
+ 
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 05d0d191..ff8e1bf5 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -37,6 +37,13 @@ using json = nlohmann::json;
+ // The current version of the save file format, not sure how often I'll change this.
+ #define SAVE_FILE_VERSION 1
+ 
++namespace 
++{
++	// The JSON save file name.
++	std::string saveFileName = "kcnet-revc-save.json";
++}
++
++
+ //----------------------
+ // Json saving/loading
+ // This actually works! I wasn't expecting it to just work.
+@@ -55,6 +62,41 @@ FreeroamUtil::GetFreeroamSavePath()
+     return "ViceExtended/kcnet-revc-save.json"; 
+ }
+ 
++// Useful guide for std::filesystem::path
++// https://runebook.dev/en/docs/cpp/filesystem/path/operator_slash
++
++/**
++ * Get the current folder for the freeroam save.
++ */
++std::filesystem::path FreeroamUtil::GetFreeroamSavePathNew()
++{
++	return "ViceExtended";
++}
++
++// std::filesystem::path FreeroamUtil::SavePath(std::string_view slot)
++
++/**
++ * New method for getting the save file path.
++ * This will be used in lua to make sure it always sets the save into the 'ViceExtended' folder.
++ * I will be locking down the lua security a bit later on once I get enough working there.
++ * 
++ * TODO Make this a reference with const std::filesystem::path&, it keeps crashing currently.
++ * 
++ * Currently, my freeroam scripts use lua for fallback loading of the save, which may not be in sync with this code.
++ */
++const std::filesystem::path
++FreeroamUtil::SavePath()
++{
++    // return GetFreeroamSavePath() / (std::string(slot) + ".json");
++	std::string file = saveFileName;
++
++	// std::filesystem::path fullPath = GetFreeroamSavePathNew() / (file + ".json");
++	std::filesystem::path fullPath = GetFreeroamSavePathNew() / (file);
++
++    return fullPath;
++}
++
++
+ // New
+ // TODO Switch to this path format later.
+ // const std::filesystem::path&
+@@ -66,6 +108,33 @@ FreeroamUtil::GetFreeroamSavePath()
+ //     return path;
+ // }
+ 
++/**
++ * Check if the save slot is valid
++ * This will check if my custom ReVC save slot is valid.
++ * Mostly checks if the filename lowercase/capital letters, numbers and '-', '_'
++ * 
++ * @param slot
++ */
++bool FreeroamUtil::IsValidSaveSlot(std::string_view slot)
++{
++    if (slot.empty() || slot.size() > MAX_SAVE_FILE_NAME)
++        return false;
++
++    for (char c : slot)
++    {
++        const bool allowed =
++            (c >= 'a' && c <= 'z') ||
++            (c >= 'A' && c <= 'Z') ||
++            (c >= '0' && c <= '9') ||
++            c == '_' || c == '-';
++
++        if (!allowed)
++            return false;
++    }
++
++    return true;
++}
++
+ /**
+  * Save the stats and info to a json file for testing
+  */
+@@ -218,9 +287,20 @@ FreeroamUtil::SaveFreeroamJson()
+ 		save["car_generators"]["process_counter"] = CTheCarGenerators::ProcessCounter;
+ 		save["car_generators"]["generate_if_player_is_close_counter"] = CTheCarGenerators::GenerateEvenIfPlayerIsCloseCounter;
+ 
++		
++
+ 		// TODO Figure this out, I need to save the status of these also.
+-		// for (int i = 0; i < NUM_CARGENS; i++)
++		// TODO Print the array list into JSON.
++		for (int i = 0; i < NUM_CARGENS; i++)
++		{
++			// json carGenArray = json::array(CTheCarGenerators::CarGeneratorArray[i].m_bForceSpawn);
++
++			// Hmm, these values aren't even public in the class.
++			// TODO Make getters for these values, this already sets them.
++			// save["car_generators"]["info"][i]["force_spawn"] = CTheCarGenerators::CarGeneratorArray[i].m_bForceSpawn;
+ 			// save["car_generators"]["info"][i] = CTheCarGenerators::CarGeneratorArray[i];
++
++		}
+ 			// WriteSaveBuf(buffer, CarGeneratorArray[i]);
+ 
+ 		//
+@@ -454,39 +534,6 @@ FreeroamUtil::LoadFreeroamJson()
+ 	}
+ }
+ 
+-
+-/**
+- * Check if the save slot is valid
+- * This will check if my custom ReVC save slot is valid.
+- * Mostly checks if the filename lowercase/capital letters, numbers and '-', '_'
+- * 
+- * @param slot
+- */
+-bool FreeroamUtil::IsValidSaveSlot(std::string_view slot)
+-{
+-    if (slot.empty() || slot.size() > MAX_SAVE_FILE_NAME)
+-        return false;
+-
+-    for (char c : slot)
+-    {
+-        const bool allowed =
+-            (c >= 'a' && c <= 'z') ||
+-            (c >= 'A' && c <= 'Z') ||
+-            (c >= '0' && c <= '9') ||
+-            c == '_' || c == '-';
+-
+-        if (!allowed)
+-            return false;
+-    }
+-
+-    return true;
+-}
+-
+-// std::filesystem::path FreeroamUtil::SavePath(std::string_view slot)
+-// {
+-//     return GetFreeroamSavePath() / (std::string(slot) + ".json");
+-// }
+-
+ //-----
+ // Read save into lua
+ //-----
+diff --git a/src/extras/utils/freeroam_util.h b/src/extras/utils/freeroam_util.h
+index f6af61d1..93fc024d 100644
+--- a/src/extras/utils/freeroam_util.h
++++ b/src/extras/utils/freeroam_util.h
+@@ -8,17 +8,21 @@ class FreeroamUtil
+ private:
+ #ifdef DISABLE_GAME_SCRIPTS
+     static const char* GetFreeroamSavePath();
++	std::filesystem::path GetFreeroamSavePathNew();
++	
+ 
+ 	// const std::filesystem::path& GetFreeroamSavePath();	
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ public:
+ #ifdef DISABLE_GAME_SCRIPTS
+-	static bool SaveFreeroamJson();
+-	static bool LoadFreeroamJson();
++	// const std::filesystem::path& SavePath();
++	const std::filesystem::path SavePath();
+ 
+ 	static bool IsValidSaveSlot(std::string_view slot);
+-	// std::filesystem::path SavePath(std::string_view slot);
++
++	static bool SaveFreeroamJson();
++	static bool LoadFreeroamJson();	
+ 
+ 	static int SetupTargetMarker(CVector targetMarkerPos);
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+-- 
+2.43.0
+

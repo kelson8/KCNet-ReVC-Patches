@@ -1,0 +1,245 @@
+From 7653262fb059884a414125ee483294fde72cc354 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 13 Sep 2026 12:56:54 -0400
+Subject: [PATCH 148/161] feat: Add arrest player test option to misc menu
+
+* I added a arrest player menu option which can show the busted screen, this needs some work.
+
+* Remove extra imgui preprocessors, these were not needed.
+
+* Cleanup imgui_defines.h, switch misc_menu and vehicle_menu to using ImGui functions instead of my macros.
+
+* I accidentally changed the version in defines.cpp with one of the last commits, so it's already changed.
+
+* Update changelog, change version to 1.2.13-13a.
+---
+ Changelog.md                      | 22 +++++++++++++++
+ src/extras/menus/misc_menu.cpp    | 47 ++++++++++++++++++++++---------
+ src/extras/menus/vehicle_menu.cpp | 15 +++++-----
+ src/extras/utils/imgui_defines.h  | 27 +++---------------
+ 4 files changed, 67 insertions(+), 44 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 34348e73..faf8e04b 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -839,3 +839,25 @@ feat: Add IsWeaponValid to misc_util
+ * Update frontend-guides.md.
+ 
+ * Update changelog.
++
++**Commit 3**
++
++feat: Add arrest player test option to misc menu
++
++* I added a arrest player menu option which can show the busted screen, this needs some work.
++
++* Update changelog.
++
++### 1.2.13-13a
++
++feat: Add arrest player test option to misc menu
++
++* I added a arrest player menu option which can show the busted screen, this needs some work.
++
++* Remove extra imgui preprocessors, these were not needed.
++
++* Cleanup imgui_defines.h, switch misc_menu and vehicle_menu to using ImGui functions instead of my macros.
++
++* I accidentally changed the version in defines.cpp with one of the last commits, so it's already changed.
++
++* Update changelog, change version to 1.2.13-13a.
+diff --git a/src/extras/menus/misc_menu.cpp b/src/extras/menus/misc_menu.cpp
+index ebd5282b..dfc2edbf 100644
+--- a/src/extras/menus/misc_menu.cpp
++++ b/src/extras/menus/misc_menu.cpp
+@@ -56,6 +56,8 @@
+ 
+ #include "DMAudio.h"
+ 
++#include "CopPed.h"
++
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+@@ -589,8 +591,8 @@ void MiscMenu::MiscTab()
+ 			miscUtil.TestHealthOffset();
+ 		}
+ 
+-		IMGUITEXT("Check if in interior in cout");
+-		if (IMGUIBUTTON("Interior check"))
++		ImGui::Text("Check if in interior in cout");
++		if (ImGui::Button("Interior check"))
+ 		{ 
+ 			if (PlayerCheats::IsPlayerInInterior())
+ 			{ 
+@@ -601,7 +603,6 @@ void MiscMenu::MiscTab()
+ 			
+ 		}
+ 
+-		//IMGUI_CHECKBOX()
+ 		//ImGui::Checkbox("Mobile radio", &mobileRadioTest);
+ 
+ 		//if (mobileRadioTest) 
+@@ -609,32 +610,32 @@ void MiscMenu::MiscTab()
+ 		//	miscUtil.ToggleMobileRadio(mobileRadioTest);
+ 		//}
+ 
+-		IMGUITEXT("These do not work!");
+-		IMGUI_BEGIN_DISABLED();
+-		if (IMGUIBUTTON("Turn on mobile radio")) 
++		ImGui::Text("These do not work!");
++		ImGui::BeginDisabled();
++		if (ImGui::Button("Turn on mobile radio")) 
+ 		{ 
+ 			miscUtil.ToggleMobileRadio(true);
+ 		}
+ 
+-		if(IMGUIBUTTON("Turn off mobile radio")) 
++		if(ImGui::Button("Turn off mobile radio")) 
+ 		{ 
+ 			miscUtil.ToggleMobileRadio(false);
+ 		}
+ 
+-		IMGUI_END_DISABLED();
++		ImGui::EndDisabled();
+ 
+ 		// TODO Fix this
+-		//IMGUITEXT("Toggle radio in police vehicles");
+-		//IMGUI_SAMELINE();
++		// ImGui::Checkbox("Toggle radio in police vehicles");
++		// ImGui::SameLine();
+ 		// This works but when turned off the radio stays on until the car is exited.
+ 		// TODO Fix this to revert back to the police radio, I don't hear it anymore
+-		//IMGUI_CHECKBOX("Toggle", &gbPoliceRadioToggle);
++		// ImGui::Checkbox("Toggle", &gbPoliceRadioToggle);
+ 		
+ 
+ 		// TODO Fix this to work, it doesn't for some reason.
+ #ifdef LOG_CLASS_TEST
+-		IMGUITEXT("Log with dll test");
+-		if (IMGUIBUTTON("Log dll value"))
++		ImGui::Text("Log with dll test");
++		if (ImGui::Button("Log dll value"))
+ 		{ 
+ 			logger.info(Defines::logFile, "Test");
+ 		}
+@@ -678,6 +679,26 @@ void MiscMenu::MiscTab()
+ 			DMAudio.PlayFrontEndTrack(STREAMED_SOUND_MISSION_COMPLETED, FALSE);
+ 		}
+ 
++		ImGui::Separator();
++		ImGui::Text("Busted/Wasted");
++		// This mostly works, just needs fixed a bit.
++		if(ImGui::Button("Arrest Player"))
++		{
++			// CPlayerInfo playerInfo;
++			// TODO Replicate the SetArrestPlayer function, I might be able to display the busted screen.
++			// CCopPed *cop = nil;
++			// if(cop){
++			// 	cop->SetArrestPlayer(FindPlayerPed());
++			// }
++			// 
++
++			// Well this almost works, it shows the busted screen text and will still let the player move around.
++			// But it will also respawn them.
++			CPlayerInfo &playerInfo = CWorld::Players[CWorld::PlayerInFocus];
++			playerInfo.m_pPed->m_nPedState == PED_ARRESTED;
++			playerInfo.ArrestPlayer();
++		}
++
+ 
+ 		//
+ 	}
+diff --git a/src/extras/menus/vehicle_menu.cpp b/src/extras/menus/vehicle_menu.cpp
+index a15f90b1..9dc2b5ef 100644
+--- a/src/extras/menus/vehicle_menu.cpp
++++ b/src/extras/menus/vehicle_menu.cpp
+@@ -269,10 +269,9 @@ VehicleMenu::VehicleTab()
+ 	}
+ 	
+ 	// Seems to work fine, copied in from the debug menu
+-	IMGUITEXT("Toggle all vehicle repair.");
+-	IMGUITEXT("Allows you to respray police vehicles.");
+-	// if (IMGUI_CHECKBOX("Toggle all veh repair", CGarage::m_allowAllVehiclesRespray))
+-	if (IMGUI_CHECKBOX("Toggle all veh repair", &toggleAllVehicleRepair)) 
++	ImGui::Text("Toggle all vehicle repair.");
++	ImGui::Text("Allows you to respray police vehicles.");
++	if (ImGui::Checkbox("Toggle all veh repair", &toggleAllVehicleRepair)) 
+ 	{ 
+ 		CGarages::ToggleRespray();
+ 	}
+@@ -282,7 +281,7 @@ VehicleMenu::VehicleTab()
+ 		toggleVehicleInvincible(); 
+ 	}
+ 
+-	if (IMGUIBUTTON("Repair Vehicle")) 
++	if (ImGui::Button("Repair Vehicle")) 
+ 	{ 
+ 		VehicleFunctions::RepairCurrentVehicle();
+ 	}
+@@ -332,8 +331,8 @@ VehicleMenu::VehicleTab()
+ 	// TODO Figure out how to add this
+ 	// I added GetOrientation into Placeable.h, disabled certain items in it.
+ 	// This somewhat works, not well though.
+-	IMGUITEXT("This doesn't work and is disabled");
+-	IMGUI_BEGIN_DISABLED();
++	ImGui::Text("This doesn't work and is disabled");
++	ImGui::BeginDisabled();
+ 	if (ImGui::Button("Unflip car"))
+ 	{
+ 		if(vehicleFunctions.IsPlayerInVehicle()) {
+@@ -350,7 +349,7 @@ VehicleMenu::VehicleTab()
+ 			// pVeh->m_placement.SetOrientation(x, y, z);
+ 		}
+ 	}
+-	IMGUI_END_DISABLED();
++	ImGui::EndDisabled();
+ #elif defined(GTA3)
+ 
+ #endif
+diff --git a/src/extras/utils/imgui_defines.h b/src/extras/utils/imgui_defines.h
+index 7cbd54e2..9adb43a9 100644
+--- a/src/extras/utils/imgui_defines.h
++++ b/src/extras/utils/imgui_defines.h
+@@ -52,32 +52,13 @@
+ //--------------------
+ 
+ 
+-// This works for shortening the ImGui text.
+-// Add it to files that use ImGui text.
+-#define IMGUITEXT ImGui::Text
+-
+-// Make a checkbox
+-#define IMGUI_CHECKBOX(LABEL, VALUE) ImGui::Checkbox(LABEL, VALUE)
+-
+-// Make the item be on the same line 
+-#define IMGUI_SAMELINE ImGui::SameLine
+-
+-
+-// Changes from KCNet-ImGui-Test
+-// Make a button
+-#define IMGUIBUTTON ImGui::Button
++//-------------
++// Most of these below have been removed.
++// Use ImGui::Text or the other functions instead of these.
++//-------------
+ 
+ // Make a input int value
+ #define IMGUI_INPUT_INT(LABEL, VALUE) ImGui::InputInt(LABEL, VALUE)
+ 
+ // Make a input int with flags
+ #define IMGUI_INPUT_INT_FLAGS(LABEL, VALUE, FLAGS) ImGui::InputInt(LABEL, VALUE, FLAGS)
+-
+-// Make an ImGui separator
+-#define IMGUI_SEPERATOR ImGui::Separator
+-
+-// ImGui begin and end disabled
+-//#define IMGUI_BEGIN_DISABLED(VALUE) ImGui::BeginDisabled(VALUE)
+-#define IMGUI_BEGIN_DISABLED ImGui::BeginDisabled
+-
+-#define IMGUI_END_DISABLED ImGui::EndDisabled
+\ No newline at end of file
+-- 
+2.43.0
+

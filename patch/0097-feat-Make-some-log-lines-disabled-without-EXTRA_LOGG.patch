@@ -1,0 +1,586 @@
+From 475530846b4bed67d7f50425f88ea2a38b1a6019 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 7 Sep 2026 20:21:16 -0400
+Subject: [PATCH 097/161] feat: Make some log lines disabled without
+ EXTRA_LOGGING
+
+* Remove items in RegisterLuaFunctions function, since I moved these they weren't in use.
+
+* Add test for setting hospital and police respawns in lua scripts, currently crashes and is disabled.
+
+* Make vehicles fall down when spawned in with the mod menu, instead of floating in the air.
+
+* Fix camera mode when removing old vehicle for warping into new ones.
+
+* Update changelog, bump version to 1.2.10-4a
+---
+ Changelog.md                               |  28 +++++
+ src/extras/functions/vehicle_functions.cpp |  61 +++++++----
+ src/extras/lua/lua_game.cpp                | 106 +++++++++++++++++-
+ src/extras/lua/lua_game.h                  |   3 +
+ src/extras/lua/lua_player.cpp              |  14 +--
+ src/extras/lua/lua_test.cpp                | 122 ++++-----------------
+ src/extras/lua/lua_world.cpp               |   6 +
+ 7 files changed, 209 insertions(+), 131 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 2ea7ec21..7cdb667d 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -279,3 +279,31 @@ feat: Move lua cheats into lua_game.cpp
+ * Update config.h.
+ 
+ * Update changelog, bump verison to 1.2.10-2a.
++
++### 1.2.10-3a
++
++feat: Make vehicle_functions remove previous vehicle with lua
++
++* Now when the delete previous vehicle option is enabled, it will actually remove the vehicle.
++
++* Fix warp into vehicle function with lua, now you can warp into the new vehicle that was spawned.
++
++* I still need to set a limit on how many vehicles can be spawned which I'll set to like 5 or something.
++
++* Add m_pLastCreatedVehicle variable into vehicle_functions, for storing the last used vehicle to remove.
++
++* Update changelog, bump version to 1.2.10-3a.
++
++### 1.2.10-4a
++
++feat: Make some log lines disabled without EXTRA_LOGGING
++
++* Remove items in RegisterLuaFunctions function, since I moved these they weren't in use.
++
++* Add test for setting hospital and police respawns in lua scripts, currently crashes and is disabled.
++
++* Make vehicles fall down when spawned in with the mod menu, instead of floating in the air.
++
++* Fix camera mode when removing old vehicle for warping into new ones.
++
++* Update changelog, bump version to 1.2.10-4a
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 69352b0d..aeba6ad8 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -458,13 +458,13 @@ VehicleFunctions::RemovePlayerFromVehicle(CPed *pPed)
+ 	pPed->SetMoveSpeed(0.0f, 0.0f, 0.0f);
+ 	pPed->ReplaceWeaponWhenExitingVehicle();
+ 
+-	// if(pPed->m_pVehicleAnim)
+-	//	pPed->m_pVehicleAnim->blendDelta = -1000.0f;
++	if(pPed->m_pVehicleAnim)
++		pPed->m_pVehicleAnim->blendDelta = -1000.0f;
+ 
+-	// pPed->m_pVehicleAnim = nil;
+-	// pPed->RestartNonPartialAnims();
++	pPed->m_pVehicleAnim = nil;
++	pPed->RestartNonPartialAnims();
+ 	//
+-	// pPed->SetMoveState(PEDMOVE_NONE);
++	pPed->SetMoveState(PEDMOVE_NONE);
+ 	//
+ 
+ 	// This mostly fixes the vehicle spawner when spawning into a new vehicle
+@@ -474,17 +474,16 @@ VehicleFunctions::RemovePlayerFromVehicle(CPed *pPed)
+ 	// Modified to set the camera behind the player
+ 
+ 	// Oh, I can set this value directly
+-	// Set the camera to follow the ped
+-	TheCamera.Cams[TheCamera.ActiveCam].Mode = CCam::MODE_FOLLOWPED;
++	// Fixed this!
++	// This finally fixes the broken vehicle warping when I warp into it sometimes.
++	// Now I can warp into it with my mod menu, and with the lua code without the camera breaking.
++	TheCamera.Cams[TheCamera.ActiveCam].Mode = CCam::MODE_CAMERA;
+ 
+-	// Set the camera behind the player.
+-	TheCamera.m_bCamDirectlyBehind = true;
++	// Disable this, seems to fix the camera.
++	TheCamera.m_bCamDirectlyBehind = false;
+ 
+-	if(TheCamera.Cams[TheCamera.ActiveCam].Mode != CCam::MODE_FOLLOWPED) {
++	//----------
+ 
+-		// Doesn't work
+-		// TheCamera.SetCameraMode(CCam::MODE_FOLLOWPED); // Set the mode
+-	}
+ 	// Doesn't work
+ 	// TheCamera.SetFollowPed(pPed); // Set the player as the target
+ 
+@@ -520,8 +519,8 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 	// CreateVehicle(id, );
+ 
+ 	CPlayerPed *pPed = FindPlayerPed();
+-	// CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f;
+-	CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 0.0f) + FindPlayerPed()->GetForward() * 5.0f;
++	CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f;
++	// CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 0.0f) + FindPlayerPed()->GetForward() * 5.0f;
+ 
+ 	// Moved logic into this new function.
+ 	// Now this just calls into that function, it takes a custom X, Y, and Z.
+@@ -687,6 +686,10 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 	// Warp timer
+ 	static unsigned int lastWarpTime = 0;
+ 
++
++	// For warping into vehicle.
++	static unsigned int newTime = 0;
++
+ 	// Check if enough time has passed since the last vehicle spawn
+ 	// This works for a delay when spawning a vehicle!
+ 	if(CTimer::GetTimeInMilliseconds() - lastSpawnTime >= spawnDelayMilliseconds) {
+@@ -718,6 +721,12 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 
+ 			if(v == nullptr) { return; }
+ 
++			// Possible fix for floating vehicle.
++			// Well this didn't work, if the vehicle is above the player it won't fall down when spawned with my mod menu.
++			// v->bUsesCollision = true;
++
++			// v->bAffectedByGravity = true;
++
+ 			// Set the vehicle to be owned by the player.
+ 			v->bHasBeenOwnedByPlayer = true;
+ 			// v->SetPosition(vehiclePos);
+@@ -726,7 +735,11 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 			// v->SetOrientation(0.0f, 0.0f, heading);
+ 
+ 			// Set the vehicle status.
+-			v->SetStatus(STATUS_ABANDONED);
++			// v->SetStatus(STATUS_PLAYER);
++
++			// This makes the car fall down when I spawn it with the mod menu.
++			// I always wondered why the car would never fall down.
++			v->SetStatus(STATUS_PHYSICS);
+ 			v->m_nDoorLock = CARLOCK_UNLOCKED;
+ 
+ 			// Fix for the engine not being on when warping into the vehicle.
+@@ -781,7 +794,7 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 			// Warp the player into the new vehicle if enabled.
+ 			// This sometimes glitches out and the player will enter and exit the vehicle.
+ 			// TODO Add a delay or something to this, it's running at the same time as the other option I'm guessing.
+-			static int newTime = 0;
++			
+ 			// if(warpIntoVehicle && CTimer::GetTimeInMilliseconds() - newTime > 500)
+ 			// if(warpIntoVehicle && pPed != nullptr && CTimer::GetTimeInMilliseconds() - lastSpawnTime > 500) {
+ 			if(warpIntoVehicle && pPed != nullptr) {
+@@ -793,14 +806,20 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 					// VehicleFunctions::WarpPlayerIntoVehicle(CPed *pPed, CVehicle pVehicle?)
+ 
+ 					// Extras
+-					pPed->bInVehicle = true;
+-					pPed->m_pMyVehicle = v;
++					// pPed->bInVehicle = true;
++					// pPed->m_pMyVehicle = v;
+ 					// Will this crash it?
+-					pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
+-					pPed->m_nPedState = PED_DRIVING;
++					// pPed->RegisterReference((CEntity **)&pPed->m_pMyVehicle);
++					// pPed->m_nPedState = PED_DRIVING;
++
++					// New, from CPed::WarpPedIntoCar()
++					// AudioManager.PlayerJustGotInCar();
++					// CCarCtrl::RegisterVehicleOfInterest(v);
++					//
+ 
+ 					// Original function
+ 					if(CTimer::GetTimeInMilliseconds() - newTime > 500) {
++					// if(CTimer::GetTimeInMilliseconds() - newTime > 2000) {
+ 						newTime = CTimer::GetTimeInMilliseconds();
+ 						pPed->SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, v);
+ 						pPed->WarpPedIntoCar(v);
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index bdba8d8c..1f0e49a8 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -41,7 +41,8 @@
+ //-----------------------
+ 
+ extern "C" {
+-    /** 
++
++/** 
+  * Register the player lua functions under the 'player' namespace.
+  * This works! TODO Make all lua functions use a table with a namespace instead of being in the global namespace.
+  * 
+@@ -57,6 +58,16 @@ void RegisterGameFunctionsLua(lua_State* L)
+     lua_pushcfunction(L, cheatCodesLua);
+     lua_setfield(L, -2, "cheat");
+ 
++	// Setting respawn points when wasted/busted
++	// TODO Fix these, they currently crash.
++	// Possibly because I am disabling the scripts?
++	// lua_pushcfunction(L, setHospitalRespawnLua);
++	// lua_setfield(L, -2, "set_hospital_respawn");
++
++	// lua_pushcfunction(L, setPoliceStationRespawnLua);
++	// lua_setfield(L, -2, "set_police_respawn");
++	
++
+     // Game namespace
+     lua_setglobal(L, "game");
+ }
+@@ -110,6 +121,15 @@ cheatCodesLua(lua_State *L)
+ 		if(!pPed->EnteringCar() && pPed->bInVehicle) {
+ 			CVehicle *currentVeh = pPed->m_pMyVehicle;
+ 			currentVeh->m_fHealth = 0;
++            // This makes it to where you can barley control the car anymore.
++            currentVeh->m_fMass = 10.0f;
++
++            // Stop the vehicle, and disable it so it cannot be moved
++            // TODO Figure out how to disable the vehicle movement.
++            currentVeh->SetMoveSpeed(CVector(0.0f, 0.0f, 0.0f));
++            // currentVeh->m_vecMoveSpeed = 0.0f;
++            // Turn off the engine
++            currentVeh->bEngineOn = false;
+ 		}
+ 
+ 	} else if(cheatString == "KILLME") {
+@@ -142,6 +162,90 @@ cheatCodesLua(lua_State *L)
+ 
+ 	return 1;
+ }
++
++
++/**
++ * Set the hospital respawns, for when the player is wasted.
++ * ADD_HOSPITAL_RESTART
++ * 
++ * TODO Fix this to work, it just crashes it on game init in the lua scripts.
++ * 
++ * Usage in lua (CVector, heading):
++ * game.set_hospital_respawn({x = 24, y = 24, z = 24}, 1.0)
++ */
++int setHospitalRespawnLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++	float angle = static_cast<float>(lua_tointeger(L, 2));
++	
++	if (!pos)
++    {
++    	return luaL_error(
++    	L,
++        	"vehicle.create expects a vector table with numeric x, y, and z fields"
++		);
++	}
++
++	CRestart::AddHospitalRestartPoint(*pos, angle);
++#ifdef EXTRA_LOGGING
++	// TODO Figure out log line.. Not sure how to log the pos here
++
++	// std::string logString = "Hospital respawn added at " + *pos.value().x;
++	// std::string logString = "Hospital respawn added at " + *pos.value();
++	// LogFunctions::LogInfo(Defines::luaLogFile, )
++
++#endif // EXTRA_LOGGING
++}
++
++/**
++ * Set the police station respawns, for when the player is busted.
++ * ADD_POLICE_RESTART
++ * 
++ * TODO Fix this to work, it just crashes it on game init in the lua scripts.
++ * 
++ * Usage in lua (CVector, heading):
++ * game.set_police_respawn({x = 24, y = 24, z = 24}, 1.0)
++ */
++int setPoliceStationRespawnLua(lua_State *L)
++{
++
++	auto pos = luaGetCVector(L, 1);
++	float angle = static_cast<float>(lua_tointeger(L, 2));
++	
++
++	if (!pos)
++    {
++    	return luaL_error(
++    	L,
++        	"vehicle.create expects a vector table with numeric x, y, and z fields"
++		);
++	}
++
++	CRestart::AddPoliceRestartPoint(*pos, angle);
++}
++
++/**
++ * Implementation of COMMAND_WAIT
++ * 
++ * Runs sleep like the original game scripts.
++ * 
++ * TODO Implement this, I should probably use coroutines in C++20.
++ */
++int waitLua(lua_State *L)
++{
++	int miliseconds = static_cast<int>(luaL_checkinteger(L, 1));
++
++	if(miliseconds < 0)
++	{
++		miliseconds = 0;
++	}
++
++	
++}
++
++
++
++
+ }
+ 
+ #endif // LUA_TEST
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 03527b4b..b3ca29ac 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -17,6 +17,9 @@ extern "C" {
+     extern void RegisterGameFunctionsLua(lua_State* L);
+     extern int cheatCodesLua(lua_State *L);
+ 
++    extern int setHospitalRespawnLua(lua_State *L);
++    extern int setPoliceStationRespawnLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 6a8e8aec..358f9a66 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -164,10 +164,13 @@ createPlayerLua(lua_State *L)
+ 	// TODO Make this give an error in the lua script somewhere, or display error in game if it loads more then once.
+ 	if(!InitGame::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ))
+ 	{
++
++#ifdef EXTRA_LOGGING
+ 				std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
+ 			+ " Y: " + std::to_string(spawnPosY)
+ 			+ " Z: " + std::to_string(spawnPosY);
+ 		LogFunctions::LogInfo(Defines::luaLogFile, logMsg);
++#endif // EXTRA_LOGGING
+ 	}
+ 
+ 	return 0;
+@@ -508,14 +511,11 @@ changePlayerClothesLua(lua_State *L)
+  *  functions, I moved them out of lua_test.cpp.
+  */
+ 
+-/// <summary>
+-/// This works for respawning the player.
+-/// TODO Make this get the X, Y, Z, and heading in lua also.
+-/// </summary>
+-/// <param name="l"></param>
+-/// <returns></returns>
+ 
+-///
++/**
++ * This works for respawning the player.
++ * TODO Make this get the X, Y, Z, and heading in lua also.
++ */
+ extern "C" int
+ setRespawnPointLua(lua_State *L)
+ {
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 9781106b..c85ec2e8 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -115,6 +115,12 @@ extern "C" {
+ /// Create a new VM, fixes the null issue in imgui_commands
+ /// </summary>
+ 
++
++/**
++ * Constructor for Lua
++ * 
++ * TODO Move this and other items into lua_manager.cpp, I may rename this file in the future.
++ */
+ LuaTest::LuaTest() { 
+ 	m_luaVM = luaL_newstate(); 
+ 
+@@ -422,92 +428,6 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	lua_register(L, "toggle_imgui", toggleImGuiLua);
+ #endif // _IMGUI_TEST
+ 
+-
+-
+-	//------------- Vehicle ------------//
+-	// Moved into lua_vehicle.cpp RegisterVehicleFunctionsLua with v1.2.10-1a.
+-	//-----------------------------------
+-	
+-	// Test for creating a vehicle, this will probably crash on invalid models.
+-	// Get user input from lua for the vehicle id, delete last vehicle, and warp into vehicle
+-	// Usage in lua script:
+-	/**
+-	 local constructionSiteX = 261.662
+-	 local constructionSiteY = -234.038
+-	 local constructionSiteZ = 11.437
+-
+-	 -- Vehicle ID, posX, posY, posZ, Delete last vehicle, Warp into vehicle.
+-
+-	 create_vehicle(145, constructionSiteX + 10.0, constructionSiteY + 10.0, constructionSiteZ + 2.0, false, false) 
+-	 */
+-	// TODO Make this create only one vehicle.
+-	// 
+-	// lua_register(L, "create_vehicle", createVehicleLua);
+-
+-	//------------- Player ------------//
+-	// Moved into lua_player.cpp RegisterPlayerFunctionsLua with v1.2.10-1a.
+-	// TODO Make some functions such as create_player use the new functions such as 'player.create'
+-	//-----------------------------------
+-
+-	
+-	// Disabled for now 
+-#if 0
+-	// Create the player, should only run if the scripts are disabled.
+-#ifdef DISABLE_GAME_SCRIPTS
+-	lua_register(L, "create_player", createPlayerLua);
+-#endif // DISABLE_GAME_SCRIPTS
+-
+-	// Auto enable never wanted in the lua script
+-	lua_register(L, "enable_never_wanted", enableNeverWantedLua);
+-	lua_register(L, "disable_never_wanted", disableNeverWantedLua);
+-
+-	// Auto enable infinite health in the lua script
+-	lua_register(L, "enable_infinite_health", enablePlayerInfiniteHealthLua);
+-	lua_register(L, "disable_infinite_health", disablePlayerInfiniteHealthLua);
+-
+-	// This seems to work now.
+-	// TODO Rename to set_player_position.
+-	lua_register(L, "set_position", SetPlayerPositionLua);
+-	// lua_register(LuaTest::GetInstance().GetLuaState(), "set_position", SetPlayerPositionLua);
+-
+-	lua_register(L, "heal_player", HealPlayerLua);
+-	lua_register(L, "player_health", GetPlayerHealthLua);
+-
+-	// This works
+-	// TODO Get CVector for respawn from file.
+-	lua_register(L, "set_respawn_point", setRespawnPointLua);
+-
+-	// Cancel the respawn, this seems to work but only after they die once, I think it was alrady doing that.
+-	lua_register(L, "cancel_override_restart", cancelOverrideNextRestartLua);
+-
+-	// Toggles for losing weapons when dying.
+-	lua_register(L, "enable_lose_weapons_on_death", enableLoseWeaponsOnDeathLua);
+-	lua_register(L, "disable_lose_weapons_on_death", disableLoseWeaponsOnDeathLua);
+-
+-	// Log the player coords and heading
+-	lua_register(L, "log_player_coords", logPlayerCoordsLua);
+-	lua_register(L, "log_player_heading", logPlayerHeadingLua);
+-
+-
+-	// Check if the player is alive
+-	lua_register(L, "is_player_alive", isPlayerAliveLua);
+-
+-
+-	// Kill the player cheat
+-	lua_register(L, "kill_player", suicideCheatLua);
+-
+-	// Setup changing player clothes
+-	lua_register(L, "change_clothes", changePlayerClothesLua);
+-
+-	// Get the current wanted level if above 0
+-	lua_register(L, "get_wanted_level", checkWantedLevelLua);
+-
+-	// Kill the player if wanted
+-	lua_register(L, "kill_wanted_player", killPlayerIfWantedLua);
+-
+-#endif // Moved into lua_player.cpp.
+-
+-
+ 	// TODO Move out of lua_test.cpp later.
+ 	// Vehicle
+ 	// Check if player is in a vehicle
+@@ -532,19 +452,6 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	//
+ 
+-	//-------------- World --------------//
+-#if 0
+-	// Auto disable peds and vehicles in the lua script
+-	lua_register(L, "disable_peds", disablePedsLua);
+-	lua_register(L, "disable_vehicles", disableVehiclesLua);
+-
+-	// Clear the area of any peds and vehicles.
+-	// Example: clear_area(radius)
+-	lua_register(L, "clear_area", clearAreaLua);
+-	//
+-
+-#endif // Moved into lua_world.cpp.
+-
+ 	//------------- Messages ------------//
+ 
+ 	// Display a hud help message
+@@ -891,13 +798,19 @@ LuaTest::SetupFreeroamScript()
+ 		// TODO Make this cleanly send the shutdown to ReVC.
+ 		if(InitGame::GetInstance().GetPlayerCreated()) {
+ 			createPlayerLogMsg = "The create_player function was called in the " + Defines::luaFreeroamScript + " launching game...";
+-			// LogFunctions::LogInfo(defines.luaLogFile, "The create_player function exists in the " + Defines::luaFreeroamScript);
++
++#ifdef EXTRA_LOGGING
+ 			LogFunctions::LogInfo(defines.luaLogFile, createPlayerLogMsg);
++#endif // EXTRA_LOGGING
++
+ 			TRACE(createPlayerLogMsg.c_str());
+ 		} else {
+ 			createPlayerLogMsg = "The create_player function wasn't called in the " + Defines::luaFreeroamScript + " Shutting down game...";
+-			// LogFunctions::LogError(defines.luaLogFile, "The create_player function doesn't exist! Shutting down game...");
++
++#ifdef EXTRA_LOGGING
+ 			LogFunctions::LogError(defines.luaLogFile, createPlayerLogMsg);
++#endif //  EXTRA_LOGGING
++
+ 			TRACE(createPlayerLogMsg.c_str());
+ 
+ 			// TODO Why do these shutdown methods give a segfault here if this doesn't exist?
+@@ -968,7 +881,10 @@ LuaTest::SetupFreeroamScript()
+ 
+ 			TRACE(toggleRespawnString.c_str());
+ 
++#ifdef EXTRA_LOGGING
+ 			LogFunctions::LogInfo(defines.luaLogFile, toggleRespawnString);
++#endif // EXTRA_LOGGING
++
+ 		}
+ 
+ 		lua_pop(m_luaVM, 1);
+@@ -984,10 +900,12 @@ LuaTest::SetupFreeroamScript()
+ 		if(lua_isboolean(m_luaVM, -1)) {
+ 			bool canReloadLuaScripts = static_cast<float>(lua_toboolean(m_luaVM, -1));
+ 			gbReloadLuaScriptWithKeybind = canReloadLuaScripts;
+-			
++
++#ifdef EXTRA_LOGGING
+ 			std::string toggleReloadKeybindString = canReloadLuaScripts ? "be reloaded" : "no longer be reloaded";
+ 
+ 			LogFunctions::LogInfo(defines.luaLogFile, "Lua scripts can " + toggleReloadKeybindString);
++#endif // EXTRA_LOGGING
+ 		}
+ 
+ 		lua_pop(m_luaVM, 1);
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 1fee077b..2ae1bc1d 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -91,7 +91,10 @@ extern "C"
+ 	{
+ 		PlayerCheats playerCheats = PlayerCheats();
+ 		CPopulation::PedDensityMultiplier = 0.0f;
++
++#ifdef EXTRA_LOGGING
+ 		LogFunctions::LogInfo(Defines::luaLogFile, "Peds have been disabled");
++#endif // EXTRA_LOGGING
+ 
+ 		return 1;
+ 	}
+@@ -100,7 +103,10 @@ extern "C"
+ 	disableVehiclesLua(lua_State *L)
+ 	{
+ 		CCarCtrl::CarDensityMultiplier = 0.0f;
++
++#ifdef EXTRA_LOGGING
+ 		LogFunctions::LogInfo(Defines::luaLogFile, "Vehicles have been disabled");
++#endif // EXTRA_LOGGING
+ 
+ 		return 1;
+ 	}
+-- 
+2.43.0
+

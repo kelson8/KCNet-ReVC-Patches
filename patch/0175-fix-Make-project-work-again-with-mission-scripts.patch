@@ -1,0 +1,192 @@
+From ea564ea48191b2ef777280fb807b12b425aa22da Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 1 Oct 2026 00:46:01 -0400
+Subject: [PATCH 175/176] fix: Make project work again with mission scripts
+
+* I had accidentally left out CTheScripts::Process, I probably wouldn't have found this without Valgrind.
+
+* Fix some compiler warnings in some files.
+
+* Update changelog.
+---
+ Changelog.md                           | 12 +++++++++++-
+ src/control/Script.cpp                 | 16 +++++++++-------
+ src/core/Game.cpp                      |  1 +
+ src/extras/functions/ped_functions.cpp |  2 +-
+ src/extras/lua/lua_game.cpp            |  9 +++++++++
+ src/extras/lua/lua_world.cpp           |  6 ++++++
+ 6 files changed, 37 insertions(+), 9 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 048233e9..8c4937eb 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1175,4 +1175,14 @@ feat: Make gravity able to be changed
+ game.set_gravity
+ game.get_gravity
+ 
+-* Update changelog.
+\ No newline at end of file
++* Update changelog.
++
++**Commit 5**
++
++fix: Make project work again with mission scripts
++
++* I had accidentally left out CTheScripts::Process, I probably wouldn't have found this without Valgrind.
++
++* Fix some compiler warnings in some files.
++
++* Update changelog.
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index ae1d5231..cafff3b8 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -1109,9 +1109,7 @@ CRunningScript* CTheScripts::StartNewScript(uint32 ip)
+ void CTheScripts::Process()
+ {
+ 
+-#ifdef DISABLE_GAME_SCRIPTS
+-	// I have enabled some code in this script processing again, some of this might be useful for timers.
+-
++	// Moved code up here since this seems to work with my lua mission script replacement.
+ 	if (CReplay::IsPlayingBack())
+ 		return;
+ 	CommandsExecuted = 0;
+@@ -1124,15 +1122,13 @@ void CTheScripts::Process()
+ 	MissionCleanUp.CheckIfCollisionHasLoadedForMissionObjects();
+ 	DrawScriptSpheres();
+ 
+-
++#ifdef DISABLE_GAME_SCRIPTS
+ 
+ 	// Always disable below code.
+-
+ 	// Only run this if enabled in ini, otherwise just run the normal game scripts.
+ 	// TODO Setup ini to be able to disable this, not sure if I will though.
+ 	return;
+-// #else
+-#endif
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing. 
+ 
+ #ifndef DISABLE_GAME_SCRIPTS
+ 	if (FailCurrentMission)
+@@ -3199,15 +3195,19 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 		CollectParameters(&m_nIp, 1);
+ 		CPed* ped = CWorld::Players[ScriptParams[0]].m_pPed;
+ 		script_assert(ped);
++
+ 		if (!ped->bInVehicle)
+ 			return 0; // No value written to output variable
+ 		CVehicle* pCurrent = ped->m_pMyVehicle;
+ 		script_assert(pCurrent); // Here pCurrent shouldn't be NULL anyway
+ 		int handle = CPools::GetVehiclePool()->GetIndex(pCurrent);
++
+ 		if (handle != CTheScripts::StoreVehicleIndex && m_bIsMissionScript) {
+ 			CVehicle* pOld = CPools::GetVehiclePool()->GetAt(CTheScripts::StoreVehicleIndex);
++
+ 			if (pOld){
+ 				CCarCtrl::RemoveFromInterestingVehicleList(pOld);
++
+ 				if (pOld->VehicleCreatedBy == MISSION_VEHICLE && CTheScripts::StoreVehicleWasRandom){
+ 					pOld->VehicleCreatedBy = RANDOM_VEHICLE;
+ 					pOld->bIsLocked = false;
+@@ -3226,6 +3226,7 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 				CTheScripts::StoreVehicleWasRandom = true;
+ 				CTheScripts::MissionCleanUp.AddEntityToList(CTheScripts::StoreVehicleIndex, CLEANUP_CAR);
+ 				break;
++
+ 			case PARKED_VEHICLE:
+ 				pCurrent->VehicleCreatedBy = MISSION_VEHICLE;
+ 				CCarCtrl::NumMissionCars++;
+@@ -3233,6 +3234,7 @@ int8 CRunningScript::ProcessCommands200To299(int32 command)
+ 				CTheScripts::StoreVehicleWasRandom = true;
+ 				CTheScripts::MissionCleanUp.AddEntityToList(CTheScripts::StoreVehicleIndex, CLEANUP_CAR);
+ 				break;
++				
+ 			case MISSION_VEHICLE:
+ 			case PERMANENT_VEHICLE:
+ 				CTheScripts::StoreVehicleWasRandom = false;
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 06a2d0e3..3d5a0272 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -632,6 +632,7 @@ bool CGame::Initialise(const char* datFile)
+ 	
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		CTheScripts::StartTestScript();
++		CTheScripts::Process();
+ 		
+ #else
+ 		// Enabled again here, this is running elsewhere and I have re-enabled some checks in here to test.
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 371bfb19..39bc2345 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -361,7 +361,7 @@ PedFunctions::MarkModelAsNoLongerNeeded(uint32 modelIndex)
+ bool
+ PedFunctions::IsModelValid(uint32 modelIndex)
+ {
+-
++	return false;
+ }
+ 
+ /**
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 11d92938..2afa508e 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -1130,8 +1130,12 @@ int createHiddenPackageLua(lua_State *L)
+  */
+ int saveCustomFreeroamLua(lua_State *L)
+ {
++#ifdef DISABLE_GAME_SCRIPTS
+ 	FreeroamUtil::SaveFreeroamJson();
+ 	CustomCheats::CustomHelpMessage("Game saved");
++#else
++	return luaL_error(L, "game.save is disabled with game scripts enabled!");
++#endif // DISABLE_GAME_SCRIPTS
+ 	return 0;
+ }
+ 
+@@ -1143,8 +1147,13 @@ int saveCustomFreeroamLua(lua_State *L)
+  */
+ int loadCustomFreeroamLua(lua_State *L)
+ {
++#ifdef DISABLE_GAME_SCRIPTS
+ 	FreeroamUtil::LoadFreeroamJson();
+ 	CustomCheats::CustomHelpMessage("Game loaded");
++
++#else
++	return luaL_error(L, "game.save is disabled with game scripts enabled!");
++#endif // DISABLE_GAME_SCRIPTS
+ 	return 0;
+ }
+ 
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 1976ef77..7a2472c3 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -821,6 +821,8 @@ extern "C"
+ 	 */
+ 	int setupTargetMarkerLua(lua_State *L)
+ 	{
++
++#ifdef DISABLE_GAME_SCRIPTS
+ 		auto targetMarkerPos = luaGetCVector2D(L, 1);
+ 
+ 		if(!targetMarkerPos)
+@@ -835,6 +837,10 @@ extern "C"
+ 		// TODO Make this return the target marker ID, for later use.
+ 		lua_pushinteger(L, targetMarker);
+ 
++#else
++		return luaL_error(L, "world.set_marker is disabled with game scripts enabled!");
++#endif // DISABLE_GAME_SCRIPTS
++
+ 		return 1;
+ 	}
+ 
+-- 
+2.43.0
+

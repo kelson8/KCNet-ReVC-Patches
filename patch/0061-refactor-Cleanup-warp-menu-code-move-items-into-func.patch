@@ -1,0 +1,172 @@
+From d0502626f2f000d7c2a381fd59119400f5d707f8 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 13 Aug 2026 03:54:27 -0400
+Subject: [PATCH 061/161] refactor: Cleanup warp menu code, move items into
+ functions
+
+---
+ src/extras/menus/warp_menu.cpp | 100 +++++++++------------------------
+ src/extras/menus/warp_menu.h   |   3 +-
+ 2 files changed, 29 insertions(+), 74 deletions(-)
+
+diff --git a/src/extras/menus/warp_menu.cpp b/src/extras/menus/warp_menu.cpp
+index 6e5787f5..cded6556 100644
+--- a/src/extras/menus/warp_menu.cpp
++++ b/src/extras/menus/warp_menu.cpp
+@@ -56,23 +56,6 @@ char m_HeadingBuffer[INPUT_BUFFER_SIZE];
+ char m_warpCategoryBuffer[WARP_NAME_BUFFER_SIZE];
+ char m_warpLocationNameBuffer[WARP_NAME_BUFFER_SIZE];
+ 
+-// Locations, possibly move these somewhere else later
+-float airportX = -1515.1f;
+-float airportY = -1182.1f;
+-float airportZ = 16.5f;
+-
+-float mansionX = -373.6f;
+-float mansionY = -519.5f;
+-float mansionZ = 13.6f;
+-
+-float beachX = 267.8f;
+-float beachY = -1503.1f;
+-float beachZ = 12.5f;
+-
+-float mallX = 317.2f;
+-float mallY = 1122.6f;
+-float mallZ = 20.1f;
+-
+ // Set new warp locations below
+ //
+ 
+@@ -91,12 +74,6 @@ struct WarpData {
+ 	float x, y, z, heading;
+ };
+ 
+-// TODO Fix this from my vehicle spawner
+-
+-
+-
+-
+-
+ // Moved into IniFunctions::ImGuiWarpList()
+ void
+ imGuiWarpList()
+@@ -155,43 +132,33 @@ imGuiWarpList()
+ 
+ }
+ 
++/**
++ * Display the players position in ImGui.
++ */
++void WarpMenu::DisplayPosition()
++{
++	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 
++	ImGui::Separator();
++	ImGui::Text("Position");
++	// This seems to show up the current coordinates on the screen.
++	std::string playerPositionMessage = "X: " + std::to_string(playerCoords.x) 
++		+ " Y: " + std::to_string(playerCoords.y) 
++		+ " Z: " + std::to_string(playerCoords.z);
++	ImGui::Text(playerPositionMessage.c_str());
++}
+ 
+-//void
+-//imGuiWarpList()
+-//{
+-//
+-//	static int selectedWarp = -1;
+-//	// Add warps for the list in here.
+-//	static const char *warps[] = {"Airport", "Mansion", "Beach", "Mall"};
+-//
+-//	// Default random value
+-//	static WarpLocations warpLocations = WarpLocations::AIRPORT;
+-//
+-//	// Add warps for the list in here.
+-//	static const std::map<std::string, WarpLocations> WarpLocationNameToEnum = {
+-//		{{"Airport", WarpLocations::AIRPORT}}}
+-//	;
+-//
+-//	if(ImGui::ListBox("Warp", &selectedWarp, warps, IM_ARRAYSIZE(warps))) {
+-//		if(selectedWarp >= 0 && selectedWarp < IM_ARRAYSIZE(warps)) {
+-//			std::string selectedWarpName = warps[selectedWarp];
+-//			if(WarpLocationNameToEnum.count(selectedWarpName) > 0) {
+-//				WarpLocations warpLocatons = WarpLocationNameToEnum.at(selectedWarpName);
+-//				//modelId = model;
+-//				// spawnVehicle(model);
+-//				
+-//				// VehicleFunctions::SpawnVehicle(modelId, false, false);
+-//			}
+-//		}
+-//	}
+-//
+-//	//if(ImGui::Button("Warp to location")) 
+-//	//{
+-//	//	
+-//	//}
+-//
+-//}
++/**
++ * Display the players heading in ImGui.
++ */
++void WarpMenu::DisplayHeading() 
++{
++	float playerHeading = FindPlayerHeading();
++
++	ImGui::NewLine();
++	std::string playerHeadingMessage = "Heading: " + std::to_string(playerHeading);
++	ImGui::Text(playerHeadingMessage.c_str());
++}
+ 
+ #ifdef NEW_WARP_TEST
+ void
+@@ -215,11 +182,6 @@ WarpMenu::WarpTab()
+ 	CVector playerCoords = FindPlayerPed()->GetPosition();
+ 	//CGame cGame;
+ 
+-	float playerX = playerCoords.x;
+-	float playerY = playerCoords.y;
+-	float playerZ = playerCoords.z;
+-	float playerHeading = FindPlayerHeading();
+-
+ 	// https://stackoverflow.com/questions/16691617/removing-some-digits-after-decimal-point-in-c
+ 	// Well this removes all the numbers
+ 	// TODO Make this only remove 3 numbers after the decimal.
+@@ -395,18 +357,10 @@ WarpMenu::WarpTab()
+ 	//
+ 
+ 	// Current Position
+-
+-	ImGui::Separator();
+-	ImGui::Text("Position");
+-	// This seems to show up the current coordinates on the screen.
+-	std::string playerPositionMessage = "Player position X: " + std::to_string(playerX) + " Y: " + std::to_string(playerY) + " Z: " + std::to_string(playerZ);
+-	ImGui::Text(playerPositionMessage.c_str());
++	DisplayPosition();
+ 
+ 	// Show the heading also
+-	ImGui::NewLine();
+-	ImGui::Text("Heading");
+-	std::string playerHeadingMessage = "Heading: " + std::to_string(playerHeading);
+-	ImGui::Text(playerHeadingMessage.c_str());
++	DisplayHeading();
+ }
+ 
+ #endif // _IMGUI_TEST
+\ No newline at end of file
+diff --git a/src/extras/menus/warp_menu.h b/src/extras/menus/warp_menu.h
+index 51aca397..02812c40 100644
+--- a/src/extras/menus/warp_menu.h
++++ b/src/extras/menus/warp_menu.h
+@@ -21,7 +21,8 @@ private:
+ 	//void ImGuiWarpList();
+ 	void ImGuiWarpList(IniFunctions &iniFuncs);
+ 
+-	
++	void DisplayPosition();
++	void DisplayHeading();	
+ 
+ public:
+ #ifdef NEW_WARP_TEST
+-- 
+2.43.0
+

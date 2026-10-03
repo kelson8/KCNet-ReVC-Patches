@@ -1,0 +1,943 @@
+From 3a028a20b7476e75ef3a282061e614a0bc9ad499 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Wed, 9 Sep 2026 01:24:15 -0400
+Subject: [PATCH 103/161] feat: Add test for wait in lua_game
+
+* I added a test for a COMMAND_WAIT implementation, I'm not sure if this will work just yet though.
+
+* Added game.add_blip_for_coord into lua for basic blip creation.
+
+* Add lua_garages for garage functions, and add set garage function.
+
+* Add checkFloatLua and checkIntLua functions for later use.
+
+* Update changelog, bump version to 1.2.11-4a
+---
+ Changelog.md                            |  26 ++-
+ src/extras/custom_scripts/init_game.cpp |   5 +
+ src/extras/lua/lua_game.cpp             | 133 ++++++++++-
+ src/extras/lua/lua_game.h               |   4 +
+ src/extras/lua/lua_garages.cpp          | 222 ++++++++++++++++++
+ src/extras/lua/lua_garages.h            |  33 +++
+ src/extras/lua/lua_test.cpp             | 288 +++++++++++++++++++++++-
+ src/extras/lua/lua_test.h               |  24 +-
+ 8 files changed, 721 insertions(+), 14 deletions(-)
+ create mode 100644 src/extras/lua/lua_garages.cpp
+ create mode 100644 src/extras/lua/lua_garages.h
+
+diff --git a/Changelog.md b/Changelog.md
+index 3871008e..b46ba25f 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -377,8 +377,32 @@ feat: Add custom text to main.cpp for KCNet freeroam
+ 
+ ### 1.2.11-3a
+ 
++**Commit 1**
++
+ feat: Add turn phone off and turn phone on to lua
+ 
+ * I added some phone functions mostly so I can turn off the ringing phones around the map.
+ 
+-* Update changelog, bump version to 1.2.11-3a.
+\ No newline at end of file
++* Update changelog, bump version to 1.2.11-3a.
++
++**Commit 2**
++
++feat: Add test for wait in lua_game
++
++* I added a test for a COMMAND_WAIT implementation, I'm not sure if this will work just yet though. 
++
++* Update changelog.
++
++### 1.2.11-4a
++
++feat: Add test for wait in lua_game
++
++* I added a test for a COMMAND_WAIT implementation, I'm not sure if this will work just yet though. 
++
++* Added game.add_blip_for_coord into lua for basic blip creation.
++
++* Add lua_garages for garage functions, and add set garage function.
++
++* Add checkFloatLua and checkIntLua functions for later use.
++
++* Update changelog, bump version to 1.2.11-4a
+\ No newline at end of file
+diff --git a/src/extras/custom_scripts/init_game.cpp b/src/extras/custom_scripts/init_game.cpp
+index 65800ac1..1e7d64c0 100644
+--- a/src/extras/custom_scripts/init_game.cpp
++++ b/src/extras/custom_scripts/init_game.cpp
+@@ -3,6 +3,7 @@
+ #include "init_game.h"
+ 
+ // ReVC
++#include "GameLogic.h"
+ #include "Entity.h"
+ #include "Placeable.h"
+ #include "PlayerPed.h"
+@@ -105,6 +106,10 @@ bool InitGame::CreatePlayer(int playerIndex, CVector pos)
+ 	// Reactivate the player ped.
+ 	CPlayerPed::ReactivatePlayerPed(playerIndex);
+ 
++	// Well I tried to do this, but it still doesn't enabel sound when loading with my scripts unless I pause and unpause.
++	// I'm not sure what is happening.
++	// CGameLogic::RestorePlayerStuffDuringResurrection(FindPlayerPed(), pos, 0.0f);
++
+     // Make this set the player as created, otherwise it will spawn multiple players.
+     m_bPlayerCreated = true;
+ 
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 85acf847..77266dc5 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -108,7 +108,12 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	// I probably won't use this much
+ 	lua_pushcfunction(L, grabPhoneLua);
+ 	lua_setfield(L, -2, "grab_phone");
+-	
++
++	// Test implementation of COMMAND_WAIT.
++	// TODO Try and make this work, run a timer in OnTick that does something.
++	// Disabled, doesn't work.
++	// lua_pushcfunction(L, waitLua);
++	// lua_setfield(L, -2, "wait");
+ 
+ 	//----------
+ 	// TODO Implement these below
+@@ -117,6 +122,40 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	// lua_pushcfunction(L, addExplosionLua);
+     // lua_setfield(L, -2, "add_explosion");
+ 
++	// DISPLAY_ONSCREEN_TIMER
++	// CUserDisplay::OnscnTimer.AddClock(offset, nil, ScriptParams[0] != 0);
++
++	// CLEAR_ONSCREEN_TIMER
++	// CUserDisplay::OnscnTimer.ClearClock((uint16)CTheScripts::Read2BytesFromScript(&m_nIp));
++
++	// DISPLAY_ONSCREEN_COUNTER
++	// CUserDisplay::OnscnTimer.AddCounter(counter, ScriptParams[0], nil, 0);
++
++	// CLEAR_ONSCREEN_COUNTER
++	// CUserDisplay::OnscnTimer.ClearCounter((uint16)CTheScripts::Read2BytesFromScript(&m_nIp));
++
++	// SET_ZONE_PED_INFO
++
++	// This might be needed, or can be used elsewhere.
++	// int16 zone = CTheZones::FindZoneByLabelAndReturnIndex(label, ZONE_INFO);
++
++	// This below is needed for it.
++	// 			CTheZones::SetZonePedInfo(zone, ScriptParams[0], ScriptParams[1], ScriptParams[2], ScriptParams[3],
++				// ScriptParams[4], ScriptParams[5], ScriptParams[6], ScriptParams[7], ScriptParams[8], ScriptParams[9], ScriptParams[10], ScriptParams[11]);
++
++	//-------
++	// Blips
++	// TODO Move into lua_blip.cpp/.h.
++	//-------
++
++	// Add a blip in lua
++	lua_pushcfunction(L, addBlipForCoordOldLua);
++	lua_setfield(L, -2, "add_blip_for_coord");
++
++	// TODO Set a garage here once I get the functions implemented in lua
++	// SET_GARAGE (-886.157 -115.158 9.992) (-882.699 -108.312) (-876.7 -119.83) (15.58) GARAGE_RESPRAY respray_garage3//haiti
++
++
+     // Game namespace
+     lua_setglobal(L, "game");
+ }
+@@ -480,6 +519,54 @@ int grabPhoneLua(lua_State *L)
+ 	return 1;
+ }
+ 
++//----------
++// Blip functions
++// TODO Move into lua_blip.cpp/.h later.
++//----------
++
++/**
++ * Add a blip for the set coordinates
++ * 
++ * ADD_BLIP_FOR_COORD_OLD
++ * 
++ * This works! It adds a destination marker.
++ * 
++ * Usage:
++ * game.add_blip_for_coord({x = 2, y = 2, z = 2})
++ */
++int addBlipForCoordOldLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++
++	if (!pos)
++    {
++    	// return luaL_error(L, "game.add_blip_for_coord expects a vector table with numeric x, y, and z fields, a blip color, and the blip to display.");
++    	return luaL_error(L, "game.add_blip_for_coord expects a vector table with numeric x, y, and z fields.");
++	}
++
++	// 
++	// CRadar::SetCoordBlip(BLIP_COORD, *pos, 20, BLIP_DISPLAY_BOTH);
++
++	// Taken below from lua_test.cpp.
++	CRadar radar = CRadar();
++
++	int blip = radar.SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++	
++	int blipIndex = CRadar::GetActualBlipArrayIndex(blip);
++	// TODO Figure this part out I'm not sure of the icons for this 
++	// Possibly from eRadarSprite
++	// RADAR_SPRITE_SAVE
++	radar.SetBlipSprite(blipIndex, RADAR_SPRITE_SAVE);
++	// TODO Test for setting a blip route.
++	// radar.SetBlipRoute(blipIndex, true);
++
++	// radar.SetBlipSprite(blipIndex, RADAR_SPRITE_LAWYER);
++
++	radar.DisplayThisBlip(blipIndex);
++
++	return 1;
++}
++
+ //--------------
+ // Test functions
+ //--------------
+@@ -487,25 +574,49 @@ int grabPhoneLua(lua_State *L)
+ /**
+  * Implementation of COMMAND_WAIT
+  * 
++ * Sleeps the game for this amount of time like in the scripts.
++ * 
+  * Runs sleep like the original game scripts.
+  * 
+- * TODO Implement this, I should probably use coroutines in C++20.
++ * Usage (Time in miliseconds):
++ * game.wait(ms)
++ * 
++ * TODO Implement this, I might have this working with the CTimer class.
+  */
+-int waitLua(lua_State *L)
++int
++waitLua(lua_State* L)
+ {
+-	int miliseconds = static_cast<int>(luaL_checkinteger(L, 1));
++    const int milliseconds =
++        static_cast<int>(luaL_checkinteger(L, 1));
+ 
+-	if(miliseconds < 0)
+-	{
+-		miliseconds = 0;
+-	}
++    LuaTest& luaTest =
++        LuaTest::GetInstance();
+ 
+-	return 1;
++    LuaThread* thread =
++        luaTest.FindThread(L);
+ 
+-	
+-}
++    if (thread == nullptr) {
++        return luaL_error(
++            L,
++            "wait() must be called from a managed Lua coroutine"
++        );
++    }
++
++    const uint32 now =
++        CTimer::GetTimeInMilliseconds();
++
++    thread->wakeTime =
++        now + static_cast<uint32>(milliseconds);
+ 
++    thread->waiting = true;
+ 
++#if LUA_VERSION_NUM >= 504
++    return lua_yieldk(L, 0, 0, nullptr);
++#else
++    return lua_yield(L, 0);
++#endif
++
++}
+ 
+ 
+ }
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index a5a9d9dd..110cf5b7 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -30,6 +30,10 @@ extern "C" {
+     extern int turnPhoneOnLua(lua_State *L);
+     extern int grabPhoneLua(lua_State *L);
+ 
++    extern int addBlipForCoordOldLua(lua_State *L);
++
++    extern int waitLua(lua_State *L);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --git a/src/extras/lua/lua_garages.cpp b/src/extras/lua/lua_garages.cpp
+new file mode 100644
+index 00000000..0154aa3f
+--- /dev/null
++++ b/src/extras/lua/lua_garages.cpp
+@@ -0,0 +1,222 @@
++#include "pch.h"
++
++#ifdef LUA_TEST
++
++#include "lua_garages.h"
++#include "Font.h"
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++#include "vehicle_functions.h"
++#include "Garages.h"
++
++//-----------------------
++// Garage options
++// None of these below are tested, they are here for later use.
++//-----------------------
++
++// clang-format off
++extern "C"
++{
++
++	/**
++	 * Register the lua garage functions namespace
++	 * 
++	 */
++	void RegisterGarageFunctionsLua(lua_State* L)
++	{
++		lua_newtable(L); // Stack: garage table
++
++		// Create the garage.
++		lua_pushcfunction(L, setGarageLua);
++		lua_setfield(L, -2, "set");
++
++        // TODO Fix these below to work, I'm not sure of the garage id for these values.
++
++        // Open garage
++        lua_pushcfunction(L, openGarageLua);
++		lua_setfield(L, -2, "open");
++
++        // Close garage
++        lua_pushcfunction(L, closeGarageLua);
++		lua_setfield(L, -2, "close");
++
++        // Has respray happened - Not needed
++
++        // Is Open
++        lua_pushcfunction(L, isGarageOpenLua);
++		lua_setfield(L, -2, "is_open");
++        
++        // Is Closed
++        lua_pushcfunction(L, isGarageClosedLua);
++		lua_setfield(L, -2, "is_closed");
++
++        // Set Maximum Number of cars - Not needed
++
++        // Change garage type
++        lua_pushcfunction(L, changeGarageTypeLua);
++		lua_setfield(L, -2, "change_type");
++
++		// Garage namespace
++		lua_setglobal(L, "garage");
++	}
++
++	/**
++	 * Set the garage
++     *
++     * This works! It opens the garage that I have a spawn location for in my freeroam.
++     * 
++	 * Usage:
++	 * garage.set(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, type)
++	 */
++	int 
++	setGarageLua(lua_State *L)
++	{
++        float leftBottomX = static_cast<float>(lua_tonumber(L, 1));
++        float leftBottomY = static_cast<float>(lua_tonumber(L, 2));
++        float leftBottomZ = static_cast<float>(lua_tonumber(L, 3));
++        float frontX = static_cast<float>(lua_tonumber(L, 4));
++        float frontY = static_cast<float>(lua_tonumber(L, 5));
++        float rightTopX = static_cast<float>(lua_tonumber(L, 6));
++        float rightTopY = static_cast<float>(lua_tonumber(L, 7));
++        float rightTopZ = static_cast<float>(lua_tonumber(L, 8));
++        
++        int garageType = static_cast<int>(lua_tointeger(L, 9));
++	
++        // Long list to check all of these, but it's here..
++        if (!leftBottomX || 
++            !leftBottomY || 
++            !leftBottomZ || 
++            !frontX || 
++            !frontY || 
++            !rightTopX || 
++            !rightTopY || 
++            !rightTopZ || 
++            !garageType)
++        {
++    	    return luaL_error(L, "garage.set requires these values: garage.set(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, type)" );
++	    }
++
++        CGarages::AddOne(leftBottomX, leftBottomY, leftBottomZ, frontX, frontY, rightTopX, rightTopY, rightTopZ, garageType, 0);
++
++		return 1;
++	}
++
++    /**
++     * Open a garage
++     * 
++     * Usage:
++     * garage.open(garage_id)
++     * 
++     */
++    int openGarageLua(lua_State *L)
++    {
++        int garageToOpen = static_cast<int>(lua_tointeger(L, 1));
++
++        if(!garageToOpen)
++        {
++            return luaL_error(L, "garage.open requires these values: garage.open(garage_id)");
++        }
++
++        CGarages::OpenGarage(garageToOpen);
++
++        return 1;
++    }
++
++    /**
++     * Close a garage
++     * 
++     * Usage:
++     * garage.close(garage_id)
++     * 
++     */
++    int closeGarageLua(lua_State *L)
++    {
++        int garageToClose = static_cast<int>(lua_tointeger(L, 1));
++
++        if(!garageToClose)
++        {
++            return luaL_error(L, "garage.close requires these values: garage.close(garage_id)");
++        }
++
++        CGarages::OpenGarage(garageToClose);
++
++        return 1;
++    }
++
++    // int hasGarageResprayHappened(lua_State *L)
++    // {
++
++    //     return 1;
++    // }
++
++    /**
++     * Check if the garage is open
++     * 
++     * Usage:
++     * garage.is_open(garage_id)
++     */
++    int isGarageOpenLua(lua_State *L)
++    {
++        int garageId = static_cast<int>(lua_tointeger(L, 1));
++
++        if(!garageId)
++        {
++            return luaL_error(L, "garage.is_open requires these values: garage.is_open(garage_id)");
++        }
++
++        pushBooleanToLua(L, CGarages::IsGarageOpen(garageId));
++
++        return 1;
++    }
++
++     /**
++     * Check if the garage is closed
++     * 
++     * Usage:
++     * garage.is_closed(garage_id)
++     */
++    int isGarageClosedLua(lua_State *L)
++    {
++        int garageId = static_cast<int>(lua_tointeger(L, 1));
++
++        if(!garageId)
++        {
++            return luaL_error(L, "garage.is_open requires these values: garage.is_open(garage_id)");
++        }
++
++        pushBooleanToLua(L, CGarages::IsGarageClosed(garageId));
++
++        return 1;
++    }
++
++    /**
++     * Change the garage type
++     * 
++     * Usage:
++     * garage.change_type(garage_id, garage_type)
++     */
++    int changeGarageTypeLua(lua_State *L)
++    {
++        int garageId = static_cast<int>(lua_tointeger(L, 1));
++        int garageType = static_cast<int>(lua_tointeger(L, 2));
++
++        if(!garageId || !garageType)
++        {
++            return luaL_error(L, "garage.change_type requires these values: garage.change_type(garage_id, garage_type)");
++        }
++
++        CGarages::ChangeGarageType(garageId, garageType, 0);
++
++        return 1;
++    }
++
++}
++
++
++#endif // LUA_TEST
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_garages.h b/src/extras/lua/lua_garages.h
+new file mode 100644
+index 00000000..3b7d67d7
+--- /dev/null
++++ b/src/extras/lua/lua_garages.h
+@@ -0,0 +1,33 @@
++#pragma once
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++// clang-format off
++#ifdef __cplusplus
++extern "C" {
++#endif
++	//------------- Garages ------------//
++	extern void RegisterGarageFunctionsLua(lua_State* L);
++
++	extern int setGarageLua(lua_State *L);
++
++    extern int openGarageLua(lua_State *L);
++    extern int closeGarageLua(lua_State *L);
++
++    // extern int hasGarageResprayHappened(lua_State *L);
++
++    extern int isGarageOpenLua(lua_State *L);
++    extern int isGarageClosedLua(lua_State *L);
++    
++    extern int changeGarageTypeLua(lua_State *L);
++
++#ifdef __cplusplus
++}
++#endif
++
++// clang-format on
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 1db77670..3bff228a 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -59,6 +59,7 @@ extern "C" {
+ 
+ // Lua functions
+ #include "lua_game.h"
++#include "lua_garages.h"
+ #include "lua_log.h"
+ #include "lua_hud.h"
+ #include "lua_player.h"
+@@ -134,6 +135,9 @@ LuaTest::LuaTest() {
+ 	// This works here, just need to fix it properly in the lua_functions file.
+ 	this->RegisterLuaFunctions(m_luaVM);
+ 
++	// TODO Possibly move script loading into this function, so loading the kcnet-wasted and so on.
++	// Although that may break some things.
++
+ }
+ 
+ /**
+@@ -197,7 +201,15 @@ void LuaTest::OnInit()
+         // Handle error
+     }
+ 
++
+ #else
++
++	// Start the test for ticks.
++	// TODO Move this elsewhere.
++	// I think it needs to go after I start the freeroam scripts.
++	// TODO Try to add this after SetupFreeroamScripts in Game.cpp.
++	// StartOnTick();
++
+ 	return;
+ #endif // NEW_LUA_FORMAT - Switch to OnInit function instead of having init directly in script.
+ }
+@@ -228,11 +240,284 @@ void LuaTest::OnTick()
+ 	 * 
+ 	 */
+ 
+-    lua_State* L = GetLuaState();
++	//---------
++	// To run forever
++	//---------
++
++	lua_State* L = GetLuaState();
+     lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
+     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+         // Handle error
+     }
++
++	//---------
++	// To run with a timer
++	//---------
++
++	// TODO Implement this or something like this for Timer system.
++	// I have it setup in lua_game.cpp, the game.wait as a test.
++	// This should be able to call it.
++	// This below didn't work with the OnTick method in my lua scripts.
++
++	// If I can get this working, I should be able to run the wait command like in the original scripts.
++
++//     const uint32_t now =
++//         CTimer::GetTimeInMilliseconds();
++
++//     for (LuaThread& thread : m_threads)
++//     {
++//         if (thread.finished)
++//             continue;
++
++//         if (!thread.waiting)
++//             continue;
++
++//         if (now < thread.wakeTime)
++//             continue;
++
++//         thread.waiting = false;
++
++//         int result = 0;
++
++// #if LUA_VERSION_NUM >= 504
++//         int resultCount = 0;
++
++//         result = lua_resume(
++//             thread.state,
++//             nullptr,
++//             0,
++//             &resultCount
++//         );
++// #else
++//         result = lua_resume(
++//             thread.state,
++//             nullptr,
++//             0
++//         );
++// #endif
++
++//         if (result == LUA_YIELD) {
++//             // The coroutine called wait() again.
++//             continue;
++//         }
++
++//         if (result == LUA_OK) {
++//             thread.finished = true;
++//             continue;
++//         }
++
++//         const char* error =
++//             lua_tostring(thread.state, -1);
++
++//         LogFunctions::LogError(
++//             Defines::logFile,
++//             error ? error : "Lua coroutine failed"
++//         );
++
++//         lua_settop(thread.state, 0);
++//         thread.finished = true;
++//     }
++
++//     RemoveFinishedThreads();
++}
++
++/**
++ * Start the thread for the tick
++ * Should work for a COMMAND_WAIT implementation.
++ * 
++ * TODO Test this later.
++ */
++void LuaTest::StartOnTick()
++{
++    lua_State* threadState = lua_newthread(m_luaVM);
++
++    // Keep the coroutine alive through the registry.
++    int reference = luaL_ref(m_luaVM, LUA_REGISTRYINDEX);
++
++    // Get the global OnTick function from the main Lua state.
++    lua_getglobal(m_luaVM, "OnTick");
++
++    if (!lua_isfunction(m_luaVM, -1)) {
++        lua_pop(m_luaVM, 1);
++
++        luaL_unref(
++            m_luaVM,
++            LUA_REGISTRYINDEX,
++            reference
++        );
++
++        LogFunctions::LogError(
++            Defines::logFile,
++            "Lua function OnTick was not found"
++        );
++
++        return;
++    }
++
++    // Move OnTick from the main state's stack to the coroutine stack.
++    lua_xmove(m_luaVM, threadState, 1);
++
++    LuaThread thread;
++    thread.state = threadState;
++    thread.registryReference = reference;
++    thread.waiting = false;
++    thread.finished = false;
++
++    m_threads.push_back(thread);
++
++    LuaThread& addedThread = m_threads.back();
++
++    int result = 0;
++
++#if LUA_VERSION_NUM >= 504
++    int resultCount = 0;
++
++    result = lua_resume(
++        threadState,
++        nullptr,
++        0,
++        &resultCount
++    );
++#else
++    result = lua_resume(
++        threadState,
++        nullptr,
++        0
++    );
++#endif
++
++    if (result == LUA_YIELD) {
++        // wait() normally brings execution here.
++        return;
++    }
++
++    if (result == LUA_OK) {
++        addedThread.finished = true;
++        return;
++    }
++
++    const char* error = lua_tostring(threadState, -1);
++
++    LogFunctions::LogError(
++        Defines::logFile,
++        error ? error : "Lua OnTick failed"
++    );
++
++    lua_settop(threadState, 0);
++    addedThread.finished = true;
++}
++
++/**
++ * Start a function with the thread and timer system
++ * 
++ * TODO Test this later
++ */
++void LuaTest::StartFunction(const char* functionName)
++{
++    lua_State* threadState = lua_newthread(m_luaVM);
++
++    int reference =
++        luaL_ref(m_luaVM, LUA_REGISTRYINDEX);
++
++    lua_getglobal(m_luaVM, functionName);
++
++    if (!lua_isfunction(m_luaVM, -1)) {
++        lua_pop(m_luaVM, 1);
++        luaL_unref(
++            m_luaVM,
++            LUA_REGISTRYINDEX,
++            reference
++        );
++        return;
++    }
++
++    lua_xmove(m_luaVM, threadState, 1);
++
++    LuaThread thread;
++    thread.state = threadState;
++    thread.registryReference = reference;
++
++    m_threads.push_back(thread);
++
++    LuaThread& current = m_threads.back();
++
++#if LUA_VERSION_NUM >= 504
++    int resultCount = 0;
++    int result = lua_resume(
++        threadState,
++        nullptr,
++        0,
++        &resultCount
++    );
++#else
++    int result = lua_resume(
++        threadState,
++        nullptr,
++        0
++    );
++#endif
++
++    if (result == LUA_YIELD)
++        return;
++
++    if (result == LUA_OK) {
++        current.finished = true;
++        return;
++    }
++
++    const char* error = lua_tostring(threadState, -1);
++
++    LogFunctions::LogError(
++        Defines::logFile,
++        error ? error : "Lua function failed"
++    );
++
++    lua_settop(threadState, 0);
++    current.finished = true;
++}
++
++
++/**
++ * Thread for Timers and COMMAND_WAIT.
++ */
++LuaThread *
++LuaTest::FindThread(lua_State *state)
++{
++    for(LuaThread &thread : m_threads)
++    {
++        if(thread.state == state)
++            return &thread;
++    }
++
++    return nullptr;
++};
++
++/**
++ * Remove threads created by the timer and thread system.
++ */
++void
++LuaTest::RemoveFinishedThreads()
++{
++    for(auto it = m_threads.begin();
++        it != m_threads.end();)
++    {
++        if(!it->finished)
++        {
++            ++it;
++            continue;
++        }
++
++        if(it->registryReference != LUA_NOREF)
++        {
++            luaL_unref(
++                m_luaVM,
++                LUA_REGISTRYINDEX,
++                it->registryReference
++            );
++        }
++
++        it = m_threads.erase(it);
++    }
+ }
+ 
+ 
+@@ -486,6 +771,7 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	//----
+ 
+ 	RegisterGameFunctionsLua(L);
++	RegisterGarageFunctionsLua(L);
+ 	RegisterPlayerFunctionsLua(L);
+ 	RegisterVehicleFunctionsLua(L);
+ 	RegisterWorldFunctionsLua(L);
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 35bb8b84..781bff00 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -20,6 +20,7 @@ extern "C"
+ #include <iostream>
+ #include <string>
+ #include <fstream>
++#include <vector>
+ 
+ // Needed for CVector
+ #include "common.h"
+@@ -29,12 +30,24 @@ extern "C"
+ // This breaks it.
+ //extern lua_State *m_luaVM;
+ 
++struct LuaThread
++{
++    lua_State *state = nullptr;
++    int registryReference = LUA_NOREF;
++
++    uint32 wakeTime = 0;
++    bool waiting = false;
++    bool finished = false;
++};
++
+ class LuaTest
+ {
+ private:
+-	// lua_State *m_luaVM;
+ 	lua_State *m_luaVM;
+ 
++	// Threads for timer and wait.
++	std::vector<LuaThread> m_threads;
++
+ #ifdef LUA_SOL_TEST
+ // New lua testing
+ 	// TODO Fix sol2 for lua.
+@@ -92,6 +105,10 @@ public:
+ 	void InitLua();
+ 	void OnInit();
+ 	void OnTick();
++
++	// New for starting the tick thread.
++	void StartOnTick();
++	void StartFunction(const char* functionName);
+ 	
+ 	// Run the custom event system I am working on in Lua
+ 	void LuaEvents();
+@@ -103,6 +120,11 @@ public:
+ 	void SetupLua();
+ 
+ 
++	// New for COMMAND_WAIT and timers.
++	LuaThread *FindThread(lua_State *state);
++    // void StartScript(const char *script);
++    void RemoveFinishedThreads();
++
+ 	// These might work for getting the m_luaVM variable in the private class above.
+ 	static LuaTest& GetInstance()
+ 	{ 
+-- 
+2.43.0
+

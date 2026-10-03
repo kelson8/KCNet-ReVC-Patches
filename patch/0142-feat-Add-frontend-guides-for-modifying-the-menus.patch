@@ -1,0 +1,162 @@
+From 8859bd17cb6503a1030325d1476a7ac64cc5c142 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 20:37:35 -0400
+Subject: [PATCH 142/161] feat: Add frontend-guides for modifying the menus
+
+* I have added a guide that I will be adding to that will show how to add to the Frontend and modify the game menus
+
+* Re-enable some functions in Frontend.cpp.
+
+* Update changelog.
+---
+ Changelog.md              | 10 +++++
+ guides/frontend-guides.md | 83 +++++++++++++++++++++++++++++++++++++++
+ src/core/Frontend.cpp     |  7 ++--
+ 3 files changed, 96 insertions(+), 4 deletions(-)
+ create mode 100644 guides/frontend-guides.md
+
+diff --git a/Changelog.md b/Changelog.md
+index 3f43f614..c85ab2be 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -776,3 +776,13 @@ fix: Make audio work on game start
+ 
+ * Update changelog.
+ 
++**Commit 5**
++
++feat: Add frontend-guides for modifying the menus
++
++* I have added a guide that I will be adding to that will show how to add to the Frontend and modify the game menus
++
++* Re-enable some functions in Frontend.cpp.
++
++* Update changelog.
++
+diff --git a/guides/frontend-guides.md b/guides/frontend-guides.md
+new file mode 100644
+index 00000000..ac5b24d0
+--- /dev/null
++++ b/guides/frontend-guides.md
+@@ -0,0 +1,83 @@
++# Frontend Info and usages
++
++I will be making a list of info for the frontend and how I have modified it, so I can try and remember how I did this.
++
++
++<details>
++<summary>
++Menu action enum info
++</summary>
++
++* MENUACTION_CHECKSAVE - Runs when the load slot is chosen.
++* MENUPAGE_NEW_GAME - The new game page.
++
++* MENUPAGE_SOUND_SETTINGS - Sound settings page.
++
++* MENUPAGE_MAP - Map page
++
++* MENUPAGE_EXIT - Exit page
++
++* MENUPAGE_START_MENU - Main menu, before the game starts up.
++* MENUPAGE_OPTIONS - Options menu.
++* MENUPAGE_STATS - Stats menu.
++
++
++</details>
++
++<details>
++<summary>
++Modifying menus in the game
++</summary>
++
++To modify menus in ReVC, you can look at how they are being done in `MenuScreensCustom.cpp` and modify them there.
++
++So far, I have tried to remove some of them but I cannot figure out how to remove them from the game without breaking the menu.
++
++The only way I have figured out how to disable the menus was just blanking out the options in one.
++
++If I disable them it throws the alignment out of order for the frontend menu system I guess and breaks everything.
++
++If you look into the `CMenuManager::ProcessOnOffMenuOptions()` function, I have added these preprocessors for some menu actions, which are just toggles and save the ini these don't draw the menu.
++
++Added these into the above function: `EX_GPS`, `_FAST_LOADER`, `EXTRA_LOGGING`.
++
++To add new texts for the menus, they go in here: `CMenuManager::DrawStandardMenus()`.
++This can also modify the menu texts if you want to change it to say something else, you will need to do something like I am doing when I disable the game scripts and load `MENUPAGE_LOAD_SLOT_CONFIRM`.
++
++Look into how my `_FAST_LOADER` preprocessor is adding to the `General Settings` menu option in the game to understand more on how the menus are working a bit.
++
++
++
++</details>
++
++<details>
++<summary>
++Converting text to wchar
++</summary>
++
++You can convert text to a wchar with this, I tried to make a helper function but it doesn't currently work.
++
++```cpp
++// Max text to convert for the save system.
++// Shouldn't need to be too big of a value.
++constexpr int MAX_TEXT = 50;
++
++// The text to display for the menu or anything that requires a wchar.
++const char* textToDisplay = "This will show in game";
++
++// Blank values for buffer.
++char gameStr[MAX_TEXT];
++wchar ustr[MAX_TEXT];
++
++// Put the string from textToDisplay, into gameStr.
++// This seems to be required for something.
++sprintf(gameStr, textToDisplay);
++
++// This converts the text to show up in game. 
++// This can be used for `TheText.Get` which requires a wchar like the GXT texts from the game.
++AsciiToUnicode(gameStr, ustr);
++//
++```
++
++</details>
++
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 9deca109..51010031 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -1244,8 +1244,8 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 						// TODO Make a helper method for this.
+ 						leftText = ustr;
+ 
+-						// Well now, this doesn't crash but it doesn't display the text either.
+-						// leftText = MessageUtil::ConvertToUnicode(textToConvert);
++						// Well now, this doesn't crash but it doesn't display the text either.						
++						// leftText = MessageUtil::ConvertToUnicode(saveText);
+ 
+ #else
+ 						leftText = GetNameOfSavedGame(i);
+@@ -2446,6 +2446,7 @@ CMenuManager::DrawFrontEnd()
+ 	SetFrontEndRenderStates();
+ 	m_NoEmptyBinding = true;
+ 
++	// Determines if the start menu or pause menu should be drawn.
+ 	if (m_nCurrScreen == MENUPAGE_NONE) {
+ 		if (m_bGameNotLoaded) {
+ 			m_nCurrScreen = MENUPAGE_START_MENU;
+@@ -4801,11 +4802,9 @@ CMenuManager::UserInput(void)
+ 		}
+ 		if (CPad::GetPad(0)->GetBackJustDown() || CPad::GetPad(0)->GetEscapeJustDown()) {
+ 			if (m_nCurrScreen != MENUPAGE_START_MENU && m_nCurrScreen != MENUPAGE_PAUSE_MENU 
+-#ifndef DISABLE_GAME_SCRIPTS
+ 				&& m_nCurrScreen != MENUPAGE_CHOOSE_SAVE_SLOT
+ 				&& m_nCurrScreen != MENUPAGE_SAVE_CHEAT_WARNING && m_nCurrScreen != MENUPAGE_SAVING_IN_PROGRESS
+ 				&& m_nCurrScreen != MENUPAGE_DELETING_IN_PROGRESS 
+-#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 				&& m_nCurrScreen != MENUPAGE_OUTRO
+ #ifdef MISSION_REPLAY
+ 				&& m_nCurrScreen != MENUPAGE_MISSION_RETRY
+-- 
+2.43.0
+

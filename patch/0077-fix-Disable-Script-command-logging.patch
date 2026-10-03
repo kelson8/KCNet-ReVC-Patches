@@ -1,0 +1,25 @@
+From 269a2c75af8fe910fbe9c016ddbe2f6a886f810f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 01:38:33 -0400
+Subject: [PATCH 077/161] fix: Disable Script command logging
+
+---
+ src/control/Script.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index 2ca56367..1a2ab28e 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -1114,7 +1114,7 @@ int8 CRunningScript::ProcessOneCommand()
+ #ifdef CUSTOM_CODE
+ 	// Well this just spams this with random
+ 	// numbers, is that all the commands are?
+-	std::cout << "Command: " << command << std::endl;
++	// std::cout << "Command: " << command << std::endl;
+ #endif // CUSTOM_CODE
+ #ifdef USE_ADVANCED_SCRIPT_DEBUG_OUTPUT
+ 	LogBeforeProcessingCommand(command);
+-- 
+2.43.0
+

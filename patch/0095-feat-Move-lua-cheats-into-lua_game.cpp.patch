@@ -1,0 +1,657 @@
+From d321c619637476b8015266774eb5ba2ed6155fa6 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 7 Sep 2026 16:52:31 -0400
+Subject: [PATCH 095/161] feat: Move lua cheats into lua_game.cpp
+
+* Fix lua_world.cpp to work, I forgot to enable the global for the namespace using it.
+
+* Add OnInit into lua functions for running things once the game starts up, so I can run other stuff in the main script also, I have disabled this since it doesn't work right.
+
+* Add NEW_LUA_FORMAT preprocessor, so I can enable the `OnInit` function in my lua script later which will only run once on startup.
+
+* Update config.h.
+
+* Update changelog, bump verison to 1.2.10-2a.
+---
+ Changelog.md                   |  16 ++-
+ src/control/Script.cpp         |   3 +
+ src/control/Script5.cpp        |  10 ++
+ src/core/Game.cpp              |   9 +-
+ src/core/config.h              |   9 ++
+ src/core/main.cpp              |  12 +++
+ src/extras/lua/lua_game.cpp    | 147 ++++++++++++++++++++++++++
+ src/extras/lua/lua_game.h      |  24 +++++
+ src/extras/lua/lua_player.cpp  |   1 +
+ src/extras/lua/lua_test.cpp    | 181 ++++++++++++++++++++-------------
+ src/extras/lua/lua_test.h      |   1 +
+ src/extras/lua/lua_vehicle.cpp |   1 +
+ src/extras/lua/lua_world.cpp   |   2 +
+ src/extras/utils/defines.cpp   |   2 +-
+ 14 files changed, 344 insertions(+), 74 deletions(-)
+ create mode 100644 src/extras/lua/lua_game.cpp
+ create mode 100644 src/extras/lua/lua_game.h
+
+diff --git a/Changelog.md b/Changelog.md
+index ac643410..2ea7ec21 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -264,4 +264,18 @@ feat: Update some items in freeroam-game.lua
+ 
+ * Add Readme into `gamefiles` folder.
+ 
+-* Update changelog.
+\ No newline at end of file
++* Update changelog.
++
++### 1.2.10-2a
++
++feat: Move lua cheats into lua_game.cpp
++
++* Fix lua_world.cpp to work, I forgot to enable the global for the namespace using it.
++
++* Add OnInit into lua functions for running things once the game starts up, so I can run other stuff in the main script also, I have disabled this since it doesn't work right.
++
++* Add NEW_LUA_FORMAT preprocessor, so I can enable the `OnInit` function in my lua script later which will only run once on startup.
++
++* Update config.h.
++
++* Update changelog, bump verison to 1.2.10-2a.
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index b4942f8e..dd4515ec 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -1170,12 +1170,15 @@ void CRunningScript::Process()
+ 	if (m_bMissionFlag && CTheScripts::FailCurrentMission == 1 && m_nStackPointer == 1)
+ 		SetIP(m_anStack[--m_nStackPointer]);
+ 
++	// TODO Look into how this is working for a wait in my lua scripts.
++	// Otherwise creating a ped and other stuff will never be possible.
+ 	if (CTimer::GetTimeInMilliseconds() >= m_nWakeTime){
+ 		while (!ProcessOneCommand())
+ 			;
+ 		return;
+ 	}
+ 
++	// TODO Reuse this in a LuaEvents::Process function or something
+ 	if (!m_bSkipWakeTime)
+ 		return;
+ 
+diff --git a/src/control/Script5.cpp b/src/control/Script5.cpp
+index 8bb5fbdc..31501642 100644
+--- a/src/control/Script5.cpp
++++ b/src/control/Script5.cpp
+@@ -2276,6 +2276,11 @@ VALIDATESAVEBUF(size)
+ 
+ #undef SCRIPT_DATA_SIZE
+ 
++/**
++ * I didn't know the scripts had their own save system.
++ * 
++ * Save the script info, such as if the script was active, the death arrest enabled and more.
++ */
+ void CRunningScript::Save(uint8*& buf)
+ {
+ #ifdef COMPATIBLE_SAVES
+@@ -2311,6 +2316,11 @@ void CRunningScript::Save(uint8*& buf)
+ #endif
+ }
+ 
++/**
++ * I didn't know the scripts had their own save system.
++ * 
++ * Load the script info, such as if the script was active, the death arrest enabled and more.
++ */
+ void CRunningScript::Load(uint8*& buf)
+ {
+ #ifdef COMPATIBLE_SAVES
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 156456e5..e76ce023 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -629,8 +629,15 @@ bool CGame::Initialise(const char* datFile)
+ 		CTheScripts::Process();
+ #else
+ 	// Init lua scripts, moved out of glfw.cpp.
+-	// LuaTest::GetInstance().InitLua();
+ 	LuaTest::GetInstance().SetupFreeroamScript();
++	
++	// Lua init scripts, create the player and other required items.
++	// This is a work in progress and doesn't currently work right, so it's disabled.
++
++#ifdef NEW_LUA_FORMAT
++	LuaTest::GetInstance().OnInit();
++#endif // NEW_LUA_FORMAT
++
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		TheCamera.Process();
+ 	}
+diff --git a/src/core/config.h b/src/core/config.h
+index 61385327..b273aa80 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -125,9 +125,18 @@
+ // This doesn't make sense to have this enabled if lua is disabled.
+ // My script system requires lua.
+ #ifdef LUA_TEST
++	// Disable the game scripts, switch to my custom script system replacement.
+ 	#define DISABLE_GAME_SCRIPTS
+ #endif // LUA_TEST
+ 
++
++// These should only run if DISABLE_GAME_SCRIPTS is active above.
++#ifdef DISABLE_GAME_SCRIPTS
++	// Currently, just enables the OnInit function in my lua scripts.
++	// This is broken so it's disabled.
++	// #define NEW_LUA_FORMAT
++#endif // DISABLE_GAME_SCRIPTS
++
+ #endif // CUSTOM_CODE
+ 
+ enum Config {
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index dc3cca1b..c962e3eb 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -96,6 +96,10 @@
+ #include "misc_util.h"
+ #endif
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "lua_test.h"
++#endif // DISABLE_GAME_SCRIPTS
++
+ GlobalScene Scene;
+ 
+ uint8 work_buff[55000];
+@@ -1925,6 +1929,14 @@ InitialiseGame(void)
+ 
+ 	// Well I guess I have to run some of this stuff with DISABLE_GAME_SCRIPTS, I seem to crash between GS_INIT_FRONTEND and GS_FRONTEND.
+ 	CGame::Initialise("DATA\\GTA_VC.DAT");
++
++#ifdef DISABLE_GAME_SCRIPTS
++	// Setup the player, I have no idea if this will run the vehicle creation or if this will crash here.
++	// Since I am already running this in CGame::Initialise
++	// Well this does nothing but triggers my assert, I disabled it but this still didn't spawn the car.
++	// When does the game start the scripts? That's where I should be doing this...
++	// LuaTest::GetInstance().SetupFreeroamScript();
++#endif // DISABLE_GAME_SCRIPTS
+ }
+ 
+ RsEventStatus
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+new file mode 100644
+index 00000000..bdba8d8c
+--- /dev/null
++++ b/src/extras/lua/lua_game.cpp
+@@ -0,0 +1,147 @@
++#include "pch.h"
++
++#ifdef LUA_TEST
++
++#include "lua_game.h"
++
++// Lua functions
++#include "lua_functions.h"
++
++#include "lua_player.h"
++
++#include "lua_test.h"
++// Helpers, so far just gets the singleton
++#include "lua_helpers.h"
++
++#include "lua_log.h"
++
++#include "defines.h"
++#include "log_functions.h"
++
++#include "file_functions.h"
++#include "vehicle_cheats.h"
++#include "vehicle_functions.h"
++
++#include "custom_cheats.h"
++#include "imgui_functions.h"
++#include "init_game.h"
++#include "misc_functions.h"
++#include "player_cheats.h"
++
++// VC Specific
++#include "Hud.h"
++#include "Radar.h"
++#include "Restart.h"
++#include "Text.h"
++
++#include "Pad.h"
++
++//-----------------------
++// Game options/Settings/setup
++//-----------------------
++
++extern "C" {
++    /** 
++ * Register the player lua functions under the 'player' namespace.
++ * This works! TODO Make all lua functions use a table with a namespace instead of being in the global namespace.
++ * 
++ * Usage for new format:
++ * 
++ * game.cheat("KILLME")
++ */
++void RegisterGameFunctionsLua(lua_State* L)
++{
++    lua_newtable(L); // Stack: game table
++
++    // Game cheat codes in Lua.
++    lua_pushcfunction(L, cheatCodesLua);
++    lua_setfield(L, -2, "cheat");
++
++    // Game namespace
++    lua_setglobal(L, "game");
++}
++
++}
++
++extern "C" {
++/**
++ * This is a basic cheat code test for lua, kind of pointless but here anyways.
++ *
++ * Moved out of lua_test.cpp.
++ *
++ * Somewhat replicates the games cheat codes into lua for easier use.
++ *
++ * Usage in lua:
++ *
++ * -- This should blow up the player
++ * game.cheat("BLOWMEUP")
++ *
++ * -- This will kill the player
++ * game.cheat("KILLME")
++ */
++int
++cheatCodesLua(lua_State *L)
++{
++	// Begin new test
++	// char KeyBoardCheatString[30];
++	// char c;
++	// for(int32 i = ARRAY_SIZE(KeyBoardCheatString) - 2; i >= 0; i--) KeyBoardCheatString[i + 1] = KeyBoardCheatString[i];
++
++	// KeyBoardCheatString[0] = c;
++
++	// These can be generated by reversing the letters to it.
++	// So if you want a 'KILLME' cheat, it would be 'EMLLIK'
++	// #define _CHEATCMP(str) strncmp(str, KeyBoardCheatString, sizeof(str) - 1)
++
++	// End new test
++
++	CPlayerPed *pPed = FindPlayerPed();
++	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++#ifdef _IMGUI_TEST
++	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++#endif
++
++	std::string cheatString = lua_tostring(L, 1);
++	// const char* cheatString = lua_tostring(L, 1);
++
++	if(cheatString == "BLOWMEUP") {
++		// Check if player is in vehicle, blow them up.
++		if(!pPed->EnteringCar() && pPed->bInVehicle) {
++			CVehicle *currentVeh = pPed->m_pMyVehicle;
++			currentVeh->m_fHealth = 0;
++		}
++
++	} else if(cheatString == "KILLME") {
++		//} else if(!_CHEATCMP("KILLME")) {
++		// Kill the player, print the message "You have been exterminated"
++		FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++		FindPlayerPed()->m_fArmour = 0;
++		LogFunctions::LogInfo(Defines::luaLogFile, "Player has been killed");
++	} else if(cheatString == "SPAWNCAR") {
++		// This works!! I didn't think spawning a car would work.
++		if(lua_isnumber(L, 2)) {
++			int vehicleModel = lua_tointeger(L, 2);
++			vehicleFunctions.SpawnVehicle(vehicleModel, false, false);
++
++			// Test for toggling the ImGui menu
++		}
++#ifdef _IMGUI_TEST
++		else if(cheatString == "IMGUITG") {
++			// ImGuiFunctions::ImGuiDone = !ImGuiFunctions::ImGuiDone;
++			// imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++			TRACE("Toggled");
++			// toggleImGuiLua();
++		}
++
++#endif
++	}
++	// switch(cheatString) {
++	//
++	// }
++
++	return 1;
++}
++}
++
++#endif // LUA_TEST
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+new file mode 100644
+index 00000000..03527b4b
+--- /dev/null
++++ b/src/extras/lua/lua_game.h
+@@ -0,0 +1,24 @@
++#pragma once
++
++
++// Lua
++extern "C" {
++#include <lauxlib.h>
++#include <lua.h>
++#include <lualib.h>
++}
++
++// clang-format off
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++    //------------- Game ------------//
++    extern void RegisterGameFunctionsLua(lua_State* L);
++    extern int cheatCodesLua(lua_State *L);
++
++#ifdef __cplusplus
++}
++#endif
++
++// clang-format on
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 9d86dcf1..6a8e8aec 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -137,6 +137,7 @@ void RegisterPlayerFunctionsLua(lua_State* L)
+ 	lua_pushcfunction(L, checkWantedLevelLua);
+ 	lua_setfield(L, -2, "get_wanted_level");
+ 
++	// Player namespace
+     lua_setglobal(L, "player");
+ }
+ 
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 1bb43c9a..9781106b 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -58,6 +58,7 @@ extern "C" {
+ #include "init_game.h"
+ 
+ // Lua functions
++#include "lua_game.h"
+ #include "lua_log.h"
+ #include "lua_hud.h"
+ #include "lua_player.h"
+@@ -131,7 +132,28 @@ LuaTest::LuaTest() {
+ 
+ }
+ 
+-//------- Begin init functions //-------//
++//------- Begin init functions -------//
++//------- These are for the game .scm script replacements ---------//
++
++/**
++ * New init function, so I run stuff like player.create only once and can run the freeroam-game.lua
++ *  as much as I want without crashing.
++ * Should allow me to spawn vehicles and stuff since I load that script so early before the game even starts.
++ * 
++ */
++void LuaTest::OnInit()
++{
++#ifdef NEW_LUA_FORMAT
++    lua_State* L = GetLuaState();
++    lua_getglobal(L, "OnInit"); // Look for a function named OnInit in your lua file
++    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
++        // Handle error
++    }
++
++#else
++	return;
++#endif // NEW_LUA_FORMAT - Switch to OnInit function instead of having init directly in script.
++}
+ 
+ /**
+  * This should replace the main game tick when DISABLE_GAME_SCRIPTS is enabled.
+@@ -223,73 +245,82 @@ toggleImGuiLua(lua_State *L)
+ }
+ #endif
+ 
+-// Not sure how exactly to use this, I may need to add it into Pad.cpp
+-// Oh I need to add this somewhere that it will constantly run.
+-// TODO Test this in a loop somewhere, possibly in the main game loop or something.
+-// This basic test works in the lua code, now I can toggle these.
+-extern "C" int
+-CheatTestNew(lua_State *L)
+-{
+-	// Begin new test
+-	// char KeyBoardCheatString[30];
+-	// char c;
+-	// for(int32 i = ARRAY_SIZE(KeyBoardCheatString) - 2; i >= 0; i--) KeyBoardCheatString[i + 1] = KeyBoardCheatString[i];
+-
+-	// KeyBoardCheatString[0] = c;
+-
+-	// These can be generated by reversing the letters to it.
+-	// So if you want a 'KILLME' cheat, it would be 'EMLLIK'
+-	// #define _CHEATCMP(str) strncmp(str, KeyBoardCheatString, sizeof(str) - 1)
+-
+-	// End new test
+-
+-	CPlayerPed *pPed = FindPlayerPed();
+-	VehicleFunctions vehicleFunctions = VehicleFunctions();
+-
+-#ifdef _IMGUI_TEST
+-	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
+-#endif
+-
+-	std::string cheatString = lua_tostring(L, 1);
+-	// const char* cheatString = lua_tostring(L, 1);
+-
+-	if(cheatString == "BLOWMEUP") {
+-		// Check if player is in vehicle, blow them up.
+-		if(!pPed->EnteringCar() && pPed->bInVehicle) {
+-			CVehicle *currentVeh = pPed->m_pMyVehicle;
+-			currentVeh->m_fHealth = 0;
+-		}
+-
+-	} else if(cheatString == "KILLME") {
+-		//} else if(!_CHEATCMP("KILLME")) {
+-		// Kill the player, print the message "You have been exterminated"
+-		FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
+-		FindPlayerPed()->m_fArmour = 0;
+-		LogFunctions::LogInfo(Defines::luaLogFile, "Player has been killed");
+-	} else if(cheatString == "SPAWNCAR") {
+-		// This works!! I didn't think spawning a car would work.
+-		if(lua_isnumber(L, 2)) {
+-			int vehicleModel = lua_tointeger(L, 2);
+-			vehicleFunctions.SpawnVehicle(vehicleModel, false, false);
+-
+-			// Test for toggling the ImGui menu
+-		}
+-#ifdef _IMGUI_TEST
+-		else if(cheatString == "IMGUITG") {
+-			// ImGuiFunctions::ImGuiDone = !ImGuiFunctions::ImGuiDone;
+-			// imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
+-			TRACE("Toggled");
+-			// toggleImGuiLua();
+-		}
+-
+-#endif
+-	}
+-	// switch(cheatString) {
+-	//
+-	// }
+-
+-	return 1;
+-}
++/**
++ * This is a basic cheat code test for lua, kind of pointless but here anyways.
++ * 
++ * Somewhat replicates the games cheat codes into lua for easier use.
++ * 
++ * Usage in lua:
++ * 
++ * -- This should blow up the player
++ * game.cheat("BLOWMEUP")
++ * 
++ * -- This will kill the player
++ * game.cheat("KILLME")
++ */
++// extern "C" int
++// CheatTestNew(lua_State *L)
++// {
++// 	// Begin new test
++// 	// char KeyBoardCheatString[30];
++// 	// char c;
++// 	// for(int32 i = ARRAY_SIZE(KeyBoardCheatString) - 2; i >= 0; i--) KeyBoardCheatString[i + 1] = KeyBoardCheatString[i];
++
++// 	// KeyBoardCheatString[0] = c;
++
++// 	// These can be generated by reversing the letters to it.
++// 	// So if you want a 'KILLME' cheat, it would be 'EMLLIK'
++// 	// #define _CHEATCMP(str) strncmp(str, KeyBoardCheatString, sizeof(str) - 1)
++
++// 	// End new test
++
++// 	CPlayerPed *pPed = FindPlayerPed();
++// 	VehicleFunctions vehicleFunctions = VehicleFunctions();
++
++// #ifdef _IMGUI_TEST
++// 	ImGuiFunctions imGuiFunctions = ImGuiFunctions();
++// #endif
++
++// 	std::string cheatString = lua_tostring(L, 1);
++// 	// const char* cheatString = lua_tostring(L, 1);
++
++// 	if(cheatString == "BLOWMEUP") {
++// 		// Check if player is in vehicle, blow them up.
++// 		if(!pPed->EnteringCar() && pPed->bInVehicle) {
++// 			CVehicle *currentVeh = pPed->m_pMyVehicle;
++// 			currentVeh->m_fHealth = 0;
++// 		}
++
++// 	} else if(cheatString == "KILLME") {
++// 		//} else if(!_CHEATCMP("KILLME")) {
++// 		// Kill the player, print the message "You have been exterminated"
++// 		FindPlayerPed()->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++// 		FindPlayerPed()->m_fArmour = 0;
++// 		LogFunctions::LogInfo(Defines::luaLogFile, "Player has been killed");
++// 	} else if(cheatString == "SPAWNCAR") {
++// 		// This works!! I didn't think spawning a car would work.
++// 		if(lua_isnumber(L, 2)) {
++// 			int vehicleModel = lua_tointeger(L, 2);
++// 			vehicleFunctions.SpawnVehicle(vehicleModel, false, false);
++
++// 			// Test for toggling the ImGui menu
++// 		}
++// #ifdef _IMGUI_TEST
++// 		else if(cheatString == "IMGUITG") {
++// 			// ImGuiFunctions::ImGuiDone = !ImGuiFunctions::ImGuiDone;
++// 			// imGuiFunctions.ImGuiDone = !imGuiFunctions.ImGuiDone;
++// 			TRACE("Toggled");
++// 			// toggleImGuiLua();
++// 		}
++
++// #endif
++// 	}
++// 	// switch(cheatString) {
++// 	//
++// 	// }
++
++// 	return 1;
++// }
+ 
+ //------- End cheat functions --------//
+ 
+@@ -376,9 +407,12 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	// lua_pushstring(L)
+ 
+-
++	// Disabled for now 
++#if 0
+ 	// Cheat test
+-	lua_register(L, "cheat_test", CheatTestNew);
++	// lua_register(L, "cheat_test", CheatTestNew);
++
++#endif //
+ 
+ 	// Toggle player control
+ 	lua_register(L, "toggle_control", TogglePlayerControlLua);
+@@ -490,6 +524,7 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	// Try to use namespace like player.set_position({2, 2, 2})
+ 	//----
+ 
++	RegisterGameFunctionsLua(m_luaVM);
+ 	RegisterPlayerFunctionsLua(m_luaVM);
+ 	RegisterVehicleFunctionsLua(m_luaVM);
+ 	RegisterWorldFunctionsLua(m_luaVM);
+@@ -889,7 +924,11 @@ LuaTest::SetupFreeroamScript()
+ 	
+ 		// Crash here if player isn't created.
+ 		// TODO Cleanly shut down game.
+-		assert(InitGame::GetInstance().GetPlayerCreated() && "Required Lua player creation did not occur, create_player function wasn't called!");
++
++		// Well, I need to move my reinit for the scripts, I have an OnInit function that runs freeroam-game.lua.
++		// Maybe I need to move this into freeroam-init.lua, and keep the freeroam-game.lua for spawning vehicles and other stuff.
++		// This crashes if it was called again.
++		// assert(InitGame::GetInstance().GetPlayerCreated() && "Required Lua player creation did not occur, create_player function wasn't called!");
+ 
+ 
+ 	
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 40b6ec95..90aee3a8 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -87,6 +87,7 @@ public:
+ 	LuaTest();
+ 	void SetupFreeroamScript();
+ 	void InitLua();
++	void OnInit();
+ 	void OnTick();
+ 	
+ 	// Run the custom event system I am working on in Lua
+diff --git a/src/extras/lua/lua_vehicle.cpp b/src/extras/lua/lua_vehicle.cpp
+index dcb54f6b..0fc9aa1c 100644
+--- a/src/extras/lua/lua_vehicle.cpp
++++ b/src/extras/lua/lua_vehicle.cpp
+@@ -34,6 +34,7 @@ extern "C"
+ 		lua_pushcfunction(L, createVehicleLua);
+ 		lua_setfield(L, -2, "create");
+ 
++		// Vehicle namespace
+ 		lua_setglobal(L, "vehicle");
+ 	}
+ 
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 97e3eadd..1fee077b 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -69,6 +69,8 @@ extern "C"
+ 		lua_pushcfunction(L, clearAreaLua);
+ 		lua_setfield(L, -2, "clear_area");
+ 
++		// World namespace
++    	lua_setglobal(L, "world");
+ 	}
+ 
+ 	// Clear items in the specified area
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 0ae72b91..db154f1e 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.10-1a";
++std::string Defines::programVersion = "1.2.10-2a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

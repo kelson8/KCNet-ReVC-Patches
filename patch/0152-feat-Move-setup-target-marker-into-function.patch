@@ -1,0 +1,1137 @@
+From ce15e1b0268768394f03831ab81e6b03b6dd8594 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 14 Sep 2026 12:54:22 -0400
+Subject: [PATCH 152/161] feat: Move setup target marker into function
+
+* I made a function that can easily setup a blip as a target marker in freeroam_util.
+
+* Remove pos_x and make variables cleaner for storing target marker into save file.
+
+* Add set_marker to lua_world.
+
+* Make lua show current version on startup.
+
+* Update changelog, change version to 1.2.14-2a.
+---
+ Changelog.md                       |  18 +-
+ src/extras/lua/lua_test.cpp        |  40 +-
+ src/extras/lua/lua_world.cpp       |  41 +-
+ src/extras/lua/lua_world.h         |   5 +-
+ src/extras/utils/defines.cpp       |   2 +-
+ src/extras/utils/freeroam_util.cpp | 817 ++++++++++++++---------------
+ src/extras/utils/freeroam_util.h   |   4 +
+ 7 files changed, 486 insertions(+), 441 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index feb49369..fa94b944 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -885,7 +885,9 @@ feat: Make OnInit function work in lua
+ 
+ * Update changelog, change version to 1.2.13-14a.
+ 
+-### Latest 1.2.14-1a
++# 1.2.14a
++
++### 1.2.14-1a
+ 
+ fix: Revert player fallback spawn
+ 
+@@ -893,4 +895,16 @@ fix: Revert player fallback spawn
+ 
+ * Add fading the camera in and out in lua.
+ 
+-* Update changelog, change version to 1.2.14-1a.
+\ No newline at end of file
++* Update changelog, change version to 1.2.14-1a.
++
++### Latest 1.2.14-2a
++
++feat: Move setup target marker into function
++
++* I made a function that can easily setup a blip as a target marker in freeroam_util.
++
++* Remove pos_x and make variables cleaner for storing target marker into save file.
++
++* Add set_marker to lua_world.
++
++* Update changelog, change version to 1.2.14-2a.
+\ No newline at end of file
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 131cae88..da148592 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -131,6 +131,11 @@ LuaTest::LuaTest() {
+ 	// Open the set lua libraries, required to prevent crashing.
+ 	this->OpenLuaLibraries(m_luaVM);
+ 
++	// TODO Test this, I should be able to display the lua version here.
++	// This didn't seem to work.
++	// luaL_checkversion(m_luaVM);
++	// LogFunctions::()
++
+ 
+ 	// This works here, just need to fix it properly in the lua_functions file.
+ 	this->RegisterLuaFunctions(m_luaVM);
+@@ -194,6 +199,15 @@ void LuaTest::OpenLuaLibraries(lua_State* L)
+  */
+ void LuaTest::OnInit()
+ {
++	// Updated to print out the current lua version, I forgot about it being in the header.
++	std::string luaVersionString = "[KCNet-ReVC]: Lua version: " 
++	+ std::string(LUA_VERSION_MAJOR) + "."
++	+ LUA_VERSION_MINOR + "."
++	+ LUA_VERSION_RELEASE;
++
++	TRACE(luaVersionString.c_str());
++	LogFunctions::LogInfo(Defines::luaLogFile, luaVersionString);
++
+ #ifdef NEW_LUA_FORMAT
+     lua_State* L = GetLuaState();
+     lua_getglobal(L, "OnInit"); // Look for a function named OnInit in your lua file
+@@ -974,6 +988,15 @@ LuaTest::LuaKeybindEvents()
+ 	} else {
+ 
+ 
++		// TODO Test this, I should be able to set stuff up only once with this somehow.
++		// If I can figure out how to load this stuff in the ...
++		// I think I have to put the radar markers in the main script to be accessed since it only loads once..
++		// lua_State* L = GetLuaState();
++    	// lua_getglobal(L, "OnInit"); // Look for a function named OnInit in your lua file
++    	// if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
++        	// Handle error
++    	// }
++
+ 	}
+ 
+ 	// New, for vehicle list
+@@ -1113,6 +1136,21 @@ LuaTest::SetupFreeroamScript()
+ 			TRACE(createPlayerLogMsg.c_str());
+ 		} else {
+ 			createPlayerLogMsg = "The create_player function wasn't called in the " + Defines::luaFreeroamScript + " Shutting down game...";
++			
++			/*
++			
++			RsGlobal.quit && !FrontEndMenuManager.m_bWantToRestart && !glfwWindowShouldClose(PSGLOBAL(window)
++			*/
++			// FrontEndMenuManager.m_bShutDownFrontEndRequested = true;
++			// FrontEndMenuManager.m_bWantToRestart = false;
++			// FrontEndMenuManager.SwitchMenuOnAndOff();
++			// // Well this didn't work here either..
++			// RsGlobal.quit = true;
++			// FrontEndMenuManager.m_bWantToRestart = true;
++			// glfwWindowShouldClose(PSGLOBAL(window));
++			// // HandleExit();
++
++			// return;
+ 
+ #ifdef EXTRA_LOGGING
+ 			LogFunctions::LogError(defines.luaLogFile, createPlayerLogMsg);
+@@ -1154,8 +1192,6 @@ LuaTest::SetupFreeroamScript()
+ 		// Maybe I need to move this into freeroam-init.lua, and keep the freeroam-game.lua for spawning vehicles and other stuff.
+ 		// This crashes if it was called again.
+ 		// assert(InitGame::GetInstance().GetPlayerCreated() && "Required Lua player creation did not occur, create_player function wasn't called!");
+-
+-
+ 	
+ 	lua_pop(m_luaVM, 1);
+ 
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index c39e8244..079d5fee 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -20,6 +20,8 @@
+ #include "vehicle_cheats.h"
+ //#include "vehicle_functions.h"
+ 
++#include "freeroam_util.h"
++
+ #include "custom_cheats.h"
+ #include "player_cheats.h"
+ #include "vehicle_functions.h"
+@@ -139,7 +141,10 @@ extern "C"
+ 		// Fade the camera
+ 		lua_pushcfunction(L, fadeCameraLua);
+ 		lua_setfield(L, -2, "fade_camera");
+-		
++
++		// Setup the target marker
++		lua_pushcfunction(L, setupTargetMarkerLua);
++		lua_setfield(L, -2, "set_marker");		
+ 
+ 		// World namespace
+     	lua_setglobal(L, "world");
+@@ -552,8 +557,6 @@ extern "C"
+ 		float fadeTime = static_cast<float>(lua_tonumber(L, 1));
+ 		int fadeType = lua_tonumber(L, 2);
+ 		
+-		
+-
+ 		if(fadeTime <= 0 || fadeTime > 5000)
+ 		{
+ 			return luaL_error(L, "world.fade_camera takes a fade to variable, such as FADE_OUT, and a time to fade.");
+@@ -572,6 +575,38 @@ extern "C"
+ 		return 0;
+ 	}
+ 
++	/**
++	 * Setup a target marker for loading the json save file in lua.
++	 * 
++	 * Usage:
++	 * world.set_marker({x = 25, y = 25, z = 25})
++	 */
++	int setupTargetMarkerLua(lua_State *L)
++	{
++		auto targetMarkerPos = luaGetCVector(L, 1);
++
++		if(!targetMarkerPos)
++		{
++			return luaL_error(L, "world.set_marker expects one vector table with x, y and z values");
++		}
++
++		int targetMarker = FreeroamUtil::SetupTargetMarker(*targetMarkerPos);
++
++		// TODO Make this return the target marker ID, for later use.
++		lua_pushinteger(L, targetMarker);
++
++		return 1;
++	}
++
++	/**
++	 * This will get the current blip index in lua once I set it up.
++	 * 
++	 */
++	int getBlipIndexLua(lua_State *L)
++	{
++		return 1;
++	}
++
+ 
+ 
+ 	//-------------------
+diff --git a/src/extras/lua/lua_world.h b/src/extras/lua/lua_world.h
+index 090e7e74..6d2563f0 100644
+--- a/src/extras/lua/lua_world.h
++++ b/src/extras/lua/lua_world.h
+@@ -39,12 +39,15 @@ extern "C" {
+ 	// Objects
+ 	extern int createObjectLua(lua_State *L);
+ 	extern int createObjectNoOffsetLua(lua_State *L);
+-	extern int ontRemoveObjectLua(lua_State *L);
++	extern int dontRemoveObjectLua(lua_State *L);
+ 	extern int setObjectHeadingLua(lua_State *L);
+ 
+ 	// Fading
+ 	extern int fadeCameraLua(lua_State *L);
+ 
++	// Target marker
++	extern int setupTargetMarkerLua(lua_State *L);
++
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index d4517705..555d4c9f 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-1a";
++std::string Defines::programVersion = "1.2.14-2a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index d33eca2f..10eb53c4 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -2,20 +2,21 @@
+ 
+ #include "freeroam_util.h"
+ 
+-#include "log_functions.h"
+ #include "defines.h"
++#include "log_functions.h"
+ 
+ #include "Streaming.h"
+ 
+ #include "vehicle_functions.h"
+ 
+ // ReVC
+-#include "Stats.h"
+ #include "Clock.h"
+ #include "Entity.h"
++#include "Frontend.h"
+ #include "Placeable.h"
+-#include "PlayerPed.h"
+ #include "PlayerInfo.h"
++#include "PlayerPed.h"
++#include "Stats.h"
+ #include "Weather.h"
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+@@ -27,7 +28,6 @@ using json = nlohmann::json;
+ 
+ #endif // DISABLE_GAME_SCRIPTS
+ 
+-
+ #ifdef DISABLE_GAME_SCRIPTS
+ 
+ //----------------------
+@@ -42,451 +42,404 @@ using json = nlohmann::json;
+  * Get the freeroam save path
+  * TODO Move this into defines later.
+  */
+-const char* FreeroamUtil::GetFreeroamSavePath()
+-{
+-    return "ViceExtended/kcnet-revc-save.json";
++const char *
++FreeroamUtil::GetFreeroamSavePath()
++{ 
++    return "ViceExtended/kcnet-revc-save.json"; 
+ }
+ 
+ /**
+  * Save the stats and info to a json file for testing
+  */
+-bool FreeroamUtil::SaveFreeroamJson()
++bool
++FreeroamUtil::SaveFreeroamJson()
+ {
+-    try {
+-        json save;
+-
+-        save["format"] = "revc-freeroam";
+-        save["version"] = 1;
+-
+-        // Basic game state
+-        save["game"]["level"] = CGame::currLevel;
+-        save["game"]["area"] = CGame::currArea;
+-
+-        save["game"]["time"]["hours"] =
+-            CClock::ms_nGameClockHours;
+-
+-        save["game"]["time"]["minutes"] =
+-            CClock::ms_nGameClockMinutes;
+-
+-        save["game"]["time"]["millisecondsPerMinute"] =
+-            CClock::ms_nMillisecondsPerGameMinute;
+-
+-        // Weather
+-        save["game"]["weather"]["old"] =
+-            CWeather::OldWeatherType;
+-
+-        save["game"]["weather"]["new"] =
+-            CWeather::NewWeatherType;
+-
+-        save["game"]["weather"]["forced"] =
+-            CWeather::ForcedWeatherType;
+-
+-        save["game"]["weather"]["interpolation"] =
+-            CWeather::InterpolationValue;
+-
+-        save["game"]["weather"]["list"] =
+-            CWeather::WeatherTypeInList;
+-
+-        // Player position
+-        CPlayerInfo& player =
+-            CWorld::Players[CWorld::PlayerInFocus];
+-
+-        CPlayerPed* playerPed = player.m_pPed;
+-
+-        if (playerPed != nullptr) {
+-            CVector position = playerPed->GetPosition();
+-
+-            save["player"]["position"]["x"] = position.x;
+-            save["player"]["position"]["y"] = position.y;
+-            save["player"]["position"]["z"] = position.z;
+-        }
+-
+-        /*
+-         * Save only the stats you actually need.
+-
+-         * These member names are examples. Replace them with the
+-         * corresponding fields or accessors in your Stats.h.
+-         */
+-        save["stats"]["money"] = FindPlayerPed()->m_nPedMoney;
+-        save["stats"]["health"] = FindPlayerPed()->m_fHealth;
+-        save["stats"]["armor"] = FindPlayerPed()->m_fArmour;
+-
+-        // New stats
+-        // TODO Test these!
+-        // TODO Make all of these able to be called in lua.
+-        // Possibly make a player.set_stat(stat_type, value)
+-        // It should be easy since most of these are floats or ints.
+-
+-        // Peds killed by player and others
+-        save["stats"]["peds_killed_by_player"] = CStats::PeopleKilledByPlayer;
+-        save["stats"]["peds_killed_by_others"] = CStats::PeopleKilledByOthers;
+-        save["stats"]["kills_since_last_checkpoint"] = CStats::KillsSinceLastCheckpoint;
+-
+-        // Explosions
+-        save["stats"]["kgs_of_explosives_used"] = CStats::KgsOfExplosivesUsed;
+-        
+-        // Boats/vehicles destroyed
+-        save["stats"]["boats_exploded"] = CStats::BoatsExploded;
+-        save["stats"]["helis_destroyed"] = CStats::HelisDestroyed;
+-        save["stats"]["vehicles_exploded"] = CStats::CarsExploded;
+-        
+-        // Bullets fired and hit.
+-        save["stats"]["bullets_that_hit"] = CStats::BulletsThatHit;
+-        save["stats"]["rounds_fired_by_player"] = CStats::RoundsFiredByPlayer;
+-        
+-        // Days passed
+-        save["stats"]["days_passed"] = CStats::DaysPassed;
+-
+-        // Distance travelled
+-        save["stats"]["distance_traveled_by_bike"] = CStats::DistanceTravelledByBike;
+-        save["stats"]["distance_traveled_by_boat"] = CStats::DistanceTravelledByBoat;
+-        save["stats"]["distance_traveled_by_car"] = CStats::DistanceTravelledByCar;
+-        save["stats"]["distance_traveled_by_golf_cart"] = CStats::DistanceTravelledByGolfCart;
+-        save["stats"]["distance_traveled_by_helicopter"] = CStats::DistanceTravelledByHelicoptor;
+-        save["stats"]["distance_traveled_by_plane"] = CStats::DistanceTravelledByPlane;
+-        save["stats"]["distance_traveled_on_foot"] = CStats::DistanceTravelledOnFoot;
+-
+-        // Wanted
+-        save["stats"]["wanted_stars_evaded"] = CStats::WantedStarsEvaded;
+-        save["stats"]["wanted_stars_attained"] = CStats::WantedStarsAttained;
+-        
+-        // Misc
+-        save["stats"]["tires_popped"] = CStats::TyresPopped;
+-        save["stats"]["total_kills"] = CStats::TotalLegitimateKills;
+-        save["stats"]["times_arrested"] = CStats::TimesArrested;
+-        save["stats"]["times_died"] = CStats::TimesDied;
+-        save["stats"]["times_drowned"] = CStats::TimesDrowned;
+-        save["stats"]["seagulls_killed"] = CStats::SeagullsKilled;
+-
+-        // Wheelies, stoppies and other vehicle stats.
+-        save["stats"]["longest_stoppie_time"] = CStats::LongestStoppie;
+-        save["stats"]["longest_stoppie_distance"] = CStats::LongestStoppieDist;
+-        save["stats"]["longest_2_wheel_time"] = CStats::Longest2Wheel;
+-        save["stats"]["longest_2_wheel_distance"] = CStats::Longest2WheelDist;
+-        save["stats"]["longest_wheelie_time"] = CStats::LongestWheelie;
+-        save["stats"]["longest_wheelie_distance"] = CStats::LongestWheelieDist;
+-        //
+-
+-        save["stats"]["fires_extinguished"] = CStats::FiresExtinguished;
+-        save["stats"]["heads_popped"] = CStats::HeadsPopped;
+-        
+-        // Not in use, I could possibly use this once I figure out how to place the pickups.
+-        // Then I could increment this when I save my game.
+-        // save["stats"]["safehouse_visits"] = CStats::SafeHouseVisits;
+-        
+-        
+-        
+-        // TODO Figure out how to save the favorite radio station list.
+-        // save["stats"][""] = CStats::FavoriteRadioStationList;
+-
+-        // save["stats"][""] = CStats::;       
+-
+-        // New - Added in v1.2.13-11a
+-        // For saving the marker on the map if it exists.
+-        // First, make sure the target marker is on the map.
+-        if(CRadar::TargetMarkerId != -1)
+-        {
+-            // Now, save the marker position
+-            // This doesn't have a Z value, so I just save the X and Y.
+-            save["map"]["target_marker"]["pos_x"] = CRadar::TargetMarkerPos.x;
+-            save["map"]["target_marker"]["pos_y"] = CRadar::TargetMarkerPos.y;
+-        }
+-        // 
+-        //
+-
+-
+-        /*
+-         * Write to a temporary file first. If the game crashes while
+-         * writing, the previous save is not immediately destroyed.
+-         */
+-        const std::string temporaryPath =
+-            std::string(GetFreeroamSavePath()) + ".tmp";
+-
+-        {
+-            std::ofstream output(
+-                temporaryPath,
+-                std::ios::out | std::ios::trunc
+-            );
+-
+-            if (!output.is_open())
+-                return false;
+-
+-            output << save.dump(4) << '\n';
+-
+-            if (!output.good())
+-                return false;
+-        }
+-
+-        std::error_code error;
+-
+-        std::filesystem::remove(
+-            GetFreeroamSavePath(),
+-            error
+-        );
+-
+-        std::filesystem::rename(
+-            temporaryPath,
+-            GetFreeroamSavePath(),
+-            error
+-        );
+-
+-        return !error;
+-    }
+-    catch (const json::exception&) {
+-        return false;
+-    }
+-    catch (const std::exception&) {
+-        return false;
+-    }
++	try {
++		json save;
++
++		save["format"] = "revc-freeroam";
++		save["version"] = 1;
++
++		// Basic game state
++		save["game"]["level"] = CGame::currLevel;
++		save["game"]["area"] = CGame::currArea;
++
++		save["game"]["time"]["hours"] = CClock::ms_nGameClockHours;
++
++		save["game"]["time"]["minutes"] = CClock::ms_nGameClockMinutes;
++
++		save["game"]["time"]["millisecondsPerMinute"] = CClock::ms_nMillisecondsPerGameMinute;
++
++		// Weather
++		save["game"]["weather"]["old"] = CWeather::OldWeatherType;
++
++		save["game"]["weather"]["new"] = CWeather::NewWeatherType;
++
++		save["game"]["weather"]["forced"] = CWeather::ForcedWeatherType;
++
++		save["game"]["weather"]["interpolation"] = CWeather::InterpolationValue;
++
++		save["game"]["weather"]["list"] = CWeather::WeatherTypeInList;
++
++		// Player position
++		CPlayerInfo &player = CWorld::Players[CWorld::PlayerInFocus];
++
++		CPlayerPed *playerPed = player.m_pPed;
++
++		if(playerPed != nullptr) {
++			CVector position = playerPed->GetPosition();
++
++			save["player"]["position"]["x"] = position.x;
++			save["player"]["position"]["y"] = position.y;
++			save["player"]["position"]["z"] = position.z;
++		}
++
++		/*
++		 * Save only the stats you actually need.
++
++		 * These member names are examples. Replace them with the
++		 * corresponding fields or accessors in your Stats.h.
++		 */
++		save["stats"]["money"] = FindPlayerPed()->m_nPedMoney;
++		save["stats"]["health"] = FindPlayerPed()->m_fHealth;
++		save["stats"]["armor"] = FindPlayerPed()->m_fArmour;
++
++		// New stats
++		// TODO Test these!
++		// TODO Make all of these able to be called in lua.
++		// Possibly make a player.set_stat(stat_type, value)
++		// It should be easy since most of these are floats or ints.
++
++		// Peds killed by player and others
++		save["stats"]["peds_killed_by_player"] = CStats::PeopleKilledByPlayer;
++		save["stats"]["peds_killed_by_others"] = CStats::PeopleKilledByOthers;
++		save["stats"]["kills_since_last_checkpoint"] = CStats::KillsSinceLastCheckpoint;
++
++		// Explosions
++		save["stats"]["kgs_of_explosives_used"] = CStats::KgsOfExplosivesUsed;
++
++		// Boats/vehicles destroyed
++		save["stats"]["boats_exploded"] = CStats::BoatsExploded;
++		save["stats"]["helis_destroyed"] = CStats::HelisDestroyed;
++		save["stats"]["vehicles_exploded"] = CStats::CarsExploded;
++
++		// Bullets fired and hit.
++		save["stats"]["bullets_that_hit"] = CStats::BulletsThatHit;
++		save["stats"]["rounds_fired_by_player"] = CStats::RoundsFiredByPlayer;
++
++		// Days passed
++		save["stats"]["days_passed"] = CStats::DaysPassed;
++
++		// Distance travelled
++		save["stats"]["distance_traveled_by_bike"] = CStats::DistanceTravelledByBike;
++		save["stats"]["distance_traveled_by_boat"] = CStats::DistanceTravelledByBoat;
++		save["stats"]["distance_traveled_by_car"] = CStats::DistanceTravelledByCar;
++		save["stats"]["distance_traveled_by_golf_cart"] = CStats::DistanceTravelledByGolfCart;
++		save["stats"]["distance_traveled_by_helicopter"] = CStats::DistanceTravelledByHelicoptor;
++		save["stats"]["distance_traveled_by_plane"] = CStats::DistanceTravelledByPlane;
++		save["stats"]["distance_traveled_on_foot"] = CStats::DistanceTravelledOnFoot;
++
++		// Wanted
++		save["stats"]["wanted_stars_evaded"] = CStats::WantedStarsEvaded;
++		save["stats"]["wanted_stars_attained"] = CStats::WantedStarsAttained;
++
++		// Misc
++		save["stats"]["tires_popped"] = CStats::TyresPopped;
++		save["stats"]["total_kills"] = CStats::TotalLegitimateKills;
++		save["stats"]["times_arrested"] = CStats::TimesArrested;
++		save["stats"]["times_died"] = CStats::TimesDied;
++		save["stats"]["times_drowned"] = CStats::TimesDrowned;
++		save["stats"]["seagulls_killed"] = CStats::SeagullsKilled;
++
++		// Wheelies, stoppies and other vehicle stats.
++		save["stats"]["longest_stoppie_time"] = CStats::LongestStoppie;
++		save["stats"]["longest_stoppie_distance"] = CStats::LongestStoppieDist;
++		save["stats"]["longest_2_wheel_time"] = CStats::Longest2Wheel;
++		save["stats"]["longest_2_wheel_distance"] = CStats::Longest2WheelDist;
++		save["stats"]["longest_wheelie_time"] = CStats::LongestWheelie;
++		save["stats"]["longest_wheelie_distance"] = CStats::LongestWheelieDist;
++		//
++
++		save["stats"]["fires_extinguished"] = CStats::FiresExtinguished;
++		save["stats"]["heads_popped"] = CStats::HeadsPopped;
++
++		// Not in use, I could possibly use this once I figure out how to place the pickups.
++		// Then I could increment this when I save my game.
++		// save["stats"]["safehouse_visits"] = CStats::SafeHouseVisits;
++
++		// TODO Figure out how to save the favorite radio station list.
++		// save["stats"][""] = CStats::FavoriteRadioStationList;
++
++		// save["stats"][""] = CStats::;
++
++		// New - Added in v1.2.13-11a
++		// For saving the marker on the map if it exists.
++		// First, make sure the target marker is on the map.
++		if(CRadar::TargetMarkerId != -1) {
++			// Now, save the marker position
++			// This doesn't have a Z value, so I just save the X and Y.
++			save["map"]["target_marker"]["x"] = CRadar::TargetMarkerPos.x;
++			save["map"]["target_marker"]["y"] = CRadar::TargetMarkerPos.y;
++		}
++		//
++
++		/*
++		 * Write to a temporary file first. If the game crashes while
++		 * writing, the previous save is not immediately destroyed.
++		 */
++		const std::string temporaryPath = std::string(GetFreeroamSavePath()) + ".tmp";
++
++		{
++			std::ofstream output(temporaryPath, std::ios::out | std::ios::trunc);
++
++			if(!output.is_open()) return false;
++
++			output << save.dump(4) << '\n';
++
++			if(!output.good()) return false;
++		}
++
++		std::error_code error;
++
++		std::filesystem::remove(GetFreeroamSavePath(), error);
++
++		std::filesystem::rename(temporaryPath, GetFreeroamSavePath(), error);
++
++		return !error;
++	} catch(const json::exception &) {
++		return false;
++	} catch(const std::exception &) {
++		return false;
++	}
+ }
+ 
+ /**
+  * Load the stats and info from a json file for testing
+  */
+-bool FreeroamUtil::LoadFreeroamJson()
++bool
++FreeroamUtil::LoadFreeroamJson()
+ {
+-    try {
+-        std::ifstream input(GetFreeroamSavePath());
+-
+-        if (!input.is_open())
+-            return false;
+-
+-        json save;
+-        input >> save;
+-
+-        if (!save.is_object())
+-            return false;
+-
+-        if (save.value("format", "") != "revc-freeroam")
+-            return false;
+-
+-        const int version = save.value("version", 0);
+-
+-        if (version < 1)
+-            return false;
+-
+-        // Load basic game state
+-        CGame::currLevel =
+-            save["game"].value("level", CGame::currLevel);
+-
+-        CGame::currArea =
+-            save["game"].value("area", CGame::currArea);
+-
+-        // Load time
+-        const json& time = save["game"]["time"];
+-
+-        CClock::ms_nGameClockHours =
+-            time.value(
+-                "hours",
+-                CClock::ms_nGameClockHours
+-            );
+-
+-        CClock::ms_nGameClockMinutes =
+-            time.value(
+-                "minutes",
+-                CClock::ms_nGameClockMinutes
+-            );
+-
+-        CClock::ms_nMillisecondsPerGameMinute =
+-            time.value(
+-                "millisecondsPerMinute",
+-                CClock::ms_nMillisecondsPerGameMinute
+-            );
+-
+-        // Load weather
+-        const json& weather = save["game"]["weather"];
+-
+-        CWeather::OldWeatherType =
+-            weather.value(
+-                "old",
+-                CWeather::OldWeatherType
+-            );
+-
+-        CWeather::NewWeatherType =
+-            weather.value(
+-                "new",
+-                CWeather::NewWeatherType
+-            );
+-
+-        CWeather::ForcedWeatherType =
+-            weather.value(
+-                "forced",
+-                CWeather::ForcedWeatherType
+-            );
+-
+-        CWeather::InterpolationValue =
+-            weather.value(
+-                "interpolation",
+-                CWeather::InterpolationValue
+-            );
+-
+-        CWeather::WeatherTypeInList =
+-            weather.value(
+-                "list",
+-                CWeather::WeatherTypeInList
+-            );
+-
+-        /*
+-         * Load stats. Replace these example fields with the actual
+-         * fields or functions in your CStats implementation.
+-         */
+-        if (save.contains("stats")) {
+-            const json& stats = save["stats"];
+-
+-            FindPlayerPed()->m_nPedMoney = stats.value("money", FindPlayerPed()->m_nPedMoney);
+-
+-            FindPlayerPed()->m_fHealth = stats.value("health", FindPlayerPed()->m_fHealth);
++	try {
++		std::ifstream input(GetFreeroamSavePath());
++
++		if(!input.is_open()) return false;
++
++		json save;
++		input >> save;
++
++		if(!save.is_object()) return false;
++
++		if(save.value("format", "") != "revc-freeroam") return false;
++
++		const int version = save.value("version", 0);
++
++		if(version < 1) return false;
++
++		// Load basic game state
++		CGame::currLevel = save["game"].value("level", CGame::currLevel);
++
++		CGame::currArea = save["game"].value("area", CGame::currArea);
++
++		// Load time
++		const json &time = save["game"]["time"];
++
++		CClock::ms_nGameClockHours = time.value("hours", CClock::ms_nGameClockHours);
++
++		CClock::ms_nGameClockMinutes = time.value("minutes", CClock::ms_nGameClockMinutes);
++
++		CClock::ms_nMillisecondsPerGameMinute = time.value("millisecondsPerMinute", CClock::ms_nMillisecondsPerGameMinute);
++
++		// Load weather
++		const json &weather = save["game"]["weather"];
++
++		CWeather::OldWeatherType = weather.value("old", CWeather::OldWeatherType);
++
++		CWeather::NewWeatherType = weather.value("new", CWeather::NewWeatherType);
++
++		CWeather::ForcedWeatherType = weather.value("forced", CWeather::ForcedWeatherType);
++
++		CWeather::InterpolationValue = weather.value("interpolation", CWeather::InterpolationValue);
++
++		CWeather::WeatherTypeInList = weather.value("list", CWeather::WeatherTypeInList);
++
++		/*
++		 * Load stats. Replace these example fields with the actual
++		 * fields or functions in your CStats implementation.
++		 */
++		if(save.contains("stats")) {
++			const json &stats = save["stats"];
++
++			FindPlayerPed()->m_nPedMoney = stats.value("money", FindPlayerPed()->m_nPedMoney);
++
++			FindPlayerPed()->m_fHealth = stats.value("health", FindPlayerPed()->m_fHealth);
+ 
+ 			FindPlayerPed()->m_fArmour = stats.value("armor", FindPlayerPed()->m_fArmour);
+ 
+-            //--------------------
+-            // New stats
+-            // Added in: v1.2.13-9a
+-            //--------------------
+-
+-            CStats::PeopleKilledByPlayer = stats.value("peds_killed_by_player", CStats::PeopleKilledByPlayer);
+-            CStats::PeopleKilledByOthers = stats.value("peds_killed_by_others", CStats::PeopleKilledByOthers);
+-            CStats::KillsSinceLastCheckpoint = stats.value("kills_since_last_checkpoint", CStats::KillsSinceLastCheckpoint);
++			//--------------------
++			// New stats
++			// Added in: v1.2.13-9a
++			//--------------------
++
++			CStats::PeopleKilledByPlayer = stats.value("peds_killed_by_player", CStats::PeopleKilledByPlayer);
++			CStats::PeopleKilledByOthers = stats.value("peds_killed_by_others", CStats::PeopleKilledByOthers);
++			CStats::KillsSinceLastCheckpoint = stats.value("kills_since_last_checkpoint", CStats::KillsSinceLastCheckpoint);
+ 
+-            CStats::KgsOfExplosivesUsed = stats.value("kgs_of_explosives_used", CStats::KgsOfExplosivesUsed);
+-
+-            // Vehicles blown up
+-            CStats::BoatsExploded = stats.value("boats_exploded", CStats::KgsOfExplosivesUsed);
+-            CStats::HelisDestroyed = stats.value("helis_destroyed", CStats::HelisDestroyed);
+-            CStats::CarsExploded = stats.value("vehicles_exploded", CStats::CarsExploded);
+-
+-            // Bullets fired and hit.
+-            CStats::BulletsThatHit = stats.value("bullets_that_hit", CStats::BulletsThatHit);
+-            CStats::RoundsFiredByPlayer = stats.value("rounds_fired_by_player", CStats::RoundsFiredByPlayer);
+-
+-            // Days passed
+-            CStats::DaysPassed = stats.value("days_passed", CStats::DaysPassed);
+-
+-            // Distance travelled
+-            CStats::DistanceTravelledByBike = stats.value("distance_traveled_by_bike", CStats::DistanceTravelledByBike);
+-            CStats::DistanceTravelledByBoat = stats.value("distance_traveled_by_boat", CStats::DistanceTravelledByBoat);
+-            CStats::DistanceTravelledByCar = stats.value("distance_traveled_by_car", CStats::DistanceTravelledByCar);
+-            CStats::DistanceTravelledByGolfCart = stats.value("distance_traveled_by_golf_cart", CStats::DistanceTravelledByGolfCart);
+-            CStats::DistanceTravelledByHelicoptor = stats.value("distance_traveled_by_helicopter", CStats::DistanceTravelledByHelicoptor);
+-            CStats::DistanceTravelledByPlane = stats.value("distance_traveled_by_plane", CStats::DistanceTravelledByPlane);
+-            CStats::DistanceTravelledOnFoot = stats.value("distance_traveled_on_foot", CStats::DistanceTravelledOnFoot);
+-
+-            // Wanted
+-            CStats::WantedStarsEvaded = stats.value("wanted_stars_evaded", CStats::WantedStarsEvaded);
+-            CStats::WantedStarsAttained = stats.value("wanted_stars_attained", CStats::WantedStarsAttained);
+-
+-            // Misc
+-            CStats::TyresPopped = stats.value("tires_popped", CStats::TyresPopped);
+-            CStats::TotalLegitimateKills = stats.value("total_kills", CStats::TotalLegitimateKills);
+-            CStats::TimesArrested = stats.value("times_arrested", CStats::TimesArrested);
+-            CStats::TimesDied = stats.value("times_died", CStats::TimesDied);
+-            CStats::TimesDrowned = stats.value("times_drowned", CStats::TimesDrowned);
+-            CStats::SeagullsKilled = stats.value("seagulls_killed", CStats::SeagullsKilled);
+-
+-
+-            /// Wheelies, stoppies and other vehicle stats.
+-            CStats::LongestStoppie = stats.value("longest_stoppie_time", CStats::LongestStoppie);
+-            CStats::LongestStoppieDist = stats.value("longest_stoppie_distance", CStats::LongestStoppieDist);
+-            CStats::Longest2Wheel = stats.value("longest_2_wheel_time", CStats::Longest2Wheel);
+-            CStats::Longest2WheelDist = stats.value("longest_2_wheel_distance", CStats::Longest2WheelDist);
+-            CStats::LongestWheelie = stats.value("longest_wheelie_time", CStats::LongestWheelie);
+-            CStats::LongestWheelieDist = stats.value("longest_wheelie_distance", CStats::LongestWheelieDist);
+-
+-            CStats::FiresExtinguished = stats.value("fires_extinguished", CStats::FiresExtinguished);
+-            CStats::HeadsPopped = stats.value("heads_popped", CStats::HeadsPopped);
+-            //
+-
+-        }
+-
+-        /*
+-         * Position should generally be applied after the player and
+-         * world have been initialized.
+-         */
+-        if (save.contains("player") &&
+-            save["player"].contains("position")) {
+-
+-            CPlayerInfo& player =
+-                CWorld::Players[CWorld::PlayerInFocus];
+-
+-            CPlayerPed* playerPed = player.m_pPed;
+-
+-            if (playerPed != nullptr) {
+-                const json& position =
+-                    save["player"]["position"];
+-
+-                CVector newPosition;
+-
+-                newPosition.x =
+-                    position.value("x", playerPed->GetPosition().x);
+-
+-                newPosition.y =
+-                    position.value("y", playerPed->GetPosition().y);
+-
+-                newPosition.z =
+-                    position.value("z", playerPed->GetPosition().z);
+-
+-                playerPed->SetPosition(newPosition);
+-            }
+-        }
+-
+-        // New for loading the target marker position.
+-        // TODO Fix this to work.
+-        // It doesn't put the marker back on the map, I will probably have to add the sprite back also.
+-        if(save.contains("map") && save["map"].contains("target_marker"))
+-        {
+-            
+-            if (CRadar::TargetMarkerId == -1) 
+-            {
+-
+-
+-                const json& mapInfo = save["map"]["target_marker"];
+-                CRadar::TargetMarkerPos.x = mapInfo.value("pos_x", CRadar::TargetMarkerPos.x);
+-                CRadar::TargetMarkerPos.y = mapInfo.value("pos_y", CRadar::TargetMarkerPos.y);
+-                // This is never set for the target marker.
+-                CRadar::TargetMarkerPos.z = 0.0f;
+-
+-                CVector targetMarkerPos = CVector(CRadar::TargetMarkerPos.x, CRadar::TargetMarkerPos.y, 0.0f);
+-
+-                // This works for making the target marker display!
+-                // TODO Move all this into a new function, FreeroamUtil::LoadTargetMarker()
+-                // TODO Move this value, and it's a bad idea to set this to 1.
+-                int nextBlip = 1;
+-                CRadar::TargetMarkerId = CRadar::GetNewUniqueBlipIndex(nextBlip);
+-
+-                // TODO Move this into another function.
+-                // It came from CRadar::ToggleTargetMarker;
+-		        CRadar::ms_RadarTrace[nextBlip].m_eBlipType = BLIP_COORD;
+-		        CRadar::ms_RadarTrace[nextBlip].m_nColor = RADAR_TRACE_GRAY;
+-		        CRadar::ms_RadarTrace[nextBlip].m_bDim = 0;
+-		        CRadar::ms_RadarTrace[nextBlip].m_bInUse = 1;
+-		        CRadar::ms_RadarTrace[nextBlip].m_Radius = 1.0f;
+-		        CRadar::ms_RadarTrace[nextBlip].m_vec2DPos = targetMarkerPos;
+-		        CRadar::ms_RadarTrace[nextBlip].m_vecPos = targetMarkerPos;
+-		        CRadar::ms_RadarTrace[nextBlip].m_nEntityHandle = 0;
+-		        CRadar::ms_RadarTrace[nextBlip].m_wScale = 5;
+-		        CRadar::ms_RadarTrace[nextBlip].m_eBlipDisplay = BLIP_DISPLAY_BLIP_ONLY;
+-		        CRadar::ms_RadarTrace[nextBlip].m_eRadarSprite = RADAR_SPRITE_WAYPOINT;
+-                //
+-
+-            }
+-
+-            // To reset the target marker:
+-            // ClearBlip(CRadar::TargetMarkerId);
+-            // CRadar::TargetMarkerId = -1;
+-        }
+-
+-        return true;
+-    }
+-    catch (const json::parse_error&) {
+-        return false;
+-    }
+-    catch (const json::type_error&) {
+-        return false;
+-    }
+-    catch (const std::exception&) {
+-        return false;
+-    }
++			CStats::KgsOfExplosivesUsed = stats.value("kgs_of_explosives_used", CStats::KgsOfExplosivesUsed);
++
++			// Vehicles blown up
++			CStats::BoatsExploded = stats.value("boats_exploded", CStats::KgsOfExplosivesUsed);
++			CStats::HelisDestroyed = stats.value("helis_destroyed", CStats::HelisDestroyed);
++			CStats::CarsExploded = stats.value("vehicles_exploded", CStats::CarsExploded);
++
++			// Bullets fired and hit.
++			CStats::BulletsThatHit = stats.value("bullets_that_hit", CStats::BulletsThatHit);
++			CStats::RoundsFiredByPlayer = stats.value("rounds_fired_by_player", CStats::RoundsFiredByPlayer);
++
++			// Days passed
++			CStats::DaysPassed = stats.value("days_passed", CStats::DaysPassed);
++
++			// Distance travelled
++			CStats::DistanceTravelledByBike = stats.value("distance_traveled_by_bike", CStats::DistanceTravelledByBike);
++			CStats::DistanceTravelledByBoat = stats.value("distance_traveled_by_boat", CStats::DistanceTravelledByBoat);
++			CStats::DistanceTravelledByCar = stats.value("distance_traveled_by_car", CStats::DistanceTravelledByCar);
++			CStats::DistanceTravelledByGolfCart = stats.value("distance_traveled_by_golf_cart", CStats::DistanceTravelledByGolfCart);
++			CStats::DistanceTravelledByHelicoptor = stats.value("distance_traveled_by_helicopter", CStats::DistanceTravelledByHelicoptor);
++			CStats::DistanceTravelledByPlane = stats.value("distance_traveled_by_plane", CStats::DistanceTravelledByPlane);
++			CStats::DistanceTravelledOnFoot = stats.value("distance_traveled_on_foot", CStats::DistanceTravelledOnFoot);
++
++			// Wanted
++			CStats::WantedStarsEvaded = stats.value("wanted_stars_evaded", CStats::WantedStarsEvaded);
++			CStats::WantedStarsAttained = stats.value("wanted_stars_attained", CStats::WantedStarsAttained);
++
++			// Misc
++			CStats::TyresPopped = stats.value("tires_popped", CStats::TyresPopped);
++			CStats::TotalLegitimateKills = stats.value("total_kills", CStats::TotalLegitimateKills);
++			CStats::TimesArrested = stats.value("times_arrested", CStats::TimesArrested);
++			CStats::TimesDied = stats.value("times_died", CStats::TimesDied);
++			CStats::TimesDrowned = stats.value("times_drowned", CStats::TimesDrowned);
++			CStats::SeagullsKilled = stats.value("seagulls_killed", CStats::SeagullsKilled);
++
++			/// Wheelies, stoppies and other vehicle stats.
++			CStats::LongestStoppie = stats.value("longest_stoppie_time", CStats::LongestStoppie);
++			CStats::LongestStoppieDist = stats.value("longest_stoppie_distance", CStats::LongestStoppieDist);
++			CStats::Longest2Wheel = stats.value("longest_2_wheel_time", CStats::Longest2Wheel);
++			CStats::Longest2WheelDist = stats.value("longest_2_wheel_distance", CStats::Longest2WheelDist);
++			CStats::LongestWheelie = stats.value("longest_wheelie_time", CStats::LongestWheelie);
++			CStats::LongestWheelieDist = stats.value("longest_wheelie_distance", CStats::LongestWheelieDist);
++
++			CStats::FiresExtinguished = stats.value("fires_extinguished", CStats::FiresExtinguished);
++			CStats::HeadsPopped = stats.value("heads_popped", CStats::HeadsPopped);
++			//
++		}
++
++		/*
++		 * Position should generally be applied after the player and
++		 * world have been initialized.
++		 */
++		if(save.contains("player") && save["player"].contains("position")) {
++
++			CPlayerInfo &player = CWorld::Players[CWorld::PlayerInFocus];
++
++			CPlayerPed *playerPed = player.m_pPed;
++
++			if(playerPed != nullptr) {
++				const json &position = save["player"]["position"];
++
++				CVector newPosition;
++
++				newPosition.x = position.value("x", playerPed->GetPosition().x);
++
++				newPosition.y = position.value("y", playerPed->GetPosition().y);
++
++				newPosition.z = position.value("z", playerPed->GetPosition().z);
++
++				playerPed->SetPosition(newPosition);
++			}
++		}
++
++		// New for loading the target marker position.
++		// This works when I load the save from the 'Load Freeroam' option in the ImGui debug menu.
++		// Currently, I don't have this setup for working with the lua scripts just yet.
++		if(save.contains("map") && save["map"].contains("target_marker")) {
++
++			if(CRadar::TargetMarkerId == -1) {
++				const json &mapInfo = save["map"]["target_marker"];
++				CRadar::TargetMarkerPos.y = mapInfo.value("x", CRadar::TargetMarkerPos.x);
++				CRadar::TargetMarkerPos.y = mapInfo.value("y", CRadar::TargetMarkerPos.y);
++				// This is never set for the target marker.
++				CRadar::TargetMarkerPos.z = 0.0f;
++
++				CVector targetMarkerPos = CVector(CRadar::TargetMarkerPos.x, CRadar::TargetMarkerPos.y, 0.0f);
++
++				// This works for making the target marker display!
++
++				// TODO Check if this is nil in the lua scripts, it might make it to where I can run it in the keybind events.
++				// Although I'm not too sure on that.
++				// CRadar::TargetMarkerId = CRadar::GetNewUniqueBlipIndex(nextBlip);
++
++				SetupTargetMarker(targetMarkerPos);
++				//
++			}
++
++			// To reset the target marker:
++			// ClearBlip(CRadar::TargetMarkerId);
++			// CRadar::TargetMarkerId = -1;
++		}
++
++		return true;
++	} catch(const json::parse_error &) {
++		return false;
++	} catch(const json::type_error &) {
++		return false;
++	} catch(const std::exception &) {
++		return false;
++	}
+ }
+ 
++/**
++ * Setup the target marker for freeroam when loading.
++ *
++ * @param targetMarkerPos The target marker position.
++ *
++ * @returns The blip ID for the created target marker.
++ */
++int
++FreeroamUtil::SetupTargetMarker(CVector targetMarkerPos)
++{
++
++	if(CRadar::TargetMarkerId == -1) {
++
++		// New, taken from CRadar::SetCoordBlip
++		// This works! It checks if the blip is in use before overwriting it, unlike what I was doing.
++		int nextBlip;
++		for(nextBlip = 0; nextBlip < NUMRADARBLIPS; nextBlip++) {
++			// Make sure this blip isn't in use, if it is don't use that slot.
++			if(!CRadar::ms_RadarTrace[nextBlip].m_bInUse) break;
++		}
++
++		if(nextBlip == NUMRADARBLIPS) return -1;
++		//
++
++        // Setup the properties for the target marker.
++		CRadar::ms_RadarTrace[nextBlip].m_eBlipType = BLIP_COORD;
++		CRadar::ms_RadarTrace[nextBlip].m_nColor = RADAR_TRACE_GRAY;
++		CRadar::ms_RadarTrace[nextBlip].m_bDim = 0;
++		CRadar::ms_RadarTrace[nextBlip].m_bInUse = 1;
++		CRadar::ms_RadarTrace[nextBlip].m_Radius = 1.0f;
++		CRadar::ms_RadarTrace[nextBlip].m_vec2DPos = targetMarkerPos;
++		CRadar::ms_RadarTrace[nextBlip].m_vecPos = targetMarkerPos;
++		CRadar::ms_RadarTrace[nextBlip].m_nEntityHandle = 0;
++		CRadar::ms_RadarTrace[nextBlip].m_wScale = 5;
++		CRadar::ms_RadarTrace[nextBlip].m_eBlipDisplay = BLIP_DISPLAY_BLIP_ONLY;
++        CRadar::ms_RadarTrace[nextBlip].m_eRadarSprite = RADAR_SPRITE_WAYPOINT;
++
++        // Set the target marker ID, otherwise it cannot be removed.
++        CRadar::TargetMarkerId = CRadar::GetNewUniqueBlipIndex(nextBlip);
++        CRadar::TargetMarkerPos = targetMarkerPos;
++
++		return nextBlip;
++	}
++	return 0;
++}
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+diff --git a/src/extras/utils/freeroam_util.h b/src/extras/utils/freeroam_util.h
+index 3dda029c..3e3d280f 100644
+--- a/src/extras/utils/freeroam_util.h
++++ b/src/extras/utils/freeroam_util.h
+@@ -8,10 +8,14 @@ private:
+ #ifdef DISABLE_GAME_SCRIPTS
+     static const char* GetFreeroamSavePath();
+ 
++	
++
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ public:
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	static bool SaveFreeroamJson();
+ 	static bool LoadFreeroamJson();
++
++	static int SetupTargetMarker(CVector targetMarkerPos);
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ };
+-- 
+2.43.0
+

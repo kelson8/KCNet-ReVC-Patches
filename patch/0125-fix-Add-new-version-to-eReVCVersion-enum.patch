@@ -1,0 +1,24 @@
+From a626c7fe6e57dbe1e2a62a472ccd8c284c79bc8d Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 11 Sep 2026 01:16:31 -0400
+Subject: [PATCH 125/161] fix: Add new version to eReVCVersion enum
+
+---
+ src/extras/utils/defines.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/extras/utils/defines.h b/src/extras/utils/defines.h
+index 5249e238..bb7cf108 100644
+--- a/src/extras/utils/defines.h
++++ b/src/extras/utils/defines.h
+@@ -11,6 +11,7 @@
+ enum eReVCVersion {
+ 	// Latest version currently.
+ 	KCNET_REVC_VER_1_2_12,
++	KCNET_REVC_VER_1_2_13,
+ };
+ 
+ // New for dll logging
+-- 
+2.43.0
+

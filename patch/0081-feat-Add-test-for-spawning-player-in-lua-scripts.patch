@@ -1,0 +1,497 @@
+From fb124ab864fcf530870635d9b77db71c17997d67 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 4 Sep 2026 22:38:28 -0400
+Subject: [PATCH 081/161] feat: Add test for spawning player in lua scripts
+
+* Fix lua script system to somewhat work.
+* Now the game can startup without the scm scripts, I tested it by moving all of them into another folder.
+
+* Move lua init into Game.cpp.
+* Make CTheScripts::Init() spawn the player.
+
+* Add CreatePlayer function into MiscFunctions.
+* Update changelog.md, bump version to 1.2.5a.
+---
+ Changelog.md                            | 17 ++++++--
+ src/control/Script.cpp                  | 49 +++++++++++++++++++++++
+ src/core/Frontend.cpp                   |  2 +
+ src/core/Game.cpp                       |  3 ++
+ src/core/config.h                       | 12 +++++-
+ src/extras/functions/misc_functions.cpp | 53 ++++++++++++++++++++++++-
+ src/extras/functions/misc_functions.h   |  3 ++
+ src/extras/lua/lua_player.cpp           | 27 +++++++++++++
+ src/extras/lua/lua_player.h             |  3 ++
+ src/extras/lua/lua_test.cpp             | 32 +++++++++++++--
+ src/extras/lua/lua_test.h               |  1 +
+ src/extras/utils/defines.cpp            |  2 +-
+ src/extras/utils/fast_loader.cpp        |  8 ++++
+ src/skel/glfw/glfw.cpp                  | 16 +-------
+ 14 files changed, 203 insertions(+), 25 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index df917230..3dff7a67 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -39,13 +39,22 @@ Extra changes
+ * Update reVC.ini with new changes, disable fast loader by default since it might crash on invalid saves.
+ 
+ ### 1.2.4a
+-
+-**Commit 1**
+-
+ feat: Rename test.lua to kcnet-init.lua
+ 
+ * This is a needed change for my lua scripts, so I know what this is doing without looking in the code.
+ 
+ Added:
+ * Add VehicleFunctions::IsModelValid for checking if a vehicle model is valid.
+-* 
+\ No newline at end of file
++
++### 1.2.5a
++
++feat: Add test for spawning player in lua scripts
++
++* Fix lua script system to somewhat work.
++* Now the game can startup without the scm scripts, I tested it by moving all of them into another folder.
++
++* Move lua init into Game.cpp.
++* Make CTheScripts::Init() spawn the player.
++
++* Add CreatePlayer function into MiscFunctions.
++* Update changelog.md, bump version to 1.2.5a.
+diff --git a/src/control/Script.cpp b/src/control/Script.cpp
+index ce69c4ab..1243a67b 100644
+--- a/src/control/Script.cpp
++++ b/src/control/Script.cpp
+@@ -59,6 +59,11 @@
+ #include "misc_enums.h"
+ #endif // CUSTOM_CODE
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++#include "lua_test.h"
++#include "misc_functions.h"
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ uint8 CTheScripts::ScriptSpace[SIZE_SCRIPT_SPACE];
+ CRunningScript CTheScripts::ScriptsArray[MAX_NUM_SCRIPTS];
+ intro_text_line CTheScripts::IntroTextLines[MAX_NUM_INTRO_TEXT_LINES];
+@@ -832,6 +837,18 @@ int CTheScripts::OpenScript()
+  */
+ void CTheScripts::Init()
+ {
++#ifdef DISABLE_GAME_SCRIPTS
++	// Run the lua tick system.
++	// TODO Move this elsewhere, for testing.
++	// LuaTest::Getnstance().OnTick();
++
++	// This works!!!!
++	// I just have to make it work in lua, this is fully bypassing the game scripts but I don't know about it loading my init script.
++	// If I disable this, it will segfault.
++	MiscFunctions::GetInstance().CreatePlayer(0, -258.1f, -453.1f, 13.5f);
++
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	// TODO Fix this to disable the game scripts if enabled in the ini.
+ 	return;
+@@ -1788,26 +1805,58 @@ int8 CRunningScript::ProcessCommands0To99(int32 command)
+ 		CollectParameters(&m_nIp, 6);
+ 		/* Something must have been here */
+ 		return 0;
++
++		/**
++		 * Player, X, Y, Z, Player reference for script.
++		 */
+ 	case COMMAND_CREATE_PLAYER:
+ 	{
+ 		CollectParameters(&m_nIp, 4);
++
++		// The player index, seems to be 0 in my test scripts.
+ 		int32 index = ScriptParams[0];
++
+ 		script_assert(index < NUMPLAYERS);
+ 		printf("&&&&&&&&&&&&&Creating player: %d\n", index);
++
++		//------
++		// TODO Use below in new lua init function, for now bypass main game by implementing this
++		//  to run when DISABLE_GAME_SCRIPTS is enabled.
++		//-----
++		// Load the player model.
+ 		if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
+ 			CStreaming::RequestSpecialModel(MI_PLAYER, "player", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
+ 			CStreaming::LoadAllRequestedModels(false);
+ 		}
++
++		// Setup the player ped.
+ 		CPlayerPed::SetupPlayerPed(index);
+ 		CWorld::Players[index].m_pPed->CharCreatedBy = MISSION_CHAR;
++
++		// Deactivate the player ped.
++		// TODO Why is this here? Maybe for some loading or something.
+ 		CPlayerPed::DeactivatePlayerPed(index);
++
++		// Position from script, used like this in the scripts:
+ 		CVector pos = *(CVector*)&ScriptParams[1];
++
++		// Set the players Z coordinate.
+ 		if (pos.z <= MAP_Z_LOW_LIMIT)
+ 			pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
+ 		pos.z += CWorld::Players[index].m_pPed->GetDistanceFromCentreOfMassToBaseOfModel();
++		//
++		
++		
++		// Set the players position.
+ 		CWorld::Players[index].m_pPed->SetPosition(pos);
++
++		// Clear space around the player.
+ 		CTheScripts::ClearSpaceForMissionEntity(pos, CWorld::Players[index].m_pPed);
++		
++		// Reactivate the player ped.
+ 		CPlayerPed::ReactivatePlayerPed(index);
++
+ 		ScriptParams[0] = index;
+ 		StoreParameters(&m_nIp, 1);
+ 		return 0;
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index c18412f1..5b4d96a8 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -5862,6 +5862,8 @@ CMenuManager::SwitchMenuOnAndOff()
+ 
+ 		// Reminder: You need REGISTER_START_BUTTON defined to make it work.
+ 		if ((CPad::GetPad(0)->GetStartJustDown() || CPad::GetPad(0)->GetEscapeJustDown())
++		// TODO Look into this, I might be able to check if a player is on the main menu and enable my fast loader toggle 
++		//  in a sub menu to work.
+ 			&& (!m_bMenuActive || m_nCurrScreen == MENUPAGE_PAUSE_MENU || m_nCurrScreen == MENUPAGE_CHOOSE_SAVE_SLOT || m_nCurrScreen == MENUPAGE_SAVE_CHEAT_WARNING)
+ 			|| m_bShutDownFrontEndRequested || m_bStartUpFrontEndRequested
+ #ifdef REGISTER_START_BUTTON
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 2136bc74..b0804162 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -626,6 +626,9 @@ bool CGame::Initialise(const char* datFile)
+ #ifndef DISABLE_GAME_SCRIPTS
+ 		CTheScripts::StartTestScript();
+ 		CTheScripts::Process();
++#else
++	// Init lua scripts, moved out of glfw.cpp.
++	LuaTest::GetInstance().InitLua();
+ #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		TheCamera.Process();
+ 	}
+diff --git a/src/core/config.h b/src/core/config.h
+index 190c2b8f..9b86a1a1 100644
+--- a/src/core/config.h
++++ b/src/core/config.h
+@@ -111,7 +111,17 @@
+ // Then, if I can get this to run once I can replicate the player init code, I should be able to run custom
+ //  lua scripts with the freeroam-game.lua file.
+ // TODO Implement this later, I should be able to possibly figure it out.
+-// #define DISABLE_GAME_SCRIPTS
++
++// I finally got this working! Although it's not yet a full scm replacement.
++// I still have to implement the tick system.
++// I had to setup a 'CreatePlayer' function in MiscFunctions, it is supposed to be creating the player in lua, but
++//  I wasn't able to get it working so for now I hard-coded a spawn position in with the scripts disabled in 'CTheScripts::Init()'
++
++// This doesn't make sense to have this enabled if lua is disabled.
++// My script system requires lua.
++#ifdef LUA_TEST
++	// #define DISABLE_GAME_SCRIPTS
++#endif // LUA_TEST
+ 
+ #endif // CUSTOM_CODE
+ 
+diff --git a/src/extras/functions/misc_functions.cpp b/src/extras/functions/misc_functions.cpp
+index 6d4002fa..2402546e 100644
+--- a/src/extras/functions/misc_functions.cpp
++++ b/src/extras/functions/misc_functions.cpp
+@@ -89,6 +89,9 @@
+ // For pickups
+ #include "Pickups.h"
+ 
++// For loading models.
++#include "Streaming.h"
++
+ #if defined(GTA3)
+ #include "PathFind.h"
+ #endif
+@@ -835,4 +838,52 @@ MiscFunctions::ReplaceExportTemplateVars(
+ 		text.replace(position, placeholder.length(), replacement);
+ 		position += replacement.length();
+ 	}
+-}
+\ No newline at end of file
++}
++
++//----------
++// Player
++// TODO Move these
++//----------
++
++/**
++ * Create the player for my lua scripts.
++ * Implementation of COMMAND_CREATE_PLAYER.
++ * TODO Test this in my lua init, I'm not sure if this will work.
++ */
++void MiscFunctions::CreatePlayer(int playerIndex, float posX, float posY, float posZ)
++{
++	// Load the player model.
++	if (!CStreaming::HasModelLoaded(MI_PLAYER)) {
++		CStreaming::RequestSpecialModel(MI_PLAYER, "player", STREAMFLAGS_DONT_REMOVE | STREAMFLAGS_DEPENDENCY);
++		CStreaming::LoadAllRequestedModels(false);
++	}
++
++	// Setup the player ped.
++	CPlayerPed::SetupPlayerPed(playerIndex);
++	CWorld::Players[playerIndex].m_pPed->CharCreatedBy = MISSION_CHAR;
++
++	// Deactivate the player ped.
++	// TODO Why is this here? Maybe for some loading or something.
++	CPlayerPed::DeactivatePlayerPed(playerIndex);
++
++	// Position from script, used like this in the scripts:
++	// CVector pos = *(CVector*)&ScriptParams[1];
++	CVector pos = CVector(posX, posY, posZ);
++
++	// Set the players Z coordinate.
++	if (pos.z <= MAP_Z_LOW_LIMIT)
++		pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++
++	pos.z += CWorld::Players[playerIndex].m_pPed->GetDistanceFromCentreOfMassToBaseOfModel();
++	//
++
++	// Set the players position.
++	CWorld::Players[playerIndex].m_pPed->SetPosition(pos);
++
++	// Clear space around the player.
++	CTheScripts::ClearSpaceForMissionEntity(pos, CWorld::Players[playerIndex].m_pPed);
++		
++	// Reactivate the player ped.
++	CPlayerPed::ReactivatePlayerPed(playerIndex);
++
++}
+diff --git a/src/extras/functions/misc_functions.h b/src/extras/functions/misc_functions.h
+index b58f94f1..8c749d61 100644
+--- a/src/extras/functions/misc_functions.h
++++ b/src/extras/functions/misc_functions.h
+@@ -91,6 +91,9 @@ public:
+ 	// Creating an item pickup, this one works for weapons
+ 	void CreateWeaponPickup(uint32 weaponModel);
+ 
++	// Create the player, for the lua scripts.
++	void CreatePlayer(int playerIndex, float posX, float posY, float posZ);
++
+ 	// Singleton
+ 	static MiscFunctions &GetInstance()
+ 	{
+diff --git a/src/extras/lua/lua_player.cpp b/src/extras/lua/lua_player.cpp
+index 24505bc4..020f4cf7 100644
+--- a/src/extras/lua/lua_player.cpp
++++ b/src/extras/lua/lua_player.cpp
+@@ -20,6 +20,7 @@
+ 
+ #include "custom_cheats.h"
+ #include "player_cheats.h"
++#include "misc_functions.h"
+ 
+ // VC Specific
+ #include "Hud.h"
+@@ -36,6 +37,32 @@
+ // Moved from lua_functions.cpp
+ 
+ extern "C" {
++
++/**
++ * Create the player in lua
++ * Usage: create_player(0, posX, posY, posZ)
++ */
++int
++createPlayerLua(lua_State *L)
++{
++	float playerIndex = (float)lua_tonumber(L, 1);
++	float spawnPosX = (float)lua_tonumber(L, 2);
++	float spawnPosY = (float)lua_tonumber(L, 3);
++	float spawnPosZ = (float)lua_tonumber(L, 4);
++
++	if(!playerIndex || !spawnPosX || !spawnPosY || !spawnPosZ);
++		return 0;
++
++	MiscFunctions::GetInstance().CreatePlayer(playerIndex, spawnPosX, spawnPosY, spawnPosZ);
++	
++	std::string logMsg = "Player spawned at X: " + std::to_string(spawnPosX) 
++	+ "Y: " + std::to_string(spawnPosY)
++	+ "Z: " + std::to_string(spawnPosY);
++	LogFunctions::LogInfo(Defines::logFile, logMsg);
++
++	return 4;
++}
++
+ /// <summary>
+ /// This sets the position in the lua function I have defined as a test.
+ /// The values even are able to be changed without restarting the game.
+diff --git a/src/extras/lua/lua_player.h b/src/extras/lua/lua_player.h
+index 5b3260e1..1d862b3b 100644
+--- a/src/extras/lua/lua_player.h
++++ b/src/extras/lua/lua_player.h
+@@ -11,7 +11,10 @@ extern "C" {
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
++
+ 	//------------- Player ------------//
++	extern int createPlayerLua(lua_State *L);
++
+ 	extern int enableLoseWeaponsOnDeathLua(lua_State *L);
+ 	extern int disableLoseWeaponsOnDeathLua(lua_State *L);
+ 	extern int toggleLoseWeaponsOnDeathLua(lua_State *L);
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index b15ed3df..fd2c8947 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -127,6 +127,23 @@ LuaTest::LuaTest() {
+ 
+ }
+ 
++//------- Begin init functions //-------//
++
++/**
++ * This should replace the main game tick when DISABLE_GAME_SCRIPTS is enabled.
++ */
++void LuaTest::OnTick()
++{
++    lua_State* L = GetLuaState();
++    lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
++    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
++        // Handle error
++    }
++}
++
++
++//------- End init functions --------//
++
+ //------- Begin cheat functions --------//
+ 
+ // Test, this may or may not work.
+@@ -357,6 +374,11 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 
+ 	//------------- Player ------------//
+ 
++	// Create the player, should only run if the scripts are disabled.
++#ifdef DISABLE_GAME_SCRIPTS
++	lua_register(L, "create_player", createPlayerLua);
++#endif // DISABLE_GAME_SCRIPTS
++
+ 	// Auto enable never wanted in the lua script
+ 	lua_register(L, "enable_never_wanted", enableNeverWantedLua);
+ 
+@@ -451,7 +473,8 @@ void
+ LuaTest::LuaEvents()
+ {
+ 	Defines defines = Defines();
+-	LuaTest luaTest = LuaTest();
++	// LuaTest luaTest = LuaTest();
++	// lua_State* L = GetInstance().GetLuaState(); 
+ 
+ 	// TODO Add Sol support for Lua.
+ 
+@@ -465,7 +488,10 @@ LuaTest::LuaEvents()
+ 		if(luaVM) return 0;
+ 	#endif
+ 	*/
+-	luaTest.RegisterLuaFunctions(m_luaVM);
++	// luaTest.RegisterLuaFunctions(m_luaVM);
++
++	LuaTest::GetInstance().RegisterLuaFunctions(m_luaVM);	
++
+ 
+ 	// Switch to this shorter method.
+ 	if(!CheckLua(m_luaVM, luaL_dofile(m_luaVM, defines.luaEventsScript.c_str()))) {
+@@ -646,7 +672,7 @@ void
+ LuaTest::InitLua()
+ {
+ 	Defines defines = Defines();
+-	LuaTest luaTest = LuaTest();
++	// LuaTest luaTest = LuaTest();
+ 
+ 	// This requires my custom TcpClient and OpensslTest files from the internal Git repos.
+ 	// This does send a message to the TcpServer from here.
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 72260b30..ee3b22c3 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -86,6 +86,7 @@ public:
+ 
+ 	LuaTest();
+ 	void InitLua();
++	void OnTick();
+ 	
+ 	// Run the custom event system I am working on in Lua
+ 	void LuaEvents();
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 097d209a..aa249622 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.4a";
++std::string Defines::programVersion = "1.2.5a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index cce5d650..f88420cd 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -60,6 +60,14 @@ FastLoader::FastLoad()
+ 	}
+ 	//
+ 
++	// Failsafe for scripts being disabled.
++#ifdef DISABLE_GAME_SCRIPTS
++		// Lock the game to the freeroam script, this will be used for my lua scripts once I implement them
++		CTheScripts::ScriptToLoad = SCRIPT_FREEROAM_MIAMI;
++		FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++		return;
++#endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	// New
+ 	// Without this here sometimes holding control will send you back to the new game.
+ 	CTheScripts::ScriptToLoad = gbScriptToLoad;
+diff --git a/src/skel/glfw/glfw.cpp b/src/skel/glfw/glfw.cpp
+index 698f76ea..b7835a59 100644
+--- a/src/skel/glfw/glfw.cpp
++++ b/src/skel/glfw/glfw.cpp
+@@ -2167,24 +2167,10 @@ void GameStatePlayingGame()
+ 			RsEventHandler(rsIDLE, (void *)TRUE);
+ 	}
+ 
+-#ifdef LUA_TEST
+-	//! TODO: Fix this
+-	// TODO Make a separate lua file for auto load variables like these.
+-	// First, check if lua is enabled in the ini, if not run the lua init.
+-	// TODO Move this into an init instead of in the playing game loop.
+-	LuaTest luaTest = LuaTest();
+-	if(gbLuaTest) {
+-		if(!luaInit) {
+-		luaTest.InitLua();
+-			luaInit = true;
+-		}
+-	}
+-#endif
+-
+ #ifdef _IMGUI_TEST
+ 	// Run the ImGui loop that checks for controller input, and mouse/keyboard input if enabled in the ini
+ 	if(gbImGuiToggle) { 
+-		imGuiSetup.ImGuiPlayingGameLoop(); 
++		imGuiSetup.ImGuiPlayingGameLoop();
+ 	}
+ 
+ #endif
+-- 
+2.43.0
+

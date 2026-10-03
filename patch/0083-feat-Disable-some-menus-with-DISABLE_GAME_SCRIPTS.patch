@@ -1,0 +1,344 @@
+From 6e21d5407d672ab29a42b20abcdeeb1b04f617d5 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 5 Sep 2026 02:34:52 -0400
+Subject: [PATCH 083/161] feat: Disable some menus with DISABLE_GAME_SCRIPTS
+
+* Disable load, delete, and save menus with my lua script system, currently the button is still there but if I try to remove that it breaks all of the menus.
+
+* Update changelog.md
+---
+ Changelog.md                   |  9 +++++
+ src/core/Frontend.cpp          | 61 +++++++++++++++++++++++++++++++---
+ src/core/MenuScreensCustom.cpp | 15 +++++++++
+ 3 files changed, 81 insertions(+), 4 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index ed600ebf..e2148acc 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -61,6 +61,8 @@ feat: Add test for spawning player in lua scripts
+ 
+ ### 1.2.6a
+ 
++**Commit 1**
++
+ feat: Make create_player work in free roam script
+ 
+ * Make project use freeroam-game.lua for init in new freeroam mode.
+@@ -75,3 +77,10 @@ feat: Make create_player work in free roam script
+ 
+ * Add freeroam script to defines.cpp
+ * Update changelog.md, Bump version to 1.2.6a.
++
++**Commit 2**
++feat: Disable some menus with DISABLE_GAME_SCRIPTS
++
++* Disable load, delete, and save menus with my lua script system, currently the button is still there but if I try to remove that it breaks all of the menus.
++
++* Update changelog.md
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 5b4d96a8..7064256a 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -469,7 +469,9 @@ CMenuManager::SwitchToNewScreen(int8 screen)
+ 	if (hasNativeList(m_nPrevScreen))
+ 		m_nTotalListRow = 0;
+ 
++#ifndef DISABLE_GAME_SCRIPTS
+ 	if (m_nCurrScreen == MENUPAGE_CHOOSE_SAVE_SLOT)
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 		m_nCurrOption = 8;
+ 	m_nMenuFadeAlpha = 0;
+ 	m_nOptionHighlightTransitionBlend = 0;
+@@ -1011,6 +1013,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ #endif
+ 
+ 	switch (m_nCurrScreen) {
++#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_CHOOSE_LOAD_SLOT:
+ 		case MENUPAGE_CHOOSE_DELETE_SLOT:
+ 		case MENUPAGE_CHOOSE_SAVE_SLOT:
+@@ -1019,6 +1022,7 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 				MENU_X_LEFT_ALIGNED(30.0f), MENU_Y(320.0f), 
+ 				MENU_X_LEFT_ALIGNED(605.0f), MENU_Y(330.0f), CRGBA(LIST_BACKGROUND_COLOR.r, LIST_BACKGROUND_COLOR.g, LIST_BACKGROUND_COLOR.b, FadeIn(LIST_BACKGROUND_COLOR.a)));
+ 			break;
++#endif // DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_SOUND_SETTINGS:
+ 			PrintRadioSelector();
+ 			break;
+@@ -1054,6 +1058,8 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 		CFont::SetColor(CRGBA(LABEL_COLOR.r, LABEL_COLOR.g, LABEL_COLOR.b, FadeIn(255)));
+ 
+ 		switch (m_nCurrScreen) {
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_LOAD_SLOT_CONFIRM:
+ 			if (m_bGameNotLoaded)
+ 				str = TheText.Get("FES_LCG");
+@@ -1071,6 +1077,8 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 			else
+ 				str = TheText.Get(aScreens[m_nCurrScreen].m_aEntries[0].m_EntryName);
+ 			break;
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 		case MENUPAGE_EXIT:
+ 			if (m_bGameNotLoaded)
+ 				str = TheText.Get("FEQ_SRW");
+@@ -1732,6 +1740,8 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ #endif
+ 	}
+ 
++#ifndef DISABLE_GAME_SCRIPTS
++
+ 	if (m_nCurrScreen == MENUPAGE_DELETING_IN_PROGRESS) {
+ 		SmallMessageScreen("FEDL_WR");
+ 	}
+@@ -1740,6 +1750,8 @@ CMenuManager::DrawStandardMenus(bool activeScreen)
+ 		SmallMessageScreen("FESZ_WR");
+ 	}
+ #endif
++
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ }
+ 
+ int
+@@ -2468,9 +2480,13 @@ CMenuManager::DrawBackground(bool transitionCall)
+ 			case MENUPAGE_BRIEFS:
+ 			case MENUPAGE_DISPLAY_SETTINGS:
+ 			case MENUPAGE_MAP:
++
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 			case MENUPAGE_CHOOSE_LOAD_SLOT:
+ 			case MENUPAGE_CHOOSE_DELETE_SLOT:
+ 			case MENUPAGE_CHOOSE_SAVE_SLOT:
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 			case MENUPAGE_MOUSE_CONTROLS:
+ 				menuBg.topLeft_x = 26.0f;
+ 				menuBg.topLeft_y = 59.0f;
+@@ -4685,9 +4701,13 @@ CMenuManager::UserInput(void)
+ 
+ 		}
+ 		if (CPad::GetPad(0)->GetBackJustDown() || CPad::GetPad(0)->GetEscapeJustDown()) {
+-			if (m_nCurrScreen != MENUPAGE_START_MENU && m_nCurrScreen != MENUPAGE_PAUSE_MENU && m_nCurrScreen != MENUPAGE_CHOOSE_SAVE_SLOT
++			if (m_nCurrScreen != MENUPAGE_START_MENU && m_nCurrScreen != MENUPAGE_PAUSE_MENU 
++#ifndef DISABLE_GAME_SCRIPTS
++				&& m_nCurrScreen != MENUPAGE_CHOOSE_SAVE_SLOT
+ 				&& m_nCurrScreen != MENUPAGE_SAVE_CHEAT_WARNING && m_nCurrScreen != MENUPAGE_SAVING_IN_PROGRESS
+-				&& m_nCurrScreen != MENUPAGE_DELETING_IN_PROGRESS && m_nCurrScreen != MENUPAGE_OUTRO
++				&& m_nCurrScreen != MENUPAGE_DELETING_IN_PROGRESS 
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++				&& m_nCurrScreen != MENUPAGE_OUTRO
+ #ifdef MISSION_REPLAY
+ 				&& m_nCurrScreen != MENUPAGE_MISSION_RETRY
+ #endif
+@@ -4991,6 +5011,7 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 				break;
+ 			case MENUACTION_CHECKSAVE:
+ 			{
++#ifndef DISABLE_GAME_SCRIPTS
+ 				int saveSlot = aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_SaveSlot;
+ 
+ 				if (saveSlot >= SAVESLOT_1 && saveSlot <= SAVESLOT_8) {
+@@ -5003,6 +5024,7 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 						}
+ 					}
+ 				}
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 				break;
+ 			}
+ 			case MENUACTION_NEWGAME:
+@@ -5037,12 +5059,15 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #endif
+ 			case MENUACTION_SAVEGAME:
+ 			{
++#ifndef DISABLE_GAME_SCRIPTS
+ 				int saveSlot = aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_SaveSlot;
+ 
+ 				if (saveSlot >= 2 && saveSlot <= 9) {
+ 					m_nCurrSaveSlot = m_nCurrOption;
+ 					SwitchToNewScreen(MENUPAGE_SAVE_OVERWRITE_CONFIRM);
+ 				}
++
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 				break;
+ 			}
+ 			case MENUACTION_RADARMODE:
+@@ -5733,6 +5758,8 @@ void
+ CMenuManager::ProcessFileActions()
+ {
+ 	switch (m_nCurrScreen) {
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_LOADING_IN_PROGRESS:
+ #ifdef MISSION_REPLAY
+ 			if (MissionSkipLevel) {
+@@ -5773,6 +5800,10 @@ CMenuManager::ProcessFileActions()
+ 				SwitchToNewScreen(MENUPAGE_NEW_GAME);
+ 
+ 			break;
++
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_DELETING_IN_PROGRESS:
+ 		{
+ 			static bool waitedForScreen = false;
+@@ -5797,6 +5828,10 @@ CMenuManager::ProcessFileActions()
+ 
+ 			break;
+ 		}
++
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 		case MENUPAGE_SAVING_IN_PROGRESS:
+ 		{
+ #ifdef XBOX_MESSAGE_SCREEN
+@@ -5836,6 +5871,7 @@ CMenuManager::ProcessFileActions()
+ #else
+ 			static bool waitedForScreen = false;
+ 
++
+ 			if (waitedForScreen) {
+ 				int8 SaveSlot = PcSaveHelper.SaveSlot(m_nCurrSaveSlot);
+ 				PcSaveHelper.PopulateSlotInfo();
+@@ -5849,9 +5885,15 @@ CMenuManager::ProcessFileActions()
+ 				waitedForScreen = false;
+ 			} else if (m_nMenuFadeAlpha >= 255)
+ 				waitedForScreen = true;
+-#endif
++
+ 			break;
++
++#endif // 
++
++
+ 		}
++
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	}
+ }
+ 
+@@ -5864,23 +5906,32 @@ CMenuManager::SwitchMenuOnAndOff()
+ 		if ((CPad::GetPad(0)->GetStartJustDown() || CPad::GetPad(0)->GetEscapeJustDown())
+ 		// TODO Look into this, I might be able to check if a player is on the main menu and enable my fast loader toggle 
+ 		//  in a sub menu to work.
+-			&& (!m_bMenuActive || m_nCurrScreen == MENUPAGE_PAUSE_MENU || m_nCurrScreen == MENUPAGE_CHOOSE_SAVE_SLOT || m_nCurrScreen == MENUPAGE_SAVE_CHEAT_WARNING)
++			&& (!m_bMenuActive || m_nCurrScreen == MENUPAGE_PAUSE_MENU 
++#ifndef DISABLE_GAME_SCRIPTS
++				|| m_nCurrScreen == MENUPAGE_CHOOSE_SAVE_SLOT || m_nCurrScreen == MENUPAGE_SAVE_CHEAT_WARNING
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++			)
+ 			|| m_bShutDownFrontEndRequested || m_bStartUpFrontEndRequested
+ #ifdef REGISTER_START_BUTTON
+ 			|| CPad::GetPad(0)->GetStartJustDown() && !m_bGameNotLoaded
+ #endif
+ 			) {
+ 
++#ifndef DISABLE_GAME_SCRIPTS
+ 			if (m_nCurrScreen != MENUPAGE_LOADING_IN_PROGRESS
+ #ifdef XBOX_MESSAGE_SCREEN
+ 				&& m_nCurrScreen != MENUPAGE_SAVING_IN_PROGRESS
+ #endif
+ 				) {
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 				DoRWStuffStartOfFrame(0, 0, 0, 0, 0, 0, 255);
+ 				DoRWStuffEndOfFrame();
+ 				DoRWStuffStartOfFrame(0, 0, 0, 0, 0, 0, 255);
+ 				DoRWStuffEndOfFrame();
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 			}
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ 			if (m_bShutDownFrontEndRequested)
+ 				m_bMenuActive = false;
+@@ -5970,6 +6021,7 @@ CMenuManager::SwitchMenuOnAndOff()
+ 		Initialise();
+ 		LoadAllTextures();
+ 
++#ifndef DISABLE_GAME_SCRIPTS
+ 		if (CPad::bHasPlayerCheated) {
+ 			m_nCurrScreen = MENUPAGE_SAVE_CHEAT_WARNING;
+ 			m_nCurrOption = 0;
+@@ -5977,6 +6029,7 @@ CMenuManager::SwitchMenuOnAndOff()
+ 			m_nCurrScreen = MENUPAGE_CHOOSE_SAVE_SLOT;
+ 			m_nCurrOption = 8;
+ 		}
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	}
+ 
+ 	m_bStartUpFrontEndRequested = false;
+diff --git a/src/core/MenuScreensCustom.cpp b/src/core/MenuScreensCustom.cpp
+index 9f8d2c78..8553ce25 100644
+--- a/src/core/MenuScreensCustom.cpp
++++ b/src/core/MenuScreensCustom.cpp
+@@ -499,7 +499,9 @@ CMenuScreenCustom aScreens[] = {
+ 	},
+ 
+ 	// MENUPAGE_CHOOSE_LOAD_SLOT = 8
++
+ 	{ "FET_LG", MENUPAGE_NEW_GAME, nil, nil,
++#ifndef DISABLE_GAME_SCRIPTS
+ 		MENUACTION_CHECKSAVE,	"FEM_SL1", {nil, SAVESLOT_1,		0}, 40, 90, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL2", {nil, SAVESLOT_2,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL3", {nil, SAVESLOT_3,		0}, 0, 0, MENUALIGN_LEFT,
+@@ -509,10 +511,13 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_CHECKSAVE,	"FEM_SL7", {nil, SAVESLOT_7,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL8", {nil, SAVESLOT_8,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_GOBACK,		"FEDS_TB", {nil, SAVESLOT_NONE,	0}, 320, 345, MENUALIGN_CENTER,
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	},
+ 
+ 	// MENUPAGE_CHOOSE_DELETE_SLOT = 9
++
+ 	{ "FES_DEL", MENUPAGE_NEW_GAME, nil, nil,
++#ifndef DISABLE_GAME_SCRIPTS
+ 		MENUACTION_CHECKSAVE,	"FEM_SL1",	{nil, SAVESLOT_1,		0}, 40, 90, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL2",	{nil, SAVESLOT_2,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL3",	{nil, SAVESLOT_3,		0}, 0, 0, MENUALIGN_LEFT,
+@@ -522,7 +527,9 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_CHECKSAVE,	"FEM_SL7",	{nil, SAVESLOT_7,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_CHECKSAVE,	"FEM_SL8",	{nil, SAVESLOT_8,		0}, 0, 0, MENUALIGN_LEFT,
+ 		MENUACTION_GOBACK,		"FEDS_TB",	{nil, SAVESLOT_NONE,	0}, 320, 345, MENUALIGN_CENTER,
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	},
++	
+ 
+ 	// MENUPAGE_LOAD_SLOT_CONFIRM = 10
+ 	{ "FET_LG", MENUPAGE_CHOOSE_LOAD_SLOT, nil, nil,
+@@ -594,15 +601,22 @@ CMenuScreenCustom aScreens[] = {
+ 		MENUACTION_CHANGEMENU,	"FEM_OK",	{nil, SAVESLOT_NONE,	MENUPAGE_CHOOSE_SAVE_SLOT}, 320, 225, MENUALIGN_CENTER,
+ 	},
+ 
++// #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
++
+ 	// MENUPAGE_SKIN_SELECT = 21
+ 	{ "FET_PS", MENUPAGE_OPTIONS, nil, nil,
+ 		 MENUACTION_GOBACK,		"FEDS_TB",	{nil, SAVESLOT_NONE, MENUPAGE_OPTIONS}, 0, 0, 0,
+ 	},
+ 
++// #ifndef DISABLE_GAME_SCRIPTS
+ 	// MENUPAGE_SAVE_UNUSED = 22
+ 	{ "FET_SG", MENUPAGE_NEW_GAME, nil, nil,
++
++#ifndef DISABLE_GAME_SCRIPTS
+ 		 MENUACTION_LABEL,		"FED_LWR",	{nil, SAVESLOT_NONE,	0}, 0, 0, 0,
+ 		 MENUACTION_CHANGEMENU,	"FEC_OKK",	{nil, SAVESLOT_NONE,	MENUPAGE_CHOOSE_SAVE_SLOT}, 0, 0, 0,
++
++#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	},
+ 
+ 	// MENUPAGE_SAVE_FAILED = 23
+@@ -621,6 +635,7 @@ CMenuScreenCustom aScreens[] = {
+ 		 MENUACTION_LABEL,		"FEC_LUN",	{nil, SAVESLOT_NONE,  0}, 0, 0, 0,
+ 		 MENUACTION_GOBACK,		"FEDS_TB",	{nil, SAVESLOT_NONE,  MENUPAGE_NEW_GAME}, 0, 0, 0,
+ 	},
++// #endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 
+ 	// MENUPAGE_CONTROLLER_PC = 26
+ 	{ "FET_CTL", MENUPAGE_OPTIONS, new CCustomScreenLayout({0, 0, MENU_DEFAULT_LINE_HEIGHT, false, false, 150}), nil,
+-- 
+2.43.0
+

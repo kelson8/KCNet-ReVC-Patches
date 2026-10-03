@@ -1,0 +1,271 @@
+From 51fafcb92ce2f58203f575bff512e1605eff4500 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sun, 13 Sep 2026 10:49:11 -0400
+Subject: [PATCH 145/161] feat: Fix load game option to work
+
+* For now, I have disabled the confirm option for loading the custom save slot.
+
+* Re-enable switching roads off and on in the lua scripts, I will test this later.
+
+* Move function that sets the player as not created into fast_loader.cpp, this makes it to where I don't have to remember to run the function each time I reload the save.
+
+* Update changelog, change version to 1.2.13-12a.
+---
+ Changelog.md                     | 11 +++++++
+ src/core/Frontend.cpp            | 50 ++++++++++++++++++++------------
+ src/extras/lua/lua_setup.cpp     | 12 ++++++--
+ src/extras/lua/lua_world.cpp     | 16 +++++-----
+ src/extras/utils/defines.cpp     |  2 +-
+ src/extras/utils/fast_loader.cpp | 16 ++++++++++
+ 6 files changed, 77 insertions(+), 30 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 00efc698..0eaeacb0 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -804,3 +804,14 @@ feat: Make target marker display again when loaded
+ 
+ * Update changelog.
+ 
++### 1.2.13-12a
++
++feat: Fix load game option to work
++
++* For now, I have disabled the confirm option for loading the custom save slot.
++
++* Re-enable switching roads off and on in the lua scripts, I will test this later.
++
++* Move function that sets the player as not created into fast_loader.cpp, this makes it to where I don't have to remember to run the function each time I reload the save.
++
++* Update changelog, change version to 1.2.13-12a.
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 4248f795..ef62e88f 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -2565,12 +2565,9 @@ CMenuManager::DrawBackground(bool transitionCall)
+ 			case MENUPAGE_DISPLAY_SETTINGS:
+ 			case MENUPAGE_MAP:
+ 
+-
+-#ifndef DISABLE_GAME_SCRIPTS
+ 			case MENUPAGE_CHOOSE_LOAD_SLOT:
+ 			case MENUPAGE_CHOOSE_DELETE_SLOT:
+ 			case MENUPAGE_CHOOSE_SAVE_SLOT:
+-#endif // !DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 			case MENUPAGE_MOUSE_CONTROLS:
+ 				menuBg.topLeft_x = 26.0f;
+ 				menuBg.topLeft_y = 59.0f;
+@@ -4993,7 +4990,8 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #endif // CUSTOM_CODE - For new script enums
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+-			InitGame::GetInstance().SetPlayerCreated(false);
++			// Moved into LoadFreeroamScript.
++			// InitGame::GetInstance().SetPlayerCreated(false);
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+@@ -5040,7 +5038,8 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 		if (aScreens[m_nCurrScreen].m_aEntries[m_nCurrOption].m_TargetMenu == MENUPAGE_NEW_GAME_RELOAD && m_bGameNotLoaded) {
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+-			InitGame::GetInstance().SetPlayerCreated(false);
++			// Moved into LoadFreeroamScript.
++			// InitGame::GetInstance().SetPlayerCreated(false);
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+@@ -5165,9 +5164,13 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 						// Probably not a good idea, I'll patch out that check later though.
+ 						// I really need to make my own save validator to check if
+ 						//  the save format and version are the same, if not don't attempt to load it.
+-						if(m_nCurrScreen == MENUPAGE_CHOOSE_LOAD_SLOT) {
+-							SwitchToNewScreen(MENUPAGE_LOAD_SLOT_CONFIRM);
+-						}
++						// TODO Fix this to work again, something I did broke the loading of this from the pause menu.
++
++						FreeroamUtil::LoadFreeroamJson();
++						FastLoader::LoadFreeroamScript();
++						// if(m_nCurrScreen == MENUPAGE_CHOOSE_LOAD_SLOT) {
++							// SwitchToNewScreen(MENUPAGE_LOAD_SLOT_CONFIRM);
++						// }
+ 				
+ 						//-------------------
+ 					}
+@@ -5177,7 +5180,8 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ 			}
+ 			case MENUACTION_NEWGAME:
+ #ifdef DISABLE_GAME_SCRIPTS
+-				InitGame::GetInstance().SetPlayerCreated(false);
++			// Moved into LoadFreeroamScript.
++			// InitGame::GetInstance().SetPlayerCreated(false);
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+@@ -5934,6 +5938,23 @@ CMenuManager::ProcessFileActions()
+ 				doingMissionRetry = false;
+ 			}
+ #endif
++
++#ifdef DISABLE_GAME_SCRIPTS
++			// TODO Check if the player is on the main menu, if so don't load a slot.
++			// Currently it is broken and crashes, but new game loads the slot anyways.
++
++			// TODO Move this out of here, and switch CheckSlotDataValid to my own functions to use.
++			// Currently this will run if the slot data is not valid, but I'm not sure how the game checks that.
++
++			// This fixes the load game! Now it'll load from my json save file.
++			// TODO Make this respawn the player with a fade effect later.
++			// Moved into LoadFreeroamScript.
++			// InitGame::GetInstance().SetPlayerCreated(false);
++			FreeroamUtil::LoadFreeroamJson();
++#else
++
++
++
+ 			if (CheckSlotDataValid(m_nCurrSaveSlot)) {
+ #ifdef USE_DEBUG_SCRIPT_LOADER
+ 				// TODO Change this in here, I didn't know this was also set here.
+@@ -5958,17 +5979,8 @@ CMenuManager::ProcessFileActions()
+ 				DoSettingsBeforeStartingAGame();
+ 				m_bWantToLoad = true;
+ 			} else
+-#ifdef DISABLE_GAME_SCRIPTS
+-			// TODO Move this out of here, and switch CheckSlotDataValid to my own functions to use.
+-			// Currently this will run if the slot data is not valid, but I'm not sure how the game checks that.
+-
+-			// This fixes the load game! Now it'll load from my json save file.
+-			// TODO Make this respawn the player with a fade effect later.
+-			InitGame::GetInstance().SetPlayerCreated(false);
+-			FreeroamUtil::LoadFreeroamJson();
+-			DoSettingsBeforeStartingAGame();
+-#else
+ 				SwitchToNewScreen(MENUPAGE_NEW_GAME);
++
+ #endif // DISABLE_GAME_SCRIPTS - Custom save slots.
+ 
+ 			break;
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index 0a8759ae..63f2f737 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -13,6 +13,8 @@
+ #include <string>
+ #include <iostream>
+ 
++#include "fast_loader.h"
++
+ #include "main.h"
+ 
+ #include "Frontend.h"
+@@ -155,8 +157,14 @@ LuaSetup::LuaPlayingGameLoop()
+ 		{
+ 			// Reset the players created status, otherwise this will not allow them to respawn and crash.
+ 			// Oops, I didn't mean to do that.
+-			InitGame::GetInstance().SetPlayerCreated(false);
+-			FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++			// Moved into LoadFreeroamScript.
++			// InitGame::GetInstance().SetPlayerCreated(false);
++
++			// Fix for audio bug when pressing F5.
++			// If I do the normal settings before a game my audio won't work until I pause/unpause.
++			FastLoader::LoadFreeroamScript();
++
++			// FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 
+ 			// Well changing to this just reloads the game.
+ 			// This is kind of like my F9 keybind but for reloading the 'freeroam-game.lua' script.
+diff --git a/src/extras/lua/lua_world.cpp b/src/extras/lua/lua_world.cpp
+index 12f33392..29ebcefa 100644
+--- a/src/extras/lua/lua_world.cpp
++++ b/src/extras/lua/lua_world.cpp
+@@ -105,17 +105,17 @@ extern "C"
+ 		// Switch the roads on and off
+ 		// TODO Fix these to work, I only tested switch_ped_roads_off but it wasn't working so I disabled these.
+ 
+-		// lua_pushcfunction(L, switchRoadsOffLua);
+-		// lua_setfield(L, -2, "switch_roads_off");
++		lua_pushcfunction(L, switchRoadsOffLua);
++		lua_setfield(L, -2, "switch_roads_off");
+ 
+-		// lua_pushcfunction(L, switchRoadsOnLua);
+-		// lua_setfield(L, -2, "switch_roads_on");
++		lua_pushcfunction(L, switchRoadsOnLua);
++		lua_setfield(L, -2, "switch_roads_on");
+ 
+-		// lua_pushcfunction(L, switchPedRoadsOffLua);
+-		// lua_setfield(L, -2, "switch_ped_roads_off");
++		lua_pushcfunction(L, switchPedRoadsOffLua);
++		lua_setfield(L, -2, "switch_ped_roads_off");
+ 
+-		// lua_pushcfunction(L, switchPedRoadsOnLua);
+-		// lua_setfield(L, -2, "switch_ped_roads_on");
++		lua_pushcfunction(L, switchPedRoadsOnLua);
++		lua_setfield(L, -2, "switch_ped_roads_on");
+ 
+ 		// Objects
+ 		// TODO Fix these later, I have create_object_no_offset started, but it crashes.
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index d5498c7a..1ff8266a 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.13-11a";
++std::string Defines::programVersion = "1.2.13-12a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index c545d6cb..846f5067 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -2,6 +2,8 @@
+ 
+ #include "fast_loader.h"
+ #include "misc_enums.h"
++#include "freeroam_util.h"
++#include "init_game.h"
+ 
+ #ifdef EX_LOADING_GAME_SAVE_ON_STARTUP
+ #include "GenericGameStorage.h"
+@@ -115,6 +117,9 @@ FastLoader::FastLoad()
+  * This is a modified version of FrontEndMenuManager.DoSettingsBeforeStartingAGame().
+  * What this does, is fixes the audio on game startup for my freeroam scripts.
+  * I guess when I disabled the game scripts I wasn't starting this right.
++ * 
++ * TODO Make this mute the audio when it is being loaded like the game normally does.
++ * I'm not too worried about that though it doesn't seem to break anything.
+  */
+ void
+ FastLoader::LoadFreeroamScript()
+@@ -127,6 +132,10 @@ FastLoader::LoadFreeroamScript()
+ 	// If this is done, it breaks the audio on startup until the game is paused and unpaused.
+ 	// FrontEndMenuManager.DoSettingsBeforeStartingAGame();
+ 
++	// Added this just so I don't have to disable the player anywhere else
++	// TODO Remove this in other places that use LoadFreeroamScript.
++	InitGame::GetInstance().SetPlayerCreated(false);
++
+ 	// Doing this in my fast loader fixes the audio glitch on first load!
+ 	// Now I don't have to pause and unpause to fix the sounds to work again.
+ 	// I guess DoSettingsBeforeStartingAGame does something that shouldn't be run here.
+@@ -134,6 +143,13 @@ FastLoader::LoadFreeroamScript()
+ 	FrontEndMenuManager.m_bWantToRestart = true;
+ 	FrontEndMenuManager.SwitchMenuOnAndOff();
+ 	//
++
++
++	// This is what always kept disabling my sounds in DoSettingsBeforeStartingAGame...
++	// It always sets the music and effects back to 0, I guess the game loading normally loads that in
++	// DMAudio.SetEffectsFadeVol(0);
++	// DMAudio.SetMusicFadeVol(0);
++	//
+ }
+ 
+ /**
+-- 
+2.43.0
+

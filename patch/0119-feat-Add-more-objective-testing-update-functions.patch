@@ -1,0 +1,609 @@
+From 1c64767680d293ad06a21f293bfcc3eacdba95fa Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 13:47:05 -0400
+Subject: [PATCH 119/161] feat: Add more objective testing, update functions
+
+* Add more checks in ped_functions
+
+* I made some of the vehicle objectives check if the player is in a vehicle, no sense in making them leave a vehicle if they aren't in one.
+
+* Make flee and leave car set the ped to leave their vehicle instead of the one set in the function.
+
+* Add some default break statements into the SetObjective functions.
+
+* Add some new objective testing into ped_functions and Ped.h.
+
+* Add new explosion cheat function that can set an explosion at a specific set of coordinates.
+
+* Remove old test preprocessor and unused functions in custom_cheats.h.
+
+* Setup add explosion to custom coordinates in lua with game.add_explosion.
+
+* Disable explosion on player with suicide cheat.
+
+* Update changelog, switch version to 1.2.12-10a.
+---
+ Changelog.md                              |  24 ++++
+ src/extras/cheats/custom_cheats.cpp       |  28 ++--
+ src/extras/cheats/custom_cheats.h         |  30 +----
+ src/extras/functions/ped_functions.cpp    | 152 +++++++++++++++++++++-
+ src/extras/functions/player_functions.cpp |   3 +-
+ src/extras/lua/lua_game.cpp               |  48 +++++--
+ src/extras/lua/lua_game.h                 |   2 +
+ src/extras/menus/ped_menu.cpp             |   4 +
+ src/extras/menus/player_menu.cpp          |  15 ++-
+ src/extras/utils/defines.cpp              |   2 +-
+ src/peds/Ped.h                            |  11 +-
+ 11 files changed, 257 insertions(+), 62 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 96046ea5..cf5b01d1 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -536,3 +536,27 @@ feat: Add teleport to marker for lua scripts
+ * Now you can use 'player.tp_to_marker' to teleport to a marker set on the map.
+ 
+ * Update changelog, switch version to 1.2.12-9a.
++
++### 1.2.12-10a
++
++feat: Add more objective testing, update functions
++
++* Add more checks in ped_functions
++
++* I made some of the vehicle objectives check if the player is in a vehicle, no sense in making them leave a vehicle if they aren't in one.
++
++* Make flee and leave car set the ped to leave their vehicle instead of the one set in the function.
++
++* Add some default break statements into the SetObjective functions.
++
++* Add some new objective testing into ped_functions and Ped.h.
++
++* Add new explosion cheat function that can set an explosion at a specific set of coordinates.
++
++* Remove old test preprocessor and unused functions in custom_cheats.h.
++
++* Setup add explosion to custom coordinates in lua with game.add_explosion.
++
++* Disable explosion on player with suicide cheat.
++
++* Update changelog, switch version to 1.2.12-10a.
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index 53b7ecc0..a2c7941f 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -1036,9 +1036,10 @@ CustomCheats::WeaponCheat3()
+ //--------------------
+ 
+ 
+-
+-// Test adding a bomb around the player.
+-// This works, inspired by some of the code in Pickups.cpp
++/**
++ * Add an explosion near the player.
++ * This works, inspired by some of the code in Pickups.cpp.
++ */
+ void
+ CustomCheats::ExplosionCheat()
+ {
+@@ -1046,19 +1047,28 @@ CustomCheats::ExplosionCheat()
+ 	CVector playerPos = FindPlayerCoors();
+ 
+ 	// Add 2 to the X and Y, leave the Z coord alone.
+-	float playerPosX = playerPos.x + 2;
+-	float playerPosY = playerPos.y + 2;
+-	float playerPosZ = playerPos.z;
+-
+ 	// This works.
+-	// I honestly think it's a bad idea to use pointers when I don't really know what they do lol.
+-	CVector *playerPosNew = new CVector(playerPosX, playerPosY, playerPosZ);
++	CVector *playerPosNew = new CVector(playerPos.x + 2, playerPos.y + 2, playerPos.z);
+ 
+ 	// Original method without adding to the position
+ 	// CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
+ 	CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, *playerPosNew, 0);
+ }
+ 
++/**
++ * Add an explosion at the specific coordinates
++ * 
++ * @param pos The position to add an explosion to.
++ * @param makeSound If the explosion should make a sound.
++ */
++void
++CustomCheats::ExplosionCheat(CVector &pos, bool makeSound)
++{
++	// Original method without adding to the position
++	// CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, playerPos, 0);
++	CExplosion::AddExplosion(nil, nil, EXPLOSION_CAR, pos, 0, makeSound);
++}
++
+ void PlayerTest2()
+ {
+ 	CPlayerPed *pPed = FindPlayerPed();
+diff --git a/src/extras/cheats/custom_cheats.h b/src/extras/cheats/custom_cheats.h
+index 46393d03..8ebb7cc3 100644
+--- a/src/extras/cheats/custom_cheats.h
++++ b/src/extras/cheats/custom_cheats.h
+@@ -18,30 +18,9 @@ private:
+ public:
+ 	CustomCheats();
+ 	void ClearItemsFromArea(float radius);
+-	// TODO Fix these to not be static.
+-	#ifdef _TEST
+-	void TestCheat1();
+-	void SpawnPedCheat();
+-	void GivePlayerWeapon();
+-	void SpawnPedTest();
+-	void SpawnCarTestCheat();
+-	void InfiniteHealthCheat();
+-	void ToggleNeverWanted();
+-	void NeverWantedCheat();
+-	void InvincibleVehicleCheat();
+-	void NoUpsideDownBlowUpCheat(bool toggle);
+-	void ExplosionCheat();
+-
+-	// Misc testing.
+-	static void PedTest1();
+-
+-	static void ExplodePed();
+-
+-	#else
+ 
+ 	// Test cheats
+ 	static void TestCheat1();
+-	static void SpawnPedCheat();
+ 
+ 	// Menu text testing.
+ 	
+@@ -59,15 +38,13 @@ public:
+ 	// Player
+ 	/*static void InfiniteHealthCheat();*/
+ 	//static void SuicideCheat();
+-	
+-	// Never wanted
+-	static void ToggleNeverWanted();
+-	//static void NeverWantedCheat();
+ 
+ 	// Vehicle
+ 	//static void InvincibleVehicleCheat();
+ 	//static void NoUpsideDownBlowUpCheat(bool toggle);
+ 	static void ExplosionCheat();
++	static void ExplosionCheat(CVector &pos, bool makeSound);
++
+ 	static void LockDoors();
+ 	static void UnlockDoors();
+ 
+@@ -113,7 +90,6 @@ public:
+ 	//static void RaiseWantedLevel();
+ 	//static void LowerWantedLevel();
+ 
+-
+ 	#ifdef CHANGE_POLICE_WEAPONS
+ 	static void EnableChangePoliceWeapons();
+ 	static void DisableChangePoliceWeapons();
+@@ -143,6 +119,4 @@ public:
+ 	
+ 	static void CustomHelpMessage(std::string text);
+ 
+-
+-	#endif //_TEST
+ };
+diff --git a/src/extras/functions/ped_functions.cpp b/src/extras/functions/ped_functions.cpp
+index 181f030f..07fdb5cb 100644
+--- a/src/extras/functions/ped_functions.cpp
++++ b/src/extras/functions/ped_functions.cpp
+@@ -399,6 +399,9 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed* ped)
+ 		case OBJECTIVE_SET_LEADER:
+ 			ped->SetObjective(pedObjective);
+ 		break;
++
++		default:
++			break;
+ 	}
+ 		
+ }
+@@ -407,6 +410,9 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed* ped)
+  * Set a vehicle objective on a ped
+  * TODO Implement some of these.
+  * 
++ * TODO Try to use this for making the ped drive somewhere close
++ * SetObjectiveTimer
++ * 
+  * @param pedObjective, the objective to set for the ped.
+  * @param ped The ped to set the objective on.
+  * @param  vehicle The vehicle to use for the objective.
+@@ -417,11 +423,18 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed* ped, CVehicle* vehicle
+ 	switch(pedObjective)
+ 	{
+ 		case OBJECTIVE_FLEE_CAR:
+-			ped->SetObjective(OBJECTIVE_FLEE_CAR, vehicle);
++			if(ped->InVehicle() && ped->m_pMyVehicle)
++			{
++				ped->SetObjective(OBJECTIVE_FLEE_CAR, ped->m_pMyVehicle);
+ 			break;
++			}
+ 
+ 		case OBJECTIVE_LEAVE_CAR:
+-			ped->SetObjective(OBJECTIVE_LEAVE_CAR, vehicle);
++			if(ped->InVehicle() && ped->m_pMyVehicle)
++			{
++				ped->SetObjective(OBJECTIVE_LEAVE_CAR, ped->m_pMyVehicle);
++			}
++			
+ 			break;
+ 
+ 
+@@ -448,17 +461,142 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed* ped, CVehicle* vehicle
+ 		// case OBJECTIVE_FOLLOW_CAR_ON_FOOT_WITH_OFFSET:
+ 
+ 		case OBJECTIVE_STEAL_ANY_CAR:
+-			ped->SetObjective(OBJECTIVE_STEAL_ANY_CAR);
++			if(!ped->InVehicle())
++			{
++				ped->SetObjective(OBJECTIVE_STEAL_ANY_CAR);
++			}
+ 			break;
+ 
++		// Make the ped leave the car and die.
+ 		case OBJECTIVE_LEAVE_CAR_AND_DIE:
+-			ped->SetObjective(OBJECTIVE_LEAVE_CAR_AND_DIE, vehicle);
++			if(ped->InVehicle())
++			{
++				ped->SetObjective(OBJECTIVE_LEAVE_CAR_AND_DIE, vehicle);
++			}
+ 			break;
+ 
++		// Make the ped try and destroy a car I'm quite sure
++		// TODO Look into this one.
+ 		case OBJECTIVE_DESTROY_CAR:
+ 			ped->SetObjective(OBJECTIVE_DESTROY_CAR, vehicle);
+ 			break;
++
++
++		//------------
++		// Custom objectives
++		// Added in: v1.2.12-10a
++		// TODO Implement these.
++		//------------
++
++		// TODO Implement this, it shouldn't be too hard.
++		case OBJECTIVE_CAR_GOTO_COORDINATES:
++			ped->SetObjective(OBJECTIVE_CAR_GOTO_COORDINATES, vehicle);
++			if(ped->InVehicle() && ped->m_pMyVehicle)
++			{
++				CVehicle *car = ped->m_pMyVehicle;
++				/*
++				if (CCarCtrl::JoinCarWithRoadSystemGotoCoors(car, pos, false))
++					car->AutoPilot.m_nCarMission = MISSION_GOTOCOORDS_STRAIGHT;
++				else
++					car->AutoPilot.m_nCarMission = MISSION_GOTOCOORDS;
++				*/
++				car->SetStatus(STATUS_PHYSICS);
++				car->bEngineOn = true;
++				car->AutoPilot.m_nCruiseSpeed = Max(1, car->AutoPilot.m_nCruiseSpeed);
++				car->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
++			}
++
++			break;
++
++		// Make the car wander randomly.
++		// TODO Fix this, it doesn't work right with my functions.
++		// At least this might work if they are already in a vehicle, but waiting on it I guess it never runs.
++		// I may need to put this in a spot that loads more of the objectives or something.
++		case OBJECTIVE_CAR_WANDER_RANDOMLY:
++			// Give the ped some time if they are getting in a vehicle.
++			ped->SetObjectiveTimer(5000);
++			if(ped->InVehicle() && ped->m_pMyVehicle)
++			{
++				CVehicle *car = ped->m_pMyVehicle;
++
++				CCarCtrl::JoinCarWithRoadSystem(car);
++				car->AutoPilot.m_nCarMission = MISSION_CRUISE;
++				car->bEngineOn = true;
++				car->AutoPilot.m_nCruiseSpeed = Max(1, car->AutoPilot.m_nCruiseSpeed);
++				car->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
++			}
++			break;
++
++		default:
++			break;
++	}
++
++	/**
++	 * TODO Set these up!!
++	 * 
++	 */
++
++	 /*
++	 	case COMMAND_CAR_GOTO_COORDINATES:
++	{
++		CollectParameters(&m_nIp, 4);
++		CVehicle* car = CPools::GetVehiclePool()->GetAt(ScriptParams[0]);
++		script_assert(car);
++		CVector pos = *(CVector*)&ScriptParams[1];
++		if (pos.z <= MAP_Z_LOW_LIMIT)
++			pos.z = CWorld::FindGroundZForCoord(pos.x, pos.y);
++		pos.z += car->GetDistanceFromCentreOfMassToBaseOfModel();
++		if (CCarCtrl::JoinCarWithRoadSystemGotoCoors(car, pos, false))
++			car->AutoPilot.m_nCarMission = MISSION_GOTOCOORDS_STRAIGHT;
++		else
++			car->AutoPilot.m_nCarMission = MISSION_GOTOCOORDS;
++		car->SetStatus(STATUS_PHYSICS);
++		car->bEngineOn = true;
++		car->AutoPilot.m_nCruiseSpeed = Max(1, car->AutoPilot.m_nCruiseSpeed);
++		car->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
++		return 0;
++	}
++	 
++	 
++	 */
++
++	 /*
++ 	  * // TODO Replicate this for my freeroam scripts.
++	case COMMAND_CAR_WANDER_RANDOMLY:
++	{
++		CollectParameters(&m_nIp, 1);
++		CVehicle* car = CPools::GetVehiclePool()->GetAt(ScriptParams[0]);
++		script_assert(car);
++		CCarCtrl::JoinCarWithRoadSystem(car);
++		car->AutoPilot.m_nCarMission = MISSION_CRUISE;
++		car->bEngineOn = true;
++		car->AutoPilot.m_nCruiseSpeed = Max(1, car->AutoPilot.m_nCruiseSpeed);
++		car->AutoPilot.m_nAntiReverseTimer = CTimer::GetTimeInMilliseconds();
++		return 0;
++	}
++
++	* TODO Replicate this for my freeroam scripts.
++	case COMMAND_CAR_SET_IDLE:
++	{
++		CollectParameters(&m_nIp, 1);
++		CVehicle* car = CPools::GetVehiclePool()->GetAt(ScriptParams[0]);
++		script_assert(car);
++		car->AutoPilot.m_nCarMission = MISSION_NONE;
++		return 0;
+ 	}
++
++	case COMMAND_GET_CAR_COORDINATES:
++	{
++		CollectParameters(&m_nIp, 1);
++		CVehicle* car = CPools::GetVehiclePool()->GetAt(ScriptParams[0]);
++		script_assert(car);
++		*(CVector*)&ScriptParams[0] = car->GetPosition();
++		StoreParameters(&m_nIp, 3);
++		return 0;
++	}
++
++
++	 */
+ }
+ 
+ /**
+@@ -513,6 +651,9 @@ PedFunctions::SetObjective(eObjective posObjective, CPed *ped, CVector pos)
+ 		// case OBJECTIVE_GOTO_ICE_CREAM_VAN_ON_FOOT
+ 
+ 		break;
++
++		default:
++			break;
+ 	}
+ }
+ 
+@@ -561,6 +702,9 @@ PedFunctions::SetObjective(eObjective pedObjective, CPed *ped, CPed *target)
+ 
+ 		// case OBJECTIVE_FOLLOW_CHAR_IN_FORMATION:
+ 			// break;
++
++		default:
++			break;
+ 	}
+ 	
+ 
+diff --git a/src/extras/functions/player_functions.cpp b/src/extras/functions/player_functions.cpp
+index 6d22c1ef..2f5c575a 100644
+--- a/src/extras/functions/player_functions.cpp
++++ b/src/extras/functions/player_functions.cpp
+@@ -158,8 +158,9 @@ PlayerFunctions::Suicide()
+         // I could add some explosions to this if chaos mode is enabled.
+ 		// CHud::SetHelpMessage(TheText.Get("CHEAT1"), true);
+ 		pPlayer->InflictDamage(nil, WEAPONTYPE_UNARMED, 1000.0f, PEDPIECE_TORSO, 0);
++        pPlayer->m_fHealth = 0.0f;
+ #ifdef CUSTOM_CODE
+-		pPlayer->m_fArmour = 0;
++		pPlayer->m_fArmour = 0.0f;
+ #endif // CUSTOM_CODE
+ 	}
+ }
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 77266dc5..904ac4b3 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -70,13 +70,14 @@ void RegisterGameFunctionsLua(lua_State* L)
+     lua_setfield(L, -2, "cheat");
+ 
+ 	// Setting respawn points when wasted/busted
+-	// TODO Fix these, they currently crash.
++	// TODO Fix these, they seem to work but I'm not sure.
++	// Now at least they don't crash anymore.
+ 	// Possibly because I am disabling the scripts?
+-	// lua_pushcfunction(L, setHospitalRespawnLua);
+-	// lua_setfield(L, -2, "set_hospital_respawn");
++	lua_pushcfunction(L, setHospitalRespawnLua);
++	lua_setfield(L, -2, "set_hospital_respawn");
+ 
+-	// lua_pushcfunction(L, setPoliceStationRespawnLua);
+-	// lua_setfield(L, -2, "set_police_respawn");
++	lua_pushcfunction(L, setPoliceStationRespawnLua);
++	lua_setfield(L, -2, "set_police_respawn");
+ 	
+ 	// Start a fire
+ 	// TODO Fix this to only start one fire, this can be spammed for a fun effect.
+@@ -119,8 +120,8 @@ void RegisterGameFunctionsLua(lua_State* L)
+ 	// TODO Implement these below
+ 	//----------
+ 	// Add an explosion
+-	// lua_pushcfunction(L, addExplosionLua);
+-    // lua_setfield(L, -2, "add_explosion");
++	lua_pushcfunction(L, addExplosionLua);
++    lua_setfield(L, -2, "add_explosion");
+ 
+ 	// DISPLAY_ONSCREEN_TIMER
+ 	// CUserDisplay::OnscnTimer.AddClock(offset, nil, ScriptParams[0] != 0);
+@@ -271,9 +272,9 @@ int setHospitalRespawnLua(lua_State *L)
+ 	auto pos = luaGetCVector(L, 1);
+ 	float angle = static_cast<float>(lua_tointeger(L, 2));
+ 	
+-	if (!pos)
++	if (!pos && !lua_isnumber(L, 2))
+     {
+-    	return luaL_error(L, "game.set_hospital_respawn expects a vector table with numeric x, y, and z fields" );
++    	return luaL_error(L, "game.set_hospital_respawn expects a vector table with numeric x, y, and z fields and a float for the heading." );
+ 	}
+ 
+ 	CRestart::AddHospitalRestartPoint(*pos, angle);
+@@ -304,10 +305,9 @@ int setPoliceStationRespawnLua(lua_State *L)
+ 	auto pos = luaGetCVector(L, 1);
+ 	float angle = static_cast<float>(lua_tointeger(L, 2));
+ 	
+-
+-	if (!pos)
++	if (!pos && !lua_isnumber(L, 2))
+     {
+-    	return luaL_error(L, "game.set_police_respawn expects a vector table with numeric x, y, and z fields" );
++    	return luaL_error(L, "game.set_police_respawn expects a vector table with numeric x, y, and z fields and a float for the heading." );
+ 	}
+ 
+ 	CRestart::AddPoliceRestartPoint(*pos, angle);
+@@ -519,6 +519,30 @@ int grabPhoneLua(lua_State *L)
+ 	return 1;
+ }
+ 
++/**
++ * Add an explosion to the specified area.
++ * 
++ * Usage (Param 1 is coordinates, Param 2 is if the explosion makes a sound.):
++ * game.add_explosion({x = 25, y = 25, z = 25}, true)
++ */
++int addExplosionLua(lua_State *L)
++{
++	auto pos = luaGetCVector(L, 1);
++
++	bool makeSound = static_cast<float>(lua_toboolean(L, 2));
++
++	// https://stackoverflow.com/questions/55936608/how-to-check-for-boolean-argument-in-lua-function
++	// I guess I was doing this wrong, I was checking if the boolean was always false, not if it was a boolean..
++	if(!pos && lua_isboolean(L, 2))
++	{
++		return luaL_error(L, "game.add_explosion requires a vector for the coordinates with an x, y, z and true or false to play the sound.");
++	}
++
++	CustomCheats::ExplosionCheat(*pos, makeSound);
++
++	return 1;
++}
++
+ //----------
+ // Blip functions
+ // TODO Move into lua_blip.cpp/.h later.
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 110cf5b7..8da02a81 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -30,6 +30,8 @@ extern "C" {
+     extern int turnPhoneOnLua(lua_State *L);
+     extern int grabPhoneLua(lua_State *L);
+ 
++    extern int addExplosionLua(lua_State *L);
++
+     extern int addBlipForCoordOldLua(lua_State *L);
+ 
+     extern int waitLua(lua_State *L);
+diff --git a/src/extras/menus/ped_menu.cpp b/src/extras/menus/ped_menu.cpp
+index 607ece54..d5d68007 100644
+--- a/src/extras/menus/ped_menu.cpp
++++ b/src/extras/menus/ped_menu.cpp
+@@ -106,6 +106,10 @@ PedMenu::PedTab()
+ 			{
+ 				pedFunctions.SetObjective(OBJECTIVE_ENTER_CAR_AS_DRIVER, customPed, VehicleFunctions::GetSpawnedVehicle());
+ 
++				// TODO Test this custom objective, they should wander around now in the vehicle.
++				// Well this didn't work, I guess I'm not doing this right and need to set it elsewhere also.
++				// pedFunctions.SetObjective(OBJECTIVE_CAR_WANDER_RANDOMLY, customPed, VehicleFunctions::GetSpawnedVehicle());
++
+ 				// TODO Test this.
+ 				// Set a 5 second wait time.
+ 				// Wait this won't work here anyways, it'll only run this timer when the button is pressed.
+diff --git a/src/extras/menus/player_menu.cpp b/src/extras/menus/player_menu.cpp
+index ae75acbc..086fa245 100644
+--- a/src/extras/menus/player_menu.cpp
++++ b/src/extras/menus/player_menu.cpp
+@@ -259,11 +259,14 @@ PlayerMenu::PlayerTab()
+ 
+ 	if(ImGui::Button("Suicide")) { 
+ 		
+-		int amountOfExplosions = 5;
++
++		CVector playerPos = FindPlayerCoors();
++		// TODO Move this amountOfExplosions variable to be able to be set in lua, I forgot about this.
++		// int amountOfExplosions = 5;
+ 		// Well this is fun, makes the player fly around a bit.
+ 		//int amountOfExplosions = 20;
+ 		// How the hell does this not crash it?
+-		//int amountOfExplosions = 50;
++		// int amountOfExplosions = 50;
+ 		// Seems like above 100 it somewhat stops doing anything.
+ 		//int amountOfExplosions = 100;
+ 
+@@ -271,10 +274,10 @@ PlayerMenu::PlayerTab()
+ 		// Sometimes the player doesn't die from this.. I'll just cause some mayhem
+ 		// This seems to finish the player off, now it's a true suicide cheat.
+ 		//for (int i = 0; i < 5; i++)
+-		for (int i = 0; i < amountOfExplosions; i++)
+-		{ 
+-			CustomCheats::ExplosionCheat();
+-		}
++		// for (int i = 0; i < amountOfExplosions; i++)
++		// { 
++		// 	CustomCheats::ExplosionCheat();
++		// }
+ 		
+ 	}
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 34e21c01..86f99fd2 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.12-9a";
++std::string Defines::programVersion = "1.2.12-10a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+diff --git a/src/peds/Ped.h b/src/peds/Ped.h
+index d81dd986..46cbec04 100644
+--- a/src/peds/Ped.h
++++ b/src/peds/Ped.h
+@@ -264,7 +264,16 @@ enum eObjective {
+ 	OBJ_56,
+ 	OBJ_57,
+ 	OBJ_58,
+-	OBJ_59
++	OBJ_59,
++
++#ifdef CUSTOM_CODE
++	
++	// Test for making a vehicle go to a set of coordinates.
++	OBJECTIVE_CAR_GOTO_COORDINATES,
++
++	// New for testing out an objective for making the vehicle wander.
++	OBJECTIVE_CAR_WANDER_RANDOMLY,
++#endif // CUSTOM_CODE
+ 
+ };
+ 
+-- 
+2.43.0
+

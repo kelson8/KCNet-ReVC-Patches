@@ -1,0 +1,478 @@
+From 8f10b0fe3af4f32933be364218524dc98db26a2c Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 17 Sep 2026 20:17:12 -0400
+Subject: [PATCH 170/176] feat: Add json logging for coords
+
+* I setup my lua code to be able to log the players position into my lua json format.
+
+* Make my freeroam text only draw when not paused.
+* Fix freeroam text to use the Screen.cpp classes from TExtender.
+
+* Add more cheats into cheat_menu.
+
+* Update changelog, change version to 1.2.14-9a.
+---
+ Changelog.md                    |  13 ++++
+ src/core/main.cpp               |  46 +++++++++-----
+ src/extras/lua/lua_log.cpp      |  82 ++++++++++++++++---------
+ src/extras/lua/lua_log.h        |   1 +
+ src/extras/menus/cheat_menu.cpp | 104 ++++++++++++++++++++++++++++++++
+ src/extras/utils/defines.cpp    |   2 +-
+ 6 files changed, 202 insertions(+), 46 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index f33199ac..2f1de0b6 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1104,3 +1104,16 @@ feat: Add/fix things in lua
+ * Fix infinite ammo in vehicles.
+ 
+ * Update changelog.
++
++### 1.2.14-9a
++
++feat: Add json logging for coords
++
++* I setup my lua code to be able to log the players position into my lua json format.
++
++* Make my freeroam text only draw when not paused.
++* Fix freeroam text to use the Screen.cpp classes from TExtender.
++
++* Add more cheats into cheat_menu
++
++* Update changelog, change version to 1.2.14-9a.
+diff --git a/src/core/main.cpp b/src/core/main.cpp
+index eafcbaa7..32a2ae1c 100644
+--- a/src/core/main.cpp
++++ b/src/core/main.cpp
+@@ -82,6 +82,8 @@
+ #ifdef DISABLE_GAME_SCRIPTS
+ #include "misc_functions.h"
+ 
++#include "Screen.h"
++
+ #endif // DISABLE_GAME_SCRIPTS - For drawing to the screen.
+ 
+ #ifdef CUSTOM_CODE
+@@ -1330,25 +1332,37 @@ DisplayGameDebugText()
+ #ifdef DISABLE_GAME_SCRIPTS
+ 	// Make this draw the custom freeroam text at the top which is set in defines.cpp.
+ 	// This is my own lua scripting system replacing the Vice City one anyways.
+-	// TODO Make this not display on the pause menu, and only when the player is playing.
+ 
+-	wchar customScriptMsgBuf[200];
++	// Fix for this drawing all the time, I can add toggles here for lua to toggle this later.
++	if(!FrontEndMenuManager.m_bMenuActive)
++	{
++		wchar customScriptMsgBuf[200];
+ 
+-	AsciiToUnicode(Defines::freeroamScriptsText.c_str(), customScriptMsgBuf);
++		AsciiToUnicode(Defines::freeroamScriptsText.c_str(), customScriptMsgBuf);
+ 	
+-	CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.5f));
+-	CFont::SetPropOn();
+-	CFont::SetBackgroundOff();
+-	CFont::SetFontStyle(FONT_STANDARD);
++		CFont::SetScale(SCREEN_SCALE_X(0.5f), SCREEN_SCALE_Y(0.5f));
++		CFont::SetPropOn();
++		CFont::SetBackgroundOff();
++		CFont::SetFontStyle(FONT_STANDARD);
+ 
+-	CFont::SetCentreOff();
+-	CFont::SetRightJustifyOff();
+-	CFont::SetWrapx(SCREEN_WIDTH);
+-	CFont::SetJustifyOff();
++		CFont::SetCentreOff();
++		CFont::SetRightJustifyOff();
++		CFont::SetWrapx(SCREEN_WIDTH);
++		CFont::SetJustifyOff();
+ 
+-	CFont::SetBackGroundOnlyTextOff();
+-	CFont::SetColor(CRGBA(255, 108, 0, 255));
+-	CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(10.0f), customScriptMsgBuf);
++		CFont::SetBackGroundOnlyTextOff();
++		CFont::SetColor(CRGBA(255, 108, 0, 255));
++		// CFont::PrintString(SCREEN_SCALE_X(10.0f), SCREEN_SCALE_Y(10.0f), customScriptMsgBuf);
++
++		// This works well for drawing to the screen!
++		// It can actually draw to specific parts of the screen.
++		// Using this from TExtender will really help out for this once I set up drawing to the screen in lua.
++		CFont::PrintString(TExtender::CScreen::GetCoordLeft(25), TExtender::CScreen::GetCoordLeft(10), customScriptMsgBuf);
++
++		// CScreen
++
++		
++	}
+ 	
+ 
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+@@ -1379,6 +1393,8 @@ DisplayGameDebugText()
+ 		// I don't think this works, this GetOrientation function is from the plugin-sdk.
+ 		// float playerHeadingX, playerHeadingY, playerHeadingZ = 0;
+ 		// FindPlayerPed()->GetOrientation(playerHeadingX, playerHeadingY, playerHeadingZ);
++
++		float heading = FindPlayerHeading();
+ #endif // CUSTOM_CODE - Change the position display format.
+ 		int32 ZoneId = ARRAY_SIZE(ZonePrint)-1; // no zone
+ 		
+@@ -1398,7 +1414,7 @@ DisplayGameDebugText()
+ 		// I removed the FPS out of this, and may change the format later.
+ 		// TODO Figure out how the position for this is being set on the screen.
+ 		// I need to make helper functions for drawing to the screen easily with my lua scripts.
+-		sprintf(str, "X:%4.0f Y:%4.0f Z:%4.0f  ZON: %s-%s", pos.x, pos.y, pos.z,
++		sprintf(str, "X:%4.0f Y:%4.0f Z:%4.0f ZON: %s-%s", pos.x, pos.y, pos.z,
+ 			ZonePrint[ZoneId].name, ZonePrint[ZoneId].area);
+ #else
+ 		//NOTE: fps should be 30, but its 29 due to different fp2int conversion 
+diff --git a/src/extras/lua/lua_log.cpp b/src/extras/lua/lua_log.cpp
+index 054a26ee..e095d17a 100644
+--- a/src/extras/lua/lua_log.cpp
++++ b/src/extras/lua/lua_log.cpp
+@@ -50,7 +50,10 @@ extern "C"
+ 		// Log the current directory
+ 		lua_pushcfunction(L, logCurrentDirectoryLua);
+ 		lua_setfield(L, -2, "current_directory");
+-		lua_register(L, "log_directory", logCurrentDirectoryLua);
++
++		// Log the coords into my json format for use with my lua scripts
++		lua_pushcfunction(L, logPlayerCoordsJsonFormat);
++		lua_setfield(L, -2, "coords_json");
+ 
+ 		// log namespace
+     	lua_setglobal(L, "log");
+@@ -77,14 +80,40 @@ extern "C"
+ 		LogFunctions::LogInfo(defines.luaLogFile,
+ 	                      "Player coords X:" + std::to_string(playerX) + " Y: " + std::to_string(playerY) + " Z: " + std::to_string(playerZ));
+ 
+-		return 1;
++		return 0;
+ 	}
+ 
+-	/// <summary>
+-        /// Log the players heading to the lua file, this works.
+-        /// </summary>
+-        /// <param name="L"></param>
+-        /// <returns></returns>
++
++	/**
++	 * Log the players coordinates to my lua formatted table, which is json like.
++	 * This will be useful for logging my coordinates into my lua format.
++	 * So I don't have to manually do this...
++	 * 
++	 * Example output: {x = 25, y = 25, z = 25}
++	 * 
++	 * Usage:
++	 * log.coords_json()
++	 * 
++	 */
++	int logPlayerCoordsJsonFormat(lua_State *L)
++	{
++		CVector playerCoords = FindPlayerCoors();
++		// {x = 25, y = 25, z = 25}
++		std::string playerCoordsString = "{x = " + std::to_string(playerCoords.x) 
++		+ ", y = " + std::to_string(playerCoords.y) 
++		+ ", z = " +  std::to_string(playerCoords.z)
++		+ "}";
++
++		// Output this to the console and the log.
++		TRACE(playerCoordsString.c_str());
++		LogFunctions::LogInfo(Defines::luaLogFile, playerCoordsString);
++
++		return 0;
++	}
++
++	/**
++	 * Log the players heading to the lua file.
++	 */
+ 	int
+     logPlayerHeadingLua(lua_State *L)
+     {
+@@ -94,16 +123,16 @@ extern "C"
+ 	    float playerHeading = playerUtil.PlayerHeading();
+ 	    LogFunctions::LogInfo(defines.luaLogFile, "Player heading: " + std::to_string(playerHeading));
+ 
+-	    return 1;
++	    return 0;
+ 	}
+ 
++	//------------------
+ 	// Log info/warning/error messages
++	//------------------
+ 
+-	/// <summary>
+-    /// This works, log an info message using lua.
+-    /// </summary>
+-    /// <param name="L"></param>
+-    /// <returns></returns>
++	/**
++	 * Log a info message in lua.
++	 */
+     int
+     logInfoMessageLua(lua_State *L)
+     {
+@@ -112,21 +141,18 @@ extern "C"
+ 	    const char *logString = lua_tostring(L, 1);
+ 
+ 	    if(logString == nullptr) {
+-			// Oops, forgot this.
+ 		    lua_pushstring(L, "Error: missing string argument");
+ 		    return 1;
+ 		}
+ 
+ 	    LogFunctions::LogInfo(defines.luaLogFile, logString);
+ 
+-	    return 1;
++	    return 0;
+ 	}
+ 
+-	/// <summary>
+-	/// Log a warning message in lua
+-	/// </summary>
+-	/// <param name="L"></param>
+-	/// <returns></returns>
++	/**
++	 * Log a warning message in lua.
++	 */
+ 	int
+     logWarningMessageLua(lua_State *L)
+     {
+@@ -134,21 +160,18 @@ extern "C"
+ 	    const char *logString = lua_tostring(L, 1);
+ 
+ 	    if(logString == nullptr) {
+-			// Oops, forgot this.
+ 		    lua_pushstring(L, "Error: missing string argument");
+ 		    return 1;
+ 		}
+ 
+ 	    LogFunctions::LogWarning(defines.luaLogFile, logString);
+ 
+-	    return 1;
++	    return 0;
+ 	}
+ 
+-	/// <summary>
+-	/// Log an error message in lua
+-	/// </summary>
+-	/// <param name="L"></param>
+-	/// <returns></returns>
++	/**
++	 * Log a error message in lua.
++	 */
+ 	int
+     logErrorMessageLua(lua_State *L)
+     {
+@@ -156,14 +179,13 @@ extern "C"
+ 	    const char *logString = lua_tostring(L, 1);
+ 
+ 	    if(logString == nullptr) {
+-			// Oops, forgot this.
+ 		    lua_pushstring(L, "Error: missing string argument");
+ 		    return 1;
+ 		}
+ 
+ 	    LogFunctions::LogError(defines.luaLogFile, logString);
+ 
+-	    return 1;
++	    return 0;
+ 	}
+ 	
+ 	// Log current directory
+@@ -175,7 +197,7 @@ extern "C"
+ 		// LogFunctions::LogInfo(Defines::logFile, FileFunctions::CurrentDirectory());
+ 		// LogFunctions::LogInfo(Defines::luaLogFile, FileFunctions::CurrentDirectory());
+ // #endif
+-		return 1;
++		return 0;
+ 	}
+ 
+ }
+diff --git a/src/extras/lua/lua_log.h b/src/extras/lua/lua_log.h
+index 9c635fc4..4b10c4f4 100644
+--- a/src/extras/lua/lua_log.h
++++ b/src/extras/lua/lua_log.h
+@@ -16,6 +16,7 @@ extern "C" {
+ 
+ 	// Taken out of lua_functions.
+ 	extern int logPlayerCoordsLua(lua_State *L);
++	extern int logPlayerCoordsJsonFormat(lua_State *L);
+ 	extern int logPlayerHeadingLua(lua_State *L);
+ 
+ 	extern int logInfoMessageLua(lua_State *L);
+diff --git a/src/extras/menus/cheat_menu.cpp b/src/extras/menus/cheat_menu.cpp
+index b3a9ea95..d573f2df 100644
+--- a/src/extras/menus/cheat_menu.cpp
++++ b/src/extras/menus/cheat_menu.cpp
+@@ -35,6 +35,12 @@
+ #include "Hud.h"
+ #include "Text.h"
+ 
++#include "Stats.h"
++#include "WaterLevel.h"
++
++// For bGreenlightsCheat
++#include "TrafficLights.h"
++
+ // I didn't like the idea of collapsing headers being everywhere so I disabled them in here.
+ 
+ // Booleans
+@@ -145,6 +151,11 @@ togglePedSpeech()
+ //----------- Cheat tab ----------//
+ void CheatMenu::CheatTab()
+ {
++
++	//----------
++	// Weapon cheats
++	//----------
++
+ 	//if(ImGui::CollapsingHeader("Weapons")) {
+ 
+ #if defined(GTAVC)
+@@ -163,7 +174,9 @@ void CheatMenu::CheatTab()
+ 		if (ImGui::Button("Clear Weapons")) { CustomCheats::RemovePlayerWeapons(); }
+ 	//}
+ 
++	//----------
+ 	// Money cheats
++	//----------
+ 
+ 	ImGui::Separator();
+ 	//if(ImGui::CollapsingHeader("Money")) {
+@@ -211,7 +224,9 @@ void CheatMenu::CheatTab()
+ 
+ 	ImGui::Separator();
+ 
++	//----------
+ 	// Police cheats
++	//----------
+ 	//if(ImGui::CollapsingHeader("Police")) {
+ 
+ 		ImGui::Text("Police");
+@@ -224,7 +239,9 @@ void CheatMenu::CheatTab()
+ 		if(ImGui::Checkbox("Never wanted", &neverWanted)) { toggleNeverWanted(); }
+ 	//}
+ 
++	//----------
+ 	// Time cheats
++	//----------
+ 	ImGui::Separator();
+ 
+ 	//if(ImGui::CollapsingHeader("Time")) {
+@@ -236,7 +253,9 @@ void CheatMenu::CheatTab()
+ 		if(ImGui::Button("Slower time")) { SlowTimeCheat(); }
+ 	//}
+ 
++	//----------
+ 	// Density cheats
++	//----------
+ 	ImGui::Separator();
+ 	
+ 	//if(ImGui::CollapsingHeader("Population density")) {
+@@ -264,6 +283,91 @@ void CheatMenu::CheatTab()
+ 		//}
+ 	//}
+ 
++	//----------
++	// Misc cheats
++	// Some of these were taken from Pad.cpp.
++	//----------
++	ImGui::Separator();
++		ImGui::Text("Original Cheats");
++
++		ImGui::Checkbox("All traffic lights green", &CTrafficLights::bGreenLightsCheat);
++
++		// Remove the sea bed, I guess for like the ocean or something
++		ImGui::Checkbox("Render Sea bed", &CWaterLevel::m_bRenderSeaBed);
++		ImGui::NewLine();
++
++		// Show the chase stat on screen, I'm not sure what this is for
++		// Well this one is an int...
++		// ImGui::Checkbox("Show Chase Stat", &CStats::ShowChaseStatOnScreen);
++
++		ImGui::Checkbox("Drivers pissed off", &CCarCtrl::bMadDriversCheat);
++		ImGui::Checkbox("Give all peds weapons", &CPopulation::ms_bGivePedsWeapons);
++		ImGui::NewLine();
++		
++
++		ImGui::Checkbox("Only render wheels", &CVehicle::bWheelsOnlyCheat);
++		// Chitty chitty bang bang
++		ImGui::Checkbox("All Vehicles are dodos", &CVehicle::bAllDodosCheat);
++		ImGui::NewLine();
++
++		ImGui::Checkbox("Strong grip in vehicles", &CVehicle::bCheat3);
++		
++		ImGui::Checkbox("Black traffic", &gbBlackCars);
++		ImGui::Checkbox("Pink traffic", &gbPinkCars);
++		ImGui::NewLine();
++
++		ImGui::Checkbox("Vehicles Hover", &CVehicle::bHoverCheat);
++
++
++		// Full list of car cheats, from Script6 'COMMAND_ARE_ANY_CAR_CHEATS_ACTIVATED'
++
++		// CVehicle::bAllDodosCheat || CVehicle::bCheat3 || CVehicle::bHoverCheat || CVehicle::bCheat8 || CVehicle::bCheat9
++
++		//-----
++		// Look into
++		//-----
++		// Unknown purpose, I am not sure what these ones do.
++		// bFannyMagnetCheat
++
++		// Flying fish cheat
++		// TODO What is this? I don't think this is used anywhere.
++		// It is only called in Script6.cpp and Pad.cpp.
++		// CVehicle::bCheat8
++
++		// I didn't know this was a thing on here
++		// Ped stats can be obtained from PedType.h.
++		// CPedStats - m_pedStats
++		// There is also an ePedStats enum for the list of all ped types it looks like.
++		// Ped stats seem to be setup in the CPedStats::Initialise() function.
++
++		// TODO Look into modifying the ped stats
++		// I can modify the threats, their flags, if they avoid people, and the threats.
++		// Look into CPedType class within PedType.h for the get and set functions for these.
++
++		// CPedStats::ms_apPedStats
++
++		//--
++		// Look into this, seems to be setting some ped fighting moves or something.
++		// Also checks if they are carrying the shopping bags.
++		// CPed::ChooseAttackAI()
++
++		// This is the same as the above but for the player it seems like
++		// CPed::ChooseAttackPlayer()
++
++		// I might be able to stop the peds from fighting with this
++		// CPed::EndFight()
++
++
++		//--------
++		// Cheat functions to reimplement from Pad.cpp
++		//--------
++		// KangarooCheat()
++		// AllCarsHeliCheat()
++		// WallClimbingCheat()
++		// MayhemCheat()
++		// EverybodyAttacksPlayerCheat()
++
++		// 
+ 
+ }
+ 
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index 50b645ae..2c01d348 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.14-8a";
++std::string Defines::programVersion = "1.2.14-9a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

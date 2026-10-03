@@ -1,0 +1,322 @@
+From 2d28a3848cb61d6f383134035c9366a1898a9c78 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Mon, 7 Sep 2026 18:31:02 -0400
+Subject: [PATCH 096/161] feat: Make vehicle_functions remove previous vehicle
+ with lua
+
+* Now when the delete previous vehicle option is enabled, it will actually remove the vehicle.
+
+* Partially fix warp into vehicle function with lua, now you can warp into the new vehicle that was spawned, this isn't ready yet.
+
+* I still need to set a limit on how many vehicles can be spawned which I'll set to like 5 or something.
+
+* Add m_pLastCreatedVehicle variable into vehicle_functions, for storing the last used vehicle to remove.
+
+* Update changelog, bump version to 1.2.10-3a.
+---
+ src/extras/functions/vehicle_functions.cpp | 109 +++++++++++++++++----
+ src/extras/functions/vehicle_functions.h   |   3 +
+ src/extras/lua/lua_setup.cpp               |   8 ++
+ src/extras/utils/defines.cpp               |   2 +-
+ 4 files changed, 102 insertions(+), 20 deletions(-)
+
+diff --git a/src/extras/functions/vehicle_functions.cpp b/src/extras/functions/vehicle_functions.cpp
+index 0ecf8029..69352b0d 100644
+--- a/src/extras/functions/vehicle_functions.cpp
++++ b/src/extras/functions/vehicle_functions.cpp
+@@ -72,13 +72,19 @@
+ 
+ #include "thread"
+ 
+-#include "log_functions.h"
+ #include "defines.h"
++#include "log_functions.h"
+ 
+ #endif // CUSTOM_CODE
+ 
+ //
+ 
++// Values init for lua
++
++// For storing the vehicle to remove.
++CVehicle *VehicleFunctions::m_pLastCreatedVehicle = nullptr;
++//
++
+ // This was copied from the plugin-sdk
+ // https://github.com/DK22Pac/plugin-sdk/blob/master/plugin_vc/game_vc/CVector2D.h
+ inline float
+@@ -443,8 +449,8 @@ VehicleFunctions::RemovePlayerFromVehicle(CPed *pPed)
+ 	pPed->m_pMyVehicle = nil;
+ 
+ 	//
+-	// pPed->SetPedState(PED_IDLE);
+-	// pPed->m_nLastPedState = PED_NONE;
++	pPed->SetPedState(PED_IDLE);
++	pPed->m_nLastPedState = PED_NONE;
+ 	//
+ 
+ 	pPed->bUsesCollision = true;
+@@ -501,7 +507,7 @@ VehicleFunctions::RemovePlayerFromVehicle(CPed *pPed)
+  * @param id The vehicle to spawn.
+  * @param deleteCurrentVehicle Whether the current vehicle gets deleted or not.
+  * @param warpIntoVehicle Warp the player into the vehicle.
+- * 
++ *
+  * Not implemented params:
+  * @param pPed The ped to put into the vehicle.
+  * @param clearFromArea Clear items from the area with a radius of 10.
+@@ -514,10 +520,12 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 	// CreateVehicle(id, );
+ 
+ 	CPlayerPed *pPed = FindPlayerPed();
+-	CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f;
++	// CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 2.5f) + FindPlayerPed()->GetForward() * 5.0f;
++	CVector vehiclePos = FindPlayerPed()->GetPosition() + CVector(0.0f, 0.0f, 0.0f) + FindPlayerPed()->GetForward() * 5.0f;
+ 
+ 	// Moved logic into this new function.
+ 	// Now this just calls into that function, it takes a custom X, Y, and Z.
++	// CreateVehicle(id, vehiclePos, deleteCurrentVehicle, warpIntoVehicle);
+ 	CreateVehicle(id, vehiclePos, deleteCurrentVehicle, warpIntoVehicle);
+ 
+ 	// TODO Look into using this below if possible to implement into the CreateVehicle function.
+@@ -614,7 +622,6 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+ 
+ 	// 			}
+ 	// 		}
+-
+ }
+ 
+ /**
+@@ -623,12 +630,12 @@ VehicleFunctions::SpawnVehicle(int id, bool deleteCurrentVehicle, bool warpIntoV
+  * And this will be a new function mostly for Lua but I'll switch some other stuff to using it.
+  * This will need to have a boolean with a default value of true for setting custom coordinates and switching
+  *  to making this go near the player.
+- * 
++ *
+  * Now this takes a CVector for the position instead of 3 floats, since I got
+  *  this working in lua now.
+- * 
++ *
+  * TODO Make this tell the lua script that there is already a vehicle spawned, remove the old ones.
+- * 
++ *
+  * @param id The vehicle ID to spawn in.
+  * @param pos The CVector position to spawn the vehicle.
+  * @param deleteCurrentVehicle If the current vehicle should be removed.
+@@ -642,6 +649,15 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 	VehicleFunctions vehicleFunctions = VehicleFunctions();
+ 
++	// TODO Make this place the vehicle on the ground.
++
++	// Remove the previous vehicle created by this system.
++	// This now works in lua!
++	if(deleteCurrentVehicle)
++	{
++		RemoveLastCreatedVehicle();
++	}
++
+ 	// CVector vehiclePos = CVector(posX, posY, posZ);
+ 	// TODO Setup this to do something later, add toggle to debug menu for it.
+ 
+@@ -662,20 +678,26 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 	// 	customCheats->ClearItemsFromArea(10);
+ 	// }
+ 
+-
+ 	// Request the model
+ 
+ 	// Define a static variable to store the last spawn time
+ 	static unsigned int lastSpawnTime = 0;
+ 	static unsigned int spawnDelayMilliseconds = 500; // Set your desired delay in milliseconds
+ 
++	// Warp timer
++	static unsigned int lastWarpTime = 0;
++
+ 	// Check if enough time has passed since the last vehicle spawn
+ 	// This works for a delay when spawning a vehicle!
+ 	if(CTimer::GetTimeInMilliseconds() - lastSpawnTime >= spawnDelayMilliseconds) {
+ 
+ 		// Set the last spawn time, needed for this to work.
+ 		lastSpawnTime = CTimer::GetTimeInMilliseconds();
++		lastWarpTime = CTimer::GetTimeInMilliseconds();
+ 
++		//--------
++		// Request vehicle, and spawn it.
++		//---------
+ 		VehicleFunctions::RequestVehicleModel(id);
+ 
+ 		if(CStreaming::HasModelLoaded(id)) {
+@@ -683,7 +705,7 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 			// CVector pPedCoords = FindPlayerCoors();
+ 
+ 			// Check if the vehicle is a boat, bike or car.
+-			CVehicle *v;
++			CVehicle *v = nullptr;
+ 			if(CModelInfo::IsBoatModel(id))
+ 				v = new CBoat(id, RANDOM_VEHICLE);
+ 
+@@ -694,6 +716,8 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 
+ 				v = new CAutomobile(id, RANDOM_VEHICLE);
+ 
++			if(v == nullptr) { return; }
++
+ 			// Set the vehicle to be owned by the player.
+ 			v->bHasBeenOwnedByPlayer = true;
+ 			// v->SetPosition(vehiclePos);
+@@ -710,6 +734,13 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 			// Add the vehicle to the world.
+ 			CWorld::Add(v);
+ 
++			// Save the previous vehicle to be removed with the lua script.
++			m_pLastCreatedVehicle = v;
++
++			//--------
++			// Remove current vehicle
++			//---------
++			// If the player is in a vehicle and this should delete it.
+ 			if(pPed->bInVehicle && deleteCurrentVehicle) {
+ 				CVehicle *playerVeh = pPed->m_pMyVehicle;
+ 				// TODO Test this, moved into this function.
+@@ -740,15 +771,25 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 				VehicleFunctions::RemoveCurrentVehicleFromWorld();
+ 			}
+ 
++			//--------
++			// Warp into new vehicle
++			// TODO Fix this to work in lua, when I remove the vehicle above, I guess this glitches out.
++			// This will almost put the player in the vehicle.
++			//  but they cannot control it and the player model isn't in the vehicle. 
++			//---------
++
+ 			// Warp the player into the new vehicle if enabled.
+ 			// This sometimes glitches out and the player will enter and exit the vehicle.
+ 			// TODO Add a delay or something to this, it's running at the same time as the other option I'm guessing.
+ 			static int newTime = 0;
+ 			// if(warpIntoVehicle && CTimer::GetTimeInMilliseconds() - newTime > 500)
+-			if(warpIntoVehicle) {
++			// if(warpIntoVehicle && pPed != nullptr && CTimer::GetTimeInMilliseconds() - lastSpawnTime > 500) {
++			if(warpIntoVehicle && pPed != nullptr) {
+ 				if(!pPed->bInVehicle) {
+ 
+ 					// TODO Move this into its own function
++					// TODO Fix this to always put the player in the vehicle.
++					// Sometimes they are in it, but this won't put move the camera until i exit the vehicle.
+ 					// VehicleFunctions::WarpPlayerIntoVehicle(CPed *pPed, CVehicle pVehicle?)
+ 
+ 					// Extras
+@@ -767,20 +808,50 @@ VehicleFunctions::CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle,
+ 				}
+ 			}
+ 
+-			std::string logMsg = "Vehicle with ID: " 
+-			+ std::to_string(id) 
+-			+ " was spawned at " 
+-			+ " X: " + std::to_string(pos.x) 
+-			+ " Y: " + std::to_string(pos.y)
+-			+ " Z: " + std::to_string(pos.z);
++			std::string logMsg = "Vehicle with ID: " + std::to_string(id) + " was spawned at " + " X: " + std::to_string(pos.x) +
++			                     " Y: " + std::to_string(pos.y) + " Z: " + std::to_string(pos.z);
+ 
+ 			// Log the spawn position.
+ 			LogFunctions::LogInfo(Defines::logFile, logMsg);
+-
+ 		}
+ 	}
+ }
+ 
++/**
++ * Remove the last created vehicle, currently this is in use for my lua functions.
++ * But I will be using this for other stuff in the future.
++ * 
++ * This removes m_pLastCreatedVehicle if it is set.
++ * 
++ * Added in v1.2.10-3a.
++ */
++void
++VehicleFunctions::RemoveLastCreatedVehicle()
++{
++	CVehicle *vehicle = m_pLastCreatedVehicle;
++
++	if(vehicle == nullptr) return;
++
++	// LogFunctions::LogInfo(Defines::luaLogFile, "Removing vehicle for player, by lua script.");
++
++	CPlayerPed *player = FindPlayerPed();
++
++	// Remove the player from the vehicle.
++	if(player != nullptr && player->bInVehicle && player->m_pMyVehicle == vehicle) {
++		VehicleFunctions functions;
++		functions.RemovePlayerFromVehicle(player);
++	}
++
++	// Remove the pointer to the vehicle.
++	if(player != nullptr && player->m_pMyVehicle == vehicle) player->m_pMyVehicle = nullptr;
++
++	// Remove the vehicle from the world.
++	CWorld::Remove(vehicle);
++
++	m_pLastCreatedVehicle = nullptr;
++}
++//-----
++
+ /// <summary>
+ /// Request the vehicle model for loading in, if this isn't set when spawning a vehicle the game will crash.
+ /// </summary>
+diff --git a/src/extras/functions/vehicle_functions.h b/src/extras/functions/vehicle_functions.h
+index 2058613a..7efe3aa4 100644
+--- a/src/extras/functions/vehicle_functions.h
++++ b/src/extras/functions/vehicle_functions.h
+@@ -24,6 +24,8 @@ private:
+ 	PlayerUtil playerUtil;
+ 	CustomCheats customCheats;
+ 
++	static CVehicle *m_pLastCreatedVehicle;
++
+ public:
+ 	// TODO Remove this later, its not in use so I disabled it
+ 	//void SpawnVehicle();
+@@ -37,6 +39,7 @@ public:
+ 
+ 	// Create a vehicle, for use with the lua scripts, directly called by SpawnVehicle to reuse this function.
+ 	static void CreateVehicle(int id, CVector pos, bool deleteCurrentVehicle, bool warpIntoVehicle);
++	static void RemoveLastCreatedVehicle();
+ 
+ 	void RemovePlayerFromVehicle(CPed *pPed);
+ 
+diff --git a/src/extras/lua/lua_setup.cpp b/src/extras/lua/lua_setup.cpp
+index b98f3b37..0a8759ae 100644
+--- a/src/extras/lua/lua_setup.cpp
++++ b/src/extras/lua/lua_setup.cpp
+@@ -157,6 +157,14 @@ LuaSetup::LuaPlayingGameLoop()
+ 			// Oops, I didn't mean to do that.
+ 			InitGame::GetInstance().SetPlayerCreated(false);
+ 			FrontEndMenuManager.DoSettingsBeforeStartingAGame();
++
++			// Well changing to this just reloads the game.
++			// This is kind of like my F9 keybind but for reloading the 'freeroam-game.lua' script.
++			// TODO Make this store the previous vehicles and remove them.
++			// I may switch to this later, for now it doesn't remove the previous vehicles 
++			// And will always spawn new vehicles if I press F5 which can crash the game. 
++			// LuaTest::GetInstance().SetupFreeroamScript();
++
+ 		}
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+ 	}
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index db154f1e..8a85a4fd 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -86,7 +86,7 @@ std::string Defines::modificationAuthor = "kelson8";
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.10-2a";
++std::string Defines::programVersion = "1.2.10-3a";
+ #elif defined(GTA3)
+ std::string Defines::programVersion = "1.2a - Pre Release";
+ #elif defined(GTALCS)
+-- 
+2.43.0
+

@@ -1,0 +1,8 @@
+ 
+# Internal and latest testing patches are in here.
+# These shouldn't be in the Git repo.
+internal/
+
+patch/new
+patch/ViceExtended
+

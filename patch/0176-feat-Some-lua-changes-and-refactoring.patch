@@ -1,0 +1,1690 @@
+From e170658e0db219304628cc5e944620ecdaa371f9 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Fri, 2 Oct 2026 14:58:43 -0400
+Subject: [PATCH 176/176] feat: Some lua changes, and refactoring
+
+* Fix some code in custom_cheats.cpp.
+* Make SetupTextAndFont take a CVector2D for the textposition, and use my color code enums.
+
+* Make addBlipForCoordOldLua function in lua_game now accept a boolean for setting a short range blip.
+
+* Add saving and loading freeroam json into the debug menu.
+
+* Add the CustomYellow color into Colors.cpp for custom_cheats.cpp.
+
+* Move some code around, move lua thread functions into lua_script.cpp.
+
+* Update changelog, change verison to 1.2.15-2a.
+---
+ Changelog.md                         |  17 +
+ src/core/Game.cpp                    |   7 +-
+ src/extras/cheats/custom_cheats.cpp  | 105 +++---
+ src/extras/debug/debug_functions.cpp |  47 +++
+ src/extras/enums/Colors.cpp          |   2 +
+ src/extras/enums/Colors.h            |   5 +-
+ src/extras/lua/lua_game.cpp          |  44 ++-
+ src/extras/lua/lua_game.h            |   4 +-
+ src/extras/lua/lua_script.cpp        | 488 +++++++++++++++++++--------
+ src/extras/lua/lua_script.h          |  49 +--
+ src/extras/lua/lua_test.cpp          | 400 +---------------------
+ src/extras/lua/lua_test.h            |  30 +-
+ src/extras/utils/defines.cpp         |   2 +-
+ 13 files changed, 564 insertions(+), 636 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index 8c4937eb..8629b900 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -1186,3 +1186,20 @@ fix: Make project work again with mission scripts
+ * Fix some compiler warnings in some files.
+ 
+ * Update changelog.
++
++### 1.2.15-2a
++
++feat: Some lua changes, and refactoring
++
++* Fix some code in custom_cheats.cpp.
++* Make SetupTextAndFont take a CVector2D for the textposition, and use my color code enums.
++
++* Make addBlipForCoordOldLua function in lua_game.cpp now accept a boolean for setting a short range blip.
++
++* Add saving and loading freeroam json into the debug menu.
++
++* Add the CustomYellow color into Colors.cpp for custom_cheats.cpp.
++
++* Move some code around, move lua thread functions into lua_script.cpp.
++
++* Update changelog, change verison to 1.2.15-2a.
+diff --git a/src/core/Game.cpp b/src/core/Game.cpp
+index 3d5a0272..e6650e31 100644
+--- a/src/core/Game.cpp
++++ b/src/core/Game.cpp
+@@ -116,6 +116,7 @@
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ #include "fast_loader.h"
++#include "lua_script.h"
+ #endif // DISABLE_GAME_SCRIPTS
+ 
+ 
+@@ -643,10 +644,10 @@ bool CGame::Initialise(const char* datFile)
+ 
+ 	// Moved here, should run the lua OnInit function on startup.
+ #ifdef NEW_LUA_FORMAT
+-	LuaTest::GetInstance().OnInit();
++	LuaScript::GetInstance().OnInit();
+ 	// Startup the new tick system
+ 	// This is currently working here.
+-	LuaTest::GetInstance().StartOnTick();
++	LuaScript::GetInstance().StartOnTick();
+ #endif // NEW_LUA_FORMAT
+ 
+ 
+@@ -996,7 +997,7 @@ void CGame::Process(void)
+ 
+ #ifdef DISABLE_GAME_SCRIPTS
+ 		// Run the tick system in freeroam-game.lua.
+-		LuaTest::GetInstance().OnTick();
++		LuaScript::GetInstance().OnTick();
+ #else
+ 		// Run the kcnet-events.lua file.
+ 		// TODO Switch to this, might fix some things.
+diff --git a/src/extras/cheats/custom_cheats.cpp b/src/extras/cheats/custom_cheats.cpp
+index a2c7941f..9efefadb 100644
+--- a/src/extras/cheats/custom_cheats.cpp
++++ b/src/extras/cheats/custom_cheats.cpp
+@@ -88,8 +88,11 @@
+ //#include "extras/test/ped_test.h"
+ 
+ #include "model_ids.h"
++#include "Colors.h"
++
+ #include "Script.h"
+ 
++
+ #endif // CUSTOM_CODE
+ 
+ // Chaos mode
+@@ -609,10 +612,11 @@ CustomCheats::UnlockDoors()
+ 
+ // playerVeh->m_nDoorLock = false;
+ 
+-/// <summary>
+-/// Clear peds, vehicles, and everything within the set radius.
+-/// </summary>
+-/// <param name="radius">The radius to clear.</param>
++/**
++ * Clear peds, vehicles, and everything within the set radius.
++ * 
++ * @param radius The radius to clear around the player.
++ */
+ void
+ CustomCheats::ClearItemsFromArea(float radius)
+ {
+@@ -658,6 +662,9 @@ CustomCheats::TestCheat1()
+ //	// CPed *customPed = PED
+ //}
+ 
++/**
++ * Test for spawning a ped, quite sure this isn't in use and crashed before.
++ */
+ void
+ CustomCheats::SpawnPedTest()
+ {
+@@ -674,15 +681,11 @@ CustomCheats::SpawnPedTest()
+ 	randomPed1->SetObjective(OBJECTIVE_AIM_GUN_AT, pPed);
+ }
+ 
+-// Spawn a Car.
+-// Adapted from Pad.cpp, VehicleCheat
+ 
+-// TODO Could I store this vehicle in a table like in lua or in a variable? Might make it to where I can blow it up
+-// or lock/unlock it and other stuff.
+-
+-// TODO Figure out how to check if this is a car, bike or whatever type of vehicle so it doesn't crash.
++/**
++ * Spawn a car for testing, calls the VehicleFunctions vehicle spawning function.
++ */
+ void
+-// CustomCheats::SpawnCarTestCheat()
+ CustomCheats::SpawnCarTestCheat()
+ {
+ 	//int vehicleModel = VehicleModels::PCJ_600;
+@@ -696,6 +699,7 @@ CustomCheats::SpawnCarTestCheat()
+ 
+ //------ Text functions -------//
+ 
++// Toggle for the text drawing on/off in the SetText function.
+ bool toggleText = false;
+ void
+ CustomCheats::ToggleText()
+@@ -703,18 +707,26 @@ CustomCheats::ToggleText()
+ 	toggleText = !toggleText;
+ }
+ 
+-/// <summary>
+-/// This displays a custom message in the top left like cleo redux.
+-/// This works!
+-/// Crashes if there are more then like 16 or 18 characters on one line
+-/// TODO Figure out how to make this split the text if it's too long
+-/// Possibly make multiple text inputs for the value it accepts?
+-/// </summary>
++/**
++ * This displays a custom message in the top left like cleo redux.
++ * 
++ * Although, this crashes if there are more then like 16 or 18 characters on one line.
++ * 
++ * TODO Make this limit the text to only 16 characters.
++ * 
++ * TODO Figure out how to make this split the text if it's too long
++ * Possibly make multiple text inputs for the value it accepts?
++ * 
++ * @param text The text to display on screen.
++ */
++
+ void
+ CustomCheats::CustomHelpMessage(std::string text)
+ {
+-	char str[200];
+-	wchar ustr[200];
++	// char str[200];
++	char str[16];
++	// wchar ustr[200];
++	wchar ustr[16];
+ 	//MiscUtil miscUtil = MiscUtil();
+ 
+ 	//std::string text = "Test text";
+@@ -736,16 +748,27 @@ CustomCheats::CustomHelpMessage(std::string text)
+ 	//CHud::SetHelpMessage(convertedMessage, false, false);
+ }
+ 
+-/// <summary>
+-/// Moved the setup for my custom text into here, so I don't have to keep redefining this.
+-/// This sets up the text, font, text position, and text color, for use when drawing to the screen.
+-/// </summary>
++/**
++ * This sets up the text, font, text position, and text color, for use when drawing to the screen.
++ * 
++ * I Moved the setup for my custom text into here, so I don't have to keep redefining these values.
++ * 
++ * TODO Move this into another file and make it public, currently it is only used in this custom_cheats.cpp file.
++ * 
++ * 
++ * TODO Make the SetScale function use the new Screen.cpp/Screen.h files.
++ * 
++ * @param text The text to draw to the screen.
++ * @param textPos A CVector2D for the position to draw to on the screen.
++ */
+ void
+-SetupTextAndFont(std::string text)
++SetupTextAndFont(std::string text, CVector2D textPos)
+ {
++	// I think either 16 or 18 should be the max for these values.
+ 	char str[200];
+ 	wchar ustr[200];
+ 
++
+ 	sprintf(str, text.c_str());
+ 
+ 	AsciiToUnicode(str, ustr);
+@@ -753,8 +776,9 @@ SetupTextAndFont(std::string text)
+ 	CFont::SetPropOn();
+ 	CFont::SetBackgroundOff();
+ 
+-	CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
+-	// CFont::SetScale(SCREEN_SCALE_X(0.4f), SCREEN_SCALE_Y(0.4f));
++	// CFont::SetScale(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
++	CFont::SetScale(textPos.x, textPos.y);
++
+ 	CFont::SetCentreOff();
+ 	CFont::SetRightJustifyOff();
+ 	CFont::SetJustifyOff();
+@@ -770,11 +794,13 @@ SetupTextAndFont(std::string text)
+ 	// CFont::SetFontStyle(FONT_HEADING);
+ 
+ 	// Set the drop color, shadow position
+-	CFont::SetDropColor(CRGBA(0, 0, 0, 255));
++	// CFont::SetDropColor(CRGBA(0, 0, 0, 255));
++	CFont::SetDropColor(Colors::Black);
+ 	CFont::SetDropShadowPosition(2);
+ 
+ 	// Set the black color for the black text on the screen.
+-	CFont::SetColor(CRGBA(0, 0, 0, 255));
++	// CFont::SetColor(CRGBA(0, 0, 0, 255));
++	CFont::SetColor(Colors::Black);
+ 
+ 	// Setting the position to the black part of the text
+ 	// TODO Add config to grab the x and y for this from imgui as a test, using a float slider.
+@@ -782,7 +808,8 @@ SetupTextAndFont(std::string text)
+ 	CFont::PrintString(41.0f, 41.0f, ustr);
+ 
+ 	// Set the yellow color for the second part of the text
+-	CFont::SetColor(CRGBA(205, 205, 0, 255));
++	// CFont::SetColor(CRGBA(205, 205, 0, 255));
++	CFont::SetColor(Colors::CustomYellow);
+ 
+ 	// Setting the position to the yellow part of the text
+ 	// TODO Add config to grab the x and y for this from imgui as a test, using a float slider.
+@@ -810,6 +837,8 @@ CustomCheats::SetText(std::string text)
+ 	PlayerUtil playerUtil = PlayerUtil();
+ 	CUpsideDownCarCheck cUpsideDownCarCheck = CUpsideDownCarCheck();
+ 
++	CVector2D textPosition = CVector2D(SCREEN_SCALE_X(0.6f), SCREEN_SCALE_Y(0.8f));
++
+ 	if(toggleText) {
+ 
+ 		// This seems to be a way to draw to the screen, I could possibly use this in my menus or something
+@@ -830,35 +859,35 @@ CustomCheats::SetText(std::string text)
+ 		//std::string controllerButtonMessage = "Controller Button: " + std::to_string(controllerButton);
+ 
+ 		// This works! My new function is setup so I don't have to duplicate this code as much.
+-		//SetupTextAndFont(text);
++		//SetupTextAndFont(text, textPosition);
+ 
+ 		// This works for getting the current interior, I could add debug functions like this to my custom text.
+ 		// So I don't have to log everything.
+ 		std::string currentArea = "Current area: " + std::to_string(CGame::currArea);
+-		SetupTextAndFont(currentArea);
++		SetupTextAndFont(currentArea, textPosition);
+ 
+ 		// This seems to work.
+ 		// Display the vehicle speed on screen as a test.
+ 		//std::string mphString = "MPH";
+ 		//std::string vehicleSpeedStr = "Vehicle speed: " + std::to_string(vehicleFunctions.GetVehicleSpeed()) + " MPH";
+-		//SetupTextAndFont(vehicleSpeedStr);
++		//SetupTextAndFont(vehicleSpeedStr, textPosition);
+ 		
+ 		//if(vehicleFunctions.IsPlayerInVehicle()) {
+ 		//	CVehicle *currentVeh = playerUtil.GetCurrentVehicle();
+ 		//	bool isPlayerVehicleUpsideDown = cUpsideDownCarCheck.IsCarUpsideDown(currentVeh);
+ 		//	std::string isPlayerVehicleUpsideDownStr = isPlayerVehicleUpsideDown ? "Vehicle upside down" : "Vehicle not upside down";
+ 
+-		//	SetupTextAndFont(isPlayerVehicleUpsideDownStr.c_str());
++		//	SetupTextAndFont(isPlayerVehicleUpsideDownStr.c_str(), textPosition);
+ 		//}
+ 
+ 
+-		//SetupTextAndFont(pPlayer->bIsShooting ? "Player is shooting" : "Player is not shooting");
+-		//SetupTextAndFont(pPlayer->bIsAimingGun ? "Player is aiming" : "Player is not aiming");
++		//SetupTextAndFont(pPlayer->bIsShooting ? "Player is shooting" : "Player is not shooting", textPosition);
++		//SetupTextAndFont(pPlayer->bIsAimingGun ? "Player is aiming" : "Player is not aiming", textPosition);
+ 
+ 
+ 		// This works for displaying stuff on the screen
+-		//SetupTextAndFont(pPlayer->bIsShooting ? "Player is shooting" : "Player is not shooting");
+-		//SetupTextAndFont(pPlayer->bIsAimingGun ? "Player is aiming" : "Player is not aiming");
++		//SetupTextAndFont(pPlayer->bIsShooting ? "Player is shooting" : "Player is not shooting", textPosition);
++		//SetupTextAndFont(pPlayer->bIsAimingGun ? "Player is aiming" : "Player is not aiming", textPosition);
+ 	}
+ 
+ 	// TODO Look into win.cpp, try to use the PrintMemoryUsage function for drawing a menu, modify it a bit
+diff --git a/src/extras/debug/debug_functions.cpp b/src/extras/debug/debug_functions.cpp
+index 962b0c0a..220dd8fb 100644
+--- a/src/extras/debug/debug_functions.cpp
++++ b/src/extras/debug/debug_functions.cpp
+@@ -81,6 +81,11 @@
+ #include "imgui_functions.h"
+ 
+ #endif //_IMGUI_TEST
++
++#ifdef DISABLE_GAME_SCRIPTS
++#include "freeroam_util.h"
++#endif //
++
+ //
+ 
+ // Taken file from here
+@@ -194,6 +199,32 @@ toggleImGui()
+ }
+ #endif
+ 
++#ifdef DISABLE_GAME_SCRIPTS
++
++// New for saving and loading, since that uses booleans I'll just use a void here
++
++/**
++ * Save the freeroam JSON file.
++ * TODO Give an error message in game if this fails.
++ */
++static void SaveFreeroam()
++{
++	if(!FreeroamUtil::SaveFreeroamJson())
++		return;
++}
++
++/**
++ * Load the freeroam JSON file.
++ * TODO Give an error message in game if this fails.
++ */
++static void LoadFreeroam()
++{
++	if(!FreeroamUtil::LoadFreeroamJson())
++		return;
++}
++
++#endif // DISABLE_GAME_SCRIPTS
++
+ DebugMenuEntry *carCol1;
+ DebugMenuEntry *carCol2;
+ 
+@@ -1036,6 +1067,22 @@ DebugMenuPopulate(void)
+ 
+ #endif // DEBUG_EXTRA_CHEATS
+ 
++#if defined(DEBUG_EXTRA_CHEATS) && defined(DISABLE_GAME_SCRIPTS)
++
++		//*****************
++		// Begin freeroam functions
++		//*****************
++
++		// TODO Implement these into the debug menu, since ImGui can be a bit buggy sometimes.
++		// Hmm, this doens't work with booleans I guess.
++		// DebugMenuAddCmd("Freeroam", "Save Game", FreeroamUtil::SaveFreeroamJson);
++		// DebugMenuAddCmd("Freeroam", "Load Game", FreeroamUtil::LoadFreeroamJson);
++		DebugMenuAddCmd("Freeroam", "Save Game", SaveFreeroam);
++		DebugMenuAddCmd("Freeroam", "Load Game", LoadFreeroam);
++		
++
++#endif // DEBUG_EXTRA_CHEATS && DISABLE_GAME_SCRIPTS
++
+ 		//*****************
+ 		// End test functions
+ 		//*****************
+diff --git a/src/extras/enums/Colors.cpp b/src/extras/enums/Colors.cpp
+index 83a74555..a0fd7bb9 100644
+--- a/src/extras/enums/Colors.cpp
++++ b/src/extras/enums/Colors.cpp
+@@ -153,5 +153,7 @@ CRGBA Colors::Transparent = { 0,   0,   0, 0 };
+ CRGBA Colors::ChaosBg = { 24, 99, 44, 255 };
+ CRGBA Colors::ChaosProgressTimer = { 33, 145, 63, 255 };
+ 
++// For use in custom_cheats.cpp.
++CRGBA Colors::CustomYellow = { 205, 205, 0, 255 };
+ 
+ //
+\ No newline at end of file
+diff --git a/src/extras/enums/Colors.h b/src/extras/enums/Colors.h
+index 8a6a7ecc..430a8da0 100644
+--- a/src/extras/enums/Colors.h
++++ b/src/extras/enums/Colors.h
+@@ -154,6 +154,9 @@ extern CRGBA IndianRed,
+ 
+ // New, for chaos mod timer bar
+     ChaosBg,
+-    ChaosProgressTimer;
++    ChaosProgressTimer,
++
++// New, for extras
++    CustomYellow;
+ //
+ };
+diff --git a/src/extras/lua/lua_game.cpp b/src/extras/lua/lua_game.cpp
+index 2afa508e..8a65bb78 100644
+--- a/src/extras/lua/lua_game.cpp
++++ b/src/extras/lua/lua_game.cpp
+@@ -14,6 +14,7 @@
+ #include "lua_helpers.h"
+ 
+ #include "lua_log.h"
++#include "lua_script.h"
+ 
+ #include "player_functions.h"
+ 
+@@ -71,7 +72,7 @@ extern "C" {
+  * game.cheat("KILLME")
+  */
+ // void RegisterGameFunctionsLua(lua_State* L)
+-void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
++void RegisterGameFunctionsLua(lua_State* L, LuaScript* owner)
+ {
+     lua_newtable(L); // Stack: game table
+ 
+@@ -139,12 +140,6 @@ void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+ 	lua_pushcfunction(L, grabPhoneLua);
+ 	lua_setfield(L, -2, "grab_phone");
+ 
+-	// Test implementation of COMMAND_WAIT.
+-	// TODO Try and make this work, run a timer in OnTick that does something.
+-	// Disabled, doesn't work.
+-	// lua_pushcfunction(L, waitLua);
+-	// lua_setfield(L, -2, "wait");
+-
+ 	// Add an explosion
+ 	lua_pushcfunction(L, addExplosionLua);
+     lua_setfield(L, -2, "add_explosion");
+@@ -213,6 +208,7 @@ void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner)
+ 
+ 	// Register the wait command
+ 	// This works like the original scripts
++	// It is an implementation of COMMAND_WAIT from the original scripts.
+ 	/*
+ 	-- Example for OnTick in lua, put this in freeroam-game.lua.
+ 	function OnTick()
+@@ -826,18 +822,21 @@ int setAllowHurricanesLua(lua_State *L)
+  * Add a blip for the set coordinates
+  * 
+  * ADD_BLIP_FOR_COORD_OLD
++ * And also ADD_SHORT_RANGE_SPRITE_BLIP_FOR_COORD
++ * This combines both of those so it changes this in the API a bit now.
+  * 
+  * This works! It adds a custom sprite to the map now.
+  * This can also add a route marker.
+  * 
+  * Usage:
+- * game.add_blip_for_coord({x = 2, y = 2, z = 2}, radar_enums.eRadarSprite.RADAR_SPRITE_SAVE, false)
++ * game.add_blip_for_coord({x = 2, y = 2, z = 2}, radar_enums.eRadarSprite.RADAR_SPRITE_SAVE, false, true)
+  */
+ int addBlipForCoordOldLua(lua_State *L)
+ {
+ 	auto pos = luaGetCVector(L, 1);
+ 	int blipSprite = lua_tonumber(L, 2);
+ 	bool setBlipRoute = static_cast<float>(lua_toboolean(L, 3));
++	bool shortRangeBlip = static_cast<float>(lua_toboolean(L, 4));
+ 
+ 	if(!lua_isboolean(L, 3))
+ 	{
+@@ -861,7 +860,18 @@ int addBlipForCoordOldLua(lua_State *L)
+ 
+ 	// This works now!
+ 	// int blip = radar.SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
+-	int blip = CRadar::SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++
++	int blip = -1;
++
++	// New for setting a short range blip, doesn't make sense to duplicate a function for this.
++	if (shortRangeBlip) 
++	{
++		blip = CRadar::SetShortRangeCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++	} else 
++	{
++		// Not short range blip
++		blip = CRadar::SetCoordBlip(BLIP_COORD, *pos, RADAR_TRACE_RED, BLIP_DISPLAY_BOTH);
++	}
+ 
+     if (blip < 0)
+     {
+@@ -986,8 +996,11 @@ int addBlipForVehicleLua(lua_State *L)
+  */
+ int gameWaitLua(lua_State* L)
+ {
+-    LuaTest* instance =
+-        static_cast<LuaTest*>(
++	// I'm quite sure changing this will destory the game.wait system, only one way to find out...
++    LuaScript* instance =
++    // LuaTest* instance =
++        static_cast<LuaScript*>(
++        // static_cast<LuaTest*>(
+             lua_touserdata(L, lua_upvalueindex(1))
+         );
+ 
+@@ -1178,6 +1191,13 @@ int startRampageLua(lua_State *L)
+ 	lua_Number pedModel3 = lua_tonumber(L, 6);
+ 	lua_Number pedModel4 = lua_tonumber(L, 7);
+ 
++	// I really wonder what this will do, from ColStore.cpp.
++	// CStreaming::RequestModel(weaponModel, 0);
++	// CTimer::Suspend();
++	// CStreaming::LoadAllRequestedModels(false);
++	// CTimer::Resume();
++	//
++
+ 	CDarkel::StartFrenzy(static_cast<eWeaponType>(weaponModel), time, kills, pedModel1, TheText.Get("PAGE_00"),
+ 		pedModel2, pedModel3, pedModel4, true, false);
+ 	return 0;
+@@ -1223,6 +1243,8 @@ int hasModelLoadedLua(lua_State *L)
+ /**
+  * Set the current gravity value
+  * 
++ * TODO Fix this to not crash, it was working.
++ * 
+  * Usage (0.008 is the default gravity):
+  * game.set_gravity(0.008)
+  */
+diff --git a/src/extras/lua/lua_game.h b/src/extras/lua/lua_game.h
+index 659c8e3f..4cbcac43 100644
+--- a/src/extras/lua/lua_game.h
++++ b/src/extras/lua/lua_game.h
+@@ -9,6 +9,7 @@ extern "C" {
+ }
+ 
+ #include "lua_test.h"
++#include "lua_script.h"
+ 
+ // clang-format off
+ #ifdef __cplusplus
+@@ -17,7 +18,8 @@ extern "C" {
+ 
+     //------------- Game ------------//
+     // extern void RegisterGameFunctionsLua(lua_State* L);
+-    extern void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner);
++    // extern void RegisterGameFunctionsLua(lua_State* L, LuaTest* owner);
++    extern void RegisterGameFunctionsLua(lua_State* L, LuaScript* owner);
+     // extern void RegisterGameWaitFunctionLua(lua_State* L, LuaTest* owner);
+     extern int cheatCodesLua(lua_State *L);
+ 
+diff --git a/src/extras/lua/lua_script.cpp b/src/extras/lua/lua_script.cpp
+index 4d1e7590..3099b00a 100644
+--- a/src/extras/lua/lua_script.cpp
++++ b/src/extras/lua/lua_script.cpp
+@@ -39,192 +39,410 @@
+ 
+ // Use the same timer function already used by reVC.
+ #include "Timer.h"
++//-------------------------------------------
++// New for lua coroutines
++// This works for a COMMAND_WAIT in my freeroam-game.lua script.
+ 
+-static std::vector<std::unique_ptr<LuaScript>> gLuaScripts;
++//-------------------------------------------
+ 
+-// TODO Use this in the main lua_test register functions.
+-// lua_register(mainState, "wait", luaWait);
+-//
++// LuaScript::LuaScript()
++// {
++// }
+ 
+-// TODO Set this up
+-// Create script after initalizing lua.
++// LuaScript::~LuaScript()
++// {
++//     // if (m_threadReference != LUA_NOREF) {
++//     //     luaL_unref(
++//     //         m_mainState,
++//     //         LUA_REGISTRYINDEX,
++//     //         m_threadReference
++//     //     );
+ 
+-/**
+- * 
+- * auto interiorScript =
+-    std::make_unique<LuaScript>(
+-        mainState,
+-        "data/interiors.lua"
+-    );
++//     //     m_threadReference = LUA_NOREF;
++//     // }
++// }
+ 
+-if (interiorScript->Load()) {
+-    gLuaScripts.push_back(
+-        std::move(interiorScript)
+-    );
+-}
+- * 
+- */
+ 
+-// When creating the coroutine, use this exact order:
+-/*
+-m_luaThread = lua_newthread(m_mainState);
+ 
+-m_threadReference =
+-    luaL_ref(m_mainState, LUA_REGISTRYINDEX);
+-*/
+ 
+-/**
+- * 
+- Do not call luaL_ref() on the coroutine state. 
+- The new thread is pushed onto the main state’s stack, so the reference must be created from m_mainState.
++//------- Begin init functions -------//
++//------- These are for the game .scm script replacements ---------//
+ 
+-Also, do not call the Lua script with lua_pcall() if it uses wait(). 
+-Load it with luaL_loadfile(), then execute it using lua_resume() as shown above.
++/**
++ * New init function, so I run stuff like player.create only once and can run the freeroam-game.lua
++ *  as much as I want without crashing.
++ * Should allow me to spawn vehicles and stuff since I load that script so early before the game even starts.
+  * 
+  */
++void LuaScript::OnInit()
++{
++	// Updated to print out the current lua version, I forgot about it being in the header.
++	std::string luaVersionString = "[KCNet-ReVC]: Lua version: " 
++	+ std::string(LUA_VERSION_MAJOR) + "."
++	+ LUA_VERSION_MINOR + "."
++	+ LUA_VERSION_RELEASE;
++
++	TRACE(luaVersionString.c_str());
++	LogFunctions::LogInfo(Defines::luaLogFile, luaVersionString);
++
++#ifdef NEW_LUA_FORMAT
++    lua_State* L = LuaTest::GetInstance().GetLuaState();
++    lua_getglobal(L, "OnInit"); // Look for a function named OnInit in your lua file
++    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
++        // Handle error
++    }
+ 
+-//-------------------------------------------
+-// New coroutine testing
+-// TODO Fix this for waits and coroutines in my scripts.
+-// So I can set this up to have waits like the original game.
+-// That way I can run a function every second or a set amount of time.
+ 
+-// I might be able to get this working for a lua coroutine test.
+-//-------------------------------------------
++#else
+ 
+-LuaScript::LuaScript(lua_State* mainState,
+-                     const std::string& filename)
+-    : m_mainState(mainState),
+-      m_luaThread(nullptr),
+-      m_threadReference(LUA_NOREF),
+-      m_wakeTime(0),
+-      m_finished(false),
+-      m_filename(filename)
+-{
++	// Start the test for ticks.
++	// TODO Move this elsewhere.
++	// I think it needs to go after I start the freeroam scripts.
++	// TODO Try to add this after SetupFreeroamScripts in Game.cpp.
++	// StartOnTick();
++
++	return;
++#endif // NEW_LUA_FORMAT - Switch to OnInit function instead of having init directly in script.
+ }
+ 
+-LuaScript::~LuaScript()
++/**
++ * This should replace the main game tick when DISABLE_GAME_SCRIPTS is enabled.
++ */
++void LuaScript::OnTick()
+ {
+-    if (m_threadReference != LUA_NOREF) {
+-        luaL_unref(
+-            m_mainState,
+-            LUA_REGISTRYINDEX,
+-            m_threadReference
++	//---------
++	// To run forever, no longer in use since I have COMMAND_WAIT working.
++	//---------
++
++	// lua_State* L = GetLuaState();
++    // lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
++    // if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
++    //     // Handle error
++    // }
++
++	//---------
++	// To run with a timer
++	//---------
++
++	// TODO Implement this or something like this for Timer system.
++	// I have it setup in lua_game.cpp, the game.wait as a test.
++	// This should be able to call it.
++	// This below didn't work with the OnTick method in my lua scripts.
++
++	// If I can get this working, I should be able to run the wait command like in the original scripts.
++
++	// LogFunctions::LogError(
++    //     Defines::luaLogFile,
++    //     "LuaTest::OnTick called"
++    // );
++
++	const uint32_t now =
++        CTimer::GetTimeInMilliseconds();
++
++    for (LuaThread& thread : m_threads) {
++        if (thread.finished) {
++			// LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Skipping finished Lua thread"
++            // );
++			continue;
++		}
++            
++        if (!thread.waiting) {
++			// LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Lua thread is not waiting"
++            // );
++			continue;
++		} 
++
++        // This subtraction handles uint32_t timer wraparound correctly
++        // as long as waits are shorter than approximately 2^31 ms.
++        if (static_cast<int32_t>(now - thread.wakeTime) < 0)
++            continue;
++
++		// LogFunctions::LogError(
++        //     Defines::luaLogFile,
++        //     "Resuming Lua thread"
++        // );
++
++        thread.waiting = false;
++
++        int result = 0;
++        int resultCount = 0;
++
++        result = lua_resume(
++            thread.state,
++            nullptr,
++            0,
++            &resultCount
+         );
+ 
+-        m_threadReference = LUA_NOREF;
++        if (result == LUA_YIELD) {
++            /*
++             * The resumed Lua code called game.wait() again.
++             *
++             * Lua_GameWait() has already set:
++             *   thread.waiting = true
++             *   thread.wakeTime = ...
++             */
++            // LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Lua thread yielded again"
++            // );
++            continue;
++        }
++
++        if (result == LUA_OK) {
++            // LogFunctions::LogError(
++            //     Defines::luaLogFile,
++            //     "Lua thread finished"
++            // );
++
++            thread.finished = true;
++            lua_settop(thread.state, 0);
++            continue;
++        }
++
++        const char* error =
++            lua_tostring(thread.state, -1);
++
++        LogFunctions::LogError(
++            Defines::luaLogFile,
++            error ? error : "Lua resume failed"
++        );
++
++        lua_settop(thread.state, 0);
++        thread.finished = true;
+     }
++
++    RemoveFinishedThreads();
+ }
+ 
+ /**
+- * Load a lua script.
++ * Start the thread for the tick
++ * Should work for a COMMAND_WAIT implementation.
++ * 
++ * This gets run in CGame::Initialise.
+  */
+-bool LuaScript::Load()
++void LuaScript::StartOnTick()
+ {
+-    /*
+-     * lua_newthread pushes the new coroutine onto m_mainState's stack.
+-     */
+-    m_luaThread = lua_newthread(m_mainState);
+-
+-    /*
+-     * Store the coroutine in the registry. luaL_ref pops it from the
+-     * main state's stack and keeps it alive.
+-     */
+-    m_threadReference =
+-        luaL_ref(m_mainState, LUA_REGISTRYINDEX);
+-
+-    /*
+-     * Load the Lua file onto the coroutine's stack.
+-     */
+-    int result = luaL_loadfile(
+-        m_luaThread,
+-        m_filename.c_str()
++    lua_State* L = LuaTest::GetInstance().GetLuaState();
++
++	LogFunctions::LogInfo(
++        Defines::luaLogFile,
++        "StartOnTick entered"
+     );
+ 
+-    if (result != LUA_OK) {
+-        LogFunctions::LogError(Defines::luaLogFile, "Error: Could not load Lua script.");
+-        ReportError("Could not load Lua script");
+-        m_finished = true;
+-        return false;
++    lua_State* threadState =
++        lua_newthread(L);
++
++    // lua_newthread pushes the thread on m_luaVM's stack.
++    const int reference =
++        luaL_ref(L, LUA_REGISTRYINDEX);
++
++    lua_getglobal(L, "OnTick");
++
++    if (!lua_isfunction(L, -1)) {
++		LogFunctions::LogError(
++            Defines::luaLogFile,
++            "OnTick is not a global Lua function"
++        );
++        lua_pop(L, 1);
++
++        luaL_unref(
++            L,
++            LUA_REGISTRYINDEX,
++            reference
++        );
++
++        LogFunctions::LogError(
++            Defines::logFile,
++            "Lua function OnTick was not found"
++        );
++
++        return;
+     }
+ 
+-    /*
+-     * Start immediately, or set this to the current time if you want
+-     * the script to start on the next frame.
+-     */
+-    m_wakeTime = 0;
++	// LogFunctions::LogError(
++    //     Defines::luaLogFile,
++    //     "OnTick found"
++    // );
+ 
+-    return true;
+-}
++    // Move the function onto the coroutine stack.
++    lua_xmove(L, threadState, 1);
++
++    LuaThread thread;
++    thread.state = threadState;
++    thread.registryReference = reference;
++    thread.waiting = false;
++    thread.finished = false;
++    thread.wakeTime = 0;
++
++    m_threads.push_back(thread);
++
++    LuaThread& current =
++        m_threads.back();
++
++    int resultCount = 0;
++
++    const int result =
++        lua_resume(
++            threadState,
++            nullptr,
++            0,
++            &resultCount
++        );
++
++    if (result == LUA_YIELD) {
++        /*
++         * Expected if OnTick immediately calls game.wait().
++         */
++        // LogFunctions::LogError(
++        //     Defines::luaLogFile,
++        //     "OnTick yielded"
++        // );
++        return;
++    }
++
++    if (result == LUA_OK) {
++        // current.finished = true;
++		// LogFunctions::LogError(
++        //     Defines::luaLogFile,
++        //     "OnTick finished immediately"
++        // );
++		m_threads.back().finished = true;
++        return;
++    }
+ 
+-/**
+- * Report an error from lua.
+- */
+-void LuaScript::ReportError(const char* reason)
+-{
+     const char* error =
+-        lua_tostring(m_luaThread, -1);
++        lua_tostring(threadState, -1);
+ 
+-    printf(
+-        "[Lua] %s: %s\n",
+-        reason,
+-        error ? error : "unknown error"
++    LogFunctions::LogError(
++        Defines::logFile,
++        error ? error : "Lua OnTick failed"
+     );
+ 
+-    lua_settop(m_luaThread, 0);
++    lua_settop(threadState, 0);
++    current.finished = true;
+ }
+ 
+ /**
+- * Process the lua scripts.
++ * Start a function with the thread and timer system
+  * 
+- * TODO Call this from where the other game processing is and my lua OnTick function is.
++ * TODO Test this later
++ * TODO Try to use this for custom functions in other lua scripts if possible.
+  */
+-void LuaScript::Process()
++void LuaScript::StartFunction(const char* functionName)
+ {
+-    for (auto it = gLuaScripts.begin();
+-         it != gLuaScripts.end();) {
+-        LuaScript& script = **it;
++    lua_State* L = LuaTest::GetInstance().GetLuaState();
+ 
+-        script.Process();
++    lua_State* threadState = lua_newthread(L);
+ 
+-        if (script.IsFinished()) {
+-            it = gLuaScripts.erase(it);
+-        } else {
+-            ++it;
+-        }
++    int reference =
++        luaL_ref(L, LUA_REGISTRYINDEX);
++
++    lua_getglobal(L, functionName);
++
++    if (!lua_isfunction(L, -1)) {
++        lua_pop(L, 1);
++        luaL_unref(
++            L,
++            LUA_REGISTRYINDEX,
++            reference
++        );
++        return;
++    }
++
++    lua_xmove(L, threadState, 1);
++
++    LuaThread thread;
++    thread.state = threadState;
++    thread.registryReference = reference;
++
++    m_threads.push_back(thread);
++
++    LuaThread& current = m_threads.back();
++
++#if LUA_VERSION_NUM >= 504
++    int resultCount = 0;
++    int result = lua_resume(
++        threadState,
++        nullptr,
++        0,
++        &resultCount
++    );
++#else
++    int result = lua_resume(
++        threadState,
++        nullptr,
++        0
++    );
++#endif
++
++    if (result == LUA_YIELD)
++        return;
++
++    if (result == LUA_OK) {
++        current.finished = true;
++        return;
+     }
++
++    const char* error = lua_tostring(threadState, -1);
++
++    LogFunctions::LogError(
++        Defines::logFile,
++        error ? error : "Lua function failed"
++    );
++
++    lua_settop(threadState, 0);
++    current.finished = true;
+ }
+ 
++
+ /**
+- * Implementation of COMMAND_WAIT
+- * 
+- * Sleeps the game for this amount of time like in the scripts.
+- * 
+- * Runs sleep like the original game scripts.
+- * 
+- * Usage (Time in miliseconds):
+- * game.wait(ms)
+- * 
+- * TODO Implement this, I might have this working with the CTimer class.
++ * Thread for Timers and COMMAND_WAIT.
+  */
+-int waitLua(lua_State* L)
++LuaThread *
++LuaScript::FindThread(lua_State *state)
+ {
+-    int milliseconds = 0;
+-
+-    if (lua_gettop(L) >= 1) {
+-        milliseconds =
+-            static_cast<int>(
+-                luaL_checkinteger(L, 1)
+-            );
++    for(LuaThread &thread : m_threads)
++    {
++        if(thread.state == state)
++            return &thread;
+     }
+ 
+-    if (milliseconds < 0)
+-        milliseconds = 0;
++    return nullptr;
++};
++
++/**
++ * Remove threads created by the timer and thread system.
++ */
++void
++LuaScript::RemoveFinishedThreads()
++{
++    lua_State* L = LuaTest::GetInstance().GetLuaState();
++
++    for(auto it = m_threads.begin();
++        it != m_threads.end();)
++    {
++        if(!it->finished)
++        {
++            ++it;
++            continue;
++        }
+ 
+-    lua_pushinteger(L, milliseconds);
++        if(it->registryReference != LUA_NOREF)
++        {
++            luaL_unref(
++                L,
++                LUA_REGISTRYINDEX,
++                it->registryReference
++            );
++        }
+ 
+-    /*
+-     * Yield one value: the requested wait duration.
+-     */
+-    return lua_yield(L, 1);
++        it = m_threads.erase(it);
++    }
+ }
++
++//------- End init functions --------//
+diff --git a/src/extras/lua/lua_script.h b/src/extras/lua/lua_script.h
+index 5d645ddf..a07e83dc 100644
+--- a/src/extras/lua/lua_script.h
++++ b/src/extras/lua/lua_script.h
+@@ -10,37 +10,46 @@ extern "C" {
+ #include <cstdint>
+ #include <string>
+ 
+-extern "C" {
++struct LuaThread
++{
++    lua_State *state = nullptr;
++    int registryReference = LUA_NOREF;
+ 
+-    extern int waitLua(lua_State *L);
++    uint32 wakeTime = 0;
++    bool waiting = false;
++    bool finished = false;
++};
+ 
+-}
+ 
+ class LuaScript
+ {
+ public:
+-    LuaScript(lua_State* mainState, const std::string& filename);
+-    ~LuaScript();
++	void OnInit();
++	void OnTick();
+ 
+-    bool Load();
+-    void Process();
++	// LuaScript* CreateScript(const char* functionName);
+ 
+-    bool IsFinished() const {
+-        return m_finished;
+-    }
++	// New for starting the tick thread.
++	void StartOnTick();
++	void StartFunction(const char* functionName);
+ 
+-private:
+-    lua_State* m_mainState;
+-    lua_State* m_luaThread;
++	// New for COMMAND_WAIT and timers.
++	LuaThread *FindThread(lua_State *state);
++    // void StartScript(const char *script);
++    void RemoveFinishedThreads();
+ 
+-    void ReportError(const char* reason);
++	static LuaScript& GetInstance()
++	{ 
++		static LuaScript instance;
++		return instance;
++	}
+ 
+-    // Keeps the coroutine alive in Lua's registry.
+-    int m_threadReference;
++    // ~LuaScript();
+ 
+-    // Game time at which this script may resume.
+-    uint32_t m_wakeTime;
++private:
++    lua_State* m_mainState;
++    // lua_State* m_luaThread;
+ 
+-    bool m_finished;
+-    std::string m_filename;
++	// Threads for timer and wait.
++	std::vector<LuaThread> m_threads;
+ };
+diff --git a/src/extras/lua/lua_test.cpp b/src/extras/lua/lua_test.cpp
+index 761bf50e..1c356b35 100644
+--- a/src/extras/lua/lua_test.cpp
++++ b/src/extras/lua/lua_test.cpp
+@@ -191,403 +191,6 @@ void LuaTest::OpenLuaLibraries(lua_State* L)
+     // lua_pop(L, 1);
+ }
+ 
+-//------- Begin init functions -------//
+-//------- These are for the game .scm script replacements ---------//
+-
+-/**
+- * New init function, so I run stuff like player.create only once and can run the freeroam-game.lua
+- *  as much as I want without crashing.
+- * Should allow me to spawn vehicles and stuff since I load that script so early before the game even starts.
+- * 
+- */
+-void LuaTest::OnInit()
+-{
+-	// Updated to print out the current lua version, I forgot about it being in the header.
+-	std::string luaVersionString = "[KCNet-ReVC]: Lua version: " 
+-	+ std::string(LUA_VERSION_MAJOR) + "."
+-	+ LUA_VERSION_MINOR + "."
+-	+ LUA_VERSION_RELEASE;
+-
+-	TRACE(luaVersionString.c_str());
+-	LogFunctions::LogInfo(Defines::luaLogFile, luaVersionString);
+-
+-#ifdef NEW_LUA_FORMAT
+-    lua_State* L = GetLuaState();
+-    lua_getglobal(L, "OnInit"); // Look for a function named OnInit in your lua file
+-    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+-        // Handle error
+-    }
+-
+-
+-#else
+-
+-	// Start the test for ticks.
+-	// TODO Move this elsewhere.
+-	// I think it needs to go after I start the freeroam scripts.
+-	// TODO Try to add this after SetupFreeroamScripts in Game.cpp.
+-	// StartOnTick();
+-
+-	return;
+-#endif // NEW_LUA_FORMAT - Switch to OnInit function instead of having init directly in script.
+-}
+-
+-/**
+- * This should replace the main game tick when DISABLE_GAME_SCRIPTS is enabled.
+- */
+-void LuaTest::OnTick()
+-{
+-	// Taken from Script.cpp
+-	// TODO Implement this for a wait timer in my lua scripts.
+-	// Should be like the first thing I create in here.
+-	/**
+-	 * 
+-	 * 	TODO Look into how this is working for a wait in my lua scripts.
+-	// Otherwise creating a ped and other stuff will never be possible.
+-
+-	// Possibly put the lua_getglobal and the lua_pcall in here? So it only runs with this.
+-	if (CTimer::GetTimeInMilliseconds() >= m_nWakeTime){
+-		while (!ProcessOneCommand())
+-			;
+-		return;
+-	}
+-
+-	// TODO Reuse this in a LuaEvents::Process function or something
+-	if (!m_bSkipWakeTime)
+-		return;
+-	 * 
+-	 */
+-
+-	//---------
+-	// To run forever
+-	//---------
+-
+-	// lua_State* L = GetLuaState();
+-    // lua_getglobal(L, "OnTick"); // Look for a function named OnTick in your lua file
+-    // if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+-    //     // Handle error
+-    // }
+-
+-	//---------
+-	// To run with a timer
+-	//---------
+-
+-	// TODO Implement this or something like this for Timer system.
+-	// I have it setup in lua_game.cpp, the game.wait as a test.
+-	// This should be able to call it.
+-	// This below didn't work with the OnTick method in my lua scripts.
+-
+-	// If I can get this working, I should be able to run the wait command like in the original scripts.
+-
+-	// LogFunctions::LogError(
+-    //     Defines::luaLogFile,
+-    //     "LuaTest::OnTick called"
+-    // );
+-
+-	const uint32_t now =
+-        CTimer::GetTimeInMilliseconds();
+-
+-    for (LuaThread& thread : m_threads) {
+-        if (thread.finished) {
+-			// LogFunctions::LogError(
+-            //     Defines::luaLogFile,
+-            //     "Skipping finished Lua thread"
+-            // );
+-			continue;
+-		}
+-            
+-        if (!thread.waiting) {
+-			// LogFunctions::LogError(
+-            //     Defines::luaLogFile,
+-            //     "Lua thread is not waiting"
+-            // );
+-			continue;
+-		} 
+-
+-        // This subtraction handles uint32_t timer wraparound correctly
+-        // as long as waits are shorter than approximately 2^31 ms.
+-        if (static_cast<int32_t>(now - thread.wakeTime) < 0)
+-            continue;
+-
+-		// LogFunctions::LogError(
+-        //     Defines::luaLogFile,
+-        //     "Resuming Lua thread"
+-        // );
+-
+-        thread.waiting = false;
+-
+-        int result = 0;
+-        int resultCount = 0;
+-
+-        result = lua_resume(
+-            thread.state,
+-            nullptr,
+-            0,
+-            &resultCount
+-        );
+-
+-        if (result == LUA_YIELD) {
+-            /*
+-             * The resumed Lua code called game.wait() again.
+-             *
+-             * Lua_GameWait() has already set:
+-             *   thread.waiting = true
+-             *   thread.wakeTime = ...
+-             */
+-            // LogFunctions::LogError(
+-            //     Defines::luaLogFile,
+-            //     "Lua thread yielded again"
+-            // );
+-            continue;
+-        }
+-
+-        if (result == LUA_OK) {
+-            // LogFunctions::LogError(
+-            //     Defines::luaLogFile,
+-            //     "Lua thread finished"
+-            // );
+-
+-            thread.finished = true;
+-            lua_settop(thread.state, 0);
+-            continue;
+-        }
+-
+-        const char* error =
+-            lua_tostring(thread.state, -1);
+-
+-        LogFunctions::LogError(
+-            Defines::luaLogFile,
+-            error ? error : "Lua resume failed"
+-        );
+-
+-        lua_settop(thread.state, 0);
+-        thread.finished = true;
+-    }
+-
+-    RemoveFinishedThreads();
+-}
+-
+-/**
+- * Start the thread for the tick
+- * Should work for a COMMAND_WAIT implementation.
+- * 
+- * TODO Test this later.
+- */
+-void LuaTest::StartOnTick()
+-{
+-	LogFunctions::LogInfo(
+-        Defines::luaLogFile,
+-        "StartOnTick entered"
+-    );
+-
+-    lua_State* threadState =
+-        lua_newthread(m_luaVM);
+-
+-    // lua_newthread pushes the thread on m_luaVM's stack.
+-    const int reference =
+-        luaL_ref(m_luaVM, LUA_REGISTRYINDEX);
+-
+-    lua_getglobal(m_luaVM, "OnTick");
+-
+-    if (!lua_isfunction(m_luaVM, -1)) {
+-		LogFunctions::LogError(
+-            Defines::luaLogFile,
+-            "OnTick is not a global Lua function"
+-        );
+-        lua_pop(m_luaVM, 1);
+-
+-        luaL_unref(
+-            m_luaVM,
+-            LUA_REGISTRYINDEX,
+-            reference
+-        );
+-
+-        LogFunctions::LogError(
+-            Defines::logFile,
+-            "Lua function OnTick was not found"
+-        );
+-
+-        return;
+-    }
+-
+-	// LogFunctions::LogError(
+-    //     Defines::luaLogFile,
+-    //     "OnTick found"
+-    // );
+-
+-    // Move the function onto the coroutine stack.
+-    lua_xmove(m_luaVM, threadState, 1);
+-
+-    LuaThread thread;
+-    thread.state = threadState;
+-    thread.registryReference = reference;
+-    thread.waiting = false;
+-    thread.finished = false;
+-    thread.wakeTime = 0;
+-
+-    m_threads.push_back(thread);
+-
+-    LuaThread& current =
+-        m_threads.back();
+-
+-    int resultCount = 0;
+-
+-    const int result =
+-        lua_resume(
+-            threadState,
+-            nullptr,
+-            0,
+-            &resultCount
+-        );
+-
+-    if (result == LUA_YIELD) {
+-        /*
+-         * Expected if OnTick immediately calls game.wait().
+-         */
+-        // LogFunctions::LogError(
+-        //     Defines::luaLogFile,
+-        //     "OnTick yielded"
+-        // );
+-        return;
+-    }
+-
+-    if (result == LUA_OK) {
+-        // current.finished = true;
+-		// LogFunctions::LogError(
+-        //     Defines::luaLogFile,
+-        //     "OnTick finished immediately"
+-        // );
+-		m_threads.back().finished = true;
+-        return;
+-    }
+-
+-    const char* error =
+-        lua_tostring(threadState, -1);
+-
+-    LogFunctions::LogError(
+-        Defines::logFile,
+-        error ? error : "Lua OnTick failed"
+-    );
+-
+-    lua_settop(threadState, 0);
+-    current.finished = true;
+-}
+-
+-/**
+- * Start a function with the thread and timer system
+- * 
+- * TODO Test this later
+- * TODO Try to use this for custom functions in other lua scripts if possible.
+- */
+-void LuaTest::StartFunction(const char* functionName)
+-{
+-    lua_State* threadState = lua_newthread(m_luaVM);
+-
+-    int reference =
+-        luaL_ref(m_luaVM, LUA_REGISTRYINDEX);
+-
+-    lua_getglobal(m_luaVM, functionName);
+-
+-    if (!lua_isfunction(m_luaVM, -1)) {
+-        lua_pop(m_luaVM, 1);
+-        luaL_unref(
+-            m_luaVM,
+-            LUA_REGISTRYINDEX,
+-            reference
+-        );
+-        return;
+-    }
+-
+-    lua_xmove(m_luaVM, threadState, 1);
+-
+-    LuaThread thread;
+-    thread.state = threadState;
+-    thread.registryReference = reference;
+-
+-    m_threads.push_back(thread);
+-
+-    LuaThread& current = m_threads.back();
+-
+-#if LUA_VERSION_NUM >= 504
+-    int resultCount = 0;
+-    int result = lua_resume(
+-        threadState,
+-        nullptr,
+-        0,
+-        &resultCount
+-    );
+-#else
+-    int result = lua_resume(
+-        threadState,
+-        nullptr,
+-        0
+-    );
+-#endif
+-
+-    if (result == LUA_YIELD)
+-        return;
+-
+-    if (result == LUA_OK) {
+-        current.finished = true;
+-        return;
+-    }
+-
+-    const char* error = lua_tostring(threadState, -1);
+-
+-    LogFunctions::LogError(
+-        Defines::logFile,
+-        error ? error : "Lua function failed"
+-    );
+-
+-    lua_settop(threadState, 0);
+-    current.finished = true;
+-}
+-
+-
+-/**
+- * Thread for Timers and COMMAND_WAIT.
+- */
+-LuaThread *
+-LuaTest::FindThread(lua_State *state)
+-{
+-    for(LuaThread &thread : m_threads)
+-    {
+-        if(thread.state == state)
+-            return &thread;
+-    }
+-
+-    return nullptr;
+-};
+-
+-/**
+- * Remove threads created by the timer and thread system.
+- */
+-void
+-LuaTest::RemoveFinishedThreads()
+-{
+-    for(auto it = m_threads.begin();
+-        it != m_threads.end();)
+-    {
+-        if(!it->finished)
+-        {
+-            ++it;
+-            continue;
+-        }
+-
+-        if(it->registryReference != LUA_NOREF)
+-        {
+-            luaL_unref(
+-                m_luaVM,
+-                LUA_REGISTRYINDEX,
+-                it->registryReference
+-            );
+-        }
+-
+-        it = m_threads.erase(it);
+-    }
+-}
+-
+-//------- End init functions --------//
+-
+ //------- Begin cheat functions --------//
+ 
+ #if 0
+@@ -708,7 +311,8 @@ LuaTest::RegisterLuaFunctions(lua_State *L)
+ 	//----
+ 
+ 	RegisterAudioFunctionsLua(L);
+-	RegisterGameFunctionsLua(L, this);
++	// RegisterGameFunctionsLua(L, this);
++	RegisterGameFunctionsLua(L, &LuaScript::GetInstance());
+ 	RegisterGarageFunctionsLua(L);
+ 	RegisterHudFunctionsLua(L);
+ 	RegisterLogFunctionsLua(L);
+diff --git a/src/extras/lua/lua_test.h b/src/extras/lua/lua_test.h
+index 372c65be..6b24d6b8 100644
+--- a/src/extras/lua/lua_test.h
++++ b/src/extras/lua/lua_test.h
+@@ -30,15 +30,7 @@ extern "C"
+ // This breaks it.
+ //extern lua_State *m_luaVM;
+ 
+-struct LuaThread
+-{
+-    lua_State *state = nullptr;
+-    int registryReference = LUA_NOREF;
+ 
+-    uint32 wakeTime = 0;
+-    bool waiting = false;
+-    bool finished = false;
+-};
+ 
+ // For new coroutine test
+ // struct LuaScript
+@@ -57,9 +49,6 @@ class LuaTest
+ private:
+ 	lua_State *m_luaVM;
+ 
+-	// Threads for timer and wait.
+-	std::vector<LuaThread> m_threads;
+-
+ #ifdef LUA_SOL_TEST
+ // New lua testing
+ 	// TODO Fix sol2 for lua.
+@@ -109,21 +98,14 @@ public:
+ 	// TODO Test this, this might work well in here.
+ 	CVector spawnPosVector = CVector(spawnPosX, spawnPosY, spawnPosZ);
+ 
+-
+ 	float vehicleTurnMass;
+ 
+ 	LuaTest();
+ 	void SetupFreeroamScript();
+ 	void InitLua();
+-	void OnInit();
+-	void OnTick();
+-
+-	// LuaScript* CreateScript(const char* functionName);
+ 
+ 	// New for starting the tick thread.
+-	void StartOnTick();
+-	void StartFunction(const char* functionName);
+-	
++
+ 	// Run the custom event system I am working on in Lua
+ 	void LuaEvents();
+ 
+@@ -133,15 +115,7 @@ public:
+ 	void LuaKeybindEvents();
+ 	void SetupLua();
+ 
+-
+-	// New for COMMAND_WAIT and timers.
+-	LuaThread *FindThread(lua_State *state);
+-    // void StartScript(const char *script);
+-    void RemoveFinishedThreads();
+-
+-	void ProcessWaitTest();
+-
+-	// These might work for getting the m_luaVM variable in the private class above.
++	// These work for getting the m_luaVM variable in the private class above.
+ 	static LuaTest& GetInstance()
+ 	{ 
+ 		static LuaTest instance;
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index b38549b9..04625d87 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -89,7 +89,7 @@ uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+-std::string Defines::programVersion = "1.2.15-1a";
++std::string Defines::programVersion = "1.2.15-2a";
+ 
+ // Set the freeroam game name
+ #ifdef DISABLE_GAME_SCRIPTS
+-- 
+2.43.0
+

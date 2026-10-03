@@ -1,0 +1,60 @@
+From 79ba99b9ba2f29406b8255421f1ab371044bfc0f Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Thu, 10 Sep 2026 12:11:45 -0400
+Subject: [PATCH 116/161] feat: Add version enum and reVCVersion variable
+
+* I added this into defines.cpp/.h so I can set when I change the major, minor and patch versions.
+
+* This won't be used for updating the prefixes like '-1a' since I'll be making a lot of those.
+---
+ src/extras/utils/defines.cpp |  3 +++
+ src/extras/utils/defines.h   | 12 ++++++++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/src/extras/utils/defines.cpp b/src/extras/utils/defines.cpp
+index a887e3a8..a0be6b56 100644
+--- a/src/extras/utils/defines.cpp
++++ b/src/extras/utils/defines.cpp
+@@ -83,6 +83,9 @@ std::string Defines::menuName = "KCNet-ReLCS-ImGui";
+ std::string Defines::modificationAuthor = "kelson8";
+ 
+ // Set the program version.
++// Game version
++uint8_t Defines::reVCVersion = KCNET_REVC_VER_1_2_12;
++
+ // TODO Make this grab from my latest internal gitea releases or something.
+ // std::string Defines::programVersion = "1.1";
+ #if defined(GTAVC)
+diff --git a/src/extras/utils/defines.h b/src/extras/utils/defines.h
+index 369d9a84..f09d705d 100644
+--- a/src/extras/utils/defines.h
++++ b/src/extras/utils/defines.h
+@@ -1,6 +1,15 @@
+ #pragma once
+ 
+ #include <iostream>
++#include <cstdint>
++
++// Idea taken from here for this
++// https://github.com/x87/gta-extended-2025/blob/bbb70d06286b07686bce0ded1db3aa90277d0ef0/src/core/Game.h#L34-L44
++// Added in KCNet ReVC 1.2.12-8a.
++enum eReVCVersion {
++	// Latest version currently.
++	KCNET_REVC_VER_1_2_12,
++};
+ 
+ // New for dll logging
+ //#define LOG_CLASS_TEST
+@@ -40,6 +49,9 @@ log_output(const T &message)
+ class Defines
+ {
+ public:
++	// Version
++	static uint8_t reVCVersion; // eReVCVersion
++
+ 	// Files
+ 	//const char *logFile = "KCNet-ReVC.log";
+ 	// Logs
+-- 
+2.43.0
+

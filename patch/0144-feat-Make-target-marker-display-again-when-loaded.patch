@@ -1,0 +1,217 @@
+From 5fa07fd56256654e8c5ad9971593f335ae08f744 Mon Sep 17 00:00:00 2001
+From: kelson8 <kelson@kelsoncraft.net>
+Date: Sat, 12 Sep 2026 21:53:42 -0400
+Subject: [PATCH 144/161] feat: Make target marker display again when loaded
+
+* Fix new game causing no audio until game was paused and unpaused, I had it fixed for when it started but not on new games.
+
+* Update changelog.
+---
+ Changelog.md                       | 11 +++++++
+ src/core/Frontend.cpp              | 29 ++++++++++++++++--
+ src/extras/utils/fast_loader.cpp   |  7 +++--
+ src/extras/utils/fast_loader.h     |  3 +-
+ src/extras/utils/freeroam_util.cpp | 48 ++++++++++++++++++++++++++----
+ 5 files changed, 87 insertions(+), 11 deletions(-)
+
+diff --git a/Changelog.md b/Changelog.md
+index a74fa8eb..00efc698 100644
+--- a/Changelog.md
++++ b/Changelog.md
+@@ -788,8 +788,19 @@ feat: Add frontend-guides for modifying the menus
+ 
+ ### 1.2.13-11a
+ 
++**Commit 1**
++
+ feat: Make target marker get saved to the save file
+ 
+ * Now the target marker position will get saved to the custom json file.
+ 
+ * Update changelog, change version to 1.2.13-11a.
++
++**Commit 2**
++
++feat: Make target marker display again when loaded
++
++* Fix new game causing no audio until game was paused and unpaused, I had it fixed for when it started but not on new games.
++
++* Update changelog.
++
+diff --git a/src/core/Frontend.cpp b/src/core/Frontend.cpp
+index 51010031..4248f795 100644
+--- a/src/core/Frontend.cpp
++++ b/src/core/Frontend.cpp
+@@ -56,7 +56,9 @@
+ #include "lua_test.h"
+ #endif // DISABLE_GAME_SCRIPTS - Custom save slots.
+ 
+-
++#ifdef DISABLE_GAME_SCRIPTS
++#include "fast_loader.h"
++#endif // DISABLE_GAME_SCRIPTS - Fix for audio bug on new game.
+ 
+ // Similar story to Hud.cpp:
+ // Game has colors inlined in code.
+@@ -4993,7 +4995,14 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #ifdef DISABLE_GAME_SCRIPTS
+ 			InitGame::GetInstance().SetPlayerCreated(false);
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
++
++#ifdef DISABLE_GAME_SCRIPTS
++			// This just fixes a few issues with the audio not working until the game was paused and unpaused.
++			FastLoader::LoadFreeroamScript();
++#else
+ 			DoSettingsBeforeStartingAGame();
++
++#endif // DISABLE_GAME_SCRIPTS - Fix for audio bug on new game.
+ 			return;
+ 		}
+ 	}
+@@ -5033,7 +5042,15 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #ifdef DISABLE_GAME_SCRIPTS
+ 			InitGame::GetInstance().SetPlayerCreated(false);
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
++
++#ifdef DISABLE_GAME_SCRIPTS
++			// This just fixes a few issues with the audio not working until the game was paused and unpaused.
++			FastLoader::LoadFreeroamScript();
++#else
+ 			DoSettingsBeforeStartingAGame();
++
++#endif // DISABLE_GAME_SCRIPTS - Fix for audio bug on new game.
++
+ 		} else if (hasNativeList(m_nCurrScreen)) {
+ 			switch (m_nCurrExLayer) {
+ 			case HOVEROPTION_LIST:
+@@ -5162,7 +5179,15 @@ CMenuManager::ProcessUserInput(uint8 goDown, uint8 goUp, uint8 optionSelected, u
+ #ifdef DISABLE_GAME_SCRIPTS
+ 				InitGame::GetInstance().SetPlayerCreated(false);
+ #endif // DISABLE_GAME_SCRIPTS - For setting up the player so it doesn't crash pressing new game
+-				DoSettingsBeforeStartingAGame();
++
++#ifdef DISABLE_GAME_SCRIPTS
++			// This just fixes a few issues with the audio not working until the game was paused and unpaused.
++			FastLoader::LoadFreeroamScript();
++#else
++			DoSettingsBeforeStartingAGame();
++
++#endif // DISABLE_GAME_SCRIPTS - Fix for audio bug on new game.
++
+ 				break;
+ #ifdef LEGACY_MENU_OPTIONS
+ 			case MENUACTION_RELOADIDE:
+diff --git a/src/extras/utils/fast_loader.cpp b/src/extras/utils/fast_loader.cpp
+index 59d6cfd0..c545d6cb 100644
+--- a/src/extras/utils/fast_loader.cpp
++++ b/src/extras/utils/fast_loader.cpp
+@@ -80,19 +80,21 @@ FastLoader::FastLoad()
+ 		// Only if I have the 'if(!m_bGameNotLoaded)' check in Frontend.cpp under 'MENUACTION_FASTLOADER'.
+ 		// && FrontEndMenuManager.m_nCurrScreen != MENUPAGE_START_MENU
+ 	) {
++
++
+ 		LoadFreeroamScript();
+ 
+ 		// Well this will just crash here, I guess don't do this..
+ 		// DoGameSpecificStuffAfterSucessLoad();
+ 
++
++
+ 		// This doesn't do anything.
+ 		// FrontEndMenuManager.m_bShowMouse = true;
+ 
+ 		// I forgot about this.
+ 		// FrontEndMenuManager.ChangeRadioStation()
+ 	}
+-
+-	return;
+ #else
+ 	LoadMainGameScripts();
+ #endif // DISABLE_GAME_SCRIPTS - Switch scm langauge to my lua script testing.
+@@ -138,6 +140,7 @@ FastLoader::LoadFreeroamScript()
+  * Load the main game and mission scripts.
+  * 
+  * This will load the 'main.scm' and save slots.
++ * Although I need to fix this to build again if I turn off DISABLE_GAME_SCRIPTS for this to run.
+  */
+ void
+ FastLoader::LoadMainGameScripts()
+diff --git a/src/extras/utils/fast_loader.h b/src/extras/utils/fast_loader.h
+index eba46e2d..dc157fa1 100644
+--- a/src/extras/utils/fast_loader.h
++++ b/src/extras/utils/fast_loader.h
+@@ -2,9 +2,10 @@
+ class FastLoader
+ {
+ private:
+-	void LoadFreeroamScript();
+ 	void LoadMainGameScripts();
+ 
+ public:
+ 	void FastLoad();
++
++	static void LoadFreeroamScript();
+ };
+diff --git a/src/extras/utils/freeroam_util.cpp b/src/extras/utils/freeroam_util.cpp
+index 5e63ea86..d33eca2f 100644
+--- a/src/extras/utils/freeroam_util.cpp
++++ b/src/extras/utils/freeroam_util.cpp
+@@ -432,12 +432,48 @@ bool FreeroamUtil::LoadFreeroamJson()
+         // New for loading the target marker position.
+         // TODO Fix this to work.
+         // It doesn't put the marker back on the map, I will probably have to add the sprite back also.
+-        // if(save.contains("map") && save["map"].contains("target_marker"))
+-        // {
+-        //     const json& mapInfo = save["map"]["target_marker"];
+-        //     CRadar::TargetMarkerPos.x = mapInfo.value("pos_x", CRadar::TargetMarkerPos.x);
+-        //     CRadar::TargetMarkerPos.y = mapInfo.value("pos_y", CRadar::TargetMarkerPos.y);
+-        // }
++        if(save.contains("map") && save["map"].contains("target_marker"))
++        {
++            
++            if (CRadar::TargetMarkerId == -1) 
++            {
++
++
++                const json& mapInfo = save["map"]["target_marker"];
++                CRadar::TargetMarkerPos.x = mapInfo.value("pos_x", CRadar::TargetMarkerPos.x);
++                CRadar::TargetMarkerPos.y = mapInfo.value("pos_y", CRadar::TargetMarkerPos.y);
++                // This is never set for the target marker.
++                CRadar::TargetMarkerPos.z = 0.0f;
++
++                CVector targetMarkerPos = CVector(CRadar::TargetMarkerPos.x, CRadar::TargetMarkerPos.y, 0.0f);
++
++                // This works for making the target marker display!
++                // TODO Move all this into a new function, FreeroamUtil::LoadTargetMarker()
++                // TODO Move this value, and it's a bad idea to set this to 1.
++                int nextBlip = 1;
++                CRadar::TargetMarkerId = CRadar::GetNewUniqueBlipIndex(nextBlip);
++
++                // TODO Move this into another function.
++                // It came from CRadar::ToggleTargetMarker;
++		        CRadar::ms_RadarTrace[nextBlip].m_eBlipType = BLIP_COORD;
++		        CRadar::ms_RadarTrace[nextBlip].m_nColor = RADAR_TRACE_GRAY;
++		        CRadar::ms_RadarTrace[nextBlip].m_bDim = 0;
++		        CRadar::ms_RadarTrace[nextBlip].m_bInUse = 1;
++		        CRadar::ms_RadarTrace[nextBlip].m_Radius = 1.0f;
++		        CRadar::ms_RadarTrace[nextBlip].m_vec2DPos = targetMarkerPos;
++		        CRadar::ms_RadarTrace[nextBlip].m_vecPos = targetMarkerPos;
++		        CRadar::ms_RadarTrace[nextBlip].m_nEntityHandle = 0;
++		        CRadar::ms_RadarTrace[nextBlip].m_wScale = 5;
++		        CRadar::ms_RadarTrace[nextBlip].m_eBlipDisplay = BLIP_DISPLAY_BLIP_ONLY;
++		        CRadar::ms_RadarTrace[nextBlip].m_eRadarSprite = RADAR_SPRITE_WAYPOINT;
++                //
++
++            }
++
++            // To reset the target marker:
++            // ClearBlip(CRadar::TargetMarkerId);
++            // CRadar::TargetMarkerId = -1;
++        }
+ 
+         return true;
+     }
+-- 
+2.43.0
+
